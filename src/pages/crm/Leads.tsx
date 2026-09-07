@@ -112,7 +112,7 @@ export const Leads: React.FC = () => {
       await refetch()
       setIsModalOpen(false)
     } else if (deleteTarget.type === 'quotation') {
-      await deleteQuotation(deleteTarget.id as number)
+      await deleteQuotation(String(deleteTarget.id))
       const fresh = await fetchQuotations(editId!)
       setLeadQuotations(fresh)
     }
@@ -422,7 +422,7 @@ export const Leads: React.FC = () => {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 mb-0.5">
                               <p className={`text-[11px] font-bold ${isLatest ? 'text-primary' : 'text-secondary'}`}>
-                                {q.id}
+                                {q.id} · <span className="font-mono text-[10px] text-muted">v{q.version || '?'}</span>
                               </p>
                               <span className={`text-[9px] px-1.5 py-0.5 border rounded font-bold uppercase ${q.type === 'job' ? 'bg-amber-100 border-amber-200 text-amber-700' : q.type === 'customer' ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-rex-500/10 border-rex-500/20 text-rex-600'}`}>
                                 {q.type === 'job' ? 'Job Quote' : q.type === 'customer' ? 'Customer Quote' : 'Main Quote'}

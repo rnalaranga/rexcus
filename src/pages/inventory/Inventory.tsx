@@ -198,7 +198,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Item Details',
       key: 'name',
-      render: (val, item) => (
+      render: (val: any, item) => (
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded ${item.type === 'product' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'}`}>
             {item.type === 'product' ? <Package size={16} /> : <Wrench size={16} />}
@@ -213,7 +213,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Type',
       key: 'type',
-      render: (val) => (
+      render: (val: any) => (
         <Badge variant={val === 'product' ? 'info' : 'warning'}>
           {val.charAt(0).toUpperCase() + val.slice(1)}
         </Badge>
@@ -240,7 +240,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Stock / Qty',
       key: 'quantity',
-      render: (val, item) => item.type === 'product' ? (
+      render: (val: any, item) => item.type === 'product' ? (
         <span className={`font-mono ${Number(val) <= Number(item.reorderLevel || 0) ? 'text-red-500 font-bold' : 'text-secondary'}`}>
           {val} {item.uom} {Number(val) <= Number(item.reorderLevel || 0) && <span className="text-[10px] ml-1">(Low)</span>}
         </span>
@@ -251,7 +251,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Price (Rs)',
       key: 'unitPrice',
-      render: (val, item) => (
+      render: (val: any, item) => (
         <div>
           <span className="font-mono text-secondary">{formatCurrency(val, true)}</span>
           {item.type === 'service' && <span className="text-[10px] text-muted ml-1">/ {item.uom}</span>}
@@ -261,8 +261,8 @@ export const Inventory: React.FC = () => {
     {
       header: 'Status',
       key: 'status',
-      render: (val) => (
-        <Badge variant={val === 'active' ? 'success' : 'default'}>{(val || 'active').toUpperCase()}</Badge>
+      render: (val: any) => (
+        <Badge variant={val === 'active' ? 'success' : 'default'}>{String(val || 'active').toUpperCase()}</Badge>
       )
     },
     {

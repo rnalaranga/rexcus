@@ -10,11 +10,13 @@ import { Modal } from '@/components/ui/Modal'
 import { useInvoices, useLeads } from '@/hooks/useData'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
+import { useSettings } from '@/contexts/SettingsContext'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
   const { data: invoices, loading, refetch } = useInvoices()
   const { data: leads } = useLeads()
+  const { settings } = useSettings()
   
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -151,7 +153,7 @@ export const Invoices: React.FC = () => {
   const columns: Column<any>[] = [
     {
       key: 'id', header: 'Invoice #',
-      render: (val, item) => (
+      render: (val: any, item) => (
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-500">
             <FileText size={16} />
@@ -167,7 +169,7 @@ export const Invoices: React.FC = () => {
     },
     {
       key: 'leadId', header: 'Customer',
-      render: (val) => {
+      render: (val: any) => {
         const lead = leads.find((l: any) => l.id === val)
         return lead ? (
           <div>
@@ -179,7 +181,7 @@ export const Invoices: React.FC = () => {
     },
     {
       key: 'date', header: 'Date',
-      render: (val) => (
+      render: (val: any) => (
         <div>
           <div className="text-secondary text-xs">{new Date(val).toLocaleDateString()}</div>
           <div className="text-[10px] text-muted">{relativeTime(val)}</div>
@@ -188,11 +190,11 @@ export const Invoices: React.FC = () => {
     },
     {
       key: 'total', header: 'Amount',
-      render: (val) => <span className="font-mono font-semibold text-primary">{formatCurrency(Number(val))}</span>
+      render: (val: any) => <span className="font-mono font-semibold text-primary">{formatCurrency(Number(val))}</span>
     },
     {
       key: 'status', header: 'Status',
-      render: (val) => getStatusBadge(val)
+      render: (val: any) => getStatusBadge(val)
     },
     {
       key: 'actions', header: '',
@@ -259,7 +261,11 @@ export const Invoices: React.FC = () => {
                 </div>
               </div>
               <div className="text-right">
-                <h3 className="font-bold text-lg">Rex Industries</h3>
+                {settings?.company_logo ? (
+                  <img src={settings.company_logo} alt="Company Logo" className="max-h-16 ml-auto mb-2" />
+                ) : (
+                  <h3 className="font-bold text-lg">Rex Industries</h3>
+                )}
                 <p className="text-xs text-slate-500 mt-1">123 Industrial Estate<br/>Colombo, Sri Lanka</p>
               </div>
             </div>

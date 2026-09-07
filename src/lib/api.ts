@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3000/api';
+﻿const API_URL = 'http://localhost:3000/api';
 
 export const fetchCustomers = async () => {
   const res = await fetch(`${API_URL}/customers`);
@@ -79,6 +79,7 @@ export const deleteDeal = async (id: string) => {
   return res.json();
 };
 
+// -- QUOTATIONS --
 export const fetchQuotations = async (leadId: string) => {
   const res = await fetch(`${API_URL}/quotations/${leadId}`);
   return res.json();
@@ -93,11 +94,21 @@ export const createQuotation = async (data: any) => {
   return res.json();
 };
 
-export const deleteQuotation = async (id: number) => {
+export const updateQuotation = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/quotations/update/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deleteQuotation = async (id: string) => {
   const res = await fetch(`${API_URL}/quotations/${id}`, { method: 'DELETE' });
   return res.json();
 };
 
+// -- INVENTORY --
 export const fetchInventory = async () => {
   const res = await fetch(`${API_URL}/inventory`);
   return res.json();
@@ -140,6 +151,7 @@ export const addStockLedgerEntry = async (inventoryId: string, data: any) => {
   return res.json();
 };
 
+// -- SUPPLIERS --
 export const fetchSuppliers = async () => {
   const res = await fetch(`${API_URL}/suppliers`);
   return res.json();
@@ -192,6 +204,7 @@ export const deleteSupplierLedgerEntry = async (id: string) => {
   return res.json();
 };
 
+// -- FOLLOWUPS --
 export const fetchFollowups = async () => {
   const res = await fetch(`${API_URL}/followups`);
   return res.json();
@@ -225,6 +238,7 @@ export const deleteFollowup = async (id: string) => {
   return res.json();
 };
 
+// -- INVOICES --
 export const fetchInvoices = async () => {
   const res = await fetch(`${API_URL}/invoices`);
   return res.json();

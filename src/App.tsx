@@ -13,6 +13,12 @@ import { Inventory } from '@/pages/inventory/Inventory'
 import { Suppliers } from '@/pages/inventory/Suppliers'
 import { SupplierDetail } from '@/pages/inventory/SupplierDetail'
 import { Invoices } from '@/pages/finance/Invoices'
+import { Login } from '@/pages/auth/Login'
+import { Register } from '@/pages/auth/Register'
+import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { SettingsProvider } from '@/contexts/SettingsContext'
+import { UserManagement } from '@/pages/admin/UserManagement'
+import { Settings } from '@/pages/admin/Settings'
 
 const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-64">
@@ -24,12 +30,22 @@ const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   </div>
 )
 
-function App() {
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
+function AppRoutes() {
+  const { user } = useAuth();
+  
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Routes>
-        <Route path="/" element={<Navigate to="/crm/leads" replace />} />
-        <Route element={<AppLayout />}>
+    <Routes>
+      <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+      <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
+      
+      <Route path="/" element={<Navigate to="/crm/leads" replace />} />
+      <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           {/* CRM */}
           <Route path="/crm" element={<CRMDashboard />} />
           <Route path="/crm/customers" element={<Customers />} />
@@ -54,11 +70,26 @@ function App() {
           <Route path="/finance" element={<ComingSoon module="Finance & Accounting" />} />
           <Route path="/hr" element={<ComingSoon module="Human Resources" />} />
 
+          {/* Admin */}
+          <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/settings" element={<Settings />} />
+
           {/* 404 */}
           <Route path="*" element={<Navigate to="/crm/leads" replace />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <SettingsProvider>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <AppRoutes />
+        </BrowserRouter>
+      </SettingsProvider>
+    </AuthProvider>
   )
 }
 
