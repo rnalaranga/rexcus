@@ -13,7 +13,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/settings')
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
       .then(res => res.json())
       .then(data => {
         setSettings(data);
@@ -26,7 +26,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   }, []);
 
   const updateSettings = async (updates: Record<string, string>) => {
-    await fetch('http://localhost:3000/api/settings', {
+    await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)

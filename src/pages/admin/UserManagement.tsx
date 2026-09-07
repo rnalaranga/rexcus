@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { Shield, User, Plus, Trash2, KeyRound, Edit2, AlertCircle } from 'lucide-react';
 
-const API = 'http://localhost:3000';
+const API = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api', '') : 'http://localhost:3000';
 
 type UserRecord = {
   id: string;
