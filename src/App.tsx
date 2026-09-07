@@ -1,0 +1,65 @@
+import React from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AppLayout } from '@/components/layout/AppLayout'
+import { CRMDashboard } from '@/pages/crm/Dashboard'
+import { Customers } from '@/pages/crm/Customers'
+import { CustomerDetail } from '@/pages/crm/CustomerDetail'
+import { Leads } from '@/pages/crm/Leads'
+import { Deals } from '@/pages/crm/Deals'
+import { Contacts } from '@/pages/crm/Contacts'
+import { QuotationBuilder } from '@/pages/crm/QuotationBuilder'
+import { Followups } from '@/pages/crm/Followups'
+import { Inventory } from '@/pages/inventory/Inventory'
+import { Suppliers } from '@/pages/inventory/Suppliers'
+import { SupplierDetail } from '@/pages/inventory/SupplierDetail'
+import { Invoices } from '@/pages/finance/Invoices'
+
+const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
+  <div className="flex flex-col items-center justify-center h-full min-h-64">
+    <div className="glass-red p-8 text-center max-w-sm">
+      <div className="text-3xl mb-3">🛠️</div>
+      <h2 className="text-sm font-bold text-rex-600 dark:text-rex-300 uppercase tracking-widest mb-1">{module}</h2>
+      <p className="text-xs text-secondary">This module is under construction.</p>
+    </div>
+  </div>
+)
+
+function App() {
+  return (
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/crm/leads" replace />} />
+        <Route element={<AppLayout />}>
+          {/* CRM */}
+          <Route path="/crm" element={<CRMDashboard />} />
+          <Route path="/crm/customers" element={<Customers />} />
+          <Route path="/crm/customers/:id" element={<CustomerDetail />} />
+          <Route path="/crm/leads" element={<Leads />} />
+          <Route path="/crm/deals" element={<Deals />} />
+          <Route path="/crm/contacts" element={<Contacts />} />
+          <Route path="/crm/followups" element={<Followups />} />
+          <Route path="/crm/quotations/new/:leadId" element={<QuotationBuilder />} />
+
+          {/* Inventory */}
+          <Route path="/inventory" element={<Inventory />} />
+          <Route path="/inventory/suppliers" element={<Suppliers />} />
+          <Route path="/inventory/suppliers/:id" element={<SupplierDetail />} />
+
+          {/* Finance */}
+          <Route path="/finance/invoices" element={<Invoices />} />
+
+          {/* Placeholder modules */}
+          <Route path="/production" element={<ComingSoon module="Production Planning" />} />
+          <Route path="/sales" element={<ComingSoon module="Sales & Orders" />} />
+          <Route path="/finance" element={<ComingSoon module="Finance & Accounting" />} />
+          <Route path="/hr" element={<ComingSoon module="Human Resources" />} />
+
+          {/* 404 */}
+          <Route path="*" element={<Navigate to="/crm/leads" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
+export default App
