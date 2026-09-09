@@ -151,3 +151,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS vat VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS svat VARCHAR(50);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS vat VARCHAR(50);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS svat VARCHAR(50);
+
+-- Insert default admin user (password: admin123)
+INSERT IGNORE INTO users (id, name, username, password_hash, role, created_at)
+VALUES ('USR-ADMIN-1', 'Super Admin', 'admin', '$2b$10$ETMo7F1wNdXluyhQanP25.gyHiDvtTPHjUTVgGGUzyBesEwO6eoga', 'admin', NOW());

@@ -80,8 +80,9 @@ export const deleteDeal = async (id: string) => {
 };
 
 // -- QUOTATIONS --
-export const fetchQuotations = async (leadId: string) => {
-  const res = await fetch(`${API_URL}/quotations/${leadId}`);
+export const fetchQuotations = async (leadId?: string) => {
+  const url = leadId ? `${API_URL}/quotations/${leadId}` : `${API_URL}/quotations`;
+  const res = await fetch(url);
   return res.json();
 };
 
@@ -275,3 +276,4 @@ export const addInvoicePayment = async (id: string, data: any) => {
   });
   return res.json();
 };
+

@@ -1,10 +1,11 @@
-import React from 'react'
+﻿import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { CRMDashboard } from '@/pages/crm/Dashboard'
 import { Customers } from '@/pages/crm/Customers'
 import { CustomerDetail } from '@/pages/crm/CustomerDetail'
 import { Leads } from '@/pages/crm/Leads'
+import { Quotations } from '@/pages/crm/Quotations'
 import { Deals } from '@/pages/crm/Deals'
 import { Contacts } from '@/pages/crm/Contacts'
 import { QuotationBuilder } from '@/pages/crm/QuotationBuilder'
@@ -23,7 +24,7 @@ import { Settings } from '@/pages/admin/Settings'
 const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-64">
     <div className="glass-red p-8 text-center max-w-sm">
-      <div className="text-3xl mb-3">🛠️</div>
+      <div className="text-3xl mb-3">ðŸ› ï¸</div>
       <h2 className="text-sm font-bold text-rex-600 dark:text-rex-300 uppercase tracking-widest mb-1">{module}</h2>
       <p className="text-xs text-secondary">This module is under construction.</p>
     </div>
@@ -54,6 +55,7 @@ function AppRoutes() {
           <Route path="/crm/deals" element={<Deals />} />
           <Route path="/crm/contacts" element={<Contacts />} />
           <Route path="/crm/followups" element={<Followups />} />
+          <Route path="/crm/quotations" element={<Quotations />} />
           <Route path="/crm/quotations/new/:leadId" element={<QuotationBuilder />} />
 
           {/* Inventory */}
@@ -94,3 +96,5 @@ function App() {
 }
 
 export default App
+
+

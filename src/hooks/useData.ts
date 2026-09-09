@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import * as api from '@/lib/api';
 
 export function useCustomers() {
@@ -131,3 +131,19 @@ export function useFollowups() {
   return { data, loading, refetch };
 }
 export function useInvoices() { const [data, setData] = useState<any[]>([]); const [loading, setLoading] = useState(true); const refetch = useCallback(() => { api.fetchInvoices().then(d => { setData(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => { setData([]); setLoading(false); }); }, []); useEffect(() => { refetch(); }, [refetch]); return { data, loading, refetch }; }
+
+export function useQuotations() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(() => {
+    api.fetchQuotations().then(d => {
+      setData(d);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, loading, refetch };
+}

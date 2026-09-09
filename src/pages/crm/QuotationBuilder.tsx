@@ -139,7 +139,11 @@ export const QuotationBuilder: React.FC = () => {
   const [subject, setSubject] = useState('To machining parts as per given sample')
 
   // --- Job Items / Description ---
-  const [jobItems, setJobItems] = useState<{ id: number; text: string }[]>([{ id: Date.now(), text: '' }])
+  const [images, setImages] = useState<{ id: string, name: string, dataUrl: string }[]>([])
+    const [previewImage, setPreviewImage] = useState<string | null>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(e.target.files || []); files.forEach(file => { const reader = new FileReader(); reader.onload = (evt) => { if (evt.target?.result) { setImages(prev => [...prev, { id: 'IMG-' + Date.now() + Math.random().toString().slice(2,5), name: file.name, dataUrl: evt.target!.result as string }]); } }; reader.readAsDataURL(file); }); };
+    const [jobItems, setJobItems] = useState<{ id: number; text: string }[]>([{ id: Date.now(), text: '' }])
   const addJobItem = () => setJobItems(p => [...p, { id: Date.now(), text: '' }])
   const updateJobItem = (id: number, text: string) => setJobItems(p => p.map(i => i.id === id ? { ...i, text } : i))
   const removeJobItem = (id: number) => setJobItems(p => p.filter(i => i.id !== id))
@@ -283,7 +287,7 @@ export const QuotationBuilder: React.FC = () => {
     setIsSaving(true)
     try {
       const snapshot: any = {
-        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, images
       }
       
       if (saveType === 'main' || saveType === 'job') {
@@ -548,7 +552,37 @@ export const QuotationBuilder: React.FC = () => {
               </div>
             </div>
 
-          </div>
+          
+            {/* Images & Attachments */}
+            <div className="pt-5 mt-5 border-t border-theme-subtle">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-[11px] font-black text-secondary uppercase tracking-widest">Drawings & Attachments</label>
+                <div>
+                  <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                  <Button variant="ghost" size="sm" icon={Plus} onClick={() => fileInputRef.current?.click()} className="text-xs bg-surface hover:bg-surface2">Add Images</Button>
+                </div>
+              </div>
+              {images.length === 0 ? (
+                <div className="text-center py-6 bg-surface/30 border border-dashed border-theme-subtle rounded-xl">
+                  <p className="text-[11px] text-muted">No images attached</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {images.map(img => (
+                    <div key={img.id} className="relative group rounded-xl overflow-hidden border border-theme-subtle bg-surface aspect-square">
+                      <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover cursor-pointer" onClick={() => setPreviewImage(img.dataUrl)} />
+                      <button type="button" onClick={() => setImages(p => p.filter(i => i.id !== img.id))} className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                        <Trash2 size={12} />
+                      </button>
+                      <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1.5 truncate text-[9px] text-white/90 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                        {img.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+</div>
         </GlassCard>
 {/* JOB QUOTATION SECTIONS */}
         {showJobSection && (
@@ -943,6 +977,13 @@ export const QuotationBuilder: React.FC = () => {
       </div>
 
 
+      
+      <Modal isOpen={!!previewImage} onClose={() => setPreviewImage(null)} title="Image Preview" size="xl">
+        <div className="p-2 flex justify-center bg-black/5 rounded-lg overflow-hidden">
+          {previewImage && <img src={previewImage} alt="Preview" className="max-w-full max-h-[70vh] object-contain rounded-md shadow-sm" />}
+        </div>
+      </Modal>
+
       <Modal isOpen={showPreview} onClose={() => setShowPreview(false)} title={'Preview — ' + (quotationType.charAt(0).toUpperCase() + quotationType.slice(1)) + ' Quotation'} size="xl">
         <div className="bg-white text-black p-8 max-h-[80vh] overflow-y-auto w-[900px] max-w-full">
           <style>{`
@@ -1163,6 +1204,7 @@ export const QuotationBuilder: React.FC = () => {
     </div>
   )
 }
+
 
 
 

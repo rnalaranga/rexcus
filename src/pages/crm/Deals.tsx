@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, TrendingUp, DollarSign, Target, Briefcase, Users, Bell } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -19,7 +19,7 @@ const stageFilters = [
   { label: 'Proposal',    value: 'proposal'   },
   { label: 'Negotiation', value: 'negotiation'},
   { label: 'Contract',    value: 'contract'   },
-  { label: 'Won ✓',       value: 'closed_won' },
+  { label: 'Won âœ“',       value: 'closed_won' },
   { label: 'Lost',        value: 'closed_lost'},
 ]
 
@@ -34,6 +34,7 @@ export const Deals: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
 
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     title: '', customerId: '', product: '', value: '', probability: '50', priority: 'medium', expectedClose: '', stage: 'open'
   })
@@ -105,7 +106,7 @@ export const Deals: React.FC = () => {
     setIsModalOpen(false)
   }
 
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+
 
   const handleDelete = async () => {
     if (!editId) return
@@ -226,7 +227,7 @@ export const Deals: React.FC = () => {
       <GlassCard className="overflow-hidden">
         <div className="px-5 py-3 border-b border-theme-subtle flex items-center justify-between">
           <span className="text-xs text-muted">
-            Showing <span className="text-primary font-medium">{filtered.length}</span> deals ·{' '}
+            Showing <span className="text-primary font-medium">{filtered.length}</span> deals Â·{' '}
             <span className="text-rex-600 dark:text-rex-400 font-medium">{formatCurrency(filtered.reduce((s, d) => s + Number(d.value), 0), true)} total</span>
           </span>
         </div>
@@ -349,7 +350,7 @@ export const Deals: React.FC = () => {
                       <div key={f.id} className="flex items-center justify-between p-2 bg-surface2 rounded border border-theme-subtle">
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] font-medium text-secondary truncate">{f.subject}</p>
-                          <p className="text-[9px] text-muted">{f.status.toUpperCase()} · Due: {String(f.dueDate).slice(0, 10)} {f.dueTime}</p>
+                          <p className="text-[9px] text-muted">{f.status.toUpperCase()} Â· Due: {String(f.dueDate).slice(0, 10)} {f.dueTime}</p>
                         </div>
                         <Badge variant={f.status === 'done' ? 'success' : f.status === 'overdue' ? 'error' : 'info'} size="sm">
                           {f.status}
@@ -393,3 +394,5 @@ export const Deals: React.FC = () => {
     </div>
   )
 }
+
+

@@ -1,4 +1,4 @@
-import React from 'react'
+﻿import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, TrendingUp, Briefcase, Contact2,
@@ -18,6 +18,7 @@ const navGroups: NavGroup[] = [
       { label: 'Dashboard',   path: '/crm',            icon: LayoutDashboard },
       { label: 'Customers',   path: '/crm/customers',  icon: Users,      badge: 10 },
       { label: 'Leads',       path: '/crm/leads',      icon: TrendingUp, badge: 10 },
+      { label: 'Quotations',  path: '/crm/quotations', icon: FileText },
       { label: 'Deals',       path: '/crm/deals',      icon: Briefcase,  badge: 8  },
       { label: 'Contacts',    path: '/crm/contacts',   icon: Contact2 },
       { label: 'Follow-ups',  path: '/crm/followups',  icon: Bell },
@@ -164,3 +165,6 @@ export const Sidebar: React.FC = () => {
     </aside>
   )
 }
+
+
+

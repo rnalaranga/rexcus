@@ -1,11 +1,11 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { useCustomers, useDeals, useFollowups } from '@/hooks/useData'
+import { useCustomers, useDeals, useFollowups, useLeads } from '@/hooks/useData'
 import { updateCustomer } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 
@@ -23,6 +23,7 @@ export const CustomerDetail: React.FC = () => {
   const { data: customers, loading: cl, refetch } = useCustomers()
   const { data: deals, loading: dl } = useDeals()
   const { data: allFollowups } = useFollowups()
+  const { data: leads } = useLeads()
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -39,7 +40,7 @@ export const CustomerDetail: React.FC = () => {
     <div className="flex items-center justify-center h-64">
       <div className="text-center">
         <p className="text-muted text-sm">Customer not found</p>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/crm/customers')} className="mt-3">← Back</Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/crm/customers')} className="mt-3">â† Back</Button>
       </div>
     </div>
   )
@@ -68,6 +69,7 @@ export const CustomerDetail: React.FC = () => {
   }
 
   const customerDeals = deals.filter(d => d.customerId === customer.id)
+  const customerLeads = leads ? leads.filter((l: any) => l.company?.trim().toLowerCase() === customer?.company?.trim().toLowerCase() || (customer?.email && l.email === customer?.email)) : []
   const wonDeals      = customerDeals.filter(d => d.stage === 'closed_won')
   const openDealsArr  = customerDeals.filter(d => !d.stage.includes('closed'))
 
@@ -185,7 +187,7 @@ export const CustomerDetail: React.FC = () => {
                   <div key={f.id} className="flex items-center justify-between p-3 glass hover:bg-surface2/50 rounded-lg cursor-pointer transition-colors" onClick={() => navigate('/crm/followups')}>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-primary truncate">{f.subject}</p>
-                      <p className="text-[10px] text-muted mt-0.5">{f.type.toUpperCase()} · {f.assignedTo || 'Unassigned'} · Due {String(f.dueDate).slice(0, 10)} {f.dueTime}</p>
+                      <p className="text-[10px] text-muted mt-0.5">{f.type.toUpperCase()} Â· {f.assignedTo || 'Unassigned'} Â· Due {String(f.dueDate).slice(0, 10)} {f.dueTime}</p>
                     </div>
                     <Badge variant={f.status === 'done' ? 'success' : f.status === 'overdue' ? 'error' : 'info'} size="sm">
                       {f.status}
@@ -196,7 +198,36 @@ export const CustomerDetail: React.FC = () => {
             </div>
           </GlassCard>
 
+          
+          {/* Leads & Inquiries */}
+          <GlassCard className="col-span-1 lg:col-span-3 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest">Leads & Quotations ({customerLeads.length})</h2>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/crm/leads')} className="text-[10px] text-rex-500 hover:underline">View All</Button>
+            </div>
+            {customerLeads.length === 0 ? (
+              <p className="text-sm text-muted text-center py-8">No leads or inquiries yet</p>
+            ) : (
+              <div className="space-y-2">
+                {customerLeads.map((lead) => (
+                  <div key={lead.id} className="flex items-center gap-4 px-4 py-3 glass hover:bg-rex-500/4 transition-colors cursor-pointer" onClick={() => navigate('/crm/quotations/new/' + lead.id)}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-primary truncate">{lead.name}</p>
+                      <p className="text-[10px] text-muted mt-0.5">{lead.source} â€¢ {lead.priority}</p>
+                    </div>
+                    <Badge value={lead.stage} size="sm" />
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(lead.value, true)}</p>
+                      <p className="text-[10px] text-muted">{lead.probability}%</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassCard>
+
           {/* Deals */}
+
           <GlassCard className="col-span-1 lg:col-span-3 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest">Deals ({customerDeals.length})</h2>
@@ -213,7 +244,7 @@ export const CustomerDetail: React.FC = () => {
                   <div key={deal.id} className="flex items-center gap-4 px-4 py-3 glass hover:bg-rex-500/4 transition-colors cursor-pointer">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-primary truncate">{deal.title}</p>
-                      <p className="text-[10px] text-muted mt-0.5">{deal.product} · {deal.owner}</p>
+                      <p className="text-[10px] text-muted mt-0.5">{deal.product} Â· {deal.owner}</p>
                     </div>
                     <Badge value={deal.stage.replace('closed_', '')} size="sm" />
                     <div className="text-right flex-shrink-0">
@@ -343,3 +374,5 @@ export const CustomerDetail: React.FC = () => {
     </div>
   )
 }
+
+
