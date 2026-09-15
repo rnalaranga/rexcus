@@ -9,11 +9,10 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   className?: string
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, className, size = 'md' }) => {
-  // Prevent scrolling on body when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
@@ -27,12 +26,34 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
   if (!isOpen) return null
 
-  const sizeClasses = {
+  const isFullscreen = size === 'full'
+
+  const sizeClasses: Record<string, string> = {
     sm: 'max-w-md',
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
     '2xl': 'max-w-6xl',
+    full: 'w-full h-full',
+  }
+
+  if (isFullscreen) {
+    return createPortal(
+      <div className="fixed inset-0 z-[100] flex flex-col bg-surface animate-fade-in">
+        {/* Fullscreen header */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-theme-subtle flex-shrink-0 bg-surface">
+          <h2 className="text-sm font-bold text-primary tracking-wide uppercase">{title}</h2>
+          <button onClick={onClose} className="text-muted hover:text-primary transition-colors p-1 hover:bg-surface2 rounded">
+            <X size={18} />
+          </button>
+        </div>
+        {/* Fullscreen body — no padding, children control layout */}
+        <div className={cn('flex-1 overflow-hidden flex flex-col', className)}>
+          {children}
+        </div>
+      </div>,
+      document.body
+    )
   }
 
   return createPortal(

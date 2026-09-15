@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X } from 'lucide-react'
+import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -102,12 +102,74 @@ export const Inventory: React.FC = () => {
   const [search, setSearch] = useState('')
   
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [formTab, setFormTab] = useState<'details' | 'ledger'>('details')
   const [editId, setEditId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [toast, setToast] = useState<{type: 'success'|'error', msg: string} | null>(null)
   const showToast = (type: 'success'|'error', msg: string) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
+
+  const handleDownloadTemplate = () => {
+    const headers = ['Type(product/service)', 'Name', 'SKU', 'Description', 'UnitPrice', 'UnitCost', 'Quantity', 'UOM(pcs/kg/m)', 'Location', 'ReorderLevel']
+    const row = ['product', 'Sample Item', 'SKU-001', 'Description here', '1500', '1000', '10', 'pcs', 'Store A', '5']
+    const csv = headers.join(',') + '\n' + row.join(',') + '\n'
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'inventory_import_template.csv'
+    a.click()
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l)
+      if (lines.length < 2) return showToast('error', 'CSV is empty or invalid')
+      
+      setSubmitting(true)
+      let count = 0
+      for (let i = 1; i < lines.length; i++) {
+        // very basic CSV row split
+        let row = []
+        let cur = ''
+        let inQuote = false
+        for (let char of lines[i]) {
+          if (char === '"') inQuote = !inQuote
+          else if (char === ',' && !inQuote) { row.push(cur); cur = '' }
+          else cur += char
+        }
+        row.push(cur)
+
+        if (row.length < 2) continue
+        
+        const type = (row[0]||'').toLowerCase() === 'service' ? 'service' : 'product'
+        const name = row[1]
+        const sku = row[2] || ''
+        const description = row[3] || ''
+        const unitPrice = Number(row[4]) || 0
+        const unitCost = Number(row[5]) || 0
+        const quantity = Number(row[6]) || 0
+        const uom = row[7] || 'pcs'
+        const location = row[8] || ''
+        const reorderLevel = Number(row[9]) || 0
+
+        if (!name) continue
+        
+        const res = await createInventoryItem({ id: `INV-${Date.now().toString().slice(-4)}${i}`, type, name, sku, description, unitPrice, unitCost, quantity, uom, location, reorderLevel, status: 'active', suppliers: JSON.stringify([]) }); if (!res.error) count++; else console.error(res.error);
+      }
+      setSubmitting(false)
+      setShowImport(false)
+      showToast('success', `Imported ${count} items successfully`)
+      refetch()
+    }
+    reader.readAsText(file)
+  }
+
 
   const initialForm = { type: 'product', name: '', sku: '', description: '', unitPrice: '', unitCost: '', quantity: '0', status: 'active', uom: 'pcs', suppliers: [] as string[], location: '', reorderLevel: '0' }
   const [formData, setFormData] = useState(initialForm)
@@ -481,7 +543,10 @@ export const Inventory: React.FC = () => {
           <h1 className="text-2xl font-bold text-primary tracking-tight">Inventory & Services</h1>
           <p className="text-sm text-secondary mt-1">Manage products, raw materials, and service offerings.</p>
         </div>
-        <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>Add New Item</Button>
+        <div className="flex items-center gap-2">
+            <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
+            <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>Add New Item</Button>
+          </div>
       </div>
 
       {/* Tabs & Controls */}
@@ -508,7 +573,7 @@ export const Inventory: React.FC = () => {
       </div>
 
       <GlassCard className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} />
+        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
       </GlassCard>
 
       {/* Toast Notification */}
@@ -529,6 +594,30 @@ export const Inventory: React.FC = () => {
             <Button variant="primary" className="bg-red-500 hover:bg-red-600 border-red-500" onClick={confirmDelete} disabled={submitting}>
               {submitting ? 'Deleting...' : 'Delete'}
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import Inventory Items">
+        <div className="space-y-6 p-4">
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <h3 className="text-sm font-bold text-blue-600 dark:text-blue-400 mb-2">Step 1: Download Template</h3>
+            <p className="text-xs text-secondary mb-3">Download the standard CSV template and fill in your product data. Do not change the column headers.</p>
+            <Button variant="ghost" icon={Download} onClick={handleDownloadTemplate} className="text-blue-600 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10">Download CSV Template</Button>
+          </div>
+
+          <div className="p-4 bg-surface2 rounded-lg border border-theme-subtle">
+            <h3 className="text-sm font-bold text-primary mb-2">Step 2: Upload Data</h3>
+            <p className="text-xs text-secondary mb-4">Upload the filled CSV file to import items into stock.</p>
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-theme-subtle rounded-lg cursor-pointer hover:bg-surface transition-colors">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <Upload className="w-8 h-8 mb-3 text-muted" />
+                <p className="mb-2 text-sm text-secondary"><span className="font-semibold text-primary">Click to upload</span> or drag and drop</p>
+                <p className="text-xs text-muted">CSV files only</p>
+              </div>
+              <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} disabled={submitting} />
+            </label>
+            {submitting && <p className="text-xs text-center text-blue-500 font-bold mt-3 animate-pulse">Importing items, please wait...</p>}
           </div>
         </div>
       </Modal>

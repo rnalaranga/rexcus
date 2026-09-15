@@ -277,3 +277,37 @@ export const addInvoicePayment = async (id: string, data: any) => {
   return res.json();
 };
 
+
+
+// --- PURCHASING ---
+export const fetchMRs = async () => (await (await fetch(`${API_URL}/purchasing/mrs`)).json());
+export const createMR = async (data: any) => (await (await fetch(`${API_URL}/purchasing/mrs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const updateMR = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+export const fetchPOs = async () => (await (await fetch(`${API_URL}/purchasing/pos`)).json());
+export const createPO = async (data: any) => (await (await fetch(`${API_URL}/purchasing/pos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const updatePO = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+export const fetchGRNs = async () => (await (await fetch(`${API_URL}/purchasing/grns`)).json());
+export const createGRN = async (data: any) => (await (await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+export const fetchBills = async () => (await (await fetch(`${API_URL}/purchasing/bills`)).json());
+export const createBill = async (data: any) => (await (await fetch(`${API_URL}/purchasing/bills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const updateBill = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+
+
+// ==========================
+// FINANCE API
+// ==========================
+export const fetchAccounts = async () => (await (await fetch(`${API_URL}/finance/accounts`)).json());
+export const createAccount = async (data: any) => (await (await fetch(`${API_URL}/finance/accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+export const fetchTaxes = async () => (await (await fetch(`${API_URL}/finance/taxes`)).json());
+export const createTax = async (data: any) => (await (await fetch(`${API_URL}/finance/taxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+export const fetchJournals = async () => (await (await fetch(`${API_URL}/finance/journals`)).json());
+export const createJournal = async (data: any) => (await (await fetch(`${API_URL}/finance/journals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
+export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());

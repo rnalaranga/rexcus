@@ -703,6 +703,660 @@ app.delete('/api/supplier-ledger/:id', async (req, res) => {
   }
 });
 
+
+// ==========================================
+// FINANCE & ACCOUNTING MODULE
+// ==========================================
+
+// Chart of Accounts
+app.get('/api/finance/accounts', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/finance/accounts', async (req, res) => {
+  try {
+    const data = req.body;
+    data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('INSERT INTO chart_of_accounts SET ?', data);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/finance/accounts/:id', async (req, res) => {
+  try {
+    const data = req.body;
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('UPDATE chart_of_accounts SET ? WHERE id = ?', [data, req.params.id]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Taxes
+app.get('/api/finance/taxes', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM tax_rates');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/finance/taxes', async (req, res) => {
+  try {
+    const data = req.body;
+    data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('INSERT INTO tax_rates SET ?', data);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Journal Entries
+app.get('/api/finance/journals', async (req, res) => {
+  try {
+    const [entries] = await db.query('SELECT * FROM journal_entries ORDER BY date DESC');
+    const [lines] = await db.query('SELECT * FROM journal_lines');
+    
+    // Group lines by entry
+    const result = entries.map(entry => {
+      entry.lines = lines.filter(l => l.entryId === entry.id);
+      return entry;
+    });
+    res.json(result);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/finance/journals', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id, date, reference, description, totalAmount, lines, createdBy } = req.body;
+    
+    const entryData = {
+      id, date, reference, description, totalAmount, createdBy, status: 'posted',
+      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    };
+    
+    await conn.query('INSERT INTO journal_entries SET ?', entryData);
+    
+    for (const line of lines) {
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: line.id,
+        entryId: id,
+        accountId: line.accountId, partyType: line.partyType || null, partyId: line.partyId || null, costCenterId: line.costCenterId || null,
+        description: line.description || '',
+        debit: line.debit || 0,
+        credit: line.credit || 0
+      });
+      
+      // Update account balances
+      const balanceChange = Number(line.debit || 0) - Number(line.credit || 0);
+      
+      // Note: In real accounting, Assets/Expenses increase with Debit. Liabilities/Equity/Revenue increase with Credit.
+      // For simplicity in this ledger, we just track the raw balance change, or we adjust based on type.
+      // Let's adjust based on account type.
+      const [accRows] = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+      if (accRows.length > 0) {
+        const type = accRows[0].type.toLowerCase();
+        let isDebitNormal = type.includes('asset') || type.includes('expense');
+        // If it's a normal debit account, balance = balance + debit - credit
+        // If it's a normal credit account, balance = balance + credit - debit
+        let newBalance = Number(accRows[0].balance);
+        if (isDebitNormal) {
+          newBalance += balanceChange;
+        } else {
+          newBalance -= balanceChange;
+        }
+        await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [newBalance, line.accountId]);
+      }
+    }
+    
+    await conn.commit();
+    res.json({ success: true });
+  } catch (error) { 
+    await conn.rollback();
+    res.status(500).json({ error: error.message }); 
+  } finally {
+    conn.release();
+  }
+});
+
+
+
+// ==========================================
+// FINANCIAL REPORTS (GL, P&L, BS, Trial Balance)
+// ==========================================
+app.get('/api/finance/reports/trial-balance', async (req, res) => {
+  try {
+    const [accounts] = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');
+    const [lines] = await db.query('SELECT accountId, SUM(debit) as totalDebit, SUM(credit) as totalCredit FROM journal_lines GROUP BY accountId');
+    
+    let totalDebit = 0;
+    let totalCredit = 0;
+    
+    const result = accounts.map(acc => {
+      const line = lines.find(l => l.accountId === acc.id) || { totalDebit: 0, totalCredit: 0 };
+      const debit = Number(line.totalDebit);
+      const credit = Number(line.totalCredit);
+      let netDebit = 0;
+      let netCredit = 0;
+      
+      // Calculate net balance for TB
+      if (debit > credit) { netDebit = debit - credit; totalDebit += netDebit; }
+      else if (credit > debit) { netCredit = credit - debit; totalCredit += netCredit; }
+      
+      return { ...acc, debit: netDebit, credit: netCredit };
+    });
+    
+    res.json({ accounts: result.filter(a => a.debit > 0 || a.credit > 0), totalDebit, totalCredit });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/finance/reports/pnl', async (req, res) => {
+  try {
+    const [accounts] = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Revenue", "Expense") ORDER BY code ASC');
+    let totalRevenue = 0;
+    let totalExpense = 0;
+    
+    accounts.forEach(acc => {
+      if (acc.type === 'Revenue') totalRevenue += Number(acc.balance);
+      if (acc.type === 'Expense') totalExpense += Number(acc.balance);
+    });
+    
+    res.json({
+      revenue: accounts.filter(a => a.type === 'Revenue'),
+      expenses: accounts.filter(a => a.type === 'Expense'),
+      totalRevenue,
+      totalExpense,
+      netProfit: totalRevenue - totalExpense
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/finance/reports/balance-sheet', async (req, res) => {
+  try {
+    const [accounts] = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Asset", "Liability", "Equity", "Revenue", "Expense") ORDER BY code ASC');
+    
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+    
+    let netProfit = 0;
+    
+    accounts.forEach(acc => {
+      if (acc.type === 'Revenue') netProfit += Number(acc.balance);
+      if (acc.type === 'Expense') netProfit -= Number(acc.balance);
+      
+      if (acc.type === 'Asset') totalAssets += Number(acc.balance);
+      if (acc.type === 'Liability') totalLiabilities += Number(acc.balance);
+      if (acc.type === 'Equity') totalEquity += Number(acc.balance);
+    });
+    
+    // In BS, Retained Earnings (Net Profit) is added to Equity
+    totalEquity += netProfit;
+    
+    res.json({
+      assets: accounts.filter(a => a.type === 'Asset'),
+      liabilities: accounts.filter(a => a.type === 'Liability'),
+      equity: accounts.filter(a => a.type === 'Equity'),
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+      netProfit,
+      isBalanced: totalAssets === (totalLiabilities + totalEquity)
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+
+// ==========================================
+// FINANCE DASHBOARD METRICS
+// ==========================================
+app.get('/api/finance/dashboard', async (req, res) => {
+  try {
+    const [accounts] = await db.query('SELECT * FROM chart_of_accounts');
+    
+    let totalCash = 0;
+    let totalAR = 0;
+    let totalAP = 0;
+    let revenue = 0;
+    let expenses = 0;
+    
+    accounts.forEach(acc => {
+      const type = acc.type.toLowerCase();
+      const subtype = acc.subtype ? acc.subtype.toLowerCase() : '';
+      const bal = Number(acc.balance);
+      
+      if (subtype.includes('bank') || subtype.includes('cash')) totalCash += bal;
+      if (subtype.includes('receivable')) totalAR += bal;
+      if (subtype.includes('payable') && !subtype.includes('tax')) totalAP += bal;
+      if (type === 'revenue') revenue += bal;
+      if (type === 'expense') expenses += bal;
+    });
+    
+    const [bills] = await db.query('SELECT SUM(amount) as pendingAP FROM supplier_bills WHERE status = "unpaid"');
+    const [invoices] = await db.query('SELECT SUM(total) as pendingAR FROM invoices WHERE status = "unpaid"');
+
+    res.json({
+      cash: totalCash,
+      ar: totalAR || Number(invoices[0]?.pendingAR || 0),
+      ap: totalAP || Number(bills[0]?.pendingAP || 0),
+      profit: revenue - expenses,
+      revenue,
+      expenses
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+
+// ==========================================
+// ENTERPRISE ACCOUNTING API
+// ==========================================
+app.get('/api/finance/cost-centers', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM cost_centers');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/finance/reports/aged', async (req, res) => {
+  try {
+    // Basic aged logic grouping by party
+    const [lines] = await db.query('SELECT jl.*, je.date FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE jl.partyId IS NOT NULL');
+    // In a real system, we cross-reference this against payments to find 'unpaid' portions
+    // Here we return the raw tagged lines for the frontend to aggregate
+    res.json(lines);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+
+// ==========================================
+// TAX REPORT & CUSTOM REPORT BUILDER
+// ==========================================
+app.get('/api/finance/reports/tax', async (req, res) => {
+  try {
+    // Basic tax report logic: Get all tax accounts and their balances
+    const [taxAccounts] = await db.query('SELECT * FROM chart_of_accounts WHERE isTaxAccount = true');
+    // Also get journal lines hitting tax accounts for detailed breakdown
+    const [taxLines] = await db.query('SELECT jl.*, je.date, je.reference FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.isTaxAccount = true ORDER BY je.date DESC');
+    
+    let totalTaxPayable = 0;
+    taxAccounts.forEach(acc => {
+      totalTaxPayable += Number(acc.balance);
+    });
+
+    res.json({ taxAccounts, taxLines, totalTaxPayable });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/finance/reports/custom', async (req, res) => {
+  try {
+    const { startDate, endDate, accountTypes, costCenterId } = req.body;
+    let query = 'SELECT jl.*, je.date, je.reference, ca.name as accountName, ca.code as accountCode, ca.type as accountType, cc.name as costCenterName FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id LEFT JOIN cost_centers cc ON jl.costCenterId = cc.id WHERE 1=1';
+    const params = [];
+    
+    if (startDate) { query += ' AND je.date >= ?'; params.push(startDate); }
+    if (endDate) { query += ' AND je.date <= ?'; params.push(endDate); }
+    if (accountTypes && accountTypes.length > 0) {
+      query += ' AND ca.type IN (?)';
+      params.push(accountTypes);
+    }
+    if (costCenterId) { query += ' AND jl.costCenterId = ?'; params.push(costCenterId); }
+    
+    query += ' ORDER BY je.date DESC';
+    const [lines] = await db.query(query, params);
+    res.json(lines);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+
+app.get('/api/finance/reports/aging', async (req, res) => {
+  try {
+    const type = req.query.type; // 'ar' or 'ap'
+    let query = '';
+    
+    if (type === 'ar') {
+      query = `
+      SELECT 
+        jl.partyId,
+        p.name as partyName,
+        SUM(jl.debit - jl.credit) as balance,
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) <= 30 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket30',
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 31 AND 60 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket60',
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 61 AND 90 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket90',
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) > 90 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket90plus'
+      FROM journal_lines jl
+      JOIN journal_entries je ON jl.entryId = je.id
+      JOIN chart_of_accounts ca ON jl.accountId = ca.id
+      JOIN customers p ON jl.partyId = p.id 
+      WHERE jl.partyType = 'Customer' AND ca.name LIKE '%Receivable%' 
+      GROUP BY jl.partyId, p.name 
+      HAVING balance > 0
+      `;
+    } else {
+      query = `
+      SELECT 
+        jl.partyId,
+        p.name as partyName,
+        SUM(jl.credit - jl.debit) as balance,
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) <= 30 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket30',
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 31 AND 60 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket60',
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 61 AND 90 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket90',
+        SUM(CASE WHEN DATEDIFF(NOW(), je.date) > 90 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket90plus'
+      FROM journal_lines jl
+      JOIN journal_entries je ON jl.entryId = je.id
+      JOIN chart_of_accounts ca ON jl.accountId = ca.id
+      JOIN suppliers p ON jl.partyId = p.id 
+      WHERE jl.partyType = 'Supplier' AND ca.name LIKE '%Payable%' 
+      GROUP BY jl.partyId, p.name 
+      HAVING balance > 0
+      `;
+    }
+    
+    const [rows] = await db.query(query);
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+
+app.post('/api/finance/cost-centers', async (req, res) => {
+  try {
+    const { id, code, name, department, isActive } = req.body;
+    await db.query(
+      'INSERT INTO cost_centers (id, code, name, department, isActive) VALUES (?, ?, ?, ?, ?)',
+      [id, code, name, department, isActive]
+    );
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+
+// ==========================================
+// PRODUCTION - MACHINERY
+// ==========================================
+app.get('/api/production/machineries', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM machineries ORDER BY createdAt DESC');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+app.put('/api/production/machineries/:id', async (req, res) => {
+  try {
+    const { status, lastMaintenance } = req.body;
+    await db.query(
+      'UPDATE machineries SET status = ?, lastMaintenance = ? WHERE id = ?',
+      [status, lastMaintenance, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/production/machineries', async (req, res) => {
+  try {
+    const { id, name, type, model, status, hourlyCost } = req.body;
+    await db.query(
+      'INSERT INTO machineries (id, name, type, model, status, hourlyCost, lastMaintenance) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [id, name, type, model, status, hourlyCost]
+    );
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+
+
+// ==========================
+// SKILLS API
+// ==========================
+app.get('/api/hr/skills', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM skills ORDER BY createdAt DESC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/skills', async (req, res) => {
+  try {
+    const { id, name, category, description } = req.body;
+    await db.query(
+      'INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)',
+      [id, name, category, description]
+    );
+    res.json({ success: true, id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/hr/skills/:id', async (req, res) => {
+  try {
+    const { name, category, description } = req.body;
+    await db.query(
+      'UPDATE skills SET name=?, category=?, description=? WHERE id=?',
+      [name, category, description, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/hr/skills/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM employee_skills WHERE skillId = ?', [req.params.id]);
+    await db.query('DELETE FROM skills WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/employees/:id/skills', async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const { skillIds } = req.body;
+    
+    await db.query('DELETE FROM employee_skills WHERE employeeId = ?', [employeeId]);
+    if (skillIds && skillIds.length > 0) {
+      const values = skillIds.map(sId => [employeeId, sId]);
+      await db.query('INSERT INTO employee_skills (employeeId, skillId) VALUES ?', [values]);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================
+// HUMAN RESOURCES (HR) API
+// ==========================
+app.get('/api/hr/employees', async (req, res) => {
+  try {
+    const [employees] = await db.query('SELECT * FROM employees ORDER BY createdAt DESC');
+    const [machineAssignments] = await db.query('SELECT employeeId, machineId FROM employee_machines');
+    const [skillAssignments] = await db.query('SELECT employeeId, skillId FROM employee_skills');
+    
+    const enriched = employees.map(emp => ({
+      ...emp,
+      machineIds: machineAssignments.filter(a => a.employeeId === emp.id).map(a => a.machineId),
+      skillIds: skillAssignments.filter(a => a.employeeId === emp.id).map(a => a.skillId)
+    }));
+    
+    res.json(enriched);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/employees', async (req, res) => {
+  try {
+    const { id, name, role, phone, email, status, skills } = req.body;
+    await db.query(
+      'INSERT INTO employees (id, name, role, phone, email, status, skills) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, name, role, phone, email, status, JSON.stringify(skills || [])]
+    );
+    res.json({ success: true, id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/hr/employees/:id', async (req, res) => {
+  try {
+    const { name, role, phone, email, status, skills } = req.body;
+    await db.query(
+      'UPDATE employees SET name=?, role=?, phone=?, email=?, status=?, skills=? WHERE id=?',
+      [name, role, phone, email, status, JSON.stringify(skills || []), req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/hr/employees/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM employee_machines WHERE employeeId = ?', [req.params.id]);
+    await db.query('DELETE FROM employees WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/employees/:id/machines', async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const { machineIds } = req.body; // Array of machine IDs
+    
+    await db.query('DELETE FROM employee_machines WHERE employeeId = ?', [employeeId]);
+    
+    if (machineIds && machineIds.length > 0) {
+      const values = machineIds.map(mId => [employeeId, mId]);
+      await db.query('INSERT INTO employee_machines (employeeId, machineId) VALUES ?', [values]);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// ==========================
+// PRODUCTION / WORK ORDERS API
+// ==========================
+app.get('/api/production/work-orders', async (req, res) => {
+  try {
+    const [wos] = await db.query('SELECT * FROM work_orders ORDER BY createdAt DESC');
+    const [ops] = await db.query('SELECT * FROM work_order_operations ORDER BY stepNumber ASC');
+    const [qcs] = await db.query('SELECT * FROM qc_inspections');
+    
+    const enriched = wos.map(wo => ({
+      ...wo,
+      operations: ops.filter(o => o.workOrderId === wo.id).map(o => ({
+        ...o,
+        qc: qcs.filter(q => q.operationId === o.id)
+      }))
+    }));
+    
+    res.json(enriched);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/production/work-orders', async (req, res) => {
+  try {
+    const { title, customerId, priority, deadline, operations } = req.body;
+    const woId = 'WO-' + Date.now().toString().slice(-5);
+    
+    await db.query(
+      'INSERT INTO work_orders (id, title, customerId, priority, plannedStartDate, deadline) VALUES (?, ?, ?, ?, NOW(), ?)',
+      [woId, title, customerId || null, priority, deadline || null]
+    );
+
+    if (operations && operations.length > 0) {
+      const opValues = operations.map((op, i) => [
+        'OP-' + Date.now().toString().slice(-4) + '-' + i,
+        woId,
+        i + 1, // stepNumber
+        op.operationName,
+        op.machineId || null,
+        op.employeeId || null,
+        op.plannedHours || 0
+      ]);
+      
+      await db.query(
+        'INSERT INTO work_order_operations (id, workOrderId, stepNumber, operationName, machineId, employeeId, plannedHours) VALUES ?',
+        [opValues]
+      );
+    }
+    
+    res.json({ success: true, id: woId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/production/operations/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const opId = req.params.id;
+    
+    if (status === 'In Progress') {
+      await db.query('UPDATE work_order_operations SET status=?, startTime=NOW() WHERE id=?', [status, opId]);
+    } else if (status === 'Completed' || status === 'QC Pending') {
+      // Calculate actual hours if startTime exists
+      await db.query('UPDATE work_order_operations SET status=?, endTime=NOW(), actualHours=TIMESTAMPDIFF(MINUTE, startTime, NOW())/60.0 WHERE id=?', [status, opId]);
+    } else {
+      await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [status, opId]);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/production/operations/:id/qc', async (req, res) => {
+  try {
+    const { inspectedBy, status, defectReason, notes } = req.body;
+    const qcId = 'QC-' + Date.now().toString().slice(-4);
+    const opId = req.params.id;
+    
+    await db.query(
+      'INSERT INTO qc_inspections (id, operationId, inspectedBy, status, defectReason, notes) VALUES (?, ?, ?, ?, ?, ?)',
+      [qcId, opId, inspectedBy, status, defectReason, notes]
+    );
+    
+    // Update operation status based on QC
+    const nextOpStatus = status === 'Pass' ? 'Completed' : 'Rework Required';
+    await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [nextOpStatus, opId]);
+    
+    if (status === 'Fail') {
+       // Log Rework
+       await db.query('INSERT INTO rework_logs (id, qcId, status) VALUES (?, ?, ?)', ['RWK-' + Date.now().toString().slice(-4), qcId, 'Pending']);
+    }
+    
+    res.json({ success: true, qcId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`API Server running on http://localhost:${PORT}`);
 });

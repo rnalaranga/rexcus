@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Building2, Phone, Mail, Edit, Trash2, ArrowLeft, ChevronRight } from 'lucide-react'
+import { Plus, Building2, Phone, Mail, Edit, Trash2, ArrowLeft, ChevronRight, Download } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -142,104 +142,90 @@ export const Suppliers: React.FC = () => {
     }
   ]
 
-  if (showForm) {
-    return (
-      <div className="space-y-6 animate-fade-in pb-12">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" icon={ArrowLeft} onClick={() => setShowForm(false)}>Back</Button>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">{editId ? "Edit Supplier" : "Add New Supplier"}</h1>
-        </div>
-
-        <GlassCard className="max-w-3xl mx-auto p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-medium text-secondary mb-1">Company / Supplier Name *</label>
-                <input required type="text" className="w-full input-base" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. ABC Steels Ltd" />
-              </div>
-
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-medium text-secondary mb-1">Category</label>
-                <select className="w-full input-base" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                  <option value="Raw Materials">Raw Materials</option>
-                  <option value="Machining / Outsourcing">Machining / Outsourcing</option>
-                  <option value="Consumables">Consumables (Tools, Oils)</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-medium text-secondary mb-1">Contact Person</label>
-                <input type="text" className="w-full input-base" value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} placeholder="Name of rep" />
-              </div>
-              
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-medium text-secondary mb-1">Phone Number</label>
-                <input type="text" className="w-full input-base" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="e.g. 077 123 4567" />
-              </div>
-
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-medium text-secondary mb-1">Email Address</label>
-                <input type="email" className="w-full input-base" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="sales@abcsteels.lk" />
-              </div>
-
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-medium text-secondary mb-1">Status</label>
-                <select className="w-full input-base" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-secondary mb-1">Address / Notes</label>
-                <textarea className="w-full input-base h-24 resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Full address or special notes..." />
-              </div>
-
-            </div>
-
-            <div className="mt-8 pt-6 border-t border-theme-subtle flex justify-end gap-3">
-              <Button variant="ghost" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : (editId ? 'Save Changes' : 'Add Supplier')}
-              </Button>
-            </div>
-          </form>
-        </GlassCard>
-      </div>
-    )
-  }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12">
-      <div className="flex justify-between items-end">
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">Suppliers Directory</h1>
-          <p className="text-sm text-secondary mt-1">Manage your raw material and service suppliers.</p>
+          <h1 className="text-lg font-bold text-primary">Suppliers</h1>
+          <p className="text-xs text-muted mt-0.5">{suppliers.length} total suppliers registered</p>
         </div>
-        <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>Add Supplier</Button>
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search suppliers..." className="w-64" />
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
+          <Button variant="primary" size="sm" icon={Plus} onClick={() => handleOpenForm()}>Add Supplier</Button>
         </div>
       </div>
 
-      <GlassCard className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} />
+      <GlassCard className="p-2 flex items-center gap-2 flex-wrap">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search by name, contact, category..." className="w-80" />
       </GlassCard>
 
-      {/* Toast Notification */}
+      <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
+        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} onRowClick={(item) => navigate(`/inventory/suppliers/${item.id}`)} />
+      </GlassCard>
+
       {toast && (
         <div className={`fixed top-4 right-4 z-[9999] px-4 py-2 rounded shadow-lg flex items-center gap-2 animate-fade-in ${toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
           <span className="text-sm font-semibold">{toast.msg}</span>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title={editId ? "Edit Supplier" : "Add New Supplier"}>
+        <form onSubmit={handleSubmit} className="space-y-4 p-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-medium text-secondary mb-1">Company / Supplier Name *</label>
+              <input required type="text" className="w-full input-base" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. ABC Steels Ltd" />
+            </div>
+
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-medium text-secondary mb-1">Category</label>
+              <select className="w-full input-base" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                <option value="Raw Materials">Raw Materials</option>
+                <option value="Machining / Outsourcing">Machining / Outsourcing</option>
+                <option value="Consumables">Consumables (Tools, Oils)</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-medium text-secondary mb-1">Contact Person</label>
+              <input type="text" className="w-full input-base" value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} placeholder="Name of rep" />
+            </div>
+            
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-medium text-secondary mb-1">Phone Number</label>
+              <input type="text" className="w-full input-base" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="e.g. 077 123 4567" />
+            </div>
+
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-medium text-secondary mb-1">Email Address</label>
+              <input type="email" className="w-full input-base" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="sales@abcsteels.lk" />
+            </div>
+
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-medium text-secondary mb-1">Status</label>
+              <select className="w-full input-base" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-secondary mb-1">Address / Notes</label>
+              <textarea className="w-full input-base h-20 resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Full address or special notes..." />
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-theme-subtle flex justify-end gap-3">
+            <Button variant="ghost" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={submitting}>
+              {submitting ? 'Saving...' : (editId ? 'Save Changes' : 'Add Supplier')}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Confirm Deletion">
         <div className="p-4">
           <p className="text-sm text-secondary mb-4">

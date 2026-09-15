@@ -2,8 +2,8 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, TrendingUp, Briefcase, Contact2,
-  Package, Factory, ShoppingCart, DollarSign, Users2, Settings, Zap,
-  Building2, Bell, FileText
+  Package, Factory, ShoppingCart, DollarSign, BarChart3, Users2, Settings, Zap,
+  Building2, Bell, FileText, ArrowUpRight, ArrowDownRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -26,15 +26,27 @@ const navGroups: NavGroup[] = [
   },
   { title: 'Inventory', active: true, items: [
     { label: 'Stock',       path: '/inventory', icon: Package   },
-    { label: 'Suppliers',   path: '/inventory/suppliers', icon: Building2 }
+    { label: 'Suppliers',   path: '/inventory/suppliers', icon: Building2 },
+      { label: 'Purchasing', path: '/purchasing', icon: ShoppingCart }
   ] },
-  { title: 'Production', items: [{ label: 'Work Orders', path: '/production', icon: Factory  }] },
+  { title: 'Production', active: true, items: [
+    { label: 'Work Orders', path: '/production', icon: Factory  },
+    { label: 'Machinery', path: '/production/machinery', icon: Settings }
+  ] },
   { title: 'Sales',      items: [{ label: 'Orders',      path: '/sales',      icon: ShoppingCart }] },
   { title: 'Finance',    active: true, items: [
     { label: 'Invoices',  path: '/finance/invoices', icon: FileText },
-    { label: 'Accounting',  path: '/finance',    icon: DollarSign   }
+    { label: 'Accounting',  path: '/finance',    icon: DollarSign   },
+    { label: 'Finance Dashboard',  path: '/finance/dashboard', icon: BarChart3 },
+    { label: 'Accounts Receivable',  path: '/finance/receivables', icon: ArrowUpRight },
+    { label: 'Accounts Payable',  path: '/finance/payables', icon: ArrowDownRight },
+    { label: 'Financial Reports',  path: '/finance/reports', icon: BarChart3 },
+    { label: 'Tax Reports',  path: '/finance/tax-report', icon: BarChart3 },
+    { label: 'Custom Builder',  path: '/finance/custom-reports', icon: BarChart3 }
   ] },
-  { title: 'HR',         items: [{ label: 'Employees',   path: '/hr',         icon: Users2        }] },
+  { title: 'HR', active: true, items: [{ label: 'Employees', path: '/hr/employees', icon: Users2 },
+    { label: 'Skills Master', path: '/hr/skills', icon: FileText },
+    { label: 'Labor Report', path: '/hr/report', icon: BarChart3 }] },
   { title: 'Admin',      active: true, items: [
     { label: 'Users', path: '/admin/users', icon: Users },
     { label: 'Settings', path: '/admin/settings', icon: Settings }
@@ -165,6 +177,7 @@ export const Sidebar: React.FC = () => {
     </aside>
   )
 }
+
 
 
 
