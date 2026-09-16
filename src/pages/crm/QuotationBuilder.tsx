@@ -177,7 +177,7 @@ export const QuotationBuilder: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (ev) => {
          if (ev.target?.result) {
-            setAttachments(prev => [...prev, { id: Date.now() + Math.random(), name: file.name, dataUrl: ev.target.result, type: file.type }]);
+            setAttachments(prev => [...prev, { id: Date.now() + Math.random(), name: file.name, dataUrl: ev.target?.result as string, type: file.type }]);
          }
       }
       reader.readAsDataURL(file);

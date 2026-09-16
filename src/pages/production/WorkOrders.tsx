@@ -39,9 +39,9 @@ export const WorkOrders: React.FC = () => {
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PlannerTab>('details')
 
-  const [newWO, setNewWO] = useState({
+  const [newWO, setNewWO] = useState<{ title: string; customerId: string; priority: string; deadline: string; notes: string; sourceQuoteId: string; jobQty: number; docNo: string; subject: string; attachments: any[] }>({
     title: '', customerId: '', priority: 'Normal', deadline: '',
-    notes: '', sourceQuoteId: '', jobQty: 1, docNo: '', subject: ''
+    notes: '', sourceQuoteId: '', jobQty: 1, docNo: '', subject: '', attachments: []
   })
   const [bomRows, setBomRows] = useState<any[]>([{ material: '', qty: 1, unit: 'pcs', unitCost: 0, notes: '' }])
   const [operations, setOperations] = useState<any[]>([{ operationName: '', machineId: '', employeeId: '', plannedHours: 1, notes: '' }])
