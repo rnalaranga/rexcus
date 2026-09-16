@@ -12,6 +12,54 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+
+// ==========================
+// MACHINING OPERATIONS API
+// ==========================
+app.get('/api/machining-operations', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM machining_operations ORDER BY groupName ASC, name ASC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/machining-operations', async (req, res) => {
+  try {
+    const { groupName, name, hrRate, setTimeRate, machineId } = req.body;
+    const [result] = await db.query(
+      'INSERT INTO machining_operations (groupName, name, hrRate, setTimeRate, machineId) VALUES (?, ?, ?, ?, ?)',
+      [groupName, name, hrRate || 0, setTimeRate || 0, machineId || null]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/machining-operations/:id', async (req, res) => {
+  try {
+    const { groupName, name, hrRate, setTimeRate, machineId } = req.body;
+    await db.query(
+      'UPDATE machining_operations SET groupName=?, name=?, hrRate=?, setTimeRate=?, machineId=? WHERE id=?',
+      [groupName, name, hrRate || 0, setTimeRate || 0, machineId || null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/machining-operations/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM machining_operations WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'rex-erp-secret-key-super-secure';
 
