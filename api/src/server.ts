@@ -60,6 +60,42 @@ app.delete('/api/machining-operations/:id', async (req, res) => {
   }
 });
 
+
+// ==========================
+// MACHINE CATEGORIES API
+// ==========================
+app.get('/api/production/categories', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM machine_categories ORDER BY name ASC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/production/categories', async (req, res) => {
+  try {
+    const { name } = req.body;
+    const id = 'CAT-' + Math.random().toString(36).substr(2, 6);
+    await db.query(
+      'INSERT INTO machine_categories (id, name, createdAt) VALUES (?, ?, NOW())',
+      [id, name]
+    );
+    res.json({ success: true, id, name });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/production/categories/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM machine_categories WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'rex-erp-secret-key-super-secure';
 
