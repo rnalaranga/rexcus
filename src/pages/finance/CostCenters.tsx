@@ -18,7 +18,7 @@ export const CostCenters: React.FC = () => {
     if (!name) return;
     const department = window.prompt("Enter Department:");
     
-    await fetch('http://localhost:3000/api/finance/cost-centers', {
+    await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/cost-centers`, {
        method: 'POST',
        headers: { 'Content-Type': 'application/json' },
        body: JSON.stringify({

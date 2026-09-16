@@ -15,7 +15,7 @@ export const ReceivablesHub: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/finance/reports/aging?type=ar')
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/aging?type=ar`)
       .then(res => res.json())
       .then(res => { setData(res); setLoading(false); })
       .catch(console.error);

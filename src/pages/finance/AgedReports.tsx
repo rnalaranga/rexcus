@@ -15,7 +15,7 @@ export const AgedReports: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`http://localhost:3000/api/finance/reports/aging?type=${reportType}`)
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/aging?type=${reportType}`)
       .then(res => res.json())
       .then(res => { setData(res); setLoading(false); })
       .catch(console.error);

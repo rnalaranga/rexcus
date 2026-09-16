@@ -28,7 +28,7 @@ export const CustomReportBuilder: React.FC = () => {
   const generateReport = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/api/finance/reports/custom', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/custom`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ startDate, endDate, accountTypes, costCenterId })

@@ -57,7 +57,7 @@ export const WorkOrders: React.FC = () => {
   const [dispatchedHistory, setDispatchedHistory] = useState<any[]>([])
   const [showQcModal, setShowQcModal] = useState<any>(null)
 
-  const API = 'http://localhost:3000/api'
+  const API = `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
 
   const fetchData = async () => {
     setLoading(true)

@@ -27,7 +27,7 @@ export const Employees: React.FC = () => {
   const [assignData, setAssignData] = useState<{empId: string, machineIds: string[]}>({ empId: '', machineIds: [] })
   const [assignSkillsData, setAssignSkillsData] = useState<{empId: string, skillIds: string[]}>({ empId: '', skillIds: [] })
 
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+  const API = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
 
   const fetchData = async () => {
     setLoading(true)

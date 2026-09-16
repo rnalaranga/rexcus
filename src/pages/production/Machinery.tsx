@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
 import * as api from '@/lib/api'
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
 
 export const Machinery: React.FC = () => {
   const [activeMainTab, setActiveMainTab] = useState<'machines'|'categories'>('categories')

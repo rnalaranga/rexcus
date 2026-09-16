@@ -10,7 +10,7 @@ export const LaborReport: React.FC = () => {
   const [skillsMaster, setSkillsMaster] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+  const API = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
 
   useEffect(() => {
     const fetchData = async () => {

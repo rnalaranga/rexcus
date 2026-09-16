@@ -13,7 +13,7 @@ export const FinancialReports: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`http://localhost:3000/api/finance/reports/${activeReport === 'pnl' ? 'pnl' : activeReport === 'bs' ? 'balance-sheet' : 'trial-balance'}`)
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/${activeReport === 'pnl' ? 'pnl' : activeReport === 'bs' ? 'balance-sheet' : 'trial-balance'}`)
       .then(res => res.json())
       .then(res => { setData(res); setLoading(false); })
       .catch(console.error);

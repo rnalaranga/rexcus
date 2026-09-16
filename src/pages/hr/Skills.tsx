@@ -20,7 +20,7 @@ export const Skills: React.FC = () => {
     name: '', category: 'Machining', description: ''
   })
 
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+  const API = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
 
   const fetchSkills = async () => {
     setLoading(true)
