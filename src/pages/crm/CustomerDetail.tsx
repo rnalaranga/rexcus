@@ -1,11 +1,11 @@
 ﻿import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { useCustomers, useDeals, useFollowups, useLeads } from '@/hooks/useData'
+import { useCustomers, useDeals, useFollowups, useLeads, useQuotations } from '@/hooks/useData'
 import { updateCustomer } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 
@@ -20,6 +20,7 @@ export const CustomerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate  = useNavigate()
   
+  const { data: quotations } = useQuotations()
   const { data: customers, loading: cl, refetch } = useCustomers()
   const { data: deals, loading: dl } = useDeals()
   const { data: allFollowups } = useFollowups()
@@ -30,7 +31,7 @@ export const CustomerDetail: React.FC = () => {
   const [formData, setFormData] = useState<any>(null)
   
   // Ledger View State
-  const [activeTab, setActiveTab] = useState<'overview' | 'ledger'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations'>('overview')
 
   if (cl || dl) return <div className="p-8 text-center text-muted animate-pulse">Loading profile...</div>
 
@@ -94,12 +95,18 @@ export const CustomerDetail: React.FC = () => {
            >
              Overview
            </button>
-           <button 
-             onClick={() => setActiveTab('ledger')}
-             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'ledger' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
-           >
-             Ledger & Financials
-           </button>
+                        <button 
+               onClick={() => setActiveTab('ledger')}
+               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'ledger' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+             >
+               Ledger & Financials
+             </button>
+             <button 
+               onClick={() => setActiveTab('quotations')}
+               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'quotations' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+             >
+               Quotations
+             </button>
         </div>
         <Button variant="ghost" size="sm" icon={Edit2} onClick={handleEditOpen}>Edit</Button>
         <Button variant="primary" size="sm" icon={Briefcase} onClick={() => navigate('/crm/deals')}>New Deal</Button>
@@ -299,7 +306,57 @@ export const CustomerDetail: React.FC = () => {
         </GlassCard>
       )}
 
+      
+      {activeTab === 'quotations' && (
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+              <FileText size={14} className="text-rex-500" />
+              Customer Quotations
+            </h2>
+            <Button variant="primary" size="sm" onClick={() => navigate(`/crm/quotations/new/${id}`)}>Create Quotation</Button>
+          </div>
+          <div className="divide-y divide-theme-subtle">
+            {quotations.filter((q: any) => q.leadId === id).length === 0 ? (
+               <div className="p-8 text-center text-muted text-sm">No quotations found for this customer.</div>
+            ) : (
+               quotations.filter((q: any) => q.leadId === id).map((q: any) => {
+                 let quoNo = q.id;
+                 try { const d = JSON.parse(q.data); if(d.quotationNo) quoNo = d.quotationNo; } catch(e) {}
+                 return (
+                   <div key={q.id} className="p-4 hover:bg-surface2/30 transition-colors flex items-center justify-between group">
+                     <div className="flex items-center gap-4">
+                       <div className="w-10 h-10 rounded-lg bg-rex-500/10 text-rex-600 flex items-center justify-center">
+                         <FileText size={18} />
+                       </div>
+                       <div>
+                         <h4 className="text-sm font-bold text-primary">{quoNo}</h4>
+                         <p className="text-xs text-muted flex items-center gap-2 mt-0.5">
+                           <span>{formatDate(q.date)}</span>
+                           <Badge value={q.type || 'Main'} size="sm" />
+                           <span className="font-mono text-[10px]">v{q.version}</span>
+                         </p>
+                       </div>
+                     </div>
+                     <div className="flex items-center gap-6">
+                       <div className="text-right">
+                         <p className="text-[10px] uppercase tracking-wider text-muted font-bold mb-0.5">Amount</p>
+                         <p className="text-sm font-black text-primary font-mono">{formatCurrency(Number(q.totalAmount))}</p>
+                       </div>
+                       <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${id}?quoteId=${q.id}`)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                         Open <ArrowRight size={14} className="ml-1" />
+                       </Button>
+                     </div>
+                   </div>
+                 );
+               })
+            )}
+          </div>
+        </GlassCard>
+      )}
+
       {/* Edit Customer Modal */}
+
       <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} title="Edit Customer Account" size="lg">
         {formData && (
           <form onSubmit={handleUpdate} className="space-y-6">

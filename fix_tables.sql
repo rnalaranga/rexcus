@@ -1,4 +1,4 @@
-﻿USE rex_erp;
+USE rex_erp;
 
 DROP TABLE IF EXISTS followups;
 CREATE TABLE followups (

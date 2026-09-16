@@ -1,10 +1,11 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, Download, Save, History, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { useLeads, useInventory } from '@/hooks/useData'
+import { useLeads, useInventory, useMachiningOperations } from '@/hooks/useData'
 import { createQuotation, fetchQuotations } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 // @ts-ignore
@@ -12,21 +13,7 @@ import html2pdf from 'html2pdf.js'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 
-const EXCEL_PROCESSES = [
-  { group: 'General',    items: [{ name: 'Parting', rate: 500 }] },
-  { group: 'Milling',    items: [{ name: 'Manual Milling', rate: 2500 }, { name: 'Gear Hobbing', rate: 2500 }] },
-  { group: 'Man Lathe',  items: [{ name: 'Normal', rate: 2500 }, { name: 'Blue 800x3000', rate: 3000 }, { name: 'Japan Heavy', rate: 4000 }, { name: 'Coping Lathe', rate: 5000 }, { name: 'Shaping', rate: 2500 }]},
-  { group: 'CNC Milling', items: [{ name: '3 Axis', rate: 4500 }, { name: '4 Axis', rate: 5000 }, { name: '5 Axis', rate: 7500 }, { name: '3 Axis 1600 Bed', rate: 7000 }]},
-  { group: 'CNC Lathe', items: [{ name: 'Turning', rate: 5500 }, { name: 'Turnmill', rate: 6000 }, { name: 'WEDM', rate: 2500 }, { name: 'EDM', rate: 2500 }, { name: 'Hardening', rate: 1500 }, { name: 'Surface Grinding', rate: 1500 }, { name: 'Cylindricle grinding', rate: 1500 }, { name: 'Knife Grinder', rate: 2500 }]},
-  { group: 'Welding', items: [{ name: 'Tig (SS/AL)', rate: 1500 }, { name: 'Mig (SS/MS/UTP)', rate: 1200 }, { name: 'Arc (SS/MS/UTP)', rate: 1100 }, { name: 'Laser Welding', rate: 2500 }]},
-  { group: 'Fabrication', items: [{ name: 'Shearing (per cut)', rate: 200 }, { name: 'Bending (per bend)', rate: 200 }, { name: 'Hand work/handling', rate: 500 }]}
-]
 
-function initProcState() {
-  const init: Record<string, { estHr: string; setTime: string; quoHr: string; rate: number }> = {}
-  EXCEL_PROCESSES.forEach(g => g.items.forEach(i => { init[i.name] = { estHr: '', setTime: '', quoHr: '', rate: i.rate } }))
-  return init
-}
 
 function toWords(num: number): string {
   if (num === 0) return 'Zero';
@@ -101,6 +88,9 @@ const MatSearchInput: React.FC<MatSearchProps> = ({ value, onChange, onSelect, i
 
 export const QuotationBuilder: React.FC = () => {
   const { leadId } = useParams<{ leadId: string }>()
+    const [searchParams] = useSearchParams()
+    const quoteIdParam = searchParams.get('quoteId')
+    const previewParam = searchParams.get('preview') === 'true'
   const navigate = useNavigate()
   const { data: leads, loading } = useLeads()
   const { data: inventory } = useInventory()
@@ -108,6 +98,30 @@ export const QuotationBuilder: React.FC = () => {
   const { user } = useAuth()
   
   const lead = leads.find(l => l.id === leadId)
+  
+  const { data: rawOperations } = useMachiningOperations()
+  const EXCEL_PROCESSES = React.useMemo(() => {
+    const groups: Record<string, any[]> = {}
+    if (rawOperations) {
+      rawOperations.forEach((op: any) => {
+        if (!groups[op.groupName]) groups[op.groupName] = []
+        groups[op.groupName].push(op)
+      })
+    }
+    return Object.keys(groups).map(k => ({ group: k, items: groups[k] }))
+  }, [rawOperations])
+
+  React.useEffect(() => {
+    setProcState(prev => {
+      if (Object.keys(prev).length > 0) return prev;
+      const init: any = {}
+      EXCEL_PROCESSES.forEach(g => g.items.forEach(i => {
+        init[i.name] = { estHr: '', setTime: '', quoHr: '', hrRate: i.hrRate, setTimeRate: i.setTimeRate, rate: i.hrRate }
+      }))
+      return init
+    })
+  }, [EXCEL_PROCESSES])
+
 
   const [quotationType, setQuotationType] = useState<'main' | 'job' | 'customer'>('main')
   const [savedVersions, setSavedVersions] = useState<any[]>([])
@@ -115,14 +129,29 @@ export const QuotationBuilder: React.FC = () => {
   const [currentId, setCurrentId] = useState<string | null>(null)
 
   const loadVersions = useCallback(async () => {
-    if (!leadId) return
-    try {
-      const data = await fetchQuotations(leadId)
-      setSavedVersions(Array.isArray(data) ? data : [])
-    } catch (e) {
-      console.error(e)
-    }
-  }, [leadId])
+      if (!leadId) return
+      try {
+        const data = await fetchQuotations(leadId)
+        setSavedVersions(data)
+        
+        // Auto-load if quoteId is in URL
+        if (quoteIdParam) {
+           const target = data.find((v: any) => v.id === quoteIdParam)
+           if (target && currentId !== target.id) {
+              const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data
+              restoreSnapshot(snap)
+              setQuotationType(target.type || 'main')
+              setCurrentId(target.id)
+              
+              if (previewParam) {
+                 setShowPreview(true)
+              }
+           }
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }, [leadId, quoteIdParam, previewParam, currentId])
 
   useEffect(() => { loadVersions() }, [loadVersions])
 
@@ -139,11 +168,23 @@ export const QuotationBuilder: React.FC = () => {
   const [subject, setSubject] = useState('To machining parts as per given sample')
 
   // --- Job Items / Description ---
-  const [images, setImages] = useState<{ id: string, name: string, dataUrl: string }[]>([])
-    const [previewImage, setPreviewImage] = useState<string | null>(null)
-    const fileInputRef = useRef<HTMLInputElement>(null)
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(e.target.files || []); files.forEach(file => { const reader = new FileReader(); reader.onload = (evt) => { if (evt.target?.result) { setImages(prev => [...prev, { id: 'IMG-' + Date.now() + Math.random().toString().slice(2,5), name: file.name, dataUrl: evt.target!.result as string }]); } }; reader.readAsDataURL(file); }); };
-    const [jobItems, setJobItems] = useState<{ id: number; text: string }[]>([{ id: Date.now(), text: '' }])
+  const [attachments, setAttachments] = useState<any[]>([]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+         if (ev.target?.result) {
+            setAttachments(prev => [...prev, { id: Date.now() + Math.random(), name: file.name, dataUrl: ev.target.result, type: file.type }]);
+         }
+      }
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const [jobItems, setJobItems] = useState<{ id: number; text: string }[]>([{ id: Date.now(), text: '' }])
   const addJobItem = () => setJobItems(p => [...p, { id: Date.now(), text: '' }])
   const updateJobItem = (id: number, text: string) => setJobItems(p => p.map(i => i.id === id ? { ...i, text } : i))
   const removeJobItem = (id: number) => setJobItems(p => p.filter(i => i.id !== id))
@@ -183,7 +224,7 @@ export const QuotationBuilder: React.FC = () => {
   const removeManualMat = (id: number) => setManualMats(p => p.filter(m => m.id !== id))
 
   // --- Machining Process ---
-  const [procState, setProcState] = useState<Record<string, { estHr: string; setTime: string; quoHr: string; rate: number }>>(initProcState)
+  const [procState, setProcState] = useState<Record<string, { estHr: string; setTime: string; quoHr: string; rate?: number; hrRate?: number; setTimeRate?: number }>>({})
   const handleProcChange = (name: string, f: string, v: string) => setProcState(prev => ({ ...prev, [name]: { ...prev[name], [f]: v } }))
 
   // --- Customer Quotation Items ---
@@ -203,15 +244,16 @@ export const QuotationBuilder: React.FC = () => {
   const autoMatTotal = autoMats.reduce((s, m) => s + Number(m.platePrice) + Number(m.shaftPrice), 0)
   const manualMatTotal = manualMats.reduce((s, m) => s + Number(m.qty) * Number(m.unitPrice), 0)
   const totalMaterialCost = autoMatTotal + manualMatTotal
-  const totalMachiningCost = Object.values(procState).reduce((s, p) => s + Number(p.quoHr) * Number(p.rate), 0)
+  const totalMachiningCost = Object.values(procState).reduce((s, p) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0)
   
   const jobTotalCost = totalMaterialCost + totalMachiningCost
-  const jobWithSSCL = jobTotalCost * 1.025
+  const vatPct = Number(settings?.vat_percentage || 0);
+    const jobWithSSCL = jobTotalCost * (1 + (vatPct / 100));
 
   const custSubtotal = custItems.reduce((s, i) => s + Number(i.qty) * Number(i.unitPrice), 0)
   const custDiscountAmt = custSubtotal * (Number(custDiscount) / 100)
   const custTotal = custSubtotal - custDiscountAmt
-  const custWithSSCL = custTotal * 1.025
+  const custWithSSCL = custTotal * (1 + (vatPct / 100));
   
   const expectedProfit = custWithSSCL - jobWithSSCL
   const expectedMargin = custWithSSCL > 0 ? (expectedProfit / custWithSSCL) * 100 : 0
@@ -228,11 +270,12 @@ export const QuotationBuilder: React.FC = () => {
     setAttention(snap.attention || '')
     setSubject(snap.subject || 'To machining parts as per given sample')
     setJobItems(snap.jobItems || [])
+    setAttachments(snap.attachments || [])
     
     setAutoMats(snap.autoMats || [])
     setManualMats(snap.manualMats || [])
     if (snap.procState) setProcState(snap.procState)
-    else setProcState(initProcState())
+    
     
     setCustItems(snap.custItems || [])
     setCustTerms(snap.custTerms || '')
@@ -242,6 +285,8 @@ export const QuotationBuilder: React.FC = () => {
   }
   const [isSaving, setIsSaving] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [showMarginModal, setShowMarginModal] = useState(false)
+  const [marginInput, setMarginInput] = useState('35')
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     setToast({ type, msg })
@@ -249,29 +294,40 @@ export const QuotationBuilder: React.FC = () => {
   }, [])
 
   const autoGenerateCustomerQuote = () => {
-    if (jobItems.length === 0 || (!jobItems[0].text && jobItems.length === 1)) {
-      showToast('error', 'Please fill out Job Scope / Descriptions first!');
+    const margin = Number(marginInput);
+    if (isNaN(margin) || margin < 0) {
+      showToast('error', 'Invalid margin percentage!');
       return;
     }
     
-    const marginStr = window.prompt("✨ AI Generation\n\nEnter desired Profit Margin % (e.g. 35):", "35");
-    if (!marginStr) return;
-    const margin = Number(marginStr);
-    
     const cost = totalMaterialCost + totalMachiningCost;
-    if (cost === 0) {
-       showToast('error', 'Please complete the Job Costing (Material/Machining) first to generate a price!');
-       return;
-    }
-
     const targetTotal = cost * (1 + (margin / 100));
+
+    const matNames = [
+      ...autoMats.map(m => m.material).filter(Boolean),
+      ...manualMats.map(m => m.material).filter(Boolean)
+    ];
+    const uniqueMats = [...new Set(matNames)];
+
+    const activeProcs = Object.keys(procState).filter(k => {
+      const p = procState[k];
+      return (Number(p.quoHr) || 0) > 0 || (Number(p.setTime) || 0) > 0;
+    });
+
+    let extraDesc = "";
+    if (uniqueMats.length > 0) {
+      extraDesc += `\n\nMaterials used: ${uniqueMats.join(', ')}`;
+    }
+    if (activeProcs.length > 0) {
+      extraDesc += `\nProcesses included: ${activeProcs.join(', ')}`;
+    }
 
     const newCustItems = jobItems.map((ji, idx) => {
       const q = idx === 0 ? (Number(jobQty) || 1) : 1;
       const price = idx === 0 ? Math.round(targetTotal / q) : 0;
       return {
         id: Date.now() + idx,
-        desc: ji.text,
+        desc: idx === 0 ? (ji.text + extraDesc) : ji.text,
         qty: q,
         unitPrice: price,
         note: ''
@@ -279,7 +335,20 @@ export const QuotationBuilder: React.FC = () => {
     });
 
     setCustItems(newCustItems);
+    setShowMarginModal(false);
     showToast('success', `✨ Auto-generated Customer Quote with ${margin}% margin!`);
+  };
+
+  const handleOpenMarginModal = () => {
+    if (jobItems.length === 0 || (!jobItems[0].text && jobItems.length === 1)) {
+      showToast('error', 'Please fill out Job Scope / Descriptions first!');
+      return;
+    }
+    if ((totalMaterialCost + totalMachiningCost) === 0) {
+       showToast('error', 'Please complete the Job Costing (Material/Machining) first to generate a price!');
+       return;
+    }
+    setShowMarginModal(true);
   };
 
   const handleSave = async (overrideType?: 'main' | 'job' | 'customer') => {
@@ -287,7 +356,7 @@ export const QuotationBuilder: React.FC = () => {
     setIsSaving(true)
     try {
       const snapshot: any = {
-        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, images
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments
       }
       
       if (saveType === 'main' || saveType === 'job') {
@@ -531,7 +600,28 @@ export const QuotationBuilder: React.FC = () => {
                 <input type="text" value={subject} onChange={e => setSubject(e.target.value)} className={docInputClass} />
               </div>
             </div>
-{/* Job Items */}
+{/* Attachments */}
+            <div className="pt-5 border-t border-theme-subtle">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-[11px] font-black text-secondary uppercase tracking-widest">Drawings & Photos</label>
+                <label className="text-xs bg-surface hover:bg-surface2 px-3 py-1.5 rounded-lg font-bold border border-theme-subtle cursor-pointer text-primary">
+                  + Add File
+                  <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload} />
+                </label>
+              </div>
+              {attachments.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {attachments.map(att => (
+                    <div key={att.id} className="relative w-20 h-20 shrink-0 border border-theme-subtle rounded-lg overflow-hidden group">
+                      {att.type.includes('image') ? <img src={att.dataUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-surface2 flex items-center justify-center text-[10px] font-bold text-muted p-2 text-center break-words">{att.name}</div>}
+                      <button type="button" onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={10} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Job Items */}
             <div className="pt-5 border-t border-theme-subtle">
               <div className="flex justify-between items-center mb-3">
                 <label className="text-[11px] font-black text-secondary uppercase tracking-widest">Job Scope / Descriptions</label>
@@ -552,37 +642,7 @@ export const QuotationBuilder: React.FC = () => {
               </div>
             </div>
 
-          
-            {/* Images & Attachments */}
-            <div className="pt-5 mt-5 border-t border-theme-subtle">
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-[11px] font-black text-secondary uppercase tracking-widest">Drawings & Attachments</label>
-                <div>
-                  <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-                  <Button variant="ghost" size="sm" icon={Plus} onClick={() => fileInputRef.current?.click()} className="text-xs bg-surface hover:bg-surface2">Add Images</Button>
-                </div>
-              </div>
-              {images.length === 0 ? (
-                <div className="text-center py-6 bg-surface/30 border border-dashed border-theme-subtle rounded-xl">
-                  <p className="text-[11px] text-muted">No images attached</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                  {images.map(img => (
-                    <div key={img.id} className="relative group rounded-xl overflow-hidden border border-theme-subtle bg-surface aspect-square">
-                      <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover cursor-pointer" onClick={() => setPreviewImage(img.dataUrl)} />
-                      <button type="button" onClick={() => setImages(p => p.filter(i => i.id !== img.id))} className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                        <Trash2 size={12} />
-                      </button>
-                      <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1.5 truncate text-[9px] text-white/90 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                        {img.name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-</div>
+          </div>
         </GlassCard>
 {/* JOB QUOTATION SECTIONS */}
         {showJobSection && (
@@ -622,13 +682,13 @@ export const QuotationBuilder: React.FC = () => {
                             className="w-full min-w-[120px]"
                           />
                         </td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.width} onChange={e => updateAutoMat(mat.id, 'width', e.target.value)} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.length} onChange={e => updateAutoMat(mat.id, 'length', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.width} onChange={e => updateAutoMat(mat.id, 'width', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.length} onChange={e => updateAutoMat(mat.id, 'length', e.target.value)} /></td>
                         <td className="p-0 border-r border-theme-subtle/30"><input type="text" className={tableInputClass} value={mat.supplier} onChange={e => updateAutoMat(mat.id, 'supplier', e.target.value)} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.thick} onChange={e => updateAutoMat(mat.id, 'thick', e.target.value)} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.dia} onChange={e => updateAutoMat(mat.id, 'dia', e.target.value)} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.qty} onChange={e => updateAutoMat(mat.id, 'qty', e.target.value)} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.unitPrice} onChange={e => updateAutoMat(mat.id, 'unitPrice', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.thick} onChange={e => updateAutoMat(mat.id, 'thick', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.dia} onChange={e => updateAutoMat(mat.id, 'dia', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.qty} onChange={e => updateAutoMat(mat.id, 'qty', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.unitPrice} onChange={e => updateAutoMat(mat.id, 'unitPrice', e.target.value)} /></td>
                         <td className="p-1 text-right font-mono text-xs text-primary font-semibold">{mat.platePrice > 0 ? formatCurrency(mat.platePrice) : <span className="text-muted/40">-</span>}</td>
                         <td className="p-1 text-right font-mono text-xs text-primary font-semibold">{mat.shaftPrice > 0 ? formatCurrency(mat.shaftPrice) : <span className="text-muted/40">-</span>}</td>
                         <td className="p-1 text-center"><button onClick={() => removeAutoMat(mat.id)} className="text-red-500/60 hover:text-red-500 p-1 rounded transition-colors"><Trash2 size={13} /></button></td>
@@ -689,8 +749,8 @@ export const QuotationBuilder: React.FC = () => {
                             <option value="lump sum">lump sum</option>
                           </select>
                         </td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.unitPrice} onChange={e => updateManualMat(mat.id, 'unitPrice', e.target.value)} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" className={tableInputClass} value={mat.qty} onChange={e => updateManualMat(mat.id, 'qty', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.unitPrice} onChange={e => updateManualMat(mat.id, 'unitPrice', e.target.value)} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={mat.qty} onChange={e => updateManualMat(mat.id, 'qty', e.target.value)} /></td>
                         <td className="p-1 text-right font-mono text-xs font-semibold text-primary">{formatCurrency(mat.unitPrice * mat.qty)}</td>
                         <td className="p-1 text-center"><button onClick={() => removeManualMat(mat.id)} className="text-red-500/60 hover:text-red-500 p-1 rounded transition-colors"><Trash2 size={13} /></button></td>
                       </tr>
@@ -725,7 +785,7 @@ export const QuotationBuilder: React.FC = () => {
                       <th className="px-3 py-2.5 w-24">Est. Hr</th>
                       <th className="px-3 py-2.5 w-24">Set Time</th>
                       <th className="px-3 py-2.5 w-24">Quo. Hr</th>
-                      <th className="px-3 py-2.5 w-28">Hr Rate</th>
+                      <th className="px-3 py-2.5 w-48">Rates</th>
                       <th className="px-3 py-2.5 w-32 text-right">Sub Total</th>
                     </tr>
                   </thead>
@@ -738,14 +798,22 @@ export const QuotationBuilder: React.FC = () => {
                         {group.items.map(proc => {
                           const st = procState[proc.name]
                           if (!st) return null
-                          const subTotal = Number(st.quoHr || 0) * st.rate
+                          const hrRate = Number(st.hrRate || proc.hrRate || proc.rate || 0)
+                            const setTimeRate = Number(st.setTimeRate || proc.setTimeRate || 0)
+                            const subTotal = (Number(st.quoHr || 0) * hrRate) + (Number(st.setTime || 0) * setTimeRate)
                           return (
                             <tr key={proc.name} className="hover:bg-surface/30 transition-colors">
                               <td className="px-5 py-1.5 text-xs text-secondary">{proc.name}</td>
-                              <td className="p-0 border-l border-theme-subtle/30"><input type="number" className={tableInputClass} value={st.estHr} onChange={e => handleProcChange(proc.name, 'estHr', e.target.value)} placeholder="-" /></td>
-                              <td className="p-0 border-l border-theme-subtle/30"><input type="number" className={tableInputClass} value={st.setTime} onChange={e => handleProcChange(proc.name, 'setTime', e.target.value)} placeholder="-" /></td>
-                              <td className="p-0 border-l border-theme-subtle/30"><input type="number" className={tableInputClass + " font-bold text-primary"} value={st.quoHr} onChange={e => handleProcChange(proc.name, 'quoHr', e.target.value)} placeholder="-" /></td>
-                              <td className="px-3 py-1.5 text-xs text-muted font-mono border-l border-theme-subtle/30">Rs. {st.rate.toLocaleString()}</td>
+                              <td className="p-0 border-l border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={st.estHr} onChange={e => handleProcChange(proc.name, 'estHr', e.target.value)} placeholder="-" /></td>
+                              <td className="p-0 border-l border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass} value={st.setTime} onChange={e => handleProcChange(proc.name, 'setTime', e.target.value)} placeholder="-" /></td>
+                              <td className="p-0 border-l border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " font-bold text-primary"} value={st.quoHr} onChange={e => handleProcChange(proc.name, 'quoHr', e.target.value)} placeholder="-" /></td>
+                              <td className="px-3 py-1.5 text-[10px] text-muted font-mono border-l border-theme-subtle/30 whitespace-nowrap">
+                                  <div className="flex gap-2 justify-end">
+                                    <span className="text-amber-600 font-bold">Rs. {hrRate.toLocaleString()}/hr</span>
+                                    <span className="text-muted/40">|</span>
+                                    <span className="text-blue-600 font-bold">Rs. {setTimeRate.toLocaleString()}/set</span>
+                                  </div>
+                                </td>
                               <td className="px-3 py-1.5 text-right text-xs font-mono font-semibold border-l border-theme-subtle/30">{subTotal > 0 ? <span className="text-primary">{formatCurrency(subTotal)}</span> : <span className="text-muted/40">-</span>}</td>
                             </tr>
                           )
@@ -779,7 +847,7 @@ export const QuotationBuilder: React.FC = () => {
                     <span className="font-mono font-bold text-rex-500">{formatCurrency(jobTotalCost)}</span>
                   </div>
                   <div className="border-t border-rex-500/30 pt-3 flex justify-between items-center">
-                    <span className="text-xs font-black uppercase text-primary">With SSCL (2.5%)</span>
+                    <span className="text-xs font-black uppercase text-primary">With VAT ({Number(settings?.vat_percentage || 0)}%)</span>
                     <span className="font-mono font-black text-base text-primary">{formatCurrency(jobWithSSCL)}</span>
                   </div>
                 </GlassCard>
@@ -798,7 +866,7 @@ export const QuotationBuilder: React.FC = () => {
                   <p className="text-[10px] text-muted mt-0.5">Customer-facing items — description, qty, unit price.</p>
                 </div>
                                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" icon={Wand2} onClick={autoGenerateCustomerQuote} className="text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 font-bold">✨ AI Generate</Button>
+                  <Button variant="ghost" size="sm" icon={Wand2} onClick={handleOpenMarginModal} className="text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 font-bold">✨ AI Generate</Button>
                   <Button variant="primary" size="sm" icon={Plus} onClick={addCustItem}>Add Line</Button>
                 </div>
               </div>
@@ -820,8 +888,8 @@ export const QuotationBuilder: React.FC = () => {
                       <tr key={item.id} className={'border-b border-theme-subtle/30 ' + (i % 2 !== 0 ? 'bg-surface/30' : '')}>
                         <td className="p-1 text-xs text-muted text-center border-r border-theme-subtle/30">{i + 1}</td>
                         <td className="p-0 border-r border-theme-subtle/30"><input type="text" value={item.desc} onChange={e => updateCustItem(item.id, 'desc', e.target.value)} placeholder="Item / service description..." className={tableInputClass} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" value={item.qty} onChange={e => updateCustItem(item.id, 'qty', Number(e.target.value))} className={tableInputClass} /></td>
-                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" value={item.unitPrice} onChange={e => updateCustItem(item.id, 'unitPrice', Number(e.target.value))} className={tableInputClass} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={item.qty} onChange={e => updateCustItem(item.id, 'qty', Number(e.target.value))} className={tableInputClass} /></td>
+                        <td className="p-0 border-r border-theme-subtle/30"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={item.unitPrice} onChange={e => updateCustItem(item.id, 'unitPrice', Number(e.target.value))} className={tableInputClass} /></td>
                         <td className="p-1 text-right font-mono text-xs font-semibold text-primary border-r border-theme-subtle/30">{formatCurrency(item.qty * item.unitPrice)}</td>
                         <td className="p-0 border-r border-theme-subtle/30"><input type="text" value={item.note} onChange={e => updateCustItem(item.id, 'note', e.target.value)} placeholder="Optional note..." className={tableInputClass} /></td>
                         <td className="p-1 text-center"><button onClick={() => removeCustItem(item.id)} className="text-red-500/60 hover:text-red-500 p-1 rounded transition-colors"><Trash2 size={13} /></button></td>
@@ -873,7 +941,7 @@ export const QuotationBuilder: React.FC = () => {
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-secondary font-semibold">Discount</span>
                     <div className="flex items-center gap-2">
-                      <input type="number" value={custDiscount} onChange={e => setCustDiscount(Number(e.target.value))}
+                      <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={custDiscount} onChange={e => setCustDiscount(Number(e.target.value))}
                         className="w-14 px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-lg text-right outline-none" />
                       <span className="text-muted">%</span>
                       <span className="font-mono text-red-400 text-xs">-{formatCurrency(custDiscountAmt)}</span>
@@ -884,7 +952,7 @@ export const QuotationBuilder: React.FC = () => {
                     <span className="font-mono font-bold text-blue-400">{formatCurrency(custTotal)}</span>
                   </div>
                   <div className="border-t border-blue-500/20 pt-3 flex justify-between items-center">
-                    <span className="text-xs font-black uppercase text-primary">With SSCL (2.5%)</span>
+                    <span className="text-xs font-black uppercase text-primary">With VAT ({Number(settings?.vat_percentage || 0)}%)</span>
                     <span className="font-mono font-black text-base text-primary">{formatCurrency(custWithSSCL)}</span>
                   </div>
                 </GlassCard>
@@ -925,12 +993,12 @@ export const QuotationBuilder: React.FC = () => {
                         <span className="font-mono">{formatCurrency(totalMachiningCost)}</span>
                      </div>
                      <div className="pt-3 mt-3 border-t border-theme-subtle flex justify-between items-center">
-                        <span className="text-xs font-bold text-secondary">Total Net Cost <span className="text-[9px] font-normal text-muted ml-1">(inc SSCL)</span></span>
+                        <span className="text-xs font-bold text-secondary">Total Net Cost <span className="text-[9px] font-normal text-muted ml-1">(inc VAT)</span></span>
                         <span className="font-mono font-black text-sm text-rex-500">{formatCurrency(jobWithSSCL)}</span>
                      </div>
                   </div>
                   <div className="mt-6 pt-4 border-t border-theme-subtle">
-                     <Button variant="ghost" className="w-full text-xs border border-rex-500/20 text-rex-500 hover:bg-rex-500/10 shadow-sm" icon={Briefcase} onClick={() => { setQuotationType('job'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); alert('Switched to Job Quotation. Click Save Job to generate version.'); }, 100); }}>
+                     <Button variant="ghost" className="w-full text-xs border border-rex-500/20 text-rex-500 hover:bg-rex-500/10 shadow-sm" icon={Briefcase} onClick={() => { setQuotationType('job'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' });  }, 100); }}>
                         Generate Job Quote
                      </Button>
                   </div>
@@ -950,18 +1018,18 @@ export const QuotationBuilder: React.FC = () => {
                      <div className="flex items-center justify-between text-xs group">
                         <span className="text-muted font-medium">Discount</span>
                         <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                          <input type="number" value={custDiscount} onChange={e => setCustDiscount(Number(e.target.value))}
+                          <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={custDiscount} onChange={e => setCustDiscount(Number(e.target.value))}
                             className="w-12 px-1.5 py-1 text-[11px] bg-white dark:bg-black/20 border border-theme-subtle rounded-md text-right outline-none focus:border-blue-500 transition-colors shadow-inner" />
                           <span className="text-[10px] text-muted">%</span>
                         </div>
                      </div>
                      <div className="pt-3 mt-3 border-t border-blue-500/20 flex justify-between items-center">
-                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Final Price <span className="text-[9px] font-normal opacity-70 ml-1">(inc SSCL)</span></span>
+                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Final Price <span className="text-[9px] font-normal opacity-70 ml-1">(inc VAT)</span></span>
                         <span className="font-mono font-black text-lg text-blue-600 dark:text-blue-400">{formatCurrency(custWithSSCL)}</span>
                      </div>
                   </div>
                   <div className="mt-6 pt-4 border-t border-theme-subtle">
-                     <Button variant="primary" className="w-full text-xs shadow-lg shadow-blue-500/20" icon={User} onClick={() => { setQuotationType('customer'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); alert('Switched to Customer Quotation. Click Save Customer to generate version.'); }, 100); }}>
+                     <Button variant="primary" className="w-full text-xs shadow-lg shadow-blue-500/20" icon={User} onClick={() => { setQuotationType('customer'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' });  }, 100); }}>
                         Generate Cust Quote
                      </Button>
                   </div>
@@ -977,204 +1045,20 @@ export const QuotationBuilder: React.FC = () => {
       </div>
 
 
-      
-      <Modal isOpen={!!previewImage} onClose={() => setPreviewImage(null)} title="Image Preview" size="xl">
-        <div className="p-2 flex justify-center bg-black/5 rounded-lg overflow-hidden">
-          {previewImage && <img src={previewImage} alt="Preview" className="max-w-full max-h-[70vh] object-contain rounded-md shadow-sm" />}
-        </div>
-      </Modal>
-
       <Modal isOpen={showPreview} onClose={() => setShowPreview(false)} title={'Preview — ' + (quotationType.charAt(0).toUpperCase() + quotationType.slice(1)) + ' Quotation'} size="xl">
         <div className="bg-white text-black p-8 max-h-[80vh] overflow-y-auto w-[900px] max-w-full">
-          <style>{`
-            @media print {
-              body * { visibility: hidden; }
-              #print-section, #print-section * { visibility: visible; }
-              #print-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; color: black; background: white; }
-            }
-          `}</style>
-
-          <div id="print-section" className="mx-auto w-full bg-white text-black leading-snug" style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: '800px', fontSize: '12px' }}>
-            <div className="border border-black flex flex-col">
-              
-              {/* Header */}
-              <div className="flex p-4 border-b border-black items-center">
-                <div className="w-[35%] flex justify-center items-center">
-                  {settings?.company_logo
-                    ? <img src={settings.company_logo} alt="Logo" className="max-h-24" />
-                    : <div className="text-5xl font-black text-red-600 tracking-tighter" style={{fontFamily: 'Impact, sans-serif'}}>REX</div>}
-                </div>
-                <div className="w-[65%] pl-4">
-                  <h1 className="text-[22px] font-black mb-2" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>REX INDUSTRIES (PVT) LTD</h1>
-                  <table className="text-[12px] leading-tight w-full" style={{fontFamily: 'Courier New, Courier, monospace'}}>
-                    <tbody>
-                      <tr><td className="font-bold w-16 align-top">Office</td><td>: No.451/2,Chilaw Road, Kattuwa,<br/>  Negombo,11500,Sri Lanka</td></tr>
-                      <tr><td className="font-bold">Tel.</td><td>: 0094-31-2233117 / 2233315 / 2223136</td></tr>
-                      <tr><td className="font-bold">E-mail</td><td>: info@rexgroup.lk</td></tr>
-                      <tr><td className="font-bold">Web</td><td>: www.rexgroup.lk</td></tr>
-                      <tr><td className="font-bold">VAT</td><td className="font-bold">: No:114106470-7000  SVAT No:SVAT003857</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Title */}
-              <div className="text-center font-bold text-[16px] py-1.5 border-b border-black tracking-widest uppercase">
-                QUOTATION
-              </div>
-
-              {/* TO / Details */}
-              <div className="flex border-b border-black text-[12px]">
-                <div className="w-[55%] p-2 border-r border-black flex flex-col justify-between">
-                  <div>
-                    <div className="font-bold italic">TO</div>
-                    <div>{lead.name}</div>
-                    {lead.company && <div>{lead.company}</div>}
-                    <div>{lead.address || ''}</div>
-                  </div>
-                  <div className="mt-4">
-                    <div className="flex"><span className="w-24">VAT No.</span><span>: {vatNo}</span></div>
-                    <div className="flex"><span className="w-24">TIN No.</span><span>: {tinNo}</span></div>
-                  </div>
-                </div>
-                <div className="w-[45%] p-2">
-                  <div className="flex"><span className="w-32">Quotation No.</span><span>: {quotationNo}</span></div>
-                  <div className="flex"><span className="w-32">Quotation Date</span><span>: {quoDate}</span></div>
-                  <div className="flex"><span className="w-32">Attention</span><span>: {attention}</span></div>
-                </div>
-              </div>
-
-              {/* Subject */}
-              <div className="flex p-2 border-b border-black text-[13px]">
-                <span className="font-bold w-20">Subject:</span>
-                <span>{subject}</span>
-              </div>
-
-              {/* Table Header */}
-              <div className="flex border-b border-black font-bold text-[13px] text-center bg-gray-50">
-                <div className="w-[55%] p-2 border-r border-black">Item & Description</div>
-                <div className="w-[10%] p-2 border-r border-black">Qty.</div>
-                <div className="w-[15%] p-2 border-r border-black">Price</div>
-                <div className="w-[20%] p-2">Amount</div>
-              </div>
-
-              {/* Table Body */}
-              <div className="flex min-h-[350px] text-[13px] bg-white">
-                <div className="w-[55%] p-2 border-r border-black whitespace-pre-wrap flex flex-col gap-4">
-                  {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item, idx) => (
-                    <div key={idx}>
-                      <div>{item.desc}</div>
-                      {item.note && <div className="text-xs text-gray-700">{item.note}</div>}
-                    </div>
-                  ))}
-                  {quotationType === 'job' && (
-                    <div className="font-bold italic text-gray-500 text-center mt-10">
-                      [Internal Job Items / Costing - Use Customer Quote for Print]
-                    </div>
-                  )}
-                </div>
-                <div className="w-[10%] p-2 border-r border-black text-center flex flex-col gap-4">
-                  {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item, idx) => (
-                     <div key={idx}>{item.qty.toFixed(2)}</div>
-                  ))}
-                </div>
-                <div className="w-[15%] p-2 border-r border-black text-right flex flex-col gap-4">
-                   {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item, idx) => (
-                     <div key={idx}>{formatCurrency(item.unitPrice).replace('Rs.','').trim()}</div>
-                  ))}
-                </div>
-                <div className="w-[20%] p-2 text-right flex flex-col gap-4">
-                   {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item, idx) => (
-                     <div key={idx}>{formatCurrency(item.qty * item.unitPrice).replace('Rs.','').trim()}</div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Totals Section */}
-              <div className="border-t border-black text-[13px]">
-                
-                {/* Sub Total */}
-                <div className="flex border-b border-black items-center h-8">
-                  <div className="w-[65%] text-right font-bold pr-6">Sub Total</div>
-                  <div className="w-[15%] font-bold text-center">LKR</div>
-                  <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                    {formatCurrency(quotationType === 'job' ? totalMachiningCost + totalMaterialCost : custSubtotal).replace('Rs.','').trim()}
-                  </div>
-                </div>
-                
-                {/* Discount */}
-                {quotationType !== 'job' && custDiscountAmt > 0 && (
-                   <div className="flex border-b border-black items-center h-8">
-                     <div className="w-[65%] text-right pr-6">Discount</div>
-                     <div className="w-[15%] text-center">{custDiscount} %</div>
-                     <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                       -{formatCurrency(custDiscountAmt).replace('Rs.','').trim()}
-                     </div>
-                   </div>
-                )}
-
-                {/* VAT / SSCL row */}
-                <div className="flex border-b border-black items-center h-8">
-                  <div className="w-[65%] text-right pr-6">VAT (SSCL)</div>
-                  <div className="w-[15%] text-center">2.50 %</div>
-                  <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                    {formatCurrency(quotationType === 'job' ? jobTotalCost * 0.025 : custTotal * 0.025).replace('Rs.','').trim()}
-                  </div>
-                </div>
-
-                {/* Grand Total Row */}
-                <div className="flex border-b border-black items-center bg-gray-50 h-8">
-                  <div className="w-[65%] text-right font-bold pr-6">Grand Total</div>
-                  <div className="w-[15%] font-bold text-center">LKR</div>
-                  <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                    {formatCurrency(quotationType === 'job' ? jobWithSSCL : custWithSSCL).replace('Rs.','').trim()}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Value in words */}
-              <div className="p-2 border-b border-black text-[11px] font-bold">
-                <span className="uppercase">VALUE : LKR {toWords(Math.round(quotationType === 'job' ? jobWithSSCL : custWithSSCL))}</span>
-              </div>
-
-              {/* Footer Notes & Bank */}
-              <div className="p-2 text-[12px] leading-tight flex flex-col gap-2">
-                <div>
-                  <div className="font-bold">Notes</div>
-                  <div className="whitespace-pre-wrap">
-                    {(!custTerms && !custValidity && !custDelivery) ? (
-                      <>
-                        X. This Quotation will be valid for a period of Two Days due to material price fluctuation in the market.<br/>
-                        X. An Advance Payment 50% of the mentioned total amount is to be made initially and the balance before the Completion/Delivery.
-                      </>
-                    ) : (
-                      <>
-                        {custTerms && `X. ${custTerms}\n`}
-                        {custValidity && `X. ${custValidity}\n`}
-                        {custDelivery && `X. ${custDelivery}`}
-                      </>
-                    )}
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="font-bold">Bank details</div>
-                  <table className="mt-0.5">
-                    <tbody>
-                      <tr><td className="w-28">Account Name</td><td>: Rex Industries (pvt) ltd</td></tr>
-                      <tr><td>Bank</td><td>: Commercial Bank of Ceylon</td></tr>
-                      <tr><td>Account No</td><td>: 1131358401</td></tr>
-                      <tr><td>Branch</td><td>: Negombo Main Branch</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mt-2 text-[11px]">This is a system generated quotation, no signature required.</div>
-              </div>
-
-            </div>
-          </div>
+          <QuotationPrintView 
+            data={{
+               docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
+               custItems, custDiscount,
+               custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+               jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+               custTerms, custValidity, custDelivery
+            }}
+            type={quotationType}
+            lead={lead}
+            settings={settings}
+          />
           
                     <div className="mt-6 flex justify-end gap-3 pb-6">
             <Button variant="ghost" icon={Mail} onClick={() => {
@@ -1198,6 +1082,30 @@ export const QuotationBuilder: React.FC = () => {
             }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
             
             <Button variant="primary" icon={Printer} onClick={() => window.print()}>Print Quotation</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-secondary leading-relaxed bg-blue-500/10 text-blue-600 p-3 rounded-xl border border-blue-500/20">
+            The system will calculate the target price using your Job Costing and append the exact materials and processes used to the customer quote description.
+          </p>
+          <div>
+            <label className="block text-xs font-bold text-secondary mb-1.5">Desired Profit Margin (%)</label>
+            <input 
+              type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+              className="w-full input-base font-bold text-lg" 
+              value={marginInput} 
+              onChange={e => setMarginInput(e.target.value)} 
+              placeholder="e.g. 35"
+              autoFocus
+            />
+          </div>
+          
+          <div className="flex justify-end gap-3 pt-2 border-t border-theme-subtle">
+            <Button variant="ghost" onClick={() => setShowMarginModal(false)}>Cancel</Button>
+            <Button variant="primary" onClick={autoGenerateCustomerQuote} className="bg-gradient-to-r from-purple-500 to-indigo-500 border-0 text-white">Generate Quote</Button>
           </div>
         </div>
       </Modal>

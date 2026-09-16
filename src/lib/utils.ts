@@ -8,12 +8,7 @@ export function toMySQLDate(date: Date): string {
 }
 
 export function formatCurrency(amount: number, short = false): string {
-  if (short) {
-    if (amount >= 1_000_000) return `Rs. ${(amount / 1_000_000).toFixed(1)}M`
-    if (amount >= 1_000) return `Rs. ${(amount / 1_000).toFixed(0)}K`
-    return `Rs. ${amount.toLocaleString()}`
-  }
-  return `Rs. ${amount.toLocaleString('en-LK')}`
+  return `Rs. ${(amount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export function formatDate(dateStr: string): string {

@@ -1,4 +1,4 @@
-﻿const mysql = require('mysql2/promise');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 async function run() {
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS material_requests (
   department VARCHAR(100),
   priority VARCHAR(20) DEFAULT 'medium',
   status VARCHAR(20) DEFAULT 'pending',
-  items JSON,
+  items TEXT,
   notes TEXT,
   createdAt DATETIME,
   updatedAt DATETIME
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   date DATETIME,
   expectedDate DATETIME,
   status VARCHAR(20) DEFAULT 'draft',
-  items JSON,
+  items TEXT,
   subtotal DECIMAL(15,2),
   tax DECIMAL(15,2),
   totalAmount DECIMAL(15,2),
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS grns (
   receivedBy VARCHAR(100),
   vehicleNo VARCHAR(100),
   storageLocation VARCHAR(100),
-  items JSON,
+  items TEXT,
   status VARCHAR(20) DEFAULT 'received',
   notes TEXT,
   createdAt DATETIME,

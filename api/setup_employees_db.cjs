@@ -1,4 +1,4 @@
-﻿const mysql = require('mysql2/promise');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 async function setup() {
@@ -17,7 +17,7 @@ async function setup() {
       phone VARCHAR(50),
       email VARCHAR(100),
       status VARCHAR(20) DEFAULT 'Active',
-      skills JSON,
+      skills TEXT,
       createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);

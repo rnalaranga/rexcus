@@ -30,6 +30,7 @@ import { AgedReports } from '@/pages/finance/AgedReports'
 import { ReceivablesHub } from '@/pages/finance/ReceivablesHub'
 import { PayablesHub } from '@/pages/finance/PayablesHub'
 import { Machinery } from '@/pages/production/Machinery'
+
 import { WorkOrders } from '@/pages/production/WorkOrders'
 import { Employees } from '@/pages/hr/Employees'
 import { Skills } from '@/pages/hr/Skills'
@@ -99,6 +100,7 @@ function AppRoutes() {
           {/* Placeholder modules */}
           <Route path="/production" element={<WorkOrders />} />
           <Route path="/production/machinery" element={<Machinery />} />
+            
           <Route path="/hr/employees" element={<Employees />} />
           <Route path="/hr/skills" element={<Skills />} />
           <Route path="/hr/report" element={<LaborReport />} />

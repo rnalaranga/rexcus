@@ -1,183 +1,298 @@
-﻿import React from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import React, { useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, TrendingUp, Briefcase, Contact2,
-  Package, Factory, ShoppingCart, DollarSign, BarChart3, Users2, Settings, Zap,
-  Building2, Bell, FileText, ArrowUpRight, ArrowDownRight
+  LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
+  Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
+  ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
+  ChevronDown, ChevronUp, LogOut, UserCircle2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSettings } from '@/contexts/SettingsContext'
 
-interface NavItem  { label: string; path: string; icon: React.ElementType; badge?: number }
-interface NavGroup { title: string; items: NavItem[]; active?: boolean }
+interface NavItem {
+  label: string
+  path: string
+  icon: React.FC<any>
+  badge?: number
+}
+
+interface NavGroup {
+  title: string
+  icon: React.FC<any>
+  items: NavItem[]
+  active?: boolean
+}
 
 const navGroups: NavGroup[] = [
   {
-    title: 'CRM', active: true,
+    title: 'CRM', icon: Users, active: true,
     items: [
-      { label: 'Dashboard',   path: '/crm',            icon: LayoutDashboard },
-      { label: 'Customers',   path: '/crm/customers',  icon: Users,      badge: 10 },
-      { label: 'Leads',       path: '/crm/leads',      icon: TrendingUp, badge: 10 },
-      { label: 'Quotations',  path: '/crm/quotations', icon: FileText },
-      { label: 'Deals',       path: '/crm/deals',      icon: Briefcase,  badge: 8  },
-      { label: 'Contacts',    path: '/crm/contacts',   icon: Contact2 },
-      { label: 'Follow-ups',  path: '/crm/followups',  icon: Bell },
+      { label: 'Dashboard',  path: '/crm',            icon: LayoutDashboard },
+      { label: 'Customers',  path: '/crm/customers',  icon: Users },
+      { label: 'Leads',      path: '/crm/leads',      icon: TrendingUp },
+      { label: 'Quotations', path: '/crm/quotations', icon: FileText },
+      { label: 'Deals',      path: '/crm/deals',      icon: Briefcase },
+      { label: 'Contacts',   path: '/crm/contacts',   icon: Contact2 },
+      { label: 'Follow-ups', path: '/crm/followups',  icon: Bell },
     ],
   },
-  { title: 'Inventory', active: true, items: [
-    { label: 'Stock',       path: '/inventory', icon: Package   },
-    { label: 'Suppliers',   path: '/inventory/suppliers', icon: Building2 },
-      { label: 'Purchasing', path: '/purchasing', icon: ShoppingCart }
-  ] },
-  { title: 'Production', active: true, items: [
-    { label: 'Work Orders', path: '/production', icon: Factory  },
-    { label: 'Machinery', path: '/production/machinery', icon: Settings }
-  ] },
-  { title: 'Sales',      items: [{ label: 'Orders',      path: '/sales',      icon: ShoppingCart }] },
-  { title: 'Finance',    active: true, items: [
-    { label: 'Invoices',  path: '/finance/invoices', icon: FileText },
-    { label: 'Accounting',  path: '/finance',    icon: DollarSign   },
-    { label: 'Finance Dashboard',  path: '/finance/dashboard', icon: BarChart3 },
-    { label: 'Accounts Receivable',  path: '/finance/receivables', icon: ArrowUpRight },
-    { label: 'Accounts Payable',  path: '/finance/payables', icon: ArrowDownRight },
-    { label: 'Financial Reports',  path: '/finance/reports', icon: BarChart3 },
-    { label: 'Tax Reports',  path: '/finance/tax-report', icon: BarChart3 },
-    { label: 'Custom Builder',  path: '/finance/custom-reports', icon: BarChart3 }
-  ] },
-  { title: 'HR', active: true, items: [{ label: 'Employees', path: '/hr/employees', icon: Users2 },
-    { label: 'Skills Master', path: '/hr/skills', icon: FileText },
-    { label: 'Labor Report', path: '/hr/report', icon: BarChart3 }] },
-  { title: 'Admin',      active: true, items: [
-    { label: 'Users', path: '/admin/users', icon: Users },
-    { label: 'Settings', path: '/admin/settings', icon: Settings }
-  ] },
+  {
+    title: 'Inventory', icon: Package, active: true,
+    items: [
+      { label: 'Stock',      path: '/inventory',           icon: Package },
+      { label: 'Suppliers',  path: '/inventory/suppliers', icon: Building2 },
+      { label: 'Purchasing', path: '/purchasing',           icon: ShoppingCart },
+    ],
+  },
+  {
+    title: 'Production', icon: Factory, active: true,
+    items: [
+      { label: 'Work Orders', path: '/production',           icon: Factory },
+      { label: 'Machinery',   path: '/production/machinery', icon: Settings },
+    ],
+  },
+  {
+    title: 'Finance', icon: DollarSign, active: true,
+    items: [
+      { label: 'Dashboard',    path: '/finance/dashboard',     icon: BarChart3 },
+      { label: 'Invoices',     path: '/finance/invoices',      icon: FileText },
+      { label: 'Accounting',   path: '/finance',               icon: DollarSign },
+      { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight },
+      { label: 'Payables',     path: '/finance/payables',      icon: ArrowDownRight },
+      { label: 'Reports',      path: '/finance/reports',       icon: BarChart3 },
+      { label: 'Tax Report',   path: '/finance/tax-report',    icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'HR', icon: Users2, active: true,
+    items: [
+      { label: 'Employees',    path: '/hr/employees', icon: Users2 },
+      { label: 'Skills',       path: '/hr/skills',    icon: FileText },
+      { label: 'Labor Report', path: '/hr/report',    icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'Admin', icon: Settings, active: true,
+    items: [
+      { label: 'Users',    path: '/admin/users',    icon: Users },
+      { label: 'Settings', path: '/admin/settings', icon: Settings },
+    ],
+  },
 ]
-
-import { useSettings } from '@/contexts/SettingsContext'
 
 export const Sidebar: React.FC = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { settings } = useSettings()
 
-  return (
-    <aside className="glass-sidebar flex flex-col h-full w-60 flex-shrink-0 overflow-hidden">
+  const [collapsed, setCollapsed] = useState(false)
+  // Track which groups are open; default all active groups open
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {}
+    navGroups.forEach(g => { if (g.active) init[g.title] = true })
+    return init
+  })
 
+  const toggleGroup = (title: string) => {
+    setOpenGroups(prev => ({ ...prev, [title]: !prev[title] }))
+  }
+
+  const isGroupActive = (group: NavGroup) =>
+    group.items.some(item =>
+      location.pathname === item.path ||
+      (item.path !== '/crm' && location.pathname.startsWith(item.path))
+    )
+
+  return (
+    <aside
+      className={cn(
+        'flex flex-col h-full flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out',
+        'bg-[#0f0f10] border-r border-white/[0.06]',
+        collapsed ? 'w-[56px]' : 'w-[220px]'
+      )}
+    >
       {/* Brand */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-theme-subtle">
-        {settings.company_logo ? (
-          <img src={settings.company_logo} alt="Logo" className="max-h-8 max-w-full object-contain" />
+      <div className={cn(
+        'flex items-center border-b border-white/[0.06] flex-shrink-0',
+        collapsed ? 'justify-center px-0 py-4' : 'gap-3 px-4 py-4'
+      )}>
+        {settings.company_logo && !collapsed ? (
+          <img src={settings.company_logo} alt="Logo" className="max-h-7 max-w-full object-contain" />
         ) : (
-          <>
-            <div className="w-8 h-8 bg-rex-700 flex items-center justify-center flex-shrink-0 shadow-glow-red-sm">
-              <Zap size={15} className="text-white" fill="currentColor" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold text-rex-600 dark:text-rex-400 tracking-[0.18em] uppercase leading-none">
-                Rex Industries
-              </p>
-              <p className="text-[9px] text-muted tracking-widest uppercase mt-0.5">Manufacturing ERP</p>
-            </div>
-          </>
+          <div className="w-7 h-7 bg-zinc-800 border border-white/10 flex items-center justify-center flex-shrink-0">
+            <Zap size={13} className="text-zinc-300" fill="currentColor" />
+          </div>
+        )}
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-zinc-200 tracking-[0.15em] uppercase leading-none">
+              Rex Industries
+            </p>
+            <p className="text-[8px] text-zinc-500 tracking-widest uppercase mt-0.5">Manufacturing ERP</p>
+          </div>
         )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {navGroups.map(group => (
-          <div key={group.title} className="mb-5">
-            {/* Group label */}
-            <div className="flex items-center gap-2 px-3 mb-1">
-              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-faint">{group.title}</p>
-              {!group.active && (
-                <span className="ml-auto text-[8px] text-faint uppercase tracking-widest">Soon</span>
+      <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
+        {navGroups.map(group => {
+          const GroupIcon = group.icon
+          const groupActive = isGroupActive(group)
+          const isOpen = openGroups[group.title]
+
+          if (!group.active) return null
+
+          return (
+            <div key={group.title} className="mb-0.5">
+              {/* Group header */}
+              <button
+                onClick={() => {
+                  if (collapsed) {
+                    setCollapsed(false)
+                    setOpenGroups(prev => ({ ...prev, [group.title]: true }))
+                  } else {
+                    toggleGroup(group.title)
+                  }
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2.5 transition-colors duration-150 group',
+                  collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2',
+                  groupActive
+                    ? 'text-white'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                )}
+                title={collapsed ? group.title : undefined}
+              >
+                <GroupIcon
+                  size={15}
+                  className={cn(
+                    'flex-shrink-0 transition-colors',
+                    groupActive ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'
+                  )}
+                />
+                {!collapsed && (
+                  <>
+                    <span className={cn(
+                      'text-[10px] font-bold uppercase tracking-[0.15em] flex-1 text-left',
+                      groupActive ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'
+                    )}>
+                      {group.title}
+                    </span>
+                    {isOpen
+                      ? <ChevronUp size={11} className="text-zinc-500 flex-shrink-0" />
+                      : <ChevronDown size={11} className="text-zinc-500 flex-shrink-0" />
+                    }
+                  </>
+                )}
+                {collapsed && groupActive && (
+                  <div className="absolute left-0 w-0.5 h-6 bg-zinc-400 rounded-r" />
+                )}
+              </button>
+
+              {/* Sub-items */}
+              {!collapsed && isOpen && (
+                <div className="pb-1">
+                  {group.items.map(item => {
+                    const Icon = item.icon
+                    const isActive =
+                      location.pathname === item.path ||
+                      (item.path !== '/crm' && item.path !== '/finance' && location.pathname.startsWith(item.path))
+
+                    return (
+                      <NavLink
+                        key={item.label}
+                        to={item.path}
+                        end={item.path === '/crm' || item.path === '/finance'}
+                        className={({ isActive: navActive }) => cn(
+                          'flex items-center gap-2.5 mx-2 px-3 py-1.5 mb-0.5 rounded transition-all duration-150 group',
+                          (navActive || isActive)
+                            ? 'bg-white/[0.09] text-white'
+                            : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05]'
+                        )}
+                      >
+                        {({ isActive: navActive }) => (
+                          <>
+                            <Icon
+                              size={13}
+                              className={cn(
+                                'flex-shrink-0 transition-colors',
+                                (navActive || isActive) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'
+                              )}
+                            />
+                            <span className={cn(
+                              'text-[11px] font-medium flex-1 truncate',
+                              (navActive || isActive) ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'
+                            )}>
+                              {item.label}
+                            </span>
+                            {item.badge && (
+                              <span className={cn(
+                                'text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center',
+                                (navActive || isActive)
+                                  ? 'bg-white/10 text-zinc-200'
+                                  : 'bg-white/[0.05] text-zinc-500'
+                              )}>
+                                {item.badge}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </NavLink>
+                    )
+                  })}
+                </div>
               )}
             </div>
-
-            {group.items.map(item => {
-              const Icon = item.icon
-              const isActive   = location.pathname === item.path ||
-                (item.path !== '/crm' && location.pathname.startsWith(item.path))
-              const isDisabled = !group.active
-
-              if (isDisabled) {
-                return (
-                  <div
-                    key={item.label}
-                    className="flex items-center gap-2.5 px-3 py-2 mb-0.5 opacity-30 cursor-not-allowed"
-                  >
-                    <Icon size={14} className="text-muted flex-shrink-0" />
-                    <span className="text-xs text-muted">{item.label}</span>
-                  </div>
-                )
-              }
-
-              return (
-                <NavLink
-                  key={item.label}
-                  to={item.path}
-                  end={item.path === '/crm'}
-                  className={({ isActive: navActive }) => cn(
-                    'nav-item flex items-center gap-2.5 px-3 py-2 mb-0.5',
-                    (navActive || isActive) && 'nav-item-active',
-                  )}
-                >
-                  {({ isActive: navActive }) => (
-                    <>
-                      <Icon
-                        size={14}
-                        className={cn(
-                          'flex-shrink-0 transition-colors',
-                          (navActive || isActive) ? 'text-rex-600 dark:text-rex-400' : 'text-muted',
-                        )}
-                      />
-                      <span className={cn(
-                        'text-xs font-medium flex-1 transition-colors',
-                        (navActive || isActive) ? 'text-rex-600 dark:text-rex-300' : 'text-secondary',
-                      )}>
-                        {item.label}
-                      </span>
-                      {item.badge && (
-                        <span className={cn(
-                          'text-[9px] font-bold px-1.5 py-0.5 min-w-[18px] text-center',
-                          (navActive || isActive)
-                            ? 'bg-rex-500/15 text-rex-600 dark:text-rex-300'
-                            : 'bg-surface2 text-muted',
-                        )}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              )
-            })}
-          </div>
-        ))}
+          )
+        })}
       </nav>
 
-      {/* User footer */}
-      <div className="border-t border-theme-subtle p-3">
-        <div className="flex items-center justify-between px-2 py-2 group">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-7 h-7 bg-rex-700 border border-rex-600/50 flex items-center justify-center flex-shrink-0">
-              <span className="text-[10px] font-bold text-white">{user?.name ? user.name.substring(0,2).toUpperCase() : 'US'}</span>
-            </div>
-            <div className="flex-1 min-w-0 pr-2">
-              <p className="text-[11px] font-semibold text-primary truncate">{user?.name || 'User'}</p>
-              <p className="text-[9px] text-muted truncate">@{user?.username || 'user'}</p>
-            </div>
+      {/* Collapse toggle */}
+      <div className="border-t border-white/[0.06] flex-shrink-0">
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className={cn(
+            'w-full flex items-center gap-2.5 py-2.5 text-zinc-600 hover:text-zinc-300 transition-colors group',
+            collapsed ? 'justify-center px-0' : 'px-4'
+          )}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed
+            ? <ChevronRight size={14} className="group-hover:text-zinc-300 transition-colors" />
+            : <>
+                <ChevronLeft size={14} className="group-hover:text-zinc-300 transition-colors" />
+                <span className="text-[10px] tracking-wider uppercase">Collapse</span>
+              </>
+          }
+        </button>
+
+        {/* User footer */}
+        <div className={cn(
+          'flex items-center border-t border-white/[0.06] py-3',
+          collapsed ? 'justify-center px-0 flex-col gap-2' : 'px-3 gap-2.5'
+        )}>
+          <div className="w-7 h-7 bg-zinc-800 border border-white/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-[10px] font-bold text-zinc-300">
+              {user?.name ? user.name.substring(0, 2).toUpperCase() : 'US'}
+            </span>
           </div>
-          <button onClick={logout} className="p-1.5 rounded bg-surface/50 text-muted hover:text-red-500 transition-colors" title="Logout">
-            <Settings size={13} className="hidden" /> {/* Keep Settings imported but unused icon logic */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-zinc-300 truncate">{user?.name || 'User'}</p>
+              <p className="text-[9px] text-zinc-600 truncate">@{user?.username || 'user'}</p>
+            </div>
+          )}
+          <button
+            onClick={logout}
+            className="p-1.5 text-zinc-600 hover:text-zinc-300 transition-colors flex-shrink-0"
+            title="Logout"
+          >
+            <LogOut size={13} />
           </button>
         </div>
       </div>
     </aside>
   )
 }
-
-
-
-

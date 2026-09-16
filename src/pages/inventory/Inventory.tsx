@@ -19,8 +19,8 @@ const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpd
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleAdd = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault()
     if (!qty || Number(qty) <= 0) return
     setSubmitting(true)
     await addStockLedgerEntry(inventoryId, {
@@ -40,7 +40,7 @@ const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpd
     <div className="space-y-6">
       <GlassCard className="p-6">
         <h2 className="text-sm font-bold text-primary uppercase tracking-wider mb-4">Add Stock Entry</h2>
-        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div>
             <label className="block text-xs font-medium text-secondary mb-1">Type</label>
             <select className="w-full input-base" value={type} onChange={e => setType(e.target.value as 'IN'|'OUT')}>
@@ -50,14 +50,14 @@ const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpd
           </div>
           <div>
             <label className="block text-xs font-medium text-secondary mb-1">Quantity</label>
-            <input required type="number" min="0.01" step="0.01" className="w-full input-base" value={qty} onChange={e => setQty(e.target.value)} />
+            <input required type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} step="0.01" className="w-full input-base" value={qty} onChange={e => setQty(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-secondary mb-1">Notes / Ref</label>
             <input type="text" className="w-full input-base" value={notes} onChange={e => setNotes(e.target.value)} placeholder="PO-123 or Adjustment" />
           </div>
-          <Button variant="primary" type="submit" disabled={submitting}>{submitting ? '...' : 'Add Entry'}</Button>
-        </form>
+          <Button variant="primary" type="button" onClick={handleAdd} disabled={submitting}>{submitting ? '...' : 'Add Entry'}</Button>
+        </div>
       </GlassCard>
 
       <GlassCard className="p-0 overflow-hidden">
@@ -315,7 +315,7 @@ export const Inventory: React.FC = () => {
       key: 'unitPrice',
       render: (val: any, item) => (
         <div>
-          <span className="font-mono text-secondary">{formatCurrency(val, true)}</span>
+          <span className="font-mono text-secondary">{formatCurrency(val)}</span>
           {item.type === 'service' && <span className="text-[10px] text-muted ml-1">/ {item.uom}</span>}
         </div>
       )
@@ -405,11 +405,11 @@ export const Inventory: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Selling Price (Rs) *</label>
-                    <input required type="number" step="0.01" className="w-full input-base font-mono text-lg" value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} placeholder="0.00" />
+                    <input required type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} step="0.01" className="w-full input-base font-mono text-lg" value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} placeholder="0.00" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Cost Price (Rs)</label>
-                    <input type="number" step="0.01" className="w-full input-base font-mono text-lg" value={formData.unitCost} onChange={e => setFormData({...formData, unitCost: e.target.value})} placeholder="0.00" />
+                    <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} step="0.01" className="w-full input-base font-mono text-lg" value={formData.unitCost} onChange={e => setFormData({...formData, unitCost: e.target.value})} placeholder="0.00" />
                   </div>
                 </div>
               </GlassCard>
@@ -424,11 +424,11 @@ export const Inventory: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Initial Stock</label>
-                    <input type="number" className="w-full input-base font-mono" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} disabled={formData.type === 'service'} />
+                    <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className="w-full input-base font-mono" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} disabled={formData.type === 'service'} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Reorder Level</label>
-                    <input type="number" className="w-full input-base font-mono" value={formData.reorderLevel} onChange={e => setFormData({...formData, reorderLevel: e.target.value})} placeholder="Alert when below..." disabled={formData.type === 'service'} />
+                    <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className="w-full input-base font-mono" value={formData.reorderLevel} onChange={e => setFormData({...formData, reorderLevel: e.target.value})} placeholder="Alert when below..." disabled={formData.type === 'service'} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Bin Location</label>

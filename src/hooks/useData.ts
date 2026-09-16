@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import {
+  useState, useEffect, useCallback } from 'react';
 import * as api from '@/lib/api';
 
 export function useCustomers() {
@@ -146,4 +147,16 @@ export function useQuotations() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { data, loading, refetch };
+}
+
+export const useMachiningOperations = () => {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error|null>(null);
+  const fetch = async () => {
+    try { setLoading(true); const res = await api.fetchMachiningOperations(); setData(Array.isArray(res) ? res : []); }
+    catch(e:any) { setError(e); } finally { setLoading(false); }
+  }
+  useEffect(() => { fetch() }, []);
+  return { data, loading, error, refetch: fetch };
 }

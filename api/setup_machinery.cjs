@@ -1,4 +1,4 @@
-﻿const mysql = require('mysql2/promise');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 async function setup() {
@@ -18,7 +18,7 @@ async function setup() {
       status VARCHAR(20) DEFAULT 'Active',
       hourlyCost DECIMAL(10,2) DEFAULT 0,
       lastMaintenance DATE,
-      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      createdAt DATETIME
     )
   `);
   console.log("Table machineries created");

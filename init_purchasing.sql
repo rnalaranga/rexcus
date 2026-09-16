@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS material_requests (
+CREATE TABLE IF NOT EXISTS material_requests (
   id VARCHAR(50) PRIMARY KEY,
   date DATETIME,
   requiredDate DATETIME,
@@ -6,7 +6,7 @@
   department VARCHAR(100),
   priority VARCHAR(20) DEFAULT 'medium',
   status VARCHAR(20) DEFAULT 'pending',
-  items JSON,
+  items TEXT,
   notes TEXT,
   createdAt DATETIME,
   updatedAt DATETIME
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   date DATETIME,
   expectedDate DATETIME,
   status VARCHAR(20) DEFAULT 'draft',
-  items JSON,
+  items TEXT,
   subtotal DECIMAL(15,2),
   tax DECIMAL(15,2),
   totalAmount DECIMAL(15,2),
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS grns (
   supplierId VARCHAR(50),
   date DATETIME,
   receivedBy VARCHAR(100),
-  items JSON,
+  items TEXT,
   status VARCHAR(20) DEFAULT 'received',
   notes TEXT,
   createdAt DATETIME,

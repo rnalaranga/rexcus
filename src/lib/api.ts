@@ -104,6 +104,16 @@ export const updateQuotation = async (id: string, data: any) => {
   return res.json();
 };
 
+
+export const updateQuotationStatus = async (id: string, status: string) => {
+  const res = await fetch(`${API_URL}/quotations/status/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  });
+  return res.json();
+};
+
 export const deleteQuotation = async (id: string) => {
   const res = await fetch(`${API_URL}/quotations/${id}`, { method: 'DELETE' });
   return res.json();
@@ -311,3 +321,26 @@ export const createJournal = async (data: any) => (await (await fetch(`${API_URL
 
 export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
 export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());
+export const fetchMachiningOperations = async () => (await fetch(`${API_URL}/machining-operations`)).json();
+export const createMachiningOperation = async (data: any) => {
+  const res = await fetch(`${API_URL}/machining-operations`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  return res.json();
+};
+export const updateMachiningOperation = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/machining-operations/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  return res.json();
+};
+export const deleteMachiningOperation = async (id: string) => {
+  const res = await fetch(`${API_URL}/machining-operations/${id}`, { method: 'DELETE' });
+  return res.json();
+};
+
+
+export const createWorkOrder = async (data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};

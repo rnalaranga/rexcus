@@ -1,4 +1,4 @@
-﻿CREATE DATABASE IF NOT EXISTS rex_erp;
+CREATE DATABASE IF NOT EXISTS rex_erp;
 USE rex_erp;
 
 -- Keep existing
@@ -84,14 +84,18 @@ CREATE TABLE IF NOT EXISTS quotations (
 
 CREATE TABLE IF NOT EXISTS inventory (
   id VARCHAR(50) PRIMARY KEY,
+  type VARCHAR(50) DEFAULT 'product',
   name VARCHAR(255),
   sku VARCHAR(100),
-  category VARCHAR(100),
-  supplier VARCHAR(255),
+  description TEXT,
+  unitPrice DECIMAL(15, 2) DEFAULT 0,
   unitCost DECIMAL(15, 2) DEFAULT 0,
-  price DECIMAL(15, 2) DEFAULT 0,
-  stock INT DEFAULT 0,
-  minStock INT DEFAULT 0,
+  quantity INT DEFAULT 0,
+  status VARCHAR(50) DEFAULT 'active',
+  uom VARCHAR(50),
+  suppliers LONGTEXT,
+  location VARCHAR(255),
+  reorderLevel INT DEFAULT 0,
   createdAt DATETIME,
   updatedAt DATETIME
 );
@@ -147,10 +151,10 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 
 -- Try adding vat and svat to existing tables just in case they were already created
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS vat VARCHAR(50);
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS svat VARCHAR(50);
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS vat VARCHAR(50);
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS svat VARCHAR(50);
+ALTER TABLE customers ADD COLUMN vat VARCHAR(50);
+ALTER TABLE customers ADD COLUMN svat VARCHAR(50);
+ALTER TABLE leads ADD COLUMN vat VARCHAR(50);
+ALTER TABLE leads ADD COLUMN svat VARCHAR(50);
 
 -- Insert default admin user (password: admin123)
 INSERT IGNORE INTO users (id, name, username, password_hash, role, created_at)
