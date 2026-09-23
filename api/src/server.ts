@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
@@ -95,6 +95,45 @@ app.delete('/api/production/categories/:id', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+
+// ==========================
+// MACHINE OPERATORS API
+// ==========================
+app.get('/api/production/machineries/:id/operators', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT employeeId FROM employee_machines WHERE machineId=?', [req.params.id]);
+    res.json(rows.map(r => r.employeeId));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/production/machineries/:id/operators', async (req, res) => {
+    try {
+      const machineId = req.params.id;
+      const { employeeIds } = req.body;
+      await db.query('DELETE FROM employee_machines WHERE machineId=?', [machineId]);
+      
+      if (employeeIds && employeeIds.length > 0) {
+        for (const empId of employeeIds) {
+          try {
+            await db.query('INSERT INTO employee_machines (employeeId, machineId) VALUES (?, ?)', [empId, machineId]);
+          } catch(e) {
+            if (e.message.includes('createdAt') || e.message.includes('Field \'createdAt\' doesn\'t have a default value')) {
+              await db.query('INSERT INTO employee_machines (employeeId, machineId, createdAt) VALUES (?, ?, NOW())', [empId, machineId]);
+            } else {
+              throw e;
+            }
+          }
+        }
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Operators POST Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'rex-erp-secret-key-super-secure';
@@ -497,7 +536,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
 app.get('/api/inventory/:id/ledger', async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await db.query('SELECT * FROM stock_ledger WHERE inventoryId = ? ORDER BY date DESC, createdAt DESC', [id]);
+    const [rows] = await db.query('SELECT * FROM stock_ledger WHERE inventoryId = ? ORDER BY date DESC', [id]);
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -509,7 +548,7 @@ app.get('/api/inventory/:id/ledger', async (req, res) => {
 app.get('/api/inventory/ledger/wo/:woId', async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT l.*, i.name as materialName, i.uom as unit FROM stock_ledger l JOIN inventory i ON l.inventoryId = i.id WHERE l.reference = ? ORDER BY l.createdAt DESC',
+      'SELECT l.*, i.name as materialName, i.uom as unit FROM stock_ledger l JOIN inventory i ON l.inventoryId = i.id WHERE l.reference = ? ORDER BY l.date DESC',
       [req.params.woId]
     );
     res.json(rows);
@@ -523,23 +562,15 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
     const { id } = req.params;
     const data = req.body;
     
-    // Get latest balance
-    const [rows]: any = await db.query('SELECT balance FROM stock_ledger WHERE inventoryId = ? ORDER BY date DESC, createdAt DESC LIMIT 1', [id]);
-    const currentBalance = rows.length > 0 ? Number(rows[0].balance) : 0;
-    
-    // Calculate new balance
-    const newBalance = currentBalance + (data.type === 'OUT' ? -Number(data.qty) : Number(data.qty));
-    
     const entry = {
-      inventoryId: id,
-      date: data.date,
-      type: data.type,
-      qty: data.qty,
-      balance: newBalance,
-      reference: data.reference || '',
-      notes: data.notes || '',
-      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
-    };
+        id: 'LGR-' + Date.now().toString().slice(-5),
+        inventoryId: id,
+        date: data.date || new Date().toISOString().slice(0, 19).replace('T', ' '),
+        type: data.type,
+        qty: data.qty,
+        reference: data.reference || '',
+        notes: data.notes || ''
+      };
     
     await db.query('INSERT INTO stock_ledger SET ?', entry);
     
@@ -1178,11 +1209,192 @@ app.post('/api/finance/cost-centers', async (req, res) => {
 // PRODUCTION - MACHINERY
 // ==========================================
 app.get('/api/production/machineries', async (req, res) => {
+    try {
+      const [machineries] = await db.query('SELECT * FROM machineries ORDER BY createdAt DESC');
+      let empMachines = [];
+      try {
+        const [rows] = await db.query('SELECT em.machineId, em.employeeId, e.name FROM employee_machines em JOIN employees e ON em.employeeId = e.id');
+        empMachines = rows;
+      } catch(e) {
+        console.error("Error fetching employee_machines:", e);
+      }
+      
+      const enriched = machineries.map(m => ({
+        ...m,
+        operators: empMachines.filter(em => em.machineId === m.id).map(em => em.name)
+      }));
+      
+      res.json(enriched);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+
+app.put('/api/production/machineries/:id', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM machineries ORDER BY createdAt DESC');
-    res.json(rows);
+    const { status, lastMaintenance } = req.body;
+    await db.query(
+      'UPDATE machineries SET status = ?, lastMaintenance = ? WHERE id = ?',
+      [status, lastMaintenance, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/production/machineries', async (req, res) => {
+  try {
+    const { id, name, type, model, status, hourlyCost } = req.body;
+    await db.query(
+      'INSERT INTO machineries (id, name, type, model, status, hourlyCost, lastMaintenance) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [id, name, type, model, status, hourlyCost]
+    );
+    res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
+
+
+
+
+// ==========================
+// SKILLS API
+// ==========================
+app.get('/api/hr/skills', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM skills ORDER BY createdAt DESC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/skills', async (req, res) => {
+  try {
+    const { id, name, category, description } = req.body;
+    await db.query(
+      'INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)',
+      [id, name, category, description]
+    );
+    res.json({ success: true, id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/hr/skills/:id', async (req, res) => {
+  try {
+    const { name, category, description } = req.body;
+    await db.query(
+      'UPDATE skills SET name=?, category=?, description=? WHERE id=?',
+      [name, category, description, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/hr/skills/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM employee_skills WHERE skillId = ?', [req.params.id]);
+    await db.query('DELETE FROM skills WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/employees/:id/skills', async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const { skillIds } = req.body;
+    
+    await db.query('DELETE FROM employee_skills WHERE employeeId = ?', [employeeId]);
+    if (skillIds && skillIds.length > 0) {
+      const values = skillIds.map(sId => [employeeId, sId]);
+      await db.query('INSERT INTO employee_skills (employeeId, skillId) VALUES ?', [values]);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================
+// HUMAN RESOURCES (HR) API
+// ==========================
+app.get('/api/hr/employees', async (req, res) => {
+  try {
+    const [employees] = await db.query('SELECT * FROM employees ORDER BY createdAt DESC');
+    const [machineAssignments] = await db.query('SELECT employeeId, machineId FROM employee_machines');
+    const [skillAssignments] = await db.query('SELECT employeeId, skillId FROM employee_skills');
+    
+    const enriched = employees.map(emp => ({
+      ...emp,
+      machineIds: machineAssignments.filter(a => a.employeeId === emp.id).map(a => a.machineId),
+      skillIds: skillAssignments.filter(a => a.employeeId === emp.id).map(a => a.skillId)
+    }));
+    
+    res.json(enriched);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/employees', async (req, res) => {
+  try {
+    const { id, name, role, phone, email, status, skills } = req.body;
+    await db.query(
+      'INSERT INTO employees (id, name, role, phone, email, status, skills) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, name, role, phone, email, status, JSON.stringify(skills || [])]
+    );
+    res.json({ success: true, id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/hr/employees/:id', async (req, res) => {
+  try {
+    const { name, role, phone, email, status, skills } = req.body;
+    await db.query(
+      'UPDATE employees SET name=?, role=?, phone=?, email=?, status=?, skills=? WHERE id=?',
+      [name, role, phone, email, status, JSON.stringify(skills || []), req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/hr/employees/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM employee_machines WHERE employeeId = ?', [req.params.id]);
+    await db.query('DELETE FROM employees WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/hr/employees/:id/machines', async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const { machineIds } = req.body; // Array of machine IDs
+    
+    await db.query('DELETE FROM employee_machines WHERE employeeId = ?', [employeeId]);
+    
+    if (machineIds && machineIds.length > 0) {
+      const values = machineIds.map(mId => [employeeId, mId]);
+      await db.query('INSERT INTO employee_machines (employeeId, machineId) VALUES ?', [values]);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 
 app.put('/api/production/machineries/:id', async (req, res) => {
@@ -1360,12 +1572,22 @@ app.get('/api/production/work-orders', async (req, res) => {
     const [wos] = await db.query('SELECT * FROM work_orders ORDER BY createdAt DESC');
     const [ops] = await db.query('SELECT * FROM work_order_operations ORDER BY stepNumber ASC');
     const [qcs] = await db.query('SELECT * FROM qc_inspections');
+    const [empRows]: any = await db.query('SELECT id, name FROM employees');
     
-    const enriched = wos.map(wo => ({
+    // Resolve customer names from leads table
+    let leadMap: Record<string, string> = {};
+    try {
+      const [leads]: any = await db.query('SELECT id, name, company FROM leads');
+      leads.forEach((l: any) => { leadMap[l.id] = l.name || l.company || l.id; });
+    } catch(e) {}
+
+    const enriched = (wos as any[]).map((wo: any) => ({
       ...wo,
-      operations: ops.filter(o => o.workOrderId === wo.id).map(o => ({
+      customerName: leadMap[wo.customerId] || wo.customerId || null,
+      operations: (ops as any[]).filter((o: any) => o.workOrderId === wo.id).map((o: any) => ({
         ...o,
-        qc: qcs.filter(q => q.operationId === o.id)
+        employeeName: empRows.find((e: any) => e.id === o.employeeId)?.name || null,
+        qc: (qcs as any[]).filter((q: any) => q.operationId === o.id)
       }))
     }));
     
@@ -1426,6 +1648,35 @@ app.patch('/api/production/work-orders/:id/attachments', async (req, res) => {
   try {
     const { attachments } = req.body;
     await db.query('UPDATE work_orders SET attachments = ? WHERE id = ?', [JSON.stringify(attachments), req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/production/operations/:id/assign', async (req, res) => {
+  try {
+    const { employeeId, machineId, scheduledStart, scheduledEnd } = req.body;
+    
+    const toMysqlDt = (iso: string | null | undefined) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+    };
+
+    let query = 'UPDATE work_order_operations SET employeeId=?, machineId=?';
+    let params: any[] = [employeeId || null, machineId || null];
+    
+    if (scheduledStart !== undefined) {
+      query += ', scheduledStart=?, scheduledEnd=?';
+      params.push(toMysqlDt(scheduledStart), toMysqlDt(scheduledEnd));
+    }
+    
+    query += ' WHERE id=?';
+    params.push(req.params.id);
+    
+    await db.query(query, params);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });

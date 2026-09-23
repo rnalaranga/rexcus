@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Download, Plus, Play, CheckCircle, AlertTriangle, Settings, Layers, Trash2, Users, ArrowUp, ArrowDown, Tag, Calculator, Package, Wrench, ListChecks, ClipboardList, ChevronRight, Clock, Zap, TrendingUp, Archive, Image as ImageIcon } from 'lucide-react'
+import { Download, Plus, Play, CheckCircle, AlertTriangle, Settings, Layers, Trash2, Users, ArrowUp, ArrowDown, Tag, Calculator, Package, Wrench, ListChecks, ClipboardList, ChevronRight, Clock, Zap, TrendingUp, Archive, Image as ImageIcon, Filter, UserCheck, UserX, AlertCircle, BarChart2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -38,6 +38,8 @@ export const WorkOrders: React.FC = () => {
   const [errorModal, setErrorModal] = useState<string | null>(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PlannerTab>('details')
+  const [viewMode, setViewMode] = useState<'dashboard'|'planning'>('dashboard')
+  const [planningFilter, setPlanningFilter] = useState<'all'|'pending'|'in_progress'>('all')
 
   const [newWO, setNewWO] = useState<{ title: string; customerId: string; priority: string; deadline: string; notes: string; sourceQuoteId: string; jobQty: number; docNo: string; subject: string; attachments: any[] }>({
     title: '', customerId: '', priority: 'Normal', deadline: '',
@@ -72,7 +74,11 @@ export const WorkOrders: React.FC = () => {
       setWorkOrders(Array.isArray(woRes) ? woRes : [])
       setEmployees(Array.isArray(empRes) ? empRes : [])
       setMachineries(Array.isArray(machRes) ? machRes : [])
-      setQuotations(Array.isArray(quoRes) ? quoRes : [])
+      setQuotations(Array.isArray(quoRes) ? quoRes.map(q => {
+        let snap = {};
+        try { snap = JSON.parse(q.data || '{}'); } catch(e){}
+        return { ...q, snapshot: snap };
+      }) : [])
       setInventory(Array.isArray(invRes) ? invRes : [])
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
@@ -88,8 +94,8 @@ export const WorkOrders: React.FC = () => {
     setQuoteData(q)
     setNewWO(prev => ({
       ...prev,
-      title: q.snapshot?.subject || 'Job - ' + q.id,
-      customerId: q.leadName || q.leadId || '',
+      title: q.snapshot?.subject || q.id,
+      customerId: q.leadId || '',
       docNo: q.snapshot?.docNo || '',
       jobQty: q.snapshot?.jobQty || 1,
       attachments: q.snapshot?.attachments || [],
@@ -180,6 +186,41 @@ export const WorkOrders: React.FC = () => {
     refreshTrackWO()
   }
 
+  const handleAssignOperation = async (opId: string, field: 'employeeId'|'machineId', val: string, scheduledStart?: string) => {
+    let op = trackWO?.operations?.find((o:any) => o.id === opId);
+    if (!op) {
+      for (const wo of workOrders) {
+        if (wo.operations) {
+          const found = wo.operations.find((o:any) => o.id === opId);
+          if (found) { op = found; break; }
+        }
+      }
+    }
+    if (!op) return;
+
+    const payload: any = {
+      employeeId: field === 'employeeId' ? val : op.employeeId,
+      machineId: field === 'machineId' ? val : op.machineId
+    };
+
+    if (scheduledStart !== undefined) {
+      if (scheduledStart === '') {
+        payload.scheduledStart = null;
+        payload.scheduledEnd = null;
+      } else {
+        payload.scheduledStart = scheduledStart;
+        const d = new Date(scheduledStart);
+        d.setMinutes(d.getMinutes() + (Number(op.plannedHours) * 60));
+        payload.scheduledEnd = d.toISOString();
+      }
+    }
+
+    await fetch(API + '/production/operations/' + opId + '/assign', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    
+    fetchData(); // Refresh Gantt chart
+    if (trackWO) refreshTrackWO();
+  }
+
   const handleDispatchAccessory = async () => {
     if (!accId || accQty <= 0) return
     const invItem = inventory.find(i => i.id === accId)
@@ -209,7 +250,7 @@ export const WorkOrders: React.FC = () => {
   const filtered = workOrders.filter(w => w.title?.toLowerCase().includes(search.toLowerCase()) || w.id?.toLowerCase().includes(search.toLowerCase()))
 
   const columns: Column<any>[] = [
-    { key: 'title', header: 'Work Order', sortable: true, render: (_: any, row: any) => ( <div className="flex items-center gap-3"><div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center"><Layers size={14} className="text-white"/></div><div className="min-w-0"><p className="text-sm font-semibold text-primary truncate">{row.title}</p><p className="text-[10px] text-muted font-mono">{row.id}</p></div></div> ) },
+    { key: 'title', header: 'Work Order & Job Scope', sortable: true, render: (_: any, row: any) => ( <div className="flex items-start gap-3"><div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center mt-1"><Layers size={14} className="text-white"/></div><div className="min-w-0 max-w-sm"><p className="text-sm font-semibold text-primary truncate">{row.title}</p><p className="text-[10px] text-muted font-mono mb-1">{row.id}</p>{row.notes && <div className="text-[10px] text-secondary/90 line-clamp-2 leading-relaxed bg-surface2/30 p-1.5 rounded border border-theme-subtle">{row.notes}</div>}</div></div> ) },
     { key: 'priority', header: 'Priority', render: (v: any) => <Badge value={String(v)} variant={v==='High'?'error':v==='Urgent'?'warning':'default'}/> },
     { key: 'deadline', header: 'Deadline', render: (v: any) => <span className="text-xs text-secondary">{v ? new Date(v as string).toLocaleDateString() : '-'}</span> },
     { key: 'operations', header: 'Progress', render: (_: any, row: any) => { const ops = row.operations?.filter((o: any) => parseFloat(o.plannedHours) > 0) || []; const total = ops.length; const done = ops.filter((o: any) => o.status === 'Completed').length; const pct = total === 0 ? 0 : Math.round((done/total)*100); return ( <div className="w-36"><div className="flex justify-between text-[10px] mb-1"><span className="text-muted">{done}/{total} Steps</span><span className="font-bold text-rex-600">{pct}%</span></div><div className="h-1.5 w-full bg-surface2 rounded-full overflow-hidden"><div className="h-full bg-rex-600 rounded-full transition-all" style={{ width: pct + '%' }}/></div></div> ) } },
@@ -232,6 +273,10 @@ export const WorkOrders: React.FC = () => {
     <div className="space-y-4 animate-fade-in pb-10">
       <div className="flex items-center justify-between">
         <div><h1 className="text-lg font-bold text-primary">Work Orders & Production Planning</h1><p className="text-xs text-muted mt-0.5">BOM, routing, machine allocation and shop floor tracking</p></div>
+          <div className="flex border border-theme-subtle rounded overflow-hidden mr-auto ml-4">
+            <button onClick={() => setViewMode('dashboard')} className={`px-3 py-1.5 text-xs transition-colors ${viewMode === 'dashboard' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>Dashboard</button>
+            <button onClick={() => setViewMode('planning')} className={`px-3 py-1.5 text-xs transition-colors ${viewMode === 'planning' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>Labor Planning</button>
+          </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
           <Button variant="primary" size="sm" icon={Plus} onClick={() => { resetForm(); setShowModal(true) }}>New Work Order</Button>
@@ -242,9 +287,310 @@ export const WorkOrders: React.FC = () => {
         <SearchBar placeholder="Search work orders..." value={search} onChange={setSearch} className="w-80"/>
       </GlassCard>
 
-      <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
+      {viewMode === 'dashboard' && (<>
+        <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
         {loading ? <div className="p-10 text-center animate-pulse text-xs text-muted">Loading...</div> : <DataTable columns={columns} data={filtered} keyExtractor={r => r.id} emptyMessage="No work orders found."/>}
       </GlassCard>
+
+      </>)}
+
+      {viewMode === 'planning' && (() => {
+        const TODAY = new Date().toDateString();
+        const allActiveOps = workOrders.flatMap((wo:any) =>
+          wo.status !== 'Completed' && wo.operations
+            ? wo.operations
+                .filter((o:any) => Number(o.plannedHours) > 0 && o.status !== 'Completed')
+                .map((o:any) => ({
+                  ...o,
+                  woTitle: wo.title,
+                  woId: wo.id,
+                  woPriority: wo.priority,
+                  woDeadline: wo.deadline,
+                  woNotes: wo.notes,
+                  scheduledStart: o.scheduledStart,
+                  scheduledEnd: o.scheduledEnd,
+                }))
+            : []
+        );
+        const unassigned = allActiveOps.filter((o:any) => !o.employeeId);
+        const assigned   = allActiveOps.filter((o:any) => !!o.employeeId);
+
+        const START_HOUR = 6;
+        const END_HOUR   = 24;
+        const HOURS      = END_HOUR - START_HOUR;
+        const PPH        = 72; // pixels per hour
+        const ROW_H      = 64; // px
+
+        const priorityColors: Record<string, string> = {
+          Urgent: 'bg-red-500/20 border-red-500/50 text-red-700 dark:text-red-400',
+          High:   'bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-400',
+          Normal: 'bg-blue-500/15 border-blue-500/40 text-blue-700 dark:text-blue-400',
+        };
+        const priorityDot: Record<string, string> = {
+          Urgent: 'bg-red-500', High: 'bg-orange-500', Normal: 'bg-blue-500',
+        };
+
+        return (
+          <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+
+            {/* ── STATS BAR ── */}
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: 'Employees', value: employees.length, icon: <Users size={16}/>, color: 'text-blue-500' },
+                { label: 'Unscheduled', value: unassigned.length, icon: <AlertTriangle size={16}/>, color: unassigned.length > 0 ? 'text-amber-500' : 'text-green-500' },
+                { label: 'Scheduled', value: assigned.length, icon: <CheckCircle size={16}/>, color: 'text-green-500' },
+                { label: 'Total Hours', value: allActiveOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0).toFixed(1) + 'h', icon: <Clock size={16}/>, color: 'text-rex-500' },
+              ].map((kpi, i) => (
+                <GlassCard key={i} className="flex items-center gap-3 p-3">
+                  <div className={`w-9 h-9 rounded-xl bg-surface2 flex items-center justify-center ${kpi.color}`}>{kpi.icon}</div>
+                  <div>
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-wider">{kpi.label}</p>
+                    <p className="text-xl font-black text-primary leading-none">{kpi.value}</p>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
+
+            {/* ── MAIN BOARD ── */}
+            <div className="flex gap-4 items-start">
+
+              {/* ════ GANTT CHART ════ */}
+              <GlassCard className="flex-1 min-w-0 p-0 overflow-hidden border border-theme-subtle flex flex-col min-h-[400px]">
+
+                {/* debug banner */}
+                <div className="bg-red-500 text-white text-xs p-2 overflow-auto max-h-40">
+                  <pre>
+                    Assigned: {JSON.stringify(assigned.map(o => ({ id: o.id, eId: o.employeeId, s: o.scheduledStart })), null, 2)}
+                  </pre>
+                </div>
+                {/* header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-theme-subtle bg-surface2/20 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-rex-500/10 flex items-center justify-center text-rex-500"><Layers size={14}/></div>
+                    <span className="text-sm font-bold text-primary">Daily Schedule — {new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] font-semibold text-muted">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500/70 border border-blue-500 inline-block"/>Normal</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-orange-500/70 border border-orange-500 inline-block"/>High</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/70 border border-red-500 inline-block"/>Urgent</span>
+                  </div>
+                </div>
+
+                {/* scrollable grid */}
+                <div className="overflow-auto flex-1">
+                  <div style={{ minWidth: HOURS * PPH + 200 + 'px' }}>
+
+                    {/* Time ruler */}
+                    <div className="flex border-b-2 border-theme-subtle sticky top-0 z-30 bg-surface">
+                      <div className="w-[200px] shrink-0 border-r border-theme-subtle bg-surface2/40 flex items-end px-3 pb-2">
+                        <span className="text-[9px] font-black text-muted uppercase tracking-widest">Operator</span>
+                      </div>
+                      <div className="flex-1 flex relative" style={{ height: 32 }}>
+                        {Array.from({length: HOURS}).map((_,i) => {
+                          const h = START_HOUR + i;
+                          const isEven = i % 2 === 0;
+                          return (
+                            <div key={i} className="absolute flex flex-col items-start border-l border-theme-subtle/60 pt-1 pl-1" style={{ left: i * PPH, width: PPH, height: 32, background: isEven ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                              <span className="text-[9px] font-mono font-bold text-muted">{h.toString().padStart(2,'0')}:00</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Employee rows */}
+                    {employees.length === 0 && (
+                      <div className="py-20 text-center text-sm text-muted">No employees found. Add employees in HR module.</div>
+                    )}
+                    {employees.map((emp:any) => {
+                      const empOps = allActiveOps.filter((o:any) => o.employeeId === emp.id);
+                      const totalHr = empOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0);
+                      const isOverloaded = totalHr > 12;
+                      const isOptimal    = totalHr > 8 && totalHr <= 12;
+                      const loadCls = isOverloaded ? 'text-red-500 bg-red-500/10 border-red-500/20'
+                                    : isOptimal    ? 'text-amber-500 bg-amber-500/10 border-amber-500/20'
+                                                   : 'text-green-600 bg-green-500/10 border-green-500/20';
+
+                      return (
+                        <div
+                          key={emp.id}
+                          className="flex border-b border-theme-subtle/40 group relative"
+                          style={{ height: ROW_H }}
+                          onDragEnter={(e) => e.preventDefault()}
+                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.06)'; }}
+                          onDragLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            (e.currentTarget as HTMLElement).style.background = '';
+                            const opId = e.dataTransfer.getData('opId');
+                            if (!opId) return;
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            const dropX = e.clientX - rect.left - 200;
+                            let dropHour = Math.floor(dropX / PPH) + START_HOUR;
+                            const dropMin = Math.round(((dropX % PPH) / PPH) * 2) * 30;
+                            if (dropHour < START_HOUR) dropHour = START_HOUR;
+                            if (dropHour >= END_HOUR) dropHour = END_HOUR - 1;
+                            const d = new Date();
+                            d.setHours(dropHour, dropMin, 0, 0);
+                            handleAssignOperation(opId, 'employeeId', emp.id, d.toISOString());
+                          }}
+                        >
+                          {/* Employee label */}
+                          <div className="w-[200px] shrink-0 border-r border-theme-subtle px-3 flex flex-col justify-center gap-0.5 sticky left-0 z-20 bg-surface group-hover:bg-surface2/50 transition-colors">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-surface2 border border-theme-subtle flex items-center justify-center text-[10px] font-black text-secondary shrink-0">{emp.name?.[0] || '?'}</div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-primary truncate">{emp.name}</p>
+                                <p className="text-[9px] text-muted truncate">{emp.role || 'Operator'}</p>
+                              </div>
+                            </div>
+                            <div className={`text-[8px] font-black px-1.5 py-0.5 rounded border w-fit mt-0.5 ${loadCls}`}>
+                              {totalHr.toFixed(1)}h {isOverloaded ? '⚠ OVER' : isOptimal ? '● OPTIMAL' : '● FREE'}
+                            </div>
+                          </div>
+
+                          {/* Hour grid stripes + blocks */}
+                          <div className="flex-1 relative overflow-hidden">
+                            {/* alternating hour bands */}
+                            {Array.from({length: HOURS}).map((_,i) => (
+                              <div key={i} className="absolute top-0 bottom-0 border-l border-theme-subtle/20" style={{ left: i * PPH, width: PPH, background: i%2===0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}/>
+                            ))}
+
+                            {/* operation blocks */}
+                            {empOps.length > 0 && <div className="absolute top-0 left-0 z-50 text-red-500 text-xs font-bold bg-white p-1">RENDER: {empOps.length} ops</div>}
+                            {empOps.map((op:any, i:number) => {
+                              const hrs = Number(op.plannedHours);
+                              const w = Math.max(hrs * PPH - 4, 20);
+
+                              let leftPx = 4 + (i * (w + 6)); // default stacking
+                              if (op.scheduledStart) {
+                                const sd = new Date(op.scheduledStart);
+                                leftPx = (sd.getHours() - START_HOUR + sd.getMinutes() / 60) * PPH + 2;
+                              }
+
+                              const prio = op.woPriority as string;
+                              const blockCls = prio === 'Urgent' ? 'bg-red-500/20 border-red-400 hover:bg-red-500/30'
+                                             : prio === 'High'   ? 'bg-orange-500/20 border-orange-400 hover:bg-orange-500/30'
+                                             :                     'bg-blue-500/15 border-blue-400/60 hover:bg-blue-500/25';
+                              const dotCls   = priorityDot[prio] || 'bg-blue-500';
+
+                              return (
+                                <div
+                                  key={op.id}
+                                  draggable
+                                  onDragStart={(e) => { e.dataTransfer.setData('opId', op.id); e.dataTransfer.effectAllowed = 'move'; }}
+                                  title={`${op.operationName} | ${op.woTitle} | ${hrs}h`}
+                                  className={`absolute top-2 bottom-2 rounded-lg border-2 cursor-grab active:cursor-grabbing px-2 py-1 overflow-hidden transition-all hover:z-30 hover:shadow-lg hover:-translate-y-0.5 select-none ${blockCls}`}
+                                  style={{ left: leftPx, width: w, backgroundColor: op.woPriority==='Urgent'?'#fee2e2':op.woPriority==='High'?'#ffedd5':'#dbeafe', borderColor: op.woPriority==='Urgent'?'#ef4444':op.woPriority==='High'?'#f97316':'#3b82f6', zIndex: 40 }}
+                                >
+                                  <div className="flex items-center gap-1 mb-0.5">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotCls}`}/>
+                                    <span className="text-[8px] font-mono font-bold text-secondary truncate">{op.woId}</span>
+                                    <span className="ml-auto text-[8px] font-mono font-black text-primary shrink-0">{hrs}h</span>
+                                  </div>
+                                  <p className="text-[10px] font-bold text-primary truncate leading-tight">{op.operationName}</p>
+                                  {w > 90 && <p className="text-[8px] text-muted truncate mt-0.5">{op.woTitle}</p>}
+                                  {op.scheduledStart && w > 70 && (
+                                    <p className="text-[7px] font-mono text-secondary/70 mt-0.5">
+                                      {new Date(op.scheduledStart).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}–{new Date(op.scheduledEnd).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </GlassCard>
+
+              {/* ════ UNASSIGNED QUEUE ════ */}
+              <div className="w-72 shrink-0 flex flex-col gap-3">
+                <div className="bg-surface2/30 rounded-2xl p-0 border border-theme-subtle flex flex-col overflow-hidden max-h-[600px]" onDragEnter={(e:any) => e.preventDefault()}
+                  onDragOver={(e:any) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('ring-2','ring-rex-500/40'); }}
+                  onDragLeave={(e:any) => e.currentTarget.classList.remove('ring-2','ring-rex-500/40')}
+                  onDrop={(e:any) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('ring-2','ring-rex-500/40');
+                    const opId = e.dataTransfer.getData('opId');
+                    if (opId) handleAssignOperation(opId, 'employeeId', '', '');
+                  }}
+                >
+                  {/* header */}
+                  <div className="px-4 py-3 border-b border-theme-subtle bg-surface2/20 shrink-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-primary flex items-center gap-2"><ListChecks size={14} className="text-rex-500"/>Unscheduled</span>
+                      <span className="text-[10px] font-black bg-rex-500/10 text-rex-600 px-2 py-0.5 rounded-full">{unassigned.length}</span>
+                    </div>
+                    <p className="text-[9px] text-muted mt-1">Drag onto timeline row to schedule ↗</p>
+                  </div>
+
+                  {/* list */}
+                  <div className="overflow-y-auto flex-1 p-2 space-y-2">
+                    {unassigned.length === 0 ? (
+                      <div className="py-12 flex flex-col items-center gap-2">
+                        <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center"><CheckCircle size={20} className="text-green-500"/></div>
+                        <p className="text-xs font-bold text-primary">All Scheduled!</p>
+                        <p className="text-[10px] text-muted text-center">No pending operations.</p>
+                      </div>
+                    ) : unassigned.sort((a:any,b:any) => {
+                        const order: Record<string,number> = { Urgent:0, High:1, Normal:2 };
+                        return (order[a.woPriority]??2) - (order[b.woPriority]??2);
+                      }).map((op:any, i:number) => {
+                        const prio = op.woPriority as string;
+                        const cardCls = prio==='Urgent' ? 'border-red-400/50 bg-red-500/5'
+                                      : prio==='High'   ? 'border-orange-400/50 bg-orange-500/5'
+                                      :                   'border-theme-subtle bg-surface';
+                        const dotCls = priorityDot[prio] || 'bg-blue-500';
+                        return (
+                          <div
+                            key={op.id}
+                            draggable
+                            onDragStart={(e) => { e.dataTransfer.setData('opId', op.id); e.dataTransfer.effectAllowed = 'move'; }}
+                            className={`group cursor-grab active:cursor-grabbing rounded-xl border p-2.5 transition-all hover:shadow-md hover:-translate-y-0.5 ${cardCls}`}
+                          >
+                            <div className="flex items-start justify-between mb-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`w-2 h-2 rounded-full ${dotCls}`}/>
+                                <span className="text-[9px] font-black uppercase tracking-wider text-muted">{prio}</span>
+                              </div>
+                              <span className="text-[10px] font-mono font-black text-primary">{Number(op.plannedHours).toFixed(1)}h</span>
+                            </div>
+                            <p className="text-[11px] font-bold text-primary truncate mb-0.5">{op.operationName}</p>
+                            <p className="text-[9px] text-muted truncate mb-2">{op.woId} · {op.woTitle}</p>
+                            {op.woNotes && (
+                              <p className="text-[8px] text-secondary/80 bg-surface2/60 rounded px-1.5 py-1 mb-2 line-clamp-2 leading-relaxed">{op.woNotes}</p>
+                            )}
+                            <select
+                              className="w-full input-base text-[10px] py-1"
+                              value=""
+                              onChange={(e) => { if(e.target.value) handleAssignOperation(op.id,'employeeId',e.target.value); }}
+                            >
+                              <option value="">Quick assign to…</option>
+                              {employees.map((em:any) => <option key={em.id} value={em.id}>{em.name}</option>)}
+                            </select>
+                          </div>
+                        );
+                    })}
+                  </div>
+                </div>
+
+                {/* mini legend */}
+                <GlassCard className="p-3 text-[9px] text-muted space-y-1.5 border border-theme-subtle">
+                  <p className="font-black uppercase tracking-widest text-secondary mb-2">How to use</p>
+                  <p>① Drag card → employee row to schedule</p>
+                  <p>② Drop onto desired hour slot for exact time</p>
+                  <p>③ Drag block back here to unschedule</p>
+                  <p>④ Move blocks between rows to reassign</p>
+                </GlassCard>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* PRODUCTION PLANNER MODAL */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Advanced Production Planner" size="2xl">
@@ -329,11 +675,12 @@ export const WorkOrders: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${trackWO.priority === 'High' || trackWO.priority === 'Urgent' ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-surface2 text-muted border border-theme-subtle'}`}><Zap size={9}/> {trackWO.priority}</span>
-                    <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${trackWO.status === 'Completed' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-surface2 text-muted border-theme-subtle'}`}>{trackWO.status}</span>
+                    <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${trackWO.status === 'Completed' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-surface2 text-muted border border-theme-subtle'}`}>{trackWO.status}</span>
                     <span className="text-[10px] font-mono text-muted">{trackWO.id}</span>
                   </div>
                   <h2 className="text-lg font-bold text-primary truncate">{trackWO.title}</h2>
-                  <p className="text-xs text-muted mt-0.5">{trackWO.customerId || 'No customer assigned'}</p>
+                    <p className="text-xs text-muted mt-0.5">{trackWO.customerName || trackWO.customerId || 'No customer assigned'}</p>
+                    {trackWO.notes && <div className="mt-2 text-xs text-secondary/90 bg-surface2/40 p-2 rounded-lg border border-theme-subtle max-h-20 overflow-y-auto whitespace-pre-wrap"><span className="font-bold uppercase tracking-wider text-[9px] block mb-0.5">Job Scope:</span>{trackWO.notes}</div>}
                 </div>
                 <div className="flex gap-3 ml-4 shrink-0">
                   {[{label:'Done', val: trackPct + '%', sub: null}, {label:'Ops', val: trackDone + '/' + trackOps.length, sub: trackInProgress > 0 ? trackInProgress + ' active' : 'none active'}, {label:'Est. Hrs', val: trackTotalHrs.toFixed(1), sub: 'planned'}, {label:'Dispatched', val: String(dispatchedHistory.length), sub: 'items'}].map((kpi, i) => (
@@ -355,33 +702,196 @@ export const WorkOrders: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto">
               {/* OVERVIEW TAB */}
-              {trackTab === 'overview' && (
-                <div className="p-6 space-y-6">
-                  <div className="bg-surface border border-theme-subtle rounded-xl p-5">
-                    <div className="flex justify-between text-xs font-semibold mb-2"><span className="text-secondary">Overall Completion</span><span className={trackPct === 100 ? 'text-green-500' : 'text-primary'}>{trackPct}%</span></div>
-                    <div className="h-3 bg-surface2 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all ${trackPct === 100 ? 'bg-green-500' : trackPct > 50 ? 'bg-blue-500' : 'bg-rex-500'}`} style={{ width: trackPct + '%' }}/></div>
-                    <div className="flex justify-between text-[10px] text-muted mt-2"><span>{trackDone} completed</span><span>{trackOps.length - trackDone} remaining</span></div>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-3">Operations at a Glance</h4>
-                    <div className="space-y-2">
-                      {trackOps.map((op: any, i: number) => { const isComplete = op.status === 'Completed'; const isProgress = op.status === 'In Progress'; const isFailed = op.status === 'Rework Required'; const isQc = op.status === 'QC Pending'; const m = machineries.find(m => m.id === op.machineId); return ( <div key={op.id} className={`flex items-center gap-3 px-4 py-3 rounded-lg border text-sm ${isComplete ? 'border-green-500/20 bg-green-500/5' : isProgress ? 'border-blue-500/20 bg-blue-500/5' : isFailed ? 'border-red-500/20 bg-red-500/5' : isQc ? 'border-amber-500/20 bg-amber-500/5' : 'border-theme-subtle bg-surface'}`}><div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${isComplete ? 'bg-green-500 text-white' : isProgress ? 'bg-blue-500 text-white' : isFailed ? 'bg-red-500 text-white' : isQc ? 'bg-amber-500 text-white' : 'bg-surface2 text-muted'}`}>{isComplete ? <CheckCircle size={10}/> : isFailed ? <AlertTriangle size={10}/> : (i + 1)}</div><div className="flex-1 min-w-0"><p className="font-semibold text-xs text-primary truncate">{op.operationName}</p><p className="text-[10px] text-muted">{m?.name || 'Any machine'}</p></div><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isComplete ? 'text-green-600 bg-green-500/10' : isProgress ? 'text-blue-600 bg-blue-500/10' : isFailed ? 'text-red-600 bg-red-500/10' : isQc ? 'text-amber-600 bg-amber-500/10' : 'text-muted bg-surface2'}`}>{op.status}</span><span className="text-[10px] font-mono text-muted">{op.plannedHours}h</span></div> ) })}
-                      {trackOps.length === 0 && <div className="text-xs text-muted text-center py-8 border border-dashed border-theme-subtle rounded-lg">No operations on this work order.</div>}
-                    </div>
-                  </div>
-                  {dispatchedHistory.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-3 flex items-center gap-2"><Archive size={13}/> Recent Dispatches</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {dispatchedHistory.slice(0,4).map((h, i) => ( <div key={i} className="p-3 border border-theme-subtle rounded-lg bg-surface flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-primary truncate">{h.materialName}</p><p className="text-[10px] text-muted">{new Date(h.createdAt).toLocaleDateString()}</p></div><span className="text-xs font-mono font-bold text-rex-500 shrink-0">{h.qty} {h.unit}</span></div> ))}
-                      </div>
-                      {dispatchedHistory.length > 4 && <button onClick={() => setTrackTab('stores')} className="mt-2 text-xs text-rex-500 hover:underline">View all {dispatchedHistory.length} dispatches →</button>}
-                    </div>
-                  )}
-                </div>
-              )}
+                {trackTab === 'overview' && (() => {
+                  const activeOps = trackOps.filter((o:any) => o.status === 'In Progress' || o.status === 'QC Pending' || o.status === 'Rework Required');
+                  const nextOp = trackOps.find((o:any) => o.status === 'Pending');
+                  const daysLeft = trackWO.deadline ? Math.ceil((new Date(trackWO.deadline).getTime() - new Date().getTime()) / (1000 * 3600 * 24)) : null;
 
-              {/* STORES TAB */}
+                  return (
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        {/* LEFT COLUMN - Progress & Workflow */}
+                        <div className="lg:col-span-2 space-y-6">
+                          
+                          {/* Progress Section */}
+                          <div className="bg-surface border border-theme-subtle rounded-xl p-6 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-8 opacity-5">
+                              <TrendingUp size={100} />
+                            </div>
+                            <div className="relative z-10">
+                              <div className="flex justify-between items-end mb-3">
+                                <div>
+                                  <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-1">Production Progress</h4>
+                                  <p className="text-2xl font-black text-primary font-mono">{trackPct}% <span className="text-xs text-muted font-sans font-medium">Completed</span></p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs font-bold text-primary">{trackDone} of {trackOps.length} steps done</p>
+                                  <p className="text-[10px] text-muted">Est. {trackTotalHrs.toFixed(1)}h total effort</p>
+                                </div>
+                              </div>
+                              <div className="h-4 bg-surface2 rounded-full overflow-hidden border border-theme-subtle/50">
+                                <div className={`h-full rounded-full transition-all ${trackPct === 100 ? 'bg-green-500' : trackPct > 50 ? 'bg-blue-500' : 'bg-rex-500'}`} style={{ width: trackPct + '%' }}/>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Current Status Callout */}
+                          {activeOps.length > 0 ? (
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-bold text-secondary uppercase tracking-widest flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"/> Currently Active Operations
+                              </h4>
+                              {activeOps.map((op:any, i:number) => {
+                                const m = machineries.find((mc:any) => mc.id === op.machineId);
+                                const e = employees.find((em:any) => em.id === op.employeeId);
+                                return (
+                                  <div key={i} className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                      <span className="text-[9px] font-black text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider mb-2 inline-block">Step {op.stepNumber || i+1}</span>
+                                      <p className="text-sm font-bold text-primary">{op.operationName}</p>
+                                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-secondary">
+                                        <span className="flex items-center gap-1"><UserCheck size={12}/> {op.employeeName || e?.name || 'Unassigned Operator'}</span>
+                                        <span className="flex items-center gap-1"><Settings size={12}/> {m?.name || 'Any Machine'}</span>
+                                      </div>
+                                    </div>
+                                    <button onClick={() => setTrackTab('operations')} className="shrink-0 px-4 py-2 bg-blue-500 text-white text-xs font-bold rounded-lg hover:bg-blue-600 transition-colors shadow-sm">Manage Operation</button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : nextOp ? (
+                            <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-5 flex items-center justify-between border-dashed">
+                              <div>
+                                <p className="text-xs font-bold text-primary mb-1">Ready for next step: <span className="text-rex-600">{nextOp.operationName}</span></p>
+                                <p className="text-[10px] text-muted">No operations are currently in progress.</p>
+                              </div>
+                              <button onClick={() => setTrackTab('operations')} className="px-3 py-1.5 bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-bold text-primary rounded-lg transition-colors">Start Step</button>
+                            </div>
+                          ) : trackPct === 100 ? (
+                            <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-600">
+                                  <CheckCircle size={20}/>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-green-700">All Operations Completed</p>
+                                  <p className="text-xs text-green-600/70">This work order is ready for final delivery or invoicing.</p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {/* Timeline View */}
+                          <div>
+                            <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-4">Production Timeline</h4>
+                            <div className="relative pl-3 space-y-0">
+                              <div className="absolute top-2 bottom-4 left-[15px] w-0.5 bg-surface2"/>
+                              {trackOps.map((op:any, i:number) => {
+                                const isDone = op.status === 'Completed';
+                                const isActive = op.status === 'In Progress' || op.status === 'QC Pending' || op.status === 'Rework Required';
+                                const colorClass = isDone ? 'bg-green-500' : isActive ? 'bg-blue-500 ring-4 ring-blue-500/20' : 'bg-surface2 border-2 border-theme-subtle';
+                                
+                                return (
+                                  <div key={i} className="relative flex gap-4 pb-5 group">
+                                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 z-10 ${colorClass}`}/>
+                                    <div className="flex-1 min-w-0 bg-surface border border-theme-subtle rounded-lg p-3 group-hover:border-primary/30 transition-colors">
+                                      <div className="flex justify-between items-start mb-1">
+                                        <p className={`text-xs font-bold ${isDone ? 'text-secondary line-through opacity-70' : isActive ? 'text-blue-600' : 'text-primary'}`}>{op.operationName}</p>
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isDone ? 'bg-green-500/10 text-green-600' : isActive ? 'bg-blue-500/10 text-blue-600' : 'bg-surface2 text-muted'}`}>{op.status}</span>
+                                      </div>
+                                      <div className="flex items-center gap-3 text-[10px] text-muted font-mono">
+                                        <span>Op {i+1}</span>
+                                        <span>•</span>
+                                        <span>{Number(op.plannedHours).toFixed(1)}h</span>
+                                        {op.employeeName && <span>• {op.employeeName}</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                        </div>
+
+                        {/* RIGHT COLUMN - Meta & Options */}
+                        <div className="space-y-4">
+                          
+                          {/* Quick Info Card */}
+                          <GlassCard className="p-4 border-theme-subtle space-y-4">
+                            <div>
+                              <p className="text-[9px] text-muted uppercase font-bold tracking-wider mb-1">Work Order Deadline</p>
+                              {trackWO.deadline ? (
+                                <div className="flex items-center gap-2">
+                                  <Clock size={14} className={daysLeft && daysLeft < 3 ? 'text-red-500' : 'text-primary'}/>
+                                  <span className="text-sm font-bold text-primary">{new Date(trackWO.deadline).toLocaleDateString()}</span>
+                                  {daysLeft !== null && (
+                                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${daysLeft < 0 ? 'bg-red-500/10 text-red-600' : daysLeft <= 3 ? 'bg-orange-500/10 text-orange-600' : 'bg-green-500/10 text-green-600'}`}>
+                                      {daysLeft < 0 ? `Overdue by ${Math.abs(daysLeft)}d` : `${daysLeft} days left`}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : <span className="text-xs text-muted">No deadline set</span>}
+                            </div>
+                            
+                            <hr className="border-theme-subtle"/>
+                            
+                            <div>
+                              <p className="text-[9px] text-muted uppercase font-bold tracking-wider mb-1">Customer / Lead</p>
+                              <div className="flex items-center gap-2">
+                                <UserCheck size={14} className="text-muted"/>
+                                <span className="text-sm font-bold text-primary truncate">{trackWO.customerName || trackWO.customerId || 'Internal Job'}</span>
+                              </div>
+                            </div>
+                            
+                            <hr className="border-theme-subtle"/>
+
+                            <div>
+                              <p className="text-[9px] text-muted uppercase font-bold tracking-wider mb-2">Manager Options</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => alert('Change Priority dialog would open here')} className="px-2 py-1.5 text-[10px] font-bold bg-surface2 border border-theme-subtle hover:bg-surface2/80 rounded transition-colors text-primary flex items-center justify-center gap-1.5"><AlertCircle size={12}/> Priority</button>
+                                <button onClick={() => alert('Change Deadline dialog would open here')} className="px-2 py-1.5 text-[10px] font-bold bg-surface2 border border-theme-subtle hover:bg-surface2/80 rounded transition-colors text-primary flex items-center justify-center gap-1.5"><Clock size={12}/> Deadline</button>
+                                <button onClick={() => setTrackTab('operations')} className="px-2 py-1.5 text-[10px] font-bold bg-surface2 border border-theme-subtle hover:bg-surface2/80 rounded transition-colors text-primary flex items-center justify-center gap-1.5"><Settings size={12}/> Re-assign</button>
+                                <button onClick={() => alert('Cancel Work Order dialog would open here')} className="px-2 py-1.5 text-[10px] font-bold bg-red-500/5 border border-red-500/20 hover:bg-red-500/10 rounded transition-colors text-red-600 flex items-center justify-center gap-1.5"><Trash2 size={12}/> Cancel WO</button>
+                              </div>
+                            </div>
+                          </GlassCard>
+
+                          {/* Notes Section */}
+                          <GlassCard className="p-4 border-theme-subtle flex flex-col">
+                            <h4 className="text-[9px] text-muted uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5"><Layers size={12}/> Job Notes & Instructions</h4>
+                            <div className="text-xs text-secondary bg-surface2/30 p-3 rounded-lg border border-theme-subtle whitespace-pre-wrap max-h-48 overflow-y-auto">
+                              {trackWO.notes || <span className="text-muted italic">No specific instructions provided.</span>}
+                            </div>
+                          </GlassCard>
+
+                          {/* Dispatches Summary */}
+                          {dispatchedHistory.length > 0 && (
+                            <GlassCard className="p-4 border-theme-subtle">
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="text-[9px] text-muted uppercase font-bold tracking-wider flex items-center gap-1.5"><Archive size={12}/> Inventory Pulled</h4>
+                                <button onClick={() => setTrackTab('stores')} className="text-[9px] text-rex-500 font-bold hover:underline">View All</button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {dispatchedHistory.slice(0,3).map((h:any, i:number) => (
+                                  <div key={i} className="flex justify-between items-center text-xs">
+                                    <span className="text-secondary truncate pr-2">{h.materialName}</span>
+                                    <span className="font-mono font-bold text-primary shrink-0">{h.qty} {h.unit}</span>
+                                  </div>
+                                ))}
+                                {dispatchedHistory.length > 3 && <div className="text-[10px] text-muted text-center pt-2">+{dispatchedHistory.length - 3} more items</div>}
+                              </div>
+                            </GlassCard>
+                          )}
+
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* STORES TAB */}
               {trackTab === 'stores' && (
                 <div className="flex flex-col md:flex-row h-full divide-x divide-theme-subtle">
                   <div className="w-full md:w-1/2 p-6 space-y-6 overflow-y-auto">
@@ -464,10 +974,26 @@ export const WorkOrders: React.FC = () => {
                             <div className="flex items-start justify-between gap-4 mb-4">
                               <div className="flex-1 min-w-0">
                                 <h4 className="text-base font-bold text-primary">{op.operationName}</h4>
-                                <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1.5 text-xs text-secondary">
-                                  <span className="flex items-center gap-1.5 font-medium"><Settings size={12} className="text-muted shrink-0"/> {m?.name || 'Any Available Machine'}</span>
-                                  <span className="flex items-center gap-1.5 font-medium"><Users size={12} className="text-muted shrink-0"/> {emp?.name || 'Any Operator'}</span>
-                                </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2 text-xs text-secondary">
+                                    <div className="flex items-center gap-1.5 font-medium">
+                                      <Settings size={12} className="text-muted shrink-0"/> 
+                                      {!isComplete ? (
+                                        <select value={op.machineId || ''} onChange={(e) => handleAssignOperation(op.id, 'machineId', e.target.value)} className="bg-transparent border-b border-theme-subtle focus:border-rex-500 outline-none pb-0.5 text-xs w-32 truncate">
+                                          <option value="">Any Machine</option>
+                                          {machineries.map(mach => <option key={mach.id} value={mach.id}>{mach.name}</option>)}
+                                        </select>
+                                      ) : <span>{m?.name || 'Any Machine'}</span>}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 font-medium">
+                                      <Users size={12} className="text-muted shrink-0"/>
+                                      {!isComplete ? (
+                                        <select value={op.employeeId || ''} onChange={(e) => handleAssignOperation(op.id, 'employeeId', e.target.value)} className="bg-transparent border-b border-theme-subtle focus:border-rex-500 outline-none pb-0.5 text-xs w-32 truncate">
+                                          <option value="">Any Operator</option>
+                                          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                        </select>
+                                      ) : <span>{op.employeeName || emp?.name || 'Any Operator'}</span>}
+                                    </div>
+                                  </div>
                               </div>
                               <div className="text-right shrink-0 flex gap-2">
                                 <span className="text-[10px] font-mono font-medium px-2 py-0.5 bg-surface2 border border-theme-subtle rounded-md text-secondary">Est <span className="font-bold text-primary">{op.plannedHours}h</span></span>

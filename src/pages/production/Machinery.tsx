@@ -30,7 +30,7 @@ export const Machinery: React.FC = () => {
   
   const [manageMachine, setManageMachine] = useState<any>(null)
   const [manageCategory, setManageCategory] = useState<any>(null)
-  const [opForm, setOpForm] = useState({ id: '', name: '', hrRate: '', setTimeRate: '' })
+  const [opForm, setOpForm] = useState({ id: '', name: '', hrRate: '', setTimeRate: '', machineId: '' })
 
   const fetchData = async () => {
     setLoading(true)
@@ -71,11 +71,19 @@ export const Machinery: React.FC = () => {
 
   const handleSaveOperators = async () => {
     if (!manageMachine) return
-    await fetch(`${API_URL}/production/machineries/${manageMachine.id}/operators`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeIds: assignedOperators })
-    })
-    setManageMachine(null)
+    try {
+      const res = await fetch(`${API_URL}/production/machineries/${manageMachine.id}/operators`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeIds: assignedOperators })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Server error')
+      setManageMachine(null)
+      fetchData()
+    } catch (err: any) {
+      console.error(err);
+      alert("DB Error: " + err.message);
+    }
   }
 
   const handleSaveCategory = async (e: React.FormEvent) => {
@@ -86,10 +94,10 @@ export const Machinery: React.FC = () => {
 
   const handleSaveOp = async (e: React.FormEvent) => {
     e.preventDefault(); if (!manageCategory) return
-    const payload = { machineId: manageCategory.id, groupName: manageCategory.name, name: opForm.name, hrRate: Number(opForm.hrRate), setTimeRate: Number(opForm.setTimeRate) }
+    const payload = { machineId: opForm.machineId || null, groupName: manageCategory.name, name: opForm.name, hrRate: Number(opForm.hrRate), setTimeRate: Number(opForm.setTimeRate) }
     if (opForm.id) await api.updateMachiningOperation(opForm.id, payload)
     else await api.createMachiningOperation(payload)
-    setOpForm({ id: '', name: '', hrRate: '', setTimeRate: '' })
+    setOpForm({ id: '', name: '', hrRate: '', setTimeRate: '', machineId: '' })
     const opsRes = await api.fetchMachiningOperations()
     setOperations(Array.isArray(opsRes) ? opsRes : [])
   }
@@ -101,7 +109,7 @@ export const Machinery: React.FC = () => {
     setOperations(Array.isArray(opsRes) ? opsRes : [])
   }
 
-  const handleEditOp = (op: any) => setOpForm({ id: op.id, name: op.name, hrRate: String(op.hrRate), setTimeRate: String(op.setTimeRate) })
+  const handleEditOp = (op: any) => setOpForm({ id: op.id, name: op.name, hrRate: String(op.hrRate), setTimeRate: String(op.setTimeRate), machineId: op.machineId || '' })
 
   let filteredMachines = machines.filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.model.toLowerCase().includes(search.toLowerCase()))
   if (filterStatus !== 'All') filteredMachines = filteredMachines.filter(r => r.status === filterStatus)
@@ -123,6 +131,13 @@ export const Machinery: React.FC = () => {
     },
     { key: 'type', header: 'Category', render: (v: any) => <span className="text-xs text-secondary truncate">{String(v)}</span> },
     { key: 'model', header: 'Model / Serial', render: (v: any) => <span className="text-[10px] text-muted">{String(v)}</span> },
+      { key: 'operators', header: 'Assigned Operators', render: (v: any) => (
+        <div className="flex flex-wrap gap-1">
+          {Array.isArray(v) && v.length > 0 ? v.map((op, i) => (
+            <Badge key={i} value={op} variant="default" size="sm" />
+          )) : <span className="text-[10px] text-muted italic">None</span>}
+        </div>
+      )},
     { key: 'status', header: 'Status', render: (v: any) => <Badge value={String(v).toUpperCase()} variant={v === 'Active' ? 'success' : v === 'Maintenance' ? 'warning' : 'error'} size="sm" /> },
     { key: 'actions', header: '', align: 'right', render: (_, row) => <Button variant="ghost" size="sm" icon={Users} onClick={() => { setManageMachine(row); fetchAssignedOperators(row.id) }} className="text-xs">Operators</Button> }
   ]
@@ -216,7 +231,7 @@ export const Machinery: React.FC = () => {
       )}
 
       {/* CATEGORY OPERATIONS MODAL */}
-      <Modal isOpen={!!manageCategory} onClose={() => { setManageCategory(null); setOpForm({ id: '', name: '', hrRate: '', setTimeRate: '' }) }} title={`Operations: ${manageCategory?.name}`} size="2xl">
+      <Modal isOpen={!!manageCategory} onClose={() => { setManageCategory(null); setOpForm({ id: '', name: '', hrRate: '', setTimeRate: '', machineId: '' }) }} title={`Operations: ${manageCategory?.name}`} size="2xl">
         {manageCategory && (
           <div className="p-0">
             <div className="p-4 bg-surface2/30 border-b border-theme-subtle flex gap-4">
@@ -229,34 +244,51 @@ export const Machinery: React.FC = () => {
                   <label className="block text-[10px] text-muted mb-1">HR RATE</label>
                   <input required type="number" step="0.01" min="0" className="w-full input-base py-1.5 text-xs font-mono" value={opForm.hrRate} onChange={e => setOpForm({...opForm, hrRate: e.target.value})}/>
                 </div>
-                <div className="w-28">
-                  <label className="block text-[10px] text-muted mb-1">SET TIME</label>
-                  <input required type="number" step="0.01" min="0" className="w-full input-base py-1.5 text-xs font-mono" value={opForm.setTimeRate} onChange={e => setOpForm({...opForm, setTimeRate: e.target.value})}/>
-                </div>
+                
+                  <div className="w-24">
+                    <label className="block text-[10px] text-muted mb-1">SET TIME</label>
+                    <input required type="number" step="0.01" min="0" className="w-full input-base py-1.5 text-xs font-mono" value={opForm.setTimeRate} onChange={e => setOpForm({...opForm, setTimeRate: e.target.value})}/>
+                  </div>
+                  <div className="w-40">
+                    <label className="block text-[10px] text-muted mb-1">PHYSICAL MACHINE</label>
+                    <select className="w-full input-base py-1.5 text-xs truncate" value={opForm.machineId} onChange={e => setOpForm({...opForm, machineId: e.target.value})}>
+                      <option value="">-- None --</option>
+                      {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                  </div>
+
                 <Button variant="primary" size="sm" type="submit" icon={opForm.id ? Save : Plus} className="mb-0.5">{opForm.id ? 'Update' : 'Add'}</Button>
-                {opForm.id && <Button variant="ghost" size="sm" onClick={() => setOpForm({ id: '', name: '', hrRate: '', setTimeRate: '' })} type="button" className="mb-0.5">Cancel</Button>}
+                {opForm.id && <Button variant="ghost" size="sm" onClick={() => setOpForm({ id: '', name: '', hrRate: '', setTimeRate: '', machineId: '' })} type="button" className="mb-0.5">Cancel</Button>}
               </form>
             </div>
 
             <div className="max-h-[50vh] overflow-y-auto">
-              <div className="grid grid-cols-12 px-5 py-2.5 border-b border-theme-subtle bg-surface2/40 text-[10px] font-semibold uppercase tracking-widest text-muted sticky top-0">
-                <div className="col-span-6">Name</div>
-                <div className="col-span-3 text-right">Hr Rate</div>
-                <div className="col-span-3 text-right">Set Time</div>
-              </div>
+              
+                <div className="grid grid-cols-12 px-5 py-2.5 border-b border-theme-subtle bg-surface2/40 text-[10px] font-semibold uppercase tracking-widest text-muted sticky top-0">
+                  <div className="col-span-4">Name</div>
+                  <div className="col-span-3">Assigned Machine</div>
+                  <div className="col-span-2 text-right">Hr Rate</div>
+                  <div className="col-span-3 text-right">Set Time</div>
+                </div>
+
               <div className="divide-y divide-theme-subtle bg-surface">
                 {currentCategoryOps.length === 0 ? (
                   <div className="p-8 text-center text-xs text-muted">No operations mapped to this category.</div>
                 ) : currentCategoryOps.map((op) => (
                   <div key={op.id} className="grid grid-cols-12 items-center gap-4 px-5 py-3.5 table-row-hover transition-colors">
-                    <div className="col-span-6 flex items-center gap-2 min-w-0">
-                      <span className="text-xs font-medium text-primary truncate">{op.name}</span>
-                    </div>
-                    <div className="col-span-3 text-right">
-                      <span className="text-xs text-secondary font-mono">{formatCurrency(op.hrRate)}</span>
-                    </div>
-                    <div className="col-span-3 flex items-center justify-end gap-4">
-                      <span className="text-xs text-secondary font-mono">{formatCurrency(op.setTimeRate)}</span>
+                    
+                      <div className="col-span-4 flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-medium text-primary truncate">{op.name}</span>
+                      </div>
+                      <div className="col-span-3 flex items-center">
+                        {op.machineId ? <Badge size="sm" variant="default" value={machines.find(m => m.id === op.machineId)?.name || op.machineId} /> : <span className="text-[10px] text-muted italic">Unassigned</span>}
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="text-xs text-secondary font-mono">{formatCurrency(op.hrRate)}</span>
+                      </div>
+                      <div className="col-span-3 flex items-center justify-end gap-4">
+                        <span className="text-xs text-secondary font-mono">{formatCurrency(op.setTimeRate)}</span>
+
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{opacity: 1}}>
                         <button onClick={() => handleEditOp(op)} className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"><Edit size={12}/></button>
                         <button onClick={() => handleDeleteOp(op.id)} className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-red-500 transition-colors"><Trash2 size={12}/></button>
