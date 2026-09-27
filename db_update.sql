@@ -1,0 +1,3 @@
+﻿ALTER TABLE work_order_operations
+ADD COLUMN scheduledStart DATETIME NULL DEFAULT NULL,
+ADD COLUMN scheduledEnd DATETIME NULL DEFAULT NULL;

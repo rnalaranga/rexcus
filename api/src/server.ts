@@ -162,7 +162,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.json({ success: true, user: { id, name, username, role: userRole } });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -190,7 +190,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -202,7 +202,7 @@ app.get('/api/settings', async (req, res) => {
     res.json(settingsObj);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -215,7 +215,7 @@ app.post('/api/settings', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -226,7 +226,7 @@ app.get('/api/users', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -243,7 +243,7 @@ app.post('/api/users', async (req, res) => {
     res.json({ success: true, user: { id, name, username, role: role || 'user' } });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -254,7 +254,7 @@ app.put('/api/users/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -266,7 +266,7 @@ app.put('/api/users/:id/password', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -276,7 +276,7 @@ app.delete('/api/users/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -287,7 +287,7 @@ app.get('/api/customers', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -298,7 +298,7 @@ app.post('/api/customers', async (req, res) => {
     res.json({ success: true, id: data.id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -310,7 +310,7 @@ app.put('/api/customers/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -321,7 +321,7 @@ app.get('/api/leads', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -332,7 +332,7 @@ app.post('/api/leads', async (req, res) => {
     res.json({ success: true, id: data.id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -344,7 +344,7 @@ app.put('/api/leads/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -355,7 +355,7 @@ app.delete('/api/leads/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -367,7 +367,7 @@ app.put('/api/deals/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -378,7 +378,7 @@ app.delete('/api/deals/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -389,7 +389,7 @@ app.get('/api/deals', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -400,7 +400,7 @@ app.post('/api/deals', async (req, res) => {
     res.json({ success: true, id: data.id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -411,7 +411,7 @@ app.get('/api/quotations', async (req, res) => {
       res.json(rows);
     } catch (error) {
       console.error(error);
-      res.status(500).json({ error: 'Internal Server Error' });
+      res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
     }
 });
 
@@ -422,7 +422,7 @@ app.get('/api/quotations/:leadId', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -452,7 +452,7 @@ app.post('/api/quotations', async (req, res) => {
     res.json({ success: true, quotation: newQuotation });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -467,7 +467,7 @@ app.put('/api/quotations/update/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -478,7 +478,7 @@ app.delete('/api/quotations/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -489,7 +489,7 @@ app.get('/api/inventory', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -505,7 +505,7 @@ app.post('/api/inventory', async (req, res) => {
     res.json({ success: true, item });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -518,7 +518,7 @@ app.put('/api/inventory/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -529,7 +529,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 // -- STOCK LEDGER --
@@ -540,7 +540,7 @@ app.get('/api/inventory/:id/ledger', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -580,7 +580,7 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
     res.json({ success: true, entry });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 // -- SUPPLIERS --
@@ -590,7 +590,7 @@ app.get('/api/suppliers', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -606,7 +606,7 @@ app.post('/api/suppliers', async (req, res) => {
     res.json({ success: true, item });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -619,7 +619,7 @@ app.put('/api/suppliers/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -630,7 +630,7 @@ app.delete('/api/suppliers/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -641,7 +641,7 @@ app.get('/api/followups', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -652,7 +652,7 @@ app.get('/api/followups/related/:type/:id', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -667,7 +667,7 @@ app.post('/api/followups', async (req, res) => {
     res.json({ success: true, id: data.id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -679,7 +679,7 @@ app.put('/api/followups/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -690,7 +690,7 @@ app.delete('/api/followups/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -701,7 +701,7 @@ app.get('/api/invoices', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -709,10 +709,27 @@ app.post('/api/invoices', async (req, res) => {
   try {
     const data = req.body;
     await db.query('INSERT INTO invoices SET ?', data);
+    
+    try {
+      const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" LIMIT 1');
+      const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" LIMIT 1');
+      if (arAcc.length > 0 && salesAcc.length > 0) {
+        const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
+        await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.id, description: 'Auto GL: Invoice Generated', totalAmount: totalAmount });
+        const totalAmount = Number(data.total) || 0;
+        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [
+          [
+            ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, totalAmount, 0, data.customerId || null, 'Customer'],
+            ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, totalAmount, null, null]
+          ]
+        ]);
+      }
+    } catch (e) { console.error('Auto GL Invoice Error:', e); }
+
     res.json({ success: true, id: data.id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -724,7 +741,7 @@ app.put('/api/invoices/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -735,7 +752,7 @@ app.delete('/api/invoices/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -745,7 +762,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     const payment = req.body;
     
     // Get existing invoice
-    const [rows]: any = await db.query('SELECT payments, paidAmount, total FROM invoices WHERE id = ?', [id]);
+    const [rows]: any = await db.query('SELECT payments, paidAmount, total, customerId FROM invoices WHERE id = ?', [id]);
     if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
     
     const invoice = rows[0];
@@ -774,7 +791,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     res.json({ success: true, payment: newPayment, newStatus, newPaidAmount });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -787,7 +804,7 @@ app.get('/api/suppliers/:id', async (req, res) => {
     res.json(rows[0]);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -799,7 +816,7 @@ app.get('/api/supplier-ledger/:supplierId', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -816,7 +833,7 @@ app.post('/api/supplier-ledger', async (req, res) => {
     res.json({ success: true, item });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
@@ -827,7 +844,7 @@ app.delete('/api/supplier-ledger/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 

@@ -1,0 +1,1 @@
+﻿UPDATE inventory SET type = 'raw_material' WHERE type = 'product';

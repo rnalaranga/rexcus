@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload } from 'lucide-react'
+import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -10,7 +10,7 @@ import { useInventory, useSuppliers, useStockLedger } from '@/hooks/useData'
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 
-type TabType = 'all' | 'product' | 'service'
+type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service'
 
 const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpdate: () => void }) => {
   const { data: ledger, loading, refetch } = useStockLedger(inventoryId)
@@ -111,8 +111,8 @@ export const Inventory: React.FC = () => {
   const showToast = (type: 'success'|'error', msg: string) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
 
   const handleDownloadTemplate = () => {
-    const headers = ['Type(product/service)', 'Name', 'SKU', 'Description', 'UnitPrice', 'UnitCost', 'Quantity', 'UOM(pcs/kg/m)', 'Location', 'ReorderLevel']
-    const row = ['product', 'Sample Item', 'SKU-001', 'Description here', '1500', '1000', '10', 'pcs', 'Store A', '5']
+    const headers = ['Type(raw_material/finished_product/service/company_asset)', 'Name', 'SKU', 'Description', 'UnitPrice', 'UnitCost', 'Quantity', 'UOM(pcs/kg/m)', 'Location', 'ReorderLevel']
+    const row = ['raw_material', 'Sample Item', 'SKU-001', 'Description here', '1500', '1000', '10', 'pcs', 'Store A', '5']
     const csv = headers.join(',') + '\n' + row.join(',') + '\n'
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -147,7 +147,11 @@ export const Inventory: React.FC = () => {
 
         if (row.length < 2) continue
         
-        const type = (row[0]||'').toLowerCase() === 'service' ? 'service' : 'product'
+        let typeStr = (row[0]||'').toLowerCase().replace(' ', '_');
+        if (!['raw_material', 'finished_product', 'service', 'company_asset'].includes(typeStr)) {
+          typeStr = typeStr === 'product' ? 'finished_product' : 'raw_material';
+        }
+        const type = typeStr;
         const name = row[1]
         const sku = row[2] || ''
         const description = row[3] || ''
@@ -171,7 +175,7 @@ export const Inventory: React.FC = () => {
   }
 
 
-  const initialForm = { type: 'product', name: '', sku: '', description: '', unitPrice: '', unitCost: '', quantity: '0', status: 'active', uom: 'pcs', suppliers: [] as string[], location: '', reorderLevel: '0' }
+  const initialForm = { type: 'raw_material', name: '', sku: '', description: '', unitPrice: '', unitCost: '', quantity: '0', status: 'active', uom: 'pcs', suppliers: [] as string[], location: '', reorderLevel: '0' }
   const [formData, setFormData] = useState(initialForm)
 
   const filteredData = inventory.filter(item => 
@@ -260,26 +264,33 @@ export const Inventory: React.FC = () => {
     {
       header: 'Item Details',
       key: 'name',
-      render: (val: any, item) => (
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded ${item.type === 'product' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'}`}>
-            {item.type === 'product' ? <Package size={16} /> : <Wrench size={16} />}
-          </div>
-          <div>
+      render: (val: any, item) => {
+        let icon = <Box size={16} />;
+        let color = 'bg-emerald-500/10 text-emerald-400';
+        if (item.type === 'finished_product') { icon = <Package size={16} />; color = 'bg-blue-500/10 text-blue-400'; }
+        else if (item.type === 'service') { icon = <Wrench size={16} />; color = 'bg-purple-500/10 text-purple-400'; }
+        else if (item.type === 'company_asset') { icon = <Briefcase size={16} />; color = 'bg-amber-500/10 text-amber-400'; }
+        return (
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded ${color}`}>
+              {icon}
+            </div>
+            <div>
             <div className="font-semibold text-primary">{val}</div>
             {item.sku && <div className="text-[10px] text-muted font-mono">{item.sku}</div>}
           </div>
         </div>
       )
+      }
     },
     {
       header: 'Type',
       key: 'type',
-      render: (val: any) => (
-        <Badge variant={val === 'product' ? 'info' : 'warning'}>
-          {val.charAt(0).toUpperCase() + val.slice(1)}
-        </Badge>
-      )
+      render: (val: any) => {
+        const text = String(val).replace(/_/g, ' ');
+        const variant = val === 'raw_material' ? 'success' : val === 'finished_product' ? 'info' : val === 'company_asset' ? 'default' : 'warning';
+        return <Badge variant={variant as any}>{text.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</Badge>;
+      }
     },
     {
       header: 'Suppliers / Location',
@@ -302,7 +313,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Stock / Qty',
       key: 'quantity',
-      render: (val: any, item) => item.type === 'product' ? (
+      render: (val: any, item) => item.type !== 'service' ? (
         <span className={`font-mono ${Number(val) <= Number(item.reorderLevel || 0) ? 'text-red-500 font-bold' : 'text-secondary'}`}>
           {val} {item.uom} {Number(val) <= Number(item.reorderLevel || 0) && <span className="text-[10px] ml-1">(Low)</span>}
         </span>
@@ -551,19 +562,20 @@ export const Inventory: React.FC = () => {
 
       {/* Tabs & Controls */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle">
-          <button 
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'all' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-            onClick={() => setActiveTab('all')}
-          >All Items</button>
-          <button 
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'product' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-            onClick={() => setActiveTab('product')}
-          >Products</button>
-          <button 
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'service' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-            onClick={() => setActiveTab('service')}
-          >Services</button>
+        <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle overflow-x-auto max-w-full">
+          {[
+            { id: 'all', label: 'All Items' },
+            { id: 'raw_material', label: 'Raw Materials' },
+            { id: 'finished_product', label: 'Finished Products' },
+            { id: 'company_asset', label: 'Company Assets' },
+            { id: 'service', label: 'Services' }
+          ].map(t => (
+            <button 
+              key={t.id}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
+              onClick={() => setActiveTab(t.id as TabType)}
+            >{t.label}</button>
+          ))}
         </div>
 
         <div className="flex items-center gap-3 flex-1 justify-end">

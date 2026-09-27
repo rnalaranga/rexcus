@@ -98,6 +98,27 @@ export const Leads: React.FC = () => {
     setIsModalOpen(false)
   }
 
+  const handleConvertToCustomer = async () => {
+    if (!editId) return;
+    if (confirm('Are you sure you want to convert this lead to a Customer? It will be marked as Won.')) {
+      setSubmitting(true);
+      try {
+        const res = await fetch('http://localhost:3000/api/leads/' + editId + '/convert', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert('Successfully converted to Customer! ID: ' + data.customerId);
+          setIsModalOpen(false);
+          refetch();
+        } else {
+          alert('Error: ' + data.error);
+        }
+      } catch (e) {
+        alert('Network error');
+      }
+      setSubmitting(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!editId) return
     setDeleteTarget({ type: 'lead', id: editId })
@@ -108,9 +129,13 @@ export const Leads: React.FC = () => {
     setSubmitting(true)
     
     if (deleteTarget.type === 'lead') {
-      await deleteLead(deleteTarget.id as string)
-      await refetch()
-      setIsModalOpen(false)
+      const res = await deleteLead(deleteTarget.id as string)
+      if (res.error) {
+        alert("Cannot delete this lead because it has associated quotations, deals, or follow-ups. In an ERP system, you cannot delete records that have financial or transaction history. Please mark it as 'Lost' instead.");
+      } else {
+        await refetch()
+        setIsModalOpen(false)
+      }
     } else if (deleteTarget.type === 'quotation') {
       await deleteQuotation(String(deleteTarget.id))
       const fresh = await fetchQuotations(editId!)

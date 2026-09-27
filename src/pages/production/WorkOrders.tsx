@@ -295,7 +295,6 @@ export const WorkOrders: React.FC = () => {
       </>)}
 
       {viewMode === 'planning' && (() => {
-        const TODAY = new Date().toDateString();
         const allActiveOps = workOrders.flatMap((wo:any) =>
           wo.status !== 'Completed' && wo.operations
             ? wo.operations
@@ -307,8 +306,6 @@ export const WorkOrders: React.FC = () => {
                   woPriority: wo.priority,
                   woDeadline: wo.deadline,
                   woNotes: wo.notes,
-                  scheduledStart: o.scheduledStart,
-                  scheduledEnd: o.scheduledEnd,
                 }))
             : []
         );
@@ -316,82 +313,80 @@ export const WorkOrders: React.FC = () => {
         const assigned   = allActiveOps.filter((o:any) => !!o.employeeId);
 
         const START_HOUR = 6;
-        const END_HOUR   = 24;
+        const END_HOUR   = 22;
         const HOURS      = END_HOUR - START_HOUR;
-        const PPH        = 72; // pixels per hour
-        const ROW_H      = 64; // px
+        const PPH        = 80;
+        const ROW_H      = 72;
 
-        const priorityColors: Record<string, string> = {
-          Urgent: 'bg-red-500/20 border-red-500/50 text-red-700 dark:text-red-400',
-          High:   'bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-400',
-          Normal: 'bg-blue-500/15 border-blue-500/40 text-blue-700 dark:text-blue-400',
-        };
-        const priorityDot: Record<string, string> = {
-          Urgent: 'bg-red-500', High: 'bg-orange-500', Normal: 'bg-blue-500',
+        const prioStyle: Record<string, { bg: string; border: string; dot: string; badgeCls: string }> = {
+          Urgent: { bg: '#fef2f2', border: '#f87171', dot: '#ef4444', badgeCls: 'bg-red-100 text-red-700 border-red-200' },
+          High:   { bg: '#fff7ed', border: '#fb923c', dot: '#f97316', badgeCls: 'bg-orange-100 text-orange-700 border-orange-200' },
+          Normal: { bg: '#eff6ff', border: '#60a5fa', dot: '#3b82f6', badgeCls: 'bg-blue-100 text-blue-700 border-blue-200' },
         };
 
         return (
-          <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+          <div className="flex flex-col gap-5 animate-in fade-in duration-200">
 
-            {/* ── STATS BAR ── */}
+            {/* STATS ROW */}
             <div className="grid grid-cols-4 gap-3">
               {[
-                { label: 'Employees', value: employees.length, icon: <Users size={16}/>, color: 'text-blue-500' },
-                { label: 'Unscheduled', value: unassigned.length, icon: <AlertTriangle size={16}/>, color: unassigned.length > 0 ? 'text-amber-500' : 'text-green-500' },
-                { label: 'Scheduled', value: assigned.length, icon: <CheckCircle size={16}/>, color: 'text-green-500' },
-                { label: 'Total Hours', value: allActiveOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0).toFixed(1) + 'h', icon: <Clock size={16}/>, color: 'text-rex-500' },
+                { label: 'Employees',   value: employees.length,                                                                    icon: <Users size={15}/>,         color: 'text-blue-600',   bg: 'bg-blue-500/10' },
+                { label: 'Unscheduled', value: unassigned.length,                                                                   icon: <AlertTriangle size={15}/>,  color: unassigned.length > 0 ? 'text-amber-600' : 'text-green-600', bg: unassigned.length > 0 ? 'bg-amber-500/10' : 'bg-green-500/10' },
+                { label: 'Scheduled',   value: assigned.length,                                                                     icon: <CheckCircle size={15}/>,    color: 'text-green-600',  bg: 'bg-green-500/10' },
+                { label: 'Total Hours', value: allActiveOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0).toFixed(1) + 'h', icon: <Clock size={15}/>,     color: 'text-rex-500',    bg: 'bg-rex-500/10' },
               ].map((kpi, i) => (
-                <GlassCard key={i} className="flex items-center gap-3 p-3">
-                  <div className={`w-9 h-9 rounded-xl bg-surface2 flex items-center justify-center ${kpi.color}`}>{kpi.icon}</div>
+                <GlassCard key={i} className="p-4 flex items-center gap-3.5 border border-theme-subtle hover:border-rex-500/30 transition-colors">
+                  <div className={"w-10 h-10 rounded-xl " + kpi.bg + " flex items-center justify-center " + kpi.color + " shrink-0"}>{kpi.icon}</div>
                   <div>
-                    <p className="text-[10px] font-bold text-muted uppercase tracking-wider">{kpi.label}</p>
-                    <p className="text-xl font-black text-primary leading-none">{kpi.value}</p>
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">{kpi.label}</p>
+                    <p className="text-2xl font-black text-primary leading-none mt-0.5">{kpi.value}</p>
                   </div>
                 </GlassCard>
               ))}
             </div>
 
-            {/* ── MAIN BOARD ── */}
+            {/* MAIN BOARD */}
             <div className="flex gap-4 items-start">
 
-              {/* ════ GANTT CHART ════ */}
-              <GlassCard className="flex-1 min-w-0 p-0 overflow-hidden border border-theme-subtle flex flex-col min-h-[400px]">
+              {/* GANTT CHART */}
+              <GlassCard className="flex-1 min-w-0 p-0 overflow-hidden border border-theme-subtle flex flex-col min-h-[420px]">
 
-                {/* debug banner */}
-                <div className="bg-red-500 text-white text-xs p-2 overflow-auto max-h-40">
-                  <pre>
-                    Assigned: {JSON.stringify(assigned.map(o => ({ id: o.id, eId: o.employeeId, s: o.scheduledStart })), null, 2)}
-                  </pre>
-                </div>
-                {/* header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-theme-subtle bg-surface2/20 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-rex-500/10 flex items-center justify-center text-rex-500"><Layers size={14}/></div>
-                    <span className="text-sm font-bold text-primary">Daily Schedule — {new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</span>
+                {/* Chart Header */}
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2/20 shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-rex-500/10 flex items-center justify-center">
+                      <Layers size={15} className="text-rex-500"/>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-primary leading-none">Daily Resource Planner</p>
+                      <p className="text-[10px] text-muted mt-0.5">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-[10px] font-semibold text-muted">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500/70 border border-blue-500 inline-block"/>Normal</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-orange-500/70 border border-orange-500 inline-block"/>High</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/70 border border-red-500 inline-block"/>Urgent</span>
+                  <div className="flex items-center gap-4 text-[10px] font-semibold text-muted">
+                    {([['#3b82f6','Normal'],['#f97316','High'],['#ef4444','Urgent']] as [string,string][]).map(([c,l]) => (
+                      <span key={l} className="flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-sm inline-block border" style={{background: c + '44', borderColor: c}}/>
+                        {l}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
-                {/* scrollable grid */}
+                {/* Scrollable grid */}
                 <div className="overflow-auto flex-1">
-                  <div style={{ minWidth: HOURS * PPH + 200 + 'px' }}>
+                  <div style={{ minWidth: HOURS * PPH + 220 + 'px' }}>
 
-                    {/* Time ruler */}
-                    <div className="flex border-b-2 border-theme-subtle sticky top-0 z-30 bg-surface">
-                      <div className="w-[200px] shrink-0 border-r border-theme-subtle bg-surface2/40 flex items-end px-3 pb-2">
+                    {/* Time Ruler */}
+                    <div className="flex border-b-2 border-theme-subtle sticky top-0 z-30 bg-surface shadow-sm">
+                      <div className="w-[220px] shrink-0 border-r border-theme-subtle bg-surface2/50 flex items-center px-4" style={{ height: 36 }}>
                         <span className="text-[9px] font-black text-muted uppercase tracking-widest">Operator</span>
                       </div>
-                      <div className="flex-1 flex relative" style={{ height: 32 }}>
+                      <div className="flex-1 relative bg-surface2/20" style={{ height: 36 }}>
                         {Array.from({length: HOURS}).map((_,i) => {
                           const h = START_HOUR + i;
-                          const isEven = i % 2 === 0;
                           return (
-                            <div key={i} className="absolute flex flex-col items-start border-l border-theme-subtle/60 pt-1 pl-1" style={{ left: i * PPH, width: PPH, height: 32, background: isEven ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
-                              <span className="text-[9px] font-mono font-bold text-muted">{h.toString().padStart(2,'0')}:00</span>
+                            <div key={i} className="absolute top-0 bottom-0 flex items-center border-l border-theme-subtle/50 pl-1.5" style={{ left: i * PPH, width: PPH }}>
+                              <span className="text-[9px] font-mono font-semibold text-muted">{h.toString().padStart(2,'0')}:00</span>
                             </div>
                           );
                         })}
@@ -399,33 +394,31 @@ export const WorkOrders: React.FC = () => {
                     </div>
 
                     {/* Employee rows */}
-                    {employees.length === 0 && (
-                      <div className="py-20 text-center text-sm text-muted">No employees found. Add employees in HR module.</div>
-                    )}
-                    {employees.map((emp:any) => {
+                    {employees.length === 0 ? (
+                      <div className="py-20 text-center text-sm text-muted">No employees. Add employees in HR module.</div>
+                    ) : employees.map((emp:any) => {
                       const empOps = allActiveOps.filter((o:any) => o.employeeId === emp.id);
                       const totalHr = empOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0);
-                      const isOverloaded = totalHr > 12;
-                      const isOptimal    = totalHr > 8 && totalHr <= 12;
-                      const loadCls = isOverloaded ? 'text-red-500 bg-red-500/10 border-red-500/20'
-                                    : isOptimal    ? 'text-amber-500 bg-amber-500/10 border-amber-500/20'
-                                                   : 'text-green-600 bg-green-500/10 border-green-500/20';
+                      const pct = Math.min((totalHr / 10) * 100, 100);
+                      const isOver = totalHr > 10;
+                      const isOpt  = totalHr >= 6 && totalHr <= 10;
+                      const loadColor = isOver ? '#ef4444' : isOpt ? '#f59e0b' : '#22c55e';
 
                       return (
                         <div
                           key={emp.id}
-                          className="flex border-b border-theme-subtle/40 group relative"
+                          className="flex border-b border-theme-subtle/30 group"
                           style={{ height: ROW_H }}
                           onDragEnter={(e) => e.preventDefault()}
-                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.06)'; }}
-                          onDragLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0.05)'; }}
+                          onDragLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = ''; }}
                           onDrop={(e) => {
                             e.preventDefault();
-                            (e.currentTarget as HTMLElement).style.background = '';
+                            (e.currentTarget as HTMLDivElement).style.background = '';
                             const opId = e.dataTransfer.getData('opId');
                             if (!opId) return;
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            const dropX = e.clientX - rect.left - 200;
+                            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                            const dropX = e.clientX - rect.left - 220;
                             let dropHour = Math.floor(dropX / PPH) + START_HOUR;
                             const dropMin = Math.round(((dropX % PPH) / PPH) * 2) * 30;
                             if (dropHour < START_HOUR) dropHour = START_HOUR;
@@ -435,66 +428,65 @@ export const WorkOrders: React.FC = () => {
                             handleAssignOperation(opId, 'employeeId', emp.id, d.toISOString());
                           }}
                         >
-                          {/* Employee label */}
-                          <div className="w-[200px] shrink-0 border-r border-theme-subtle px-3 flex flex-col justify-center gap-0.5 sticky left-0 z-20 bg-surface group-hover:bg-surface2/50 transition-colors">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-surface2 border border-theme-subtle flex items-center justify-center text-[10px] font-black text-secondary shrink-0">{emp.name?.[0] || '?'}</div>
+                          {/* Employee Info */}
+                          <div className="w-[220px] shrink-0 border-r border-theme-subtle/50 px-3 flex flex-col justify-center sticky left-0 z-20 bg-surface group-hover:bg-surface2/40 transition-colors">
+                            <div className="flex items-center gap-2.5 mb-2">
+                              <div
+                                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0"
+                                style={{ background: ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444'][emp.name.charCodeAt(0) % 5] }}
+                              >
+                                {emp.name?.[0] || '?'}
+                              </div>
                               <div className="min-w-0">
-                                <p className="text-[11px] font-bold text-primary truncate">{emp.name}</p>
+                                <p className="text-xs font-bold text-primary truncate leading-tight">{emp.name}</p>
                                 <p className="text-[9px] text-muted truncate">{emp.role || 'Operator'}</p>
                               </div>
                             </div>
-                            <div className={`text-[8px] font-black px-1.5 py-0.5 rounded border w-fit mt-0.5 ${loadCls}`}>
-                              {totalHr.toFixed(1)}h {isOverloaded ? '⚠ OVER' : isOptimal ? '● OPTIMAL' : '● FREE'}
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex-1 h-1 rounded-full bg-surface2 overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: pct + '%', background: loadColor }}/>
+                              </div>
+                              <span className="text-[8px] font-bold shrink-0 tabular-nums" style={{ color: loadColor }}>{totalHr.toFixed(1)}h</span>
                             </div>
                           </div>
 
-                          {/* Hour grid stripes + blocks */}
+                          {/* Timeline Track */}
                           <div className="flex-1 relative overflow-hidden">
-                            {/* alternating hour bands */}
                             {Array.from({length: HOURS}).map((_,i) => (
-                              <div key={i} className="absolute top-0 bottom-0 border-l border-theme-subtle/20" style={{ left: i * PPH, width: PPH, background: i%2===0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}/>
+                              <div key={i} className="absolute top-0 bottom-0 border-l border-theme-subtle/20" style={{ left: i * PPH, width: PPH, background: i%2===0?'transparent':'rgba(0,0,0,0.01)' }}/>
                             ))}
-
-                            {/* operation blocks */}
-                            {empOps.length > 0 && <div className="absolute top-0 left-0 z-50 text-red-500 text-xs font-bold bg-white p-1">RENDER: {empOps.length} ops</div>}
-                            {empOps.map((op:any, i:number) => {
+                            {empOps.map((op:any) => {
                               const hrs = Number(op.plannedHours);
-                              const w = Math.max(hrs * PPH - 4, 20);
-
-                              let leftPx = 4 + (i * (w + 6)); // default stacking
+                              const w = Math.max(hrs * PPH - 6, 24);
+                              const prio = op.woPriority || 'Normal';
+                              const ps = prioStyle[prio] || prioStyle.Normal;
+                              let leftPx = 8;
                               if (op.scheduledStart) {
                                 const sd = new Date(op.scheduledStart);
-                                leftPx = (sd.getHours() - START_HOUR + sd.getMinutes() / 60) * PPH + 2;
+                                leftPx = (sd.getHours() - START_HOUR + sd.getMinutes() / 60) * PPH + 3;
                               }
-
-                              const prio = op.woPriority as string;
-                              const blockCls = prio === 'Urgent' ? 'bg-red-500/20 border-red-400 hover:bg-red-500/30'
-                                             : prio === 'High'   ? 'bg-orange-500/20 border-orange-400 hover:bg-orange-500/30'
-                                             :                     'bg-blue-500/15 border-blue-400/60 hover:bg-blue-500/25';
-                              const dotCls   = priorityDot[prio] || 'bg-blue-500';
-
                               return (
                                 <div
                                   key={op.id}
                                   draggable
                                   onDragStart={(e) => { e.dataTransfer.setData('opId', op.id); e.dataTransfer.effectAllowed = 'move'; }}
-                                  title={`${op.operationName} | ${op.woTitle} | ${hrs}h`}
-                                  className={`absolute top-2 bottom-2 rounded-lg border-2 cursor-grab active:cursor-grabbing px-2 py-1 overflow-hidden transition-all hover:z-30 hover:shadow-lg hover:-translate-y-0.5 select-none ${blockCls}`}
-                                  style={{ left: leftPx, width: w, backgroundColor: op.woPriority==='Urgent'?'#fee2e2':op.woPriority==='High'?'#ffedd5':'#dbeafe', borderColor: op.woPriority==='Urgent'?'#ef4444':op.woPriority==='High'?'#f97316':'#3b82f6', zIndex: 40 }}
+                                  title={op.operationName + ' · ' + op.woTitle + ' · ' + hrs + 'h'}
+                                  className="absolute top-2.5 bottom-2.5 rounded-xl cursor-grab active:cursor-grabbing overflow-hidden select-none transition-all hover:z-40 hover:shadow-lg hover:-translate-y-px"
+                                  style={{ left: leftPx, width: w, background: ps.bg, border: '1.5px solid ' + ps.border }}
                                 >
-                                  <div className="flex items-center gap-1 mb-0.5">
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotCls}`}/>
-                                    <span className="text-[8px] font-mono font-bold text-secondary truncate">{op.woId}</span>
-                                    <span className="ml-auto text-[8px] font-mono font-black text-primary shrink-0">{hrs}h</span>
+                                  <div className="flex flex-col h-full px-2 py-1.5 justify-between">
+                                    <div className="flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ps.dot }}/>
+                                      <span className="text-[8px] font-mono font-bold text-gray-400 truncate flex-1">{op.woId}</span>
+                                      <span className="text-[9px] font-black text-gray-700 shrink-0">{hrs}h</span>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-gray-800 truncate leading-tight">{op.operationName}</p>
+                                    {op.scheduledStart && w > 80 && (
+                                      <p className="text-[7px] font-mono text-gray-400">
+                                        {new Date(op.scheduledStart).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} – {new Date(op.scheduledEnd).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
+                                      </p>
+                                    )}
                                   </div>
-                                  <p className="text-[10px] font-bold text-primary truncate leading-tight">{op.operationName}</p>
-                                  {w > 90 && <p className="text-[8px] text-muted truncate mt-0.5">{op.woTitle}</p>}
-                                  {op.scheduledStart && w > 70 && (
-                                    <p className="text-[7px] font-mono text-secondary/70 mt-0.5">
-                                      {new Date(op.scheduledStart).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}–{new Date(op.scheduledEnd).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
-                                    </p>
-                                  )}
                                 </div>
                               );
                             })}
@@ -506,62 +498,62 @@ export const WorkOrders: React.FC = () => {
                 </div>
               </GlassCard>
 
-              {/* ════ UNASSIGNED QUEUE ════ */}
-              <div className="w-72 shrink-0 flex flex-col gap-3">
-                <div className="bg-surface2/30 rounded-2xl p-0 border border-theme-subtle flex flex-col overflow-hidden max-h-[600px]" onDragEnter={(e:any) => e.preventDefault()}
-                  onDragOver={(e:any) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('ring-2','ring-rex-500/40'); }}
-                  onDragLeave={(e:any) => e.currentTarget.classList.remove('ring-2','ring-rex-500/40')}
-                  onDrop={(e:any) => {
+              {/* SIDEBAR */}
+              <div className="w-64 shrink-0 flex flex-col gap-3">
+
+                {/* Unassigned Queue */}
+                <div
+                  className="rounded-2xl border border-theme-subtle bg-surface flex flex-col overflow-hidden transition-all"
+                  onDragEnter={(e) => e.preventDefault()}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('ring-2','ring-rex-400'); }}
+                  onDragLeave={(e) => e.currentTarget.classList.remove('ring-2','ring-rex-400')}
+                  onDrop={(e) => {
                     e.preventDefault();
-                    e.currentTarget.classList.remove('ring-2','ring-rex-500/40');
+                    e.currentTarget.classList.remove('ring-2','ring-rex-400');
                     const opId = e.dataTransfer.getData('opId');
                     if (opId) handleAssignOperation(opId, 'employeeId', '', '');
                   }}
                 >
-                  {/* header */}
-                  <div className="px-4 py-3 border-b border-theme-subtle bg-surface2/20 shrink-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-primary flex items-center gap-2"><ListChecks size={14} className="text-rex-500"/>Unscheduled</span>
-                      <span className="text-[10px] font-black bg-rex-500/10 text-rex-600 px-2 py-0.5 rounded-full">{unassigned.length}</span>
+                  <div className="px-4 py-3 border-b border-theme-subtle shrink-0 flex items-center justify-between bg-surface2/20">
+                    <div className="flex items-center gap-2">
+                      <ListChecks size={13} className="text-rex-500"/>
+                      <span className="text-sm font-bold text-primary">Unscheduled</span>
                     </div>
-                    <p className="text-[9px] text-muted mt-1">Drag onto timeline row to schedule ↗</p>
+                    <span className={"text-[9px] font-black px-2 py-0.5 rounded-full border " + (unassigned.length > 0 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-green-100 text-green-700 border-green-200')}>{unassigned.length} pending</span>
                   </div>
+                  <p className="text-[9px] text-muted px-4 py-1.5 bg-surface2/10 border-b border-theme-subtle/50">Drag onto timeline to schedule · Drop here to unschedule</p>
 
-                  {/* list */}
-                  <div className="overflow-y-auto flex-1 p-2 space-y-2">
+                  <div className="overflow-y-auto p-2 space-y-2" style={{ maxHeight: 420 }}>
                     {unassigned.length === 0 ? (
-                      <div className="py-12 flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center"><CheckCircle size={20} className="text-green-500"/></div>
-                        <p className="text-xs font-bold text-primary">All Scheduled!</p>
-                        <p className="text-[10px] text-muted text-center">No pending operations.</p>
+                      <div className="py-10 flex flex-col items-center gap-2">
+                        <div className="w-11 h-11 rounded-full bg-green-500/10 border border-green-200 flex items-center justify-center">
+                          <CheckCircle size={20} className="text-green-500"/>
+                        </div>
+                        <p className="text-xs font-bold text-primary mt-1">All Scheduled!</p>
+                        <p className="text-[10px] text-muted text-center leading-relaxed">No pending operations.</p>
                       </div>
-                    ) : unassigned.sort((a:any,b:any) => {
-                        const order: Record<string,number> = { Urgent:0, High:1, Normal:2 };
-                        return (order[a.woPriority]??2) - (order[b.woPriority]??2);
-                      }).map((op:any, i:number) => {
-                        const prio = op.woPriority as string;
-                        const cardCls = prio==='Urgent' ? 'border-red-400/50 bg-red-500/5'
-                                      : prio==='High'   ? 'border-orange-400/50 bg-orange-500/5'
-                                      :                   'border-theme-subtle bg-surface';
-                        const dotCls = priorityDot[prio] || 'bg-blue-500';
+                    ) : [...unassigned].sort((a:any,b:any) => {
+                        const o: Record<string,number> = { Urgent:0, High:1, Normal:2 };
+                        return (o[a.woPriority]??2) - (o[b.woPriority]??2);
+                      }).map((op:any) => {
+                        const prio = op.woPriority || 'Normal';
+                        const ps = prioStyle[prio] || prioStyle.Normal;
                         return (
                           <div
                             key={op.id}
                             draggable
                             onDragStart={(e) => { e.dataTransfer.setData('opId', op.id); e.dataTransfer.effectAllowed = 'move'; }}
-                            className={`group cursor-grab active:cursor-grabbing rounded-xl border p-2.5 transition-all hover:shadow-md hover:-translate-y-0.5 ${cardCls}`}
+                            className="cursor-grab active:cursor-grabbing rounded-xl border p-3 transition-all hover:shadow-md hover:-translate-y-0.5 select-none"
+                            style={{ background: ps.bg, borderColor: ps.border }}
                           >
-                            <div className="flex items-start justify-between mb-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`w-2 h-2 rounded-full ${dotCls}`}/>
-                                <span className="text-[9px] font-black uppercase tracking-wider text-muted">{prio}</span>
-                              </div>
-                              <span className="text-[10px] font-mono font-black text-primary">{Number(op.plannedHours).toFixed(1)}h</span>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className={"text-[9px] font-black px-1.5 py-0.5 rounded border " + ps.badgeCls}>{prio}</span>
+                              <span className="text-[10px] font-mono font-black text-gray-700">{Number(op.plannedHours).toFixed(1)}h</span>
                             </div>
-                            <p className="text-[11px] font-bold text-primary truncate mb-0.5">{op.operationName}</p>
-                            <p className="text-[9px] text-muted truncate mb-2">{op.woId} · {op.woTitle}</p>
+                            <p className="text-[11px] font-bold text-gray-800 leading-snug mb-0.5">{op.operationName}</p>
+                            <p className="text-[9px] text-gray-500 truncate mb-2">{op.woId} · {op.woTitle}</p>
                             {op.woNotes && (
-                              <p className="text-[8px] text-secondary/80 bg-surface2/60 rounded px-1.5 py-1 mb-2 line-clamp-2 leading-relaxed">{op.woNotes}</p>
+                              <p className="text-[8px] text-gray-500 bg-white/60 rounded px-1.5 py-1 mb-2 line-clamp-2 leading-relaxed border border-black/5">{op.woNotes}</p>
                             )}
                             <select
                               className="w-full input-base text-[10px] py-1"
@@ -573,20 +565,24 @@ export const WorkOrders: React.FC = () => {
                             </select>
                           </div>
                         );
-                    })}
+                      })}
                   </div>
                 </div>
 
-                {/* mini legend */}
-                <GlassCard className="p-3 text-[9px] text-muted space-y-1.5 border border-theme-subtle">
-                  <p className="font-black uppercase tracking-widest text-secondary mb-2">How to use</p>
-                  <p>① Drag card → employee row to schedule</p>
-                  <p>② Drop onto desired hour slot for exact time</p>
-                  <p>③ Drag block back here to unschedule</p>
-                  <p>④ Move blocks between rows to reassign</p>
+                {/* How to use */}
+                <GlassCard className="p-4 border border-theme-subtle">
+                  <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-2.5">How to use</p>
+                  <div className="space-y-2">
+                    {['Drag queue card onto an employee row','Drop at exact hour for precise scheduling','Drag block back here to unschedule','Drag block to another row to reassign'].map((t,i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full bg-rex-500/10 text-rex-600 text-[8px] font-black flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
+                        <p className="text-[9px] text-muted leading-relaxed">{t}</p>
+                      </div>
+                    ))}
+                  </div>
                 </GlassCard>
-              </div>
 
+              </div>
             </div>
           </div>
         );
