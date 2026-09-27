@@ -1673,21 +1673,26 @@ app.patch('/api/production/work-orders/:id/attachments', async (req, res) => {
 
 app.put('/api/production/operations/:id/assign', async (req, res) => {
   try {
-    const { employeeId, machineId, scheduledStart, scheduledEnd } = req.body;
+    const { employeeId, machineId, scheduledStart, scheduledEnd, isLocked } = req.body;
     
-    const toMysqlDt = (iso: string | null | undefined) => {
+    const toMysqlDt = (iso) => {
       if (!iso) return null;
       const d = new Date(iso);
-      const pad = (n: number) => n.toString().padStart(2, '0');
+      const pad = (n) => n.toString().padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
     };
 
     let query = 'UPDATE work_order_operations SET employeeId=?, machineId=?';
-    let params: any[] = [employeeId || null, machineId || null];
+    let params = [employeeId || null, machineId || null];
     
     if (scheduledStart !== undefined) {
       query += ', scheduledStart=?, scheduledEnd=?';
       params.push(toMysqlDt(scheduledStart), toMysqlDt(scheduledEnd));
+    }
+    
+    if (isLocked !== undefined) {
+      query += ', isLocked=?';
+      params.push(isLocked ? 1 : 0);
     }
     
     query += ' WHERE id=?';
