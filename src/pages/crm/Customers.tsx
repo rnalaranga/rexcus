@@ -8,7 +8,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers } from '@/hooks/useData'
-import { createCustomer } from '@/lib/api'
+import { createCustomer, deleteCustomer } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 
 type StatusFilter  = 'all' | 'active' | 'vip' | 'prospect' | 'inactive'
@@ -22,12 +22,28 @@ export const Customers: React.FC = () => {
   const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all')
   const [isModalOpen, setIsModalOpen]     = useState(false)
   const [submitting, setSubmitting]       = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     name: '', company: '', email: '', phone: '', industry: '', segment: 'sme', address: ''
   })
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading customers...</div>
+
+  
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm('Are you sure you want to delete this customer?')) {
+      setDeleting(id);
+      try {
+        await deleteCustomer(id);
+        refetch();
+      } catch (err) {
+        alert('Failed to delete customer.');
+      }
+      setDeleting(null);
+    }
+  };
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -23,6 +23,12 @@ export const updateCustomer = async (id: string, data: any) => {
   return res.json();
 };
 
+export const deleteCustomer = async (id: string) => {
+  const res = await fetch(`${API_URL}/customers/${id}`, { method: 'DELETE' });
+  return res.json();
+};
+
+
 export const fetchLeads = async () => {
   const res = await fetch(`${API_URL}/leads`);
   return res.json();
