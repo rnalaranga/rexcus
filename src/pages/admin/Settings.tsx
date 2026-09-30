@@ -36,7 +36,7 @@ export const Settings = () => {
     
     if (confirm('WARNING: This will delete all transactional data (Quotations, Leads, Invoices, etc). Are you absolutely sure?')) {
       try {
-        const res = await fetch('http://localhost:3000/api/settings/fresh-db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ password: pw }) });
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/fresh-db`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ password: pw }) });
         const data = await res.json();
         if (data.success) {
           alert('Database refreshed successfully!');
