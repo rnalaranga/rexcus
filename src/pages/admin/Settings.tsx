@@ -44,7 +44,7 @@ export const Settings = () => {
         } else {
           alert('Failed to refresh DB: ' + data.error);
         }
-      } catch (e) {
+      } catch (e: any) {
         alert('Error: ' + e.message);
       }
     }

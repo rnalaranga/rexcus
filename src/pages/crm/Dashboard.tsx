@@ -68,7 +68,7 @@ export const CRMDashboard: React.FC = () => {
 
     
     const monthlyRevenue = (() => {
-      const months = [];
+      const months: any[] = [];
       const now = new Date();
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
