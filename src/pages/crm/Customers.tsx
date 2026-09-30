@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, Download, Filter, Users, Star, UserCheck, UserX, Building2, User } from 'lucide-react'
+import { UserPlus, Download, Filter, Users, Star, UserCheck, UserX, Building2, User, Trash2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -79,7 +79,14 @@ export const Customers: React.FC = () => {
     { key: 'status',   header: 'Status',   width: '90px',  render: v => <Badge value={String(v)} size="sm" /> },
     { key: 'segment',  header: 'Segment',  width: '90px',  render: v => <Badge value={String(v)} size="sm" /> },
     { key: 'lifetimeValue', header: 'LTV', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v), true)}</span> },
+    
     { key: 'lastOrder', header: 'Last Order', sortable: true, render: v => <span className="text-xs text-muted">{relativeTime(String(v))}</span> },
+    { key: 'actions', header: '', align: 'right', render: (_, row) => (
+      <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-500/10 px-2 h-6" onClick={(e) => handleDelete(e, row.id)}>
+        {deleting === row.id ? '...' : <Trash2 size={13} />}
+      </Button>
+    )},
+
   ]
 
   return (

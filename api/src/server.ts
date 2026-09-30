@@ -358,7 +358,18 @@ app.post('/api/customers', async (req, res) => {
     const data = req.body;
     const [result] = await db.query('INSERT INTO customers SET ?', data);
     res.json({ success: true, id: data.id });
+  
+
+app.delete('/api/customers/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM customers WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+} catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
