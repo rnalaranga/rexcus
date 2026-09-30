@@ -33,7 +33,7 @@ export const Leads: React.FC = () => {
   const [editId, setEditId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new'
+    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: ''
   })
 
   const [leadQuotations, setLeadQuotations] = React.useState<any[]>([])
@@ -49,7 +49,7 @@ export const Leads: React.FC = () => {
 
   const openCreateModal = () => {
     setEditId(null)
-    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new' })
+    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '' })
     setIsModalOpen(true)
   }
 
@@ -60,7 +60,7 @@ export const Leads: React.FC = () => {
       company: lead.company,
       email: lead.email,
       phone: lead.phone,
-      source: lead.source,
+      source: lead.source, vat: lead.vat || '', svat: lead.svat || '',
       priority: lead.priority,
       value: String(lead.value),
       stage: lead.stage
@@ -238,19 +238,19 @@ export const Leads: React.FC = () => {
       </div>
 
       {view === 'kanban' ? (
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-160px)]">
           {STAGES.map(stage => {
             const stageLeads = filtered.filter(l => l.stage === stage)
             const stageValue = stageLeads.reduce((s, l) => s + Number(l.value), 0)
             return (
               <div 
                 key={stage} 
-                className="flex-shrink-0 w-56"
+                className="flex-shrink-0 w-56 flex flex-col h-full"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage)}
               >
                 {/* Column header */}
-                <div className={`glass px-3 py-2.5 mb-2 ${stageColorBorder[stage] || 'border-b-2 border-b-theme'}`}>
+                <div className={`glass px-3 py-2.5 mb-2 shrink-0 ${stageColorBorder[stage] || 'border-b-2 border-b-theme'}`}>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">{STAGE_LABELS[stage]}</span>
                     <span className="text-[10px] bg-surface2 text-muted px-1.5 py-0.5 font-medium">{stageLeads.length}</span>
@@ -258,7 +258,7 @@ export const Leads: React.FC = () => {
                   {stageValue > 0 && <p className="text-[9px] text-muted mt-0.5">{formatCurrency(stageValue)}</p>}
                 </div>
 
-                <div className="space-y-2 min-h-[200px]">
+                <div className="space-y-2 flex-1 overflow-y-auto pr-1 pb-4 min-h-[200px] custom-scrollbar">
                   {stageLeads.map(lead => (
                     <div 
                       key={lead.id} 
@@ -336,8 +336,8 @@ export const Leads: React.FC = () => {
                 <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" placeholder="e.g. Jane Doe" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company</label>
-                <input value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company <span className="text-rex-500">*</span></label>
+                <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Estimated Value (Rs.) <span className="text-rex-500">*</span></label>
@@ -354,13 +354,23 @@ export const Leads: React.FC = () => {
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Email Address</label>
-                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full input-base" placeholder="jane@example.com" />
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Email Address <span className="text-rex-500">*</span></label>
+                <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full input-base" placeholder="jane@example.com" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Phone Number</label>
-                <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full input-base" placeholder="+94 7X XXX XXXX" />
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Phone Number <span className="text-rex-500">*</span></label>
+                <input type="tel" required value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full input-base" placeholder="+94 7X XXX XXXX" />
               </div>
+              
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">VAT Number</label>
+                <input value={formData.vat} onChange={e => setFormData({...formData, vat: e.target.value})} className="w-full input-base" placeholder="VAT Number" />
+              </div>
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">SVAT Number</label>
+                <input value={formData.svat} onChange={e => setFormData({...formData, svat: e.target.value})} className="w-full input-base" placeholder="SVAT Number" />
+              </div>
+
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Priority</label>
                 <select value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})} className="w-full input-base">

@@ -81,7 +81,7 @@ function AppRoutes() {
           <Route path="/crm/contacts" element={<Contacts />} />
           <Route path="/crm/followups" element={<Followups />} />
           <Route path="/crm/quotations" element={<Quotations />} />
-          <Route path="/crm/quotations/new/:leadId" element={<QuotationBuilder />} />
+          <Route path="/crm/quotations/new/:leadId?" element={<QuotationBuilder />} />
 
           {/* Inventory */}
           <Route path="/inventory" element={<Inventory />} />

@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -7,11 +7,12 @@ import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { useSettings } from '@/contexts/SettingsContext'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
-import { useQuotations } from '@/hooks/useData'
+import { useQuotations, useLeads } from '@/hooks/useData'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
-import { deleteQuotation, updateQuotationStatus, createWorkOrder } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, createWorkOrder, createInvoice } from '@/lib/api'
+import { Banknote } from 'lucide-react'
 
 
 export const Quotations: React.FC = () => {
@@ -73,6 +74,42 @@ export const Quotations: React.FC = () => {
     }
   }
 
+  
+  const handlePaymentRequest = async (group: any, latestMain: any) => {
+    const percentStr = prompt('Enter advance payment percentage (e.g., 50 for 50%):', '50');
+    if (!percentStr) return;
+    const percent = parseFloat(percentStr);
+    if (isNaN(percent) || percent <= 0 || percent > 100) {
+      alert('Invalid percentage');
+      return;
+    }
+    
+    const total = Number(latestMain.totalAmount || 0);
+    const advanceAmount = (total * percent) / 100;
+    
+    try {
+      const payload = {
+        id: `INV-${Date.now().toString().slice(-6)}`,
+        quotationId: latestMain.id,
+        leadId: group.leadId || 'WALK-IN',
+        date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' '),
+        items: JSON.stringify([{ desc: `Advance Payment (${percent}%) for Quotation ${group.quoNo}`, qty: 1, unitPrice: advanceAmount }]),
+        subtotal: advanceAmount,
+        tax: 0,
+        total: advanceAmount,
+        status: 'draft',
+        notes: `Advance payment request based on approved quotation ${group.quoNo}`
+      };
+      await createInvoice(payload);
+      alert('Advance payment invoice generated successfully in Finance module!');
+      navigate('/finance/invoices');
+    } catch (e) {
+      alert('Failed to generate payment request.');
+      console.error(e);
+    }
+  };
+
   const handleStatusChange = async (id: string, status: string) => {
     try {
       await updateQuotationStatus(id, status)
@@ -85,7 +122,9 @@ export const Quotations: React.FC = () => {
 
   const navigate = useNavigate()
   const { data: quotations, loading, refetch } = useQuotations()
+  const { data: leads = [] } = useLeads()
   const [search, setSearch] = useState('')
+  const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
   const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string} | null>(null)
   const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
   const { settings } = useSettings()
@@ -99,7 +138,7 @@ export const Quotations: React.FC = () => {
        const quoNo = parsed.quotationNo || q.id
        
        if (!groups[quoNo]) {
-         groups[quoNo] = { quoNo, leadName: q.leadName, leadCompany: q.leadCompany, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date }
+         groups[quoNo] = { quoNo, leadName: q.leadName || parsed.customerName || 'Walk-in Customer', leadCompany: q.leadCompany, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date }
        }
        
        if (q.type === 'main') groups[quoNo].main.push(q)
@@ -137,8 +176,23 @@ export const Quotations: React.FC = () => {
           <p className="text-xs text-muted mt-0.5">{groupedQuotations.length} quotation groups &middot; {quotations.length} total versions</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedQuotes.length > 1 && (
+            <Button variant="primary" size="sm" icon={FileText} onClick={() => {
+               const selectedGroups = groupedQuotations.filter(g => selectedQuotes.includes(g.quoNo));
+               const leadIds = new Set(selectedGroups.map(g => g.leadId));
+               if (leadIds.size > 1) {
+                  alert('You can only combine quotations for the SAME customer/lead.');
+                  return;
+               }
+               const leadId = selectedGroups[0].leadId;
+               const query = selectedGroups.map(g => `combine=${encodeURIComponent(g.quoNo)}`).join('&');
+               navigate(`/crm/quotations/new/${leadId}?${query}`);
+            }} className="bg-purple-600 hover:bg-purple-500 border-none text-white shadow-lg shadow-purple-500/20">
+              Make Final Quote ({selectedQuotes.length})
+            </Button>
+          )}
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
-          <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/crm/leads')}>New Quote</Button>
+          <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/crm/quotations/new')}>New Quote</Button>
         </div>
       </div>
 
@@ -166,7 +220,13 @@ export const Quotations: React.FC = () => {
               <div className="p-4 bg-gradient-to-r from-surface2 to-surface border-b border-theme-subtle flex justify-between items-center">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-lg bg-rex-500/10 text-rex-600 dark:text-rex-400 flex items-center justify-center">
-                    <FileText size={20} />
+                    <input type="checkbox" className="w-5 h-5 cursor-pointer accent-rex-500"
+                      checked={selectedQuotes.includes(group.quoNo)}
+                      onChange={(e) => {
+                         if (e.target.checked) setSelectedQuotes(p => [...p, group.quoNo]);
+                         else setSelectedQuotes(p => p.filter(x => x !== group.quoNo));
+                      }}
+                    />
                   </div>
                   <div>
                                           <h3 className="text-base font-bold text-primary flex items-center gap-2">
@@ -191,17 +251,30 @@ export const Quotations: React.FC = () => {
                               </div>
                             </div>
                           )}
-                          {latestMain && latestMain.status === 'Approved' && (
-                            <Button 
-                              variant="primary" 
-                              size="sm" 
-                              icon={Factory} 
-                              className="ml-4 h-6 text-[9px] px-2 bg-emerald-600 hover:bg-emerald-500 text-white border-none"
-                              onClick={() => handleCreateWO(group, latestMain)}
-                            >
-                              Create WO
-                            </Button>
-                          )}
+                          
+                            {latestMain && latestMain.status === 'Approved' && (
+                              <>
+                              <Button 
+                                variant="primary" 
+                                size="sm" 
+                                icon={Banknote} 
+                                className="ml-4 h-6 text-[9px] px-2 bg-blue-600 hover:bg-blue-500 text-white border-none"
+                                onClick={() => handlePaymentRequest(group, latestMain)}
+                              >
+                                Request Advance
+                              </Button>
+                              <Button 
+                                variant="primary" 
+                                size="sm" 
+                                icon={Factory} 
+                                className="ml-2 h-6 text-[9px] px-2 bg-emerald-600 hover:bg-emerald-500 text-white border-none"
+                                onClick={() => handleCreateWO(group, latestMain)}
+                              >
+                                Create WO
+                              </Button>
+                              </>
+                            )}
+
 
                       </h3>
                     <p className="text-xs text-secondary mt-0.5 font-medium">{group.leadName || 'Unknown Customer'} {group.leadCompany ? `(${group.leadCompany})` : ''}</p>
@@ -248,7 +321,7 @@ export const Quotations: React.FC = () => {
                       <Briefcase size={14} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-secondary">Internal Job Costing</p>
+                      <p className="text-xs font-bold text-secondary">Internal BOM (Job Costing)</p>
                       {latestJob ? (
                          <div className="flex items-center gap-2 mt-0.5">
                            <span className="text-[10px] text-muted font-mono">v{latestJob.version}</span>

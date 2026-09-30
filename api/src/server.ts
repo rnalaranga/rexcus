@@ -329,7 +329,23 @@ app.post('/api/leads', async (req, res) => {
   try {
     const data = req.body;
     const [result] = await db.query('INSERT INTO leads SET ?', data);
-    res.json({ success: true, id: data.id });
+    
+    // Auto-create customer
+    const custId = data.id.replace('LEAD', 'CUST');
+    const custData = {
+      id: custId,
+      name: data.name,
+      company: data.company,
+      email: data.email,
+      phone: data.phone,
+      vat: data.vat,
+      svat: data.svat,
+      status: 'active',
+      joinDate: new Date()
+    };
+    await db.query('INSERT IGNORE INTO customers SET ?', custData);
+    
+    res.json({ success: true, id: data.id, customerId: custId });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -341,6 +357,18 @@ app.put('/api/leads/:id', async (req, res) => {
     const { id } = req.params;
     const data = req.body;
     await db.query('UPDATE leads SET ? WHERE id = ?', [data, id]);
+    
+    // Auto-update customer
+    const custId = id.replace('LEAD', 'CUST');
+    const custData = {
+      name: data.name,
+      company: data.company,
+      email: data.email,
+      phone: data.phone,
+      vat: data.vat,
+      svat: data.svat
+    };
+    await db.query('UPDATE customers SET ? WHERE id = ?', [custData, custId]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
@@ -465,6 +493,19 @@ app.put('/api/quotations/update/:id', async (req, res) => {
       [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, data.type || 'customer', id]
     );
     res.json({ success: true, id });
+
+app.put('/api/quotations/status/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    await db.query('UPDATE quotations SET status = ? WHERE id = ?', [status, id]);
+    res.json({ success: true, id, status });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -715,8 +756,8 @@ app.post('/api/invoices', async (req, res) => {
       const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" LIMIT 1');
       if (arAcc.length > 0 && salesAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
-        await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.id, description: 'Auto GL: Invoice Generated', totalAmount: totalAmount });
-        const totalAmount = Number(data.total) || 0;
+          const totalAmount = Number(data.total) || 0;
+          await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.id, description: 'Auto GL: Invoice Generated', totalAmount });
         await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [
           [
             ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, totalAmount, 0, data.customerId || null, 'Customer'],
@@ -782,11 +823,29 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     const newStatus = newPaidAmount >= Number(invoice.total) ? 'paid' : 'sent';
     
     await db.query('UPDATE invoices SET payments = ?, paidAmount = ?, status = ? WHERE id = ?', [
-      JSON.stringify(existingPayments),
-      newPaidAmount,
-      newStatus,
-      id
-    ]);
+        JSON.stringify(existingPayments),
+        newPaidAmount,
+        newStatus,
+        id
+      ]);
+
+      // Auto GL: Record Payment
+      try {
+        const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" LIMIT 1');
+        const [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" LIMIT 1');
+        if (arAcc.length > 0 && cashAcc.length > 0) {
+          const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
+          const pmtAmount = Number(payment.amount);
+          await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: newPayment.date, reference: newPayment.id, description: 'Auto GL: Invoice Payment Received', totalAmount: pmtAmount });
+          
+          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [
+            [
+              ['JL-' + Date.now().toString().slice(-5) + '1', jeId, cashAcc[0].id, pmtAmount, 0, null, null],
+              ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, pmtAmount, invoice.customerId || null, 'Customer']
+            ]
+          ]);
+        }
+      } catch (e) { console.error('Auto GL Payment Error:', e); }
     
     res.json({ success: true, payment: newPayment, newStatus, newPaidAmount });
   } catch (error) {

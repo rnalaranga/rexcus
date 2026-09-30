@@ -66,14 +66,32 @@ export const CRMDashboard: React.FC = () => {
     const openDealsArr    = deals.filter(d => !String(d.stage).includes('closed'))
     const pipelineValue   = openDealsArr.reduce((s, d) => s + Number(d.value || 0), 0)
 
-    const monthlyRevenue = [
-      { month: 'Mar', revenue: 1200000, target: 1500000 },
-      { month: 'Apr', revenue: 1800000, target: 1600000 },
-      { month: 'May', revenue: 2100000, target: 1800000 },
-      { month: 'Jun', revenue: 1950000, target: 2000000 },
-      { month: 'Jul', revenue: 2800000, target: 2200000 },
-      { month: 'Aug', revenue: 3200000, target: 2500000 },
-    ]
+    
+    const monthlyRevenue = (() => {
+      const months = [];
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+          month: d.toLocaleString('default', { month: 'short' }),
+          monthNum: d.getMonth(),
+          year: d.getFullYear(),
+          revenue: 0,
+          target: 2000000
+        });
+      }
+
+      deals.filter(d => String(d.stage).toLowerCase().includes('won')).forEach(d => {
+        const dDate = new Date(d.expectedClose || d.lastUpdated || new Date());
+        const m = months.find(x => x.monthNum === dDate.getMonth() && x.year === dDate.getFullYear());
+        if (m) {
+          m.revenue += Number(d.value || 0);
+        }
+      });
+
+      return months;
+    })();
+
 
     const stages = ['open', 'prospecting', 'proposal', 'negotiation', 'contract']
     const dealsByStage = stages.map(st => {

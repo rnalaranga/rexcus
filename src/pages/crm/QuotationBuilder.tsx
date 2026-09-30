@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, Download, Save, History, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -71,8 +72,8 @@ const MatSearchInput: React.FC<MatSearchProps> = ({ value, onChange, onSelect, i
       <input type="text" value={value} className={`${tableInputClass} ${className}`}
         onChange={e => { onChange(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)} autoComplete="off" placeholder="Material..." />
-      {open && filtered.length > 0 && (
-        <ul className="absolute z-50 top-full left-0 mt-1 min-w-[200px] bg-surface border border-theme-subtle shadow-glass rounded-xl py-1 max-h-48 overflow-y-auto">
+      {open && filtered.length > 0 && createPortal(
+        <ul style={{ top: wrapRef.current?.getBoundingClientRect().bottom! + window.scrollY, left: wrapRef.current?.getBoundingClientRect().left! + window.scrollX, width: wrapRef.current?.getBoundingClientRect().width, minWidth: '200px' }} className="absolute z-[99999] mt-1 bg-surface border border-theme-subtle shadow-glass rounded-xl py-1 max-h-48 overflow-y-auto">
           {filtered.map((item, i) => (
             <li key={i} className="px-3 py-1.5 text-xs hover:bg-surface2 cursor-pointer flex justify-between items-center"
               onMouseDown={e => { e.preventDefault(); onSelect(item.name, item.unitCost || item.price || 0); onChange(item.name); setOpen(false) }}>
@@ -80,7 +81,51 @@ const MatSearchInput: React.FC<MatSearchProps> = ({ value, onChange, onSelect, i
               {item.unitCost > 0 && <span className="text-[10px] text-muted font-mono ml-2">Rs.{item.unitCost}</span>}
             </li>
           ))}
-        </ul>
+        </ul>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+interface LeadSearchProps {
+  value: string
+  onChange: (val: string) => void
+  onSelect: (leadId: string, name: string) => void
+  leads: any[]
+  className?: string
+}
+
+const LeadSearchInput: React.FC<LeadSearchProps> = ({ value, onChange, onSelect, leads, className = '' }) => {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  
+  const filtered = value.length > 0
+    ? leads.filter(l => (l.name || '').toLowerCase().includes(value.toLowerCase()) || (l.company || '').toLowerCase().includes(value.toLowerCase())).slice(0, 8)
+    : []
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <input type="text" value={value} className={className}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)} autoComplete="off" placeholder="Type to search customer..." />
+      {open && filtered.length > 0 && createPortal(
+        <ul style={{ top: wrapRef.current?.getBoundingClientRect().bottom! + window.scrollY, left: wrapRef.current?.getBoundingClientRect().left! + window.scrollX, width: Math.max(wrapRef.current?.getBoundingClientRect().width || 0, 300) }} className="absolute z-[99999] mt-1 bg-surface border border-theme-subtle shadow-glass rounded-xl py-1 max-h-48 overflow-y-auto">
+          {filtered.map((l, i) => (
+            <li key={i} className="px-3 py-1.5 text-xs hover:bg-surface2 cursor-pointer flex justify-between items-center"
+              onMouseDown={e => { e.preventDefault(); onSelect(l.id, l.name); onChange(l.name); setOpen(false) }}>
+              <span className="text-primary font-medium">{l.name}</span>
+              {l.company && <span className="text-[10px] text-muted ml-2">{l.company}</span>}
+            </li>
+          ))}
+        </ul>,
+        document.body
       )}
     </div>
   )
@@ -155,6 +200,43 @@ export const QuotationBuilder: React.FC = () => {
 
   useEffect(() => { loadVersions() }, [loadVersions])
 
+  useEffect(() => {
+     const combineIds = searchParams.getAll('combine');
+     if (combineIds.length > 0 && savedVersions.length > 0 && custItems.length === 1 && !custItems[0].desc) {
+        const combinedItems: any[] = [];
+        combineIds.forEach((quoNo, idx) => {
+           const versionsForQuo = savedVersions.filter(v => {
+              const d = typeof v.data === 'string' ? JSON.parse(v.data) : v.data;
+              return d.quotationNo === quoNo && (v.type === 'customer' || v.type === 'main' || v.type === 'job');
+           }).sort((a, b) => b.version - a.version);
+           
+           if (versionsForQuo.length > 0) {
+              const latest = versionsForQuo[0];
+              const d = typeof latest.data === 'string' ? JSON.parse(latest.data) : latest.data;
+              let price = Number(latest.totalAmount) || 0;
+              if (d.custTotals) price = Number(d.custTotals.total) || price;
+              else if (d.jobTotals) price = Number(d.jobTotals.totalCost) || price;
+
+              const subject = d.subject || `Combined Item ${idx+1}`;
+              
+              combinedItems.push({
+                 id: Date.now() + idx + Math.random(),
+                 desc: subject + ' (' + quoNo + ')',
+                 qty: 1,
+                 unitPrice: price,
+                 note: ''
+              });
+           }
+        });
+        
+        if (combinedItems.length > 0) {
+           setCustItems(combinedItems);
+           setSubject('Master Quotation for Multiple Items');
+           setQuotationType('customer');
+        }
+     }
+  }, [searchParams, savedVersions]);
+
   // --- Document Details ---
   const [docNo, setDocNo] = useState('FO/PD/02')
   const [issueNo, setIssueNo] = useState('01')
@@ -166,6 +248,15 @@ export const QuotationBuilder: React.FC = () => {
   const [jobQty, setJobQty] = useState('1')
   const [attention, setAttention] = useState('')
   const [subject, setSubject] = useState('To machining parts as per given sample')
+  const [customerName, setCustomerName] = useState('')
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
+
+  useEffect(() => {
+     if (leadId && lead) {
+        setCustomerName(lead.name + (lead.company ? ` (${lead.company})` : ''))
+        setSelectedLeadId(lead.id)
+     }
+  }, [leadId, lead])
 
   // --- Job Items / Description ---
   const [attachments, setAttachments] = useState<any[]>([]);
@@ -352,11 +443,15 @@ export const QuotationBuilder: React.FC = () => {
   };
 
   const handleSave = async (overrideType?: 'main' | 'job' | 'customer') => {
+    if (!customerName) {
+       showToast('error', 'Please enter a Customer Name!');
+       return;
+    }
     const saveType = overrideType || quotationType;
     setIsSaving(true)
     try {
       const snapshot: any = {
-        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName
       }
       
       if (saveType === 'main' || saveType === 'job') {
@@ -377,7 +472,7 @@ export const QuotationBuilder: React.FC = () => {
       const amount = saveType === 'job' ? jobWithSSCL : saveType === 'customer' ? custWithSSCL : jobWithSSCL
 
       const result = await createQuotation({
-        leadId, type: saveType, data: snapshot,
+        leadId: selectedLeadId || 'WALK-IN', type: saveType, data: snapshot,
         totalAmount: amount, customAmount: null
       })
       if (result.success) {
@@ -415,7 +510,7 @@ export const QuotationBuilder: React.FC = () => {
 
 
   if (loading) return <div className="p-8 text-center animate-pulse text-muted">Loading...</div>
-  if (!lead) return <div className="p-8 text-center text-red-500">Lead not found.</div>
+  if (leadId && !lead) return <div className="p-8 text-center text-red-500">Lead not found.</div>
 
   const mainVersions = savedVersions.filter(v => v.type === 'main')
   const jobVersions = savedVersions.filter(v => v.type === 'job')
@@ -437,7 +532,7 @@ export const QuotationBuilder: React.FC = () => {
           </button>
           <div>
             <h1 className="text-lg font-black text-primary tracking-tight">Quotation Builder</h1>
-            <p className="text-[11px] text-muted mt-0.5">{lead.name}{lead.company ? ' · ' + lead.company : ''}</p>
+            <p className="text-[11px] text-muted mt-0.5">{lead?.name || customerName || 'Walk-in Customer'}{lead?.company ? ' · ' + lead.company : ''}</p>
           </div>
         </div>
 
@@ -456,7 +551,7 @@ export const QuotationBuilder: React.FC = () => {
             className={'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ' + 
             (quotationType === 'job' ? 'bg-rex-500 text-white shadow-sm' : 'text-muted hover:text-primary hover:bg-surface2')}
           >
-            <Briefcase size={13} /> Job Quotation
+            <Briefcase size={13} /> BOM (Bill of Materials)
             {jobVersions.length > 0 && <span className={'ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono ' + (quotationType === 'job' ? 'bg-white/20' : 'bg-rex-500/20 text-rex-500')}>{jobVersions.length}</span>}
           </button>
           <button 
@@ -566,7 +661,11 @@ export const QuotationBuilder: React.FC = () => {
             </div>
 
                         {/* Quotation Details */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-secondary uppercase mb-1 flex items-center gap-1">Customer / Lead <span className="text-red-500">*</span></label>
+                <LeadSearchInput value={customerName} onChange={setCustomerName} onSelect={(id) => setSelectedLeadId(id)} leads={leads} className={docInputClass + " font-bold text-primary"} />
+              </div>
               <div>
                 <label className="block text-[10px] font-bold text-secondary uppercase mb-1 flex items-center gap-1">Quotation No <span className="text-red-500">*</span></label>
                 <input type="text" value={quotationNo} onChange={e => setQuotationNo(e.target.value)} className={docInputClass + " font-mono font-bold text-primary border-primary/20"} />
@@ -578,10 +677,6 @@ export const QuotationBuilder: React.FC = () => {
               <div>
                 <label className="block text-[10px] font-bold text-secondary uppercase mb-1">VAT Number</label>
                 <input type="text" value={vatNo} onChange={e => setVatNo(e.target.value)} placeholder="Customer VAT" className={docInputClass} />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-secondary uppercase mb-1">TIN Number</label>
-                <input type="text" value={tinNo} onChange={e => setTinNo(e.target.value)} placeholder="Customer TIN" className={docInputClass} />
               </div>
             </div>
 
@@ -644,7 +739,7 @@ export const QuotationBuilder: React.FC = () => {
 
           </div>
         </GlassCard>
-{/* JOB QUOTATION SECTIONS */}
+{/* BOM SECTIONS */}
         {showJobSection && (
           <>
             {/* Plate / Rod Materials */}
@@ -999,7 +1094,7 @@ export const QuotationBuilder: React.FC = () => {
                   </div>
                   <div className="mt-6 pt-4 border-t border-theme-subtle">
                      <Button variant="ghost" className="w-full text-xs border border-rex-500/20 text-rex-500 hover:bg-rex-500/10 shadow-sm" icon={Briefcase} onClick={() => { setQuotationType('job'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' });  }, 100); }}>
-                        Generate Job Quote
+                        Generate BOM
                      </Button>
                   </div>
                 </div>
@@ -1062,9 +1157,9 @@ export const QuotationBuilder: React.FC = () => {
           
                     <div className="mt-6 flex justify-end gap-3 pb-6">
             <Button variant="ghost" icon={Mail} onClick={() => {
-              const email = lead.email || '';
+              const email = lead?.email || '';
               const subj = encodeURIComponent(`Quotation ${quotationNo} - ${subject}`);
-              const body = encodeURIComponent(`Dear ${attention || lead.name},\n\nPlease find our Quotation ${quotationNo} attached.\n\nThank you,\n${user?.name || 'Rex Industries'}`);
+              const body = encodeURIComponent(`Dear ${attention || lead?.name || customerName || 'Customer'},\n\nPlease find our Quotation ${quotationNo} attached.\n\nThank you,\n${user?.name || 'Rex Industries'}`);
               window.open(`mailto:${email}?subject=${subj}&body=${body}`);
             }} className="bg-surface border border-theme-subtle hover:bg-surface2">Email Customer</Button>
             
