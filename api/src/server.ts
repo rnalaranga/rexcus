@@ -353,12 +353,17 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
+
 app.post('/api/customers', async (req, res) => {
   try {
     const data = req.body;
     const [result] = await db.query('INSERT INTO customers SET ?', data);
     res.json({ success: true, id: data.id });
-  
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
 
 app.delete('/api/customers/:id', async (req, res) => {
   try {
@@ -366,12 +371,6 @@ app.delete('/api/customers/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-} catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
 
