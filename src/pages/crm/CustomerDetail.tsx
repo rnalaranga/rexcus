@@ -10,11 +10,7 @@ import { updateCustomer } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 
 // Mock Ledger Data
-const mockLedger = [
-  { id: 'TRX-001', date: '2026-08-15', ref: 'INV-4401', desc: 'Order #4401 Invoice', debit: 450000, credit: 0, balance: 450000 },
-  { id: 'TRX-002', date: '2026-08-20', ref: 'PAY-892', desc: 'Bank Transfer Payment', debit: 0, credit: 450000, balance: 0 },
-  { id: 'TRX-003', date: '2026-09-01', ref: 'INV-4520', desc: 'Order #4520 Invoice', debit: 125000, credit: 0, balance: 125000 },
-]
+const mockLedger: any[] = []; // Removed dummy data
 
 export const CustomerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -272,9 +268,9 @@ export const CustomerDetail: React.FC = () => {
               Customer Ledger
             </h2>
             <div className="flex items-center gap-4 text-xs">
-              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Total Debit</span> <span className="font-semibold text-primary">{formatCurrency(575000, true)}</span></div>
-              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Total Credit</span> <span className="font-semibold text-primary">{formatCurrency(450000, true)}</span></div>
-              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(125000, true)}</span></div>
+              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Total Debit</span> <span className="font-semibold text-primary">{formatCurrency(0, true)}</span></div>
+              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Total Credit</span> <span className="font-semibold text-primary">{formatCurrency(0, true)}</span></div>
+              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(0, true)}</span></div>
             </div>
           </div>
           <div className="overflow-x-auto">

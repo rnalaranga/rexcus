@@ -1,11 +1,13 @@
-﻿import React from 'react';
-import { Download, Wallet, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Download, Wallet, ArrowUpRight, ArrowDownRight, Activity, Receipt } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useFinanceDashboard } from '@/hooks/useFinance';
 import { formatCurrency } from '@/lib/utils';
 
 export const FinanceDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { data: dashboard, loading } = useFinanceDashboard();
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse text-xs">Loading analytics...</div>;
@@ -19,6 +21,7 @@ export const FinanceDashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" icon={Download} className="text-xs" onClick={() => window.print()}>Export Summary</Button>
+          <Button variant="primary" size="sm" icon={Receipt} onClick={() => navigate('/finance/expense-builder')} className="bg-rex-600 hover:bg-rex-700 text-xs">Record Expense</Button>
         </div>
       </div>
 

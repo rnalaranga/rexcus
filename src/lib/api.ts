@@ -1,4 +1,4 @@
-﻿const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`;
+const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`;
 
 export const fetchCustomers = async () => {
   const res = await fetch(`${API_URL}/customers`);
@@ -318,6 +318,9 @@ export const updateBill = async (id: string, data: any) => (await (await fetch(`
 // ==========================
 export const fetchAccounts = async () => (await (await fetch(`${API_URL}/finance/accounts`)).json());
 export const createAccount = async (data: any) => (await (await fetch(`${API_URL}/finance/accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const updateAccount = async (id: string, data: any) => (await (await fetch(`${API_URL}/finance/accounts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deleteAccount = async (id: string) => (await (await fetch(`${API_URL}/finance/accounts/${id}`, { method: 'DELETE' })).json());
+export const fetchAccountLedger = async (id: string) => (await (await fetch(`${API_URL}/finance/accounts/${id}/ledger`)).json());
 
 export const fetchTaxes = async () => (await (await fetch(`${API_URL}/finance/taxes`)).json());
 export const createTax = async (data: any) => (await (await fetch(`${API_URL}/finance/taxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());

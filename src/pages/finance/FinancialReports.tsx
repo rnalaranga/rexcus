@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Download, FileText, PieChart, Landmark } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -7,13 +7,14 @@ import { formatCurrency } from '@/lib/utils';
 import html2pdf from 'html2pdf.js';
 
 export const FinancialReports: React.FC = () => {
-  const [activeReport, setActiveReport] = useState<'pnl' | 'bs' | 'tb'>('pnl');
+  const [activeReport, setActiveReport] = useState<'pnl' | 'bs' | 'tb' | 'exp'>('pnl');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/${activeReport === 'pnl' ? 'pnl' : activeReport === 'bs' ? 'balance-sheet' : 'trial-balance'}`)
+    const endpoints: Record<string, string> = { pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', exp: 'expenses' };
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/${endpoints[activeReport]}`)
       .then(res => res.json())
       .then(res => { setData(res); setLoading(false); })
       .catch(console.error);
@@ -43,6 +44,7 @@ export const FinancialReports: React.FC = () => {
         <button onClick={() => setActiveReport('pnl')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'pnl' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><PieChart size={12}/> Profit & Loss</button>
         <button onClick={() => setActiveReport('bs')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'bs' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><Landmark size={12}/> Balance Sheet</button>
         <button onClick={() => setActiveReport('tb')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'tb' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><FileText size={12}/> Trial Balance</button>
+        <button onClick={() => setActiveReport('exp')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'exp' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><FileText size={12}/> Expenses Sheet</button>
       </div>
 
       <div className="min-h-[60vh] relative bg-white border border-gray-200 shadow-sm rounded-lg overflow-hidden">
@@ -137,6 +139,36 @@ export const FinancialReports: React.FC = () => {
                   <span className="w-1/2 uppercase tracking-widest text-[10px]">Total</span>
                   <span className="w-1/4 text-right font-mono">{formatCurrency(data.totalDebit)}</span>
                   <span className="w-1/4 text-right font-mono">{formatCurrency(data.totalCredit)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* EXPENSES SHEET RENDER */}
+            {activeReport === 'exp' && data && (
+              <div className="text-xs">
+                <div className="flex justify-between font-bold uppercase tracking-wider text-[10px] border-b-2 border-black pb-2 mb-3">
+                  <span className="w-[15%]">Date</span>
+                  <span className="w-[15%]">Reference</span>
+                  <span className="w-[45%]">Expense Details</span>
+                  <span className="w-[25%] text-right">Amount (Rs.)</span>
+                </div>
+                {data.lines?.map((line: any) => (
+                  <div key={line.id} className="flex justify-between py-2 border-b border-dashed border-gray-200">
+                    <span className="w-[15%] text-gray-700">{line.date.split('T')[0]}</span>
+                    <span className="w-[15%] text-gray-700 font-mono text-[10px]">{line.reference || '-'}</span>
+                    <span className="w-[45%] text-gray-700">
+                      <strong>{line.accountCode} - {line.accountName}</strong><br/>
+                      <span className="text-[10px] text-gray-500">{line.description}</span>
+                    </span>
+                    <span className="w-[25%] text-right font-mono">{formatCurrency(line.debit - line.credit)}</span>
+                  </div>
+                ))}
+                {data.lines?.length === 0 && (
+                  <div className="py-8 text-center text-gray-400">No expenses recorded yet.</div>
+                )}
+                <div className="flex justify-between font-black text-xs py-4 border-t-2 border-b-4 border-double border-black mt-4">
+                  <span className="w-[75%] uppercase tracking-widest text-[10px]">Total Expenses</span>
+                  <span className="w-[25%] text-right font-mono">{formatCurrency(data.total)}</span>
                 </div>
               </div>
             )}

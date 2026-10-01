@@ -208,62 +208,48 @@ app.get('/api/settings', async (req, res) => {
 
 
 // ==========================
-// FRESH DB ROUTE
+// FIX DB ROUTE (Safe Schema Sync)
 // ==========================
-app.post('/api/settings/fresh-db', async (req, res) => {
+app.post('/api/settings/fix-db', async (req, res) => {
   try {
-    const { password } = req.body;
-    if (password !== '0715719676@Bcg') {
-      return res.status(403).json({ success: false, error: 'Invalid password' });
-    }
-
     const fs = require('fs');
     const path = require('path');
-    const sqlFile = path.join(__dirname, '../../complete_db.sql');
+    const sqlFile = path.join(__dirname, '../../fix_db_schema.sql');
     
+    const dbObj = require('./db').default || require('./db');
+
     if (fs.existsSync(sqlFile)) {
       const sqlContent = fs.readFileSync(sqlFile, 'utf8');
-      const statements = sqlContent.split(';').filter(s => s.trim().length > 0);
+      const statements = sqlContent.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      
       for (const stmt of statements) {
         try {
-          // Check if statement contains CREATE TABLE or ALTER
-          if (stmt.toUpperCase().includes('CREATE') || stmt.toUpperCase().includes('ALTER')) {
-            // we use the existing global db pool here
-          }
+          await dbObj.query(stmt);
         } catch (err) {
-          // ignore
+          // Ignore
         }
       }
     }
 
-    // Truncate transactional tables, preserve users/settings/chart_of_accounts etc.
-    const tablesToWipe = [
-      'leads', 'deals', 'quotations', 'followups', 'invoices',
-      'journal_entries', 'journal_lines', 'supplier_bills',
-      'purchase_orders', 'material_requests', 'grns',
-      'stock_ledger', 'supplier_ledger', 'rework_logs', 'qc_inspections',
-      'work_order_operations', 'work_orders'
+    // Safe schema patches
+    const patches = [
+      "ALTER TABLE chart_of_accounts ADD COLUMN balance DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE chart_of_accounts ADD COLUMN subtype VARCHAR(50)",
+      "ALTER TABLE tax_rates ADD COLUMN accountId VARCHAR(50)",
+      "ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted'"
     ];
-    
-    // We do NOT truncate users, customers, chart_of_accounts, suppliers, inventory, machineries, etc.
 
-    const dbObj = require('./db').default || require('./db');
-    
-    await dbObj.query('SET FOREIGN_KEY_CHECKS = 0');
-    for (const table of tablesToWipe) {
+    for (const patch of patches) {
       try {
-        await dbObj.query(`TRUNCATE TABLE ${table}`);
+        await dbObj.query(patch);
       } catch (err) {
-        console.warn(`Could not truncate ${table}:`, err.message);
+        // Ignore
       }
     }
-    await dbObj.query('SET FOREIGN_KEY_CHECKS = 1');
 
-    res.json({ success: true, message: 'Database reset successfully' });
+    res.json({ success: true, message: 'Database fixed and synchronized successfully. No data was deleted.' });
   } catch (error) {
     console.error(error);
-    const dbObj = require('./db').default || require('./db');
-    try { await dbObj.query('SET FOREIGN_KEY_CHECKS = 1'); } catch (e) {}
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -1010,6 +996,41 @@ app.put('/api/finance/accounts/:id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+app.delete('/api/finance/accounts/:id', async (req, res) => {
+  try {
+    const [used] = await db.query('SELECT COUNT(*) as cnt FROM journal_lines WHERE accountId = ?', [req.params.id]);
+    if (used[0].cnt > 0) return res.status(400).json({ error: 'Account has transactions and cannot be deleted.' });
+    await db.query('DELETE FROM chart_of_accounts WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
+  try {
+    const [account] = await db.query('SELECT * FROM chart_of_accounts WHERE id = ?', [req.params.id]);
+    const [lines] = await db.query(
+      `SELECT jl.*, je.date, je.reference, je.description as entryDescription
+       FROM journal_lines jl
+       JOIN journal_entries je ON jl.entryId = je.id
+       WHERE jl.accountId = ?
+       ORDER BY je.date ASC`,
+      [req.params.id]
+    );
+    // Calculate running balance
+    let runningBalance = 0;
+    const acc = account[0];
+    const isDebitNormal = acc && (acc.type === 'Asset' || acc.type === 'Expense');
+    const linesWithBalance = lines.map((l: any) => {
+      const debit = Number(l.debit || 0);
+      const credit = Number(l.credit || 0);
+      if (isDebitNormal) runningBalance += debit - credit;
+      else runningBalance += credit - debit;
+      return { ...l, runningBalance };
+    });
+    res.json({ account: acc, lines: linesWithBalance });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // Taxes
 app.get('/api/finance/taxes', async (req, res) => {
   try {
@@ -1127,6 +1148,8 @@ app.get('/api/finance/reports/trial-balance', async (req, res) => {
     res.json({ accounts: result.filter(a => a.debit > 0 || a.credit > 0), totalDebit, totalCredit });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+app.get('/api/finance/reports/expenses', async (req, res) => { try { const [lines] = await db.query('SELECT jl.*, je.date, je.reference, ca.name as accountName, ca.code as accountCode FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.type = \'Expense\' ORDER BY je.date DESC'); let total = 0; lines.forEach(l => total += Number(l.debit) - Number(l.credit)); res.json({ lines, total }); } catch(e){ res.status(500).json({error:e.message}); } });
 
 app.get('/api/finance/reports/pnl', async (req, res) => {
   try {

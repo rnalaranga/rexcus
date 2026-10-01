@@ -1,15 +1,18 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Receipt, Wallet, Calendar } from 'lucide-react';
+import { ArrowLeft, Save, Receipt, Wallet, Calendar, Percent } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { useAccounts } from '@/hooks/useFinance';
+import { useAccounts, useTaxes } from '@/hooks/useFinance';
 import { createJournal } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 export const ExpenseBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { data: accounts } = useAccounts();
+  const { data: taxes } = useTaxes();
+  const { showError, toast } = useDialog();
 
   const [docNo] = useState('EXP-' + Date.now().toString().slice(-4));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -19,23 +22,31 @@ export const ExpenseBuilder: React.FC = () => {
   
   const [expenseAccountId, setExpenseAccountId] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
+  const [taxRateId, setTaxRateId] = useState('');
 
   const expenseAccounts = accounts.filter(a => a.type === 'Expense' || a.type === 'Asset');
   const paymentAccounts = accounts.filter(a => a.subtype === 'Bank' || a.subtype === 'Current Asset');
 
+  const selectedTax = taxes.find(t => t.id === taxRateId);
+  const taxAmount = selectedTax ? (amount * selectedTax.rate) / 100 : 0;
+  const totalAmount = amount + taxAmount;
+
   const handleSave = async () => {
     if (amount <= 0 || !expenseAccountId || !paymentAccountId) {
-      return alert("Please fill all fields correctly.");
+      return showError('Please fill all fields correctly. Amount must be greater than 0.', 'Missing Fields');
     }
     
-    const lines = [
-      { id: '1', accountId: expenseAccountId, description, debit: amount, credit: 0 }, // Expense increases (Debit)
-      { id: '2', accountId: paymentAccountId, description, debit: 0, credit: amount }  // Asset decreases (Credit)
-    ];
+    const lines = [];
+    lines.push({ id: crypto.randomUUID(), accountId: expenseAccountId, description, debit: amount, credit: 0 });
+    if (selectedTax && taxAmount > 0) {
+      lines.push({ id: crypto.randomUUID(), accountId: selectedTax.accountId, description: `VAT Input: ${description}`, debit: taxAmount, credit: 0 });
+    }
+    lines.push({ id: crypto.randomUUID(), accountId: paymentAccountId, description, debit: 0, credit: totalAmount });
 
     await createJournal({
-      id: docNo, date, reference, description: `Direct Expense: ${description}`, totalAmount: amount, lines, createdBy: 'Admin'
+      id: docNo, date, reference, description: `Direct Expense: ${description}`, totalAmount, lines, createdBy: 'Admin'
     });
+    toast('Expense recorded successfully!', 'success');
     navigate('/finance');
   };
 
@@ -95,9 +106,30 @@ export const ExpenseBuilder: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-theme-subtle">
-               <label className="block text-[11px] font-bold text-muted uppercase mb-2 text-center">Total Amount</label>
-               <input type="number" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} placeholder="0.00" className="w-full text-center bg-transparent text-4xl font-black text-foreground focus:outline-none placeholder:text-muted/30" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-theme-subtle">
+              <div>
+                <label className="block text-[11px] font-bold text-muted uppercase mb-2 text-center">Expense Amount (Excl. Tax)</label>
+                <input type="number" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} placeholder="0.00" className="w-full text-center bg-transparent text-3xl font-black text-foreground focus:outline-none placeholder:text-muted/30" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-orange-500 uppercase mb-1 flex items-center gap-1.5 justify-center"><Percent size={12}/> Applicable Tax / VAT</label>
+                <select value={taxRateId} onChange={e => setTaxRateId(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-orange-500 text-center">
+                  <option value="">No Tax (0%)</option>
+                  {taxes.map(t => <option key={t.id} value={t.id}>{t.name} ({Number(t.rate)}%)</option>)}
+                </select>
+                {taxAmount > 0 && (
+                   <div className="text-center mt-2 text-sm font-semibold text-orange-500">
+                     + {formatCurrency(taxAmount)}
+                   </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-6 mt-6 border-t-2 border-theme-subtle">
+               <label className="block text-[11px] font-bold text-muted uppercase mb-2 text-center">Total Payment (Incl. Tax)</label>
+               <div className="w-full text-center bg-transparent text-4xl font-black text-red-500">
+                 {formatCurrency(totalAmount)}
+               </div>
             </div>
           </div>
         </GlassCard>
