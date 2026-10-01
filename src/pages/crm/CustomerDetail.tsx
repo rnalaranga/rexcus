@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react'
+import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -8,9 +8,10 @@ import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useDeals, useFollowups, useLeads, useQuotations } from '@/hooks/useData'
 import { updateCustomer } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
+import { useAccounts } from '@/hooks/useFinance'
+import { useDialog } from '@/components/ui/DialogProvider'
 
-// Mock Ledger Data
-const mockLedger: any[] = []; // Removed dummy data
+// Using real ledger API now
 
 export const CustomerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -21,6 +22,8 @@ export const CustomerDetail: React.FC = () => {
   const { data: deals, loading: dl } = useDeals()
   const { data: allFollowups } = useFollowups()
   const { data: leads } = useLeads()
+  const { data: accounts } = useAccounts()
+  const { showError, toast } = useDialog()
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -28,6 +31,22 @@ export const CustomerDetail: React.FC = () => {
   
   // Ledger View State
   const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations'>('overview')
+  const [ledgerData, setLedgerData] = useState<{ lines: any[], balance: number }>({ lines: [], balance: 0 })
+  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showAdjustModal, setShowAdjustModal] = useState(false)
+
+  React.useEffect(() => {
+    if (activeTab === 'ledger' && id) {
+      setLedgerLoading(true);
+      import('@/lib/api').then(({ fetchPartyLedger }) => {
+        fetchPartyLedger(id).then(data => {
+          setLedgerData(data || { lines: [], balance: 0 });
+          setLedgerLoading(false);
+        }).catch(() => setLedgerLoading(false));
+      });
+    }
+  }, [activeTab, id]);
 
   if (cl || dl) return <div className="p-8 text-center text-muted animate-pulse">Loading profile...</div>
 
@@ -268,36 +287,42 @@ export const CustomerDetail: React.FC = () => {
               Customer Ledger
             </h2>
             <div className="flex items-center gap-4 text-xs">
-              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Total Debit</span> <span className="font-semibold text-primary">{formatCurrency(0, true)}</span></div>
-              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Total Credit</span> <span className="font-semibold text-primary">{formatCurrency(0, true)}</span></div>
-              <div><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(0, true)}</span></div>
+              <Button variant="ghost" size="sm" onClick={() => setShowAdjustModal(true)}>Adjust Balance</Button>
+              <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
+              <div className="ml-4"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true)}</span></div>
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-theme-subtle bg-surface2/50">
-                  <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider">Reference</th>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider">Description</th>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider text-right">Debit (Rs)</th>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider text-right">Credit (Rs)</th>
-                  <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider text-right">Balance (Rs)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockLedger.map((trx, i) => (
-                  <tr key={trx.id} className="border-b border-theme-subtle/50 hover:bg-surface2/30 transition-colors">
-                    <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap">{trx.date}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-muted">{trx.ref}</td>
-                    <td className="px-4 py-3 text-xs text-primary">{trx.desc}</td>
-                    <td className="px-4 py-3 text-xs text-right text-rex-600 dark:text-rex-400 font-semibold">{trx.debit > 0 ? trx.debit.toLocaleString() : '-'}</td>
-                    <td className="px-4 py-3 text-xs text-right text-emerald-600 dark:text-emerald-400 font-semibold">{trx.credit > 0 ? trx.credit.toLocaleString() : '-'}</td>
-                    <td className="px-4 py-3 text-xs text-right text-primary font-bold">{trx.balance.toLocaleString()}</td>
+            {ledgerLoading ? (
+              <div className="p-8 text-center text-muted">Loading ledger...</div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-theme-subtle bg-surface2/50">
+                    <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider">Reference</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider">Description</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider text-right">Debit (Rs)</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider text-right">Credit (Rs)</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-muted uppercase tracking-wider text-right">Balance (Rs)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {ledgerData.lines.length === 0 ? (
+                    <tr><td colSpan={6} className="p-8 text-center text-muted">No transactions found</td></tr>
+                  ) : ledgerData.lines.map((trx) => (
+                    <tr key={trx.id} className="border-b border-theme-subtle/50 hover:bg-surface2/30 transition-colors">
+                      <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap">{formatDate(trx.date)}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-muted">{trx.reference || '-'}</td>
+                      <td className="px-4 py-3 text-xs text-primary">{trx.description || trx.entryDescription}</td>
+                      <td className="px-4 py-3 text-xs text-right text-rex-600 dark:text-rex-400 font-semibold">{Number(trx.debit) > 0 ? Number(trx.debit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</td>
+                      <td className="px-4 py-3 text-xs text-right text-emerald-600 dark:text-emerald-400 font-semibold">{Number(trx.credit) > 0 ? Number(trx.credit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</td>
+                      <td className="px-4 py-3 text-xs text-right text-primary font-bold">{Number(trx.runningBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </GlassCard>
       )}
@@ -423,6 +448,153 @@ export const CustomerDetail: React.FC = () => {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Record Payment Modal */}
+      <Modal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Record Payment">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.currentTarget);
+          const amount = Number(formData.get('amount'));
+          const depositAccountId = formData.get('depositAccountId') as string;
+          const arAccountId = formData.get('arAccountId') as string;
+          const date = formData.get('date') as string;
+          const reference = formData.get('reference') as string;
+          
+          if (amount <= 0 || !depositAccountId || !arAccountId) return showError('Invalid amount or missing accounts');
+          
+          try {
+            const { createJournal } = await import('@/lib/api');
+            const je = {
+              id: 'PMT-' + Date.now().toString().slice(-4),
+              date,
+              reference,
+              description: `Payment from ${customer.name}`,
+              totalAmount: amount,
+              createdBy: 'System',
+              lines: [
+                { id: crypto.randomUUID(), accountId: depositAccountId, debit: amount, credit: 0, description: 'Payment Received' },
+                { id: crypto.randomUUID(), accountId: arAccountId, debit: 0, credit: amount, partyId: customer.id, partyType: 'customer', description: 'Customer Payment' }
+              ]
+            };
+            await createJournal(je);
+            toast('Payment recorded successfully', 'success');
+            setShowPaymentModal(false);
+            setActiveTab('overview'); setTimeout(() => setActiveTab('ledger'), 10);
+          } catch(err: any) { showError(err.message, 'Error'); }
+        }}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Date</label>
+              <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Amount</label>
+              <input type="number" step="0.01" name="amount" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Deposit To (Bank/Cash)</label>
+              <select name="depositAccountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                <option value="">-- Select Account --</option>
+                {accounts.filter(a => a.subtype === 'Bank' || a.subtype === 'Current Asset').map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Customer AR Account</label>
+              <select name="arAccountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                <option value="">-- Select AR Account --</option>
+                {accounts.filter(a => a.type === 'Asset').map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Reference (Check/Transfer No)</label>
+              <input type="text" name="reference" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="ghost" type="button" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Save Payment</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Adjust Balance Modal */}
+      <Modal isOpen={showAdjustModal} onClose={() => setShowAdjustModal(false)} title="Adjust Customer Balance">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.currentTarget);
+          const amount = Number(formData.get('amount'));
+          const type = formData.get('type') as string;
+          const arAccountId = formData.get('arAccountId') as string;
+          const offsetAccountId = formData.get('offsetAccountId') as string;
+          const date = formData.get('date') as string;
+          const reference = formData.get('reference') as string;
+          const description = formData.get('description') as string;
+          
+          if (amount <= 0 || !arAccountId || !offsetAccountId) return showError('Invalid amount or missing accounts');
+          
+          try {
+            const { createJournal } = await import('@/lib/api');
+            const je = {
+              id: 'ADJ-' + Date.now().toString().slice(-4),
+              date,
+              reference,
+              description: `Balance Adjustment: ${description}`,
+              totalAmount: amount,
+              createdBy: 'System',
+              lines: [
+                { id: crypto.randomUUID(), accountId: arAccountId, debit: type === 'increase' ? amount : 0, credit: type === 'decrease' ? amount : 0, partyId: customer.id, partyType: 'customer', description },
+                { id: crypto.randomUUID(), accountId: offsetAccountId, debit: type === 'decrease' ? amount : 0, credit: type === 'increase' ? amount : 0, description }
+              ]
+            };
+            await createJournal(je);
+            toast('Adjustment recorded successfully', 'success');
+            setShowAdjustModal(false);
+            setActiveTab('overview'); setTimeout(() => setActiveTab('ledger'), 10);
+          } catch(err: any) { showError(err.message, 'Error'); }
+        }}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-1">Adjustment Type</label>
+                  <select name="type" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                    <option value="increase">Increase Balance (Invoice/Charge)</option>
+                    <option value="decrease">Decrease Balance (Credit Note)</option>
+                  </select>
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-1">Date</label>
+                  <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+               </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Amount</label>
+              <input type="number" step="0.01" name="amount" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Customer AR Account (Affected)</label>
+              <select name="arAccountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                <option value="">-- Select AR Account --</option>
+                {accounts.filter(a => a.type === 'Asset').map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Offset Account (e.g. Sales / Opening Bal Equity)</label>
+              <select name="offsetAccountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                <option value="">-- Select Offset Account --</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Description</label>
+              <input type="text" name="description" required placeholder="e.g. Opening Balance" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="ghost" type="button" onClick={() => setShowAdjustModal(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Save Adjustment</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

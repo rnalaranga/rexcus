@@ -1,4 +1,4 @@
-﻿const mysql = require("mysql2/promise");
+const mysql = require("mysql2/promise");
 require("dotenv").config({ path: "api/.env" });
 const { execSync } = require("child_process");
 const fs = require("fs");
@@ -7,7 +7,7 @@ const path = require("path");
 async function run() {
   const host = process.env.DB_HOST || 'localhost';
   const user = process.env.DB_USER || 'root';
-  const password = process.env.DB_PASSWORD || '1234';
+  const password = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '1234';
   const database = process.env.DB_NAME || 'rex_erp';
 
   console.log(`Connecting to MySQL...`);

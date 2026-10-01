@@ -353,3 +353,5 @@ export const createWorkOrder = async (data: any) => {
   });
   return res.json();
 };
+export const fetchPartyLedger = async (id: string) => (await (await fetch(`${API_URL}/finance/party/${id}/ledger`)).json());
+export const deleteJournal = async (id: string) => (await (await fetch(`${API_URL}/finance/journals/${id}`, { method: 'DELETE' })).json());

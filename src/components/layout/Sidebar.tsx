@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -56,6 +56,7 @@ const navGroups: NavGroup[] = [
     title: 'Finance', icon: DollarSign, active: true,
     items: [
       { label: 'Dashboard',    path: '/finance/dashboard',     icon: BarChart3 },
+      { label: 'Banking',      path: '/finance/banking',       icon: Landmark },
       { label: 'Invoices',     path: '/finance/invoices',      icon: FileText },
       { label: 'Accounting',   path: '/finance',               icon: DollarSign },
       { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight },

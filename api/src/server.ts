@@ -1031,6 +1031,27 @@ app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+app.get('/api/finance/party/:id/ledger', async (req, res) => {
+  try {
+    const [lines] = await db.query(
+      `SELECT jl.*, je.date, je.reference, je.description as entryDescription
+       FROM journal_lines jl
+       JOIN journal_entries je ON jl.entryId = je.id
+       WHERE jl.partyId = ?
+       ORDER BY je.date ASC`,
+      [req.params.id]
+    );
+    let runningBalance = 0;
+    const linesWithBalance = lines.map((l: any) => {
+      const debit = Number(l.debit || 0);
+      const credit = Number(l.credit || 0);
+      runningBalance += debit - credit;
+      return { ...l, runningBalance };
+    });
+    res.json({ lines: linesWithBalance, balance: runningBalance });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // Taxes
 app.get('/api/finance/taxes', async (req, res) => {
   try {
@@ -1049,6 +1070,52 @@ app.post('/api/finance/taxes', async (req, res) => {
 });
 
 // Journal Entries
+app.delete('/api/finance/journals/:id', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const entryId = req.params.id;
+    // Get all lines to revert balances
+    const [lines] = await conn.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId = ?', [entryId]);
+    
+    // Begin Transaction
+    await conn.beginTransaction();
+    
+    // Revert balances
+    for (const line of lines) {
+      const [accRows] = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+      if (accRows.length > 0) {
+        const type = accRows[0].type.toLowerCase();
+        let isDebitNormal = type.includes('asset') || type.includes('expense');
+        let currentBalance = Number(accRows[0].balance);
+        const debit = Number(line.debit || 0);
+        const credit = Number(line.credit || 0);
+        
+        // Revert the change that was applied
+        const balanceChange = debit - credit;
+        if (isDebitNormal) {
+          currentBalance -= balanceChange;
+        } else {
+          currentBalance += balanceChange; // wait, for credit normal: originally balance += (credit-debit) = -balanceChange. Revert: balance -= -balanceChange = +balanceChange
+        }
+        
+        await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [currentBalance, line.accountId]);
+      }
+    }
+    
+    // Delete lines and entry
+    await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [entryId]);
+    await conn.query('DELETE FROM journal_entries WHERE id = ?', [entryId]);
+    
+    await conn.commit();
+    res.json({ success: true });
+  } catch (error) {
+    await conn.rollback();
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
 app.get('/api/finance/journals', async (req, res) => {
   try {
     const [entries] = await db.query('SELECT * FROM journal_entries ORDER BY date DESC');

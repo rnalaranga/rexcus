@@ -41,12 +41,13 @@ export const AccountingHub: React.FC = () => {
   const [ledgerData, setLedgerData] = useState<any>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [expandedJournal, setExpandedJournal] = useState<string | null>(null);
+  const [showAddTax, setShowAddTax] = useState(false);
   const navigate = useNavigate();
   const { showConfirm, showError, toast } = useDialog();
 
   const { data: accounts, loading: loadingCOA, refetch: refetchCOA } = useAccounts();
   const { data: taxes, loading: loadingTaxes } = useTaxes();
-  const { data: journals, loading: loadingJournals } = useJournals();
+  const { data: journals, loading: loadingJournals, refetch: refetchJournals } = useJournals();
 
   const loading = loadingCOA || loadingTaxes || loadingJournals;
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading finance data...</div>;
@@ -102,13 +103,13 @@ export const AccountingHub: React.FC = () => {
           <div className="w-8 h-8 flex-shrink-0 bg-amber-600 border border-amber-500/40 flex items-center justify-center text-white font-bold text-xs">TX</div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-primary truncate leading-snug">{row.name}</p>
-            <p className="text-[10px] text-muted truncate mt-0.5">{row.type}</p>
+            <p className="text-[10px] text-muted truncate mt-0.5">Linked Account ID: {row.accountId}</p>
           </div>
         </div>
       )
     },
     { key: 'rate', header: 'Rate (%)', align: 'right', render: v => <span className="text-sm font-bold text-primary">{Number(v)}%</span> },
-    { key: 'isActive', header: 'Status', width: '90px', render: v => <Badge value={v ? 'ACTIVE' : 'INACTIVE'} /> }
+    { key: 'isActive', header: 'Status', width: '90px', render: v => <Badge value={v !== false ? 'ACTIVE' : 'INACTIVE'} /> }
   ];
 
   const countLabel = activeTab === 'coa' ? `${accounts.length} accounts` : activeTab === 'journals' ? `${journals.length} journal entries` : `${taxes.length} tax rates`;
@@ -123,12 +124,16 @@ export const AccountingHub: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
-          <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/expense-builder')} className="border border-theme-subtle">Record Expense</Button>
+          <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/income-builder')} className="border border-theme-subtle text-emerald-500">Record Income</Button>
+          <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/expense-builder')} className="border border-theme-subtle text-red-500">Record Expense</Button>
           {activeTab === 'coa' && (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => { setEditAccount(null); setShowAddAccount(true); }} className="bg-rex-600 hover:bg-rex-700">Add Account</Button>
           )}
           {activeTab === 'journals' && (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/finance/journal-builder')} className="bg-rex-600 hover:bg-rex-700">New Journal Entry</Button>
+          )}
+          {activeTab === 'taxes' && (
+            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowAddTax(true)} className="bg-amber-600 hover:bg-amber-700">Add Tax Rate</Button>
           )}
         </div>
       </div>
@@ -319,8 +324,28 @@ export const AccountingHub: React.FC = () => {
                         </div>
                       ))}
                       {/* Totals Row */}
-                      <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-surface/50 border-t-2 border-theme text-xs font-bold">
-                        <div className="col-span-8 uppercase tracking-wider text-muted">Total</div>
+                      <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-surface/50 border-t-2 border-theme text-xs font-bold items-center">
+                        <div className="col-span-8 flex items-center justify-between">
+                          <span className="uppercase tracking-wider text-muted">Total</span>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (await showConfirm('Are you sure you want to delete this journal entry? This will revert account balances.', 'Delete Journal')) {
+                                try {
+                                  const { deleteJournal } = await import('@/lib/api');
+                                  await deleteJournal(j.id);
+                                  toast('Journal deleted', 'success');
+                                  setExpandedJournal(null);
+                                  refetchJournals();
+                                  refetchCOA();
+                                } catch (err: any) { showError(err.message, 'Error'); }
+                              }
+                            }}
+                            className="text-[10px] bg-red-500/10 text-red-500 hover:bg-red-500/20 px-2 py-1 rounded transition-colors"
+                          >
+                            Delete Entry
+                          </button>
+                        </div>
                         <div className="col-span-2 text-right font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(Number(j.totalAmount))}</div>
                         <div className="col-span-2 text-right font-mono text-amber-600 dark:text-amber-400">{formatCurrency(Number(j.totalAmount))}</div>
                       </div>
@@ -432,6 +457,53 @@ export const AccountingHub: React.FC = () => {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      {/* Tax Modal */}
+      <Modal isOpen={showAddTax} onClose={() => setShowAddTax(false)} title="Add Tax Rate">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.currentTarget);
+          const name = formData.get('name') as string;
+          const rate = Number(formData.get('rate'));
+          const accountId = formData.get('accountId') as string;
+          
+          if (!name || isNaN(rate) || !accountId) return showError('Please fill all required fields.', 'Validation Error');
+          
+          try {
+            const { createTax } = await import('@/lib/api');
+            await createTax({ id: crypto.randomUUID(), name, rate, accountId });
+            toast('Tax rate created', 'success');
+            setShowAddTax(false);
+            window.location.reload();
+          } catch(err: any) {
+            showError(err.message, 'Error');
+          }
+        }}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Tax Name</label>
+              <input name="name" required placeholder="e.g. VAT" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
+              <input name="rate" type="number" step="0.01" required placeholder="15" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Tax Liability Account</label>
+              <select name="accountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                <option value="">-- Select Liability Account --</option>
+                {accounts.filter(a => a.type === 'Liability').map(a => (
+                  <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="ghost" onClick={() => setShowAddTax(false)} type="button">Cancel</Button>
+            <Button variant="primary" type="submit">Save Tax Rate</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

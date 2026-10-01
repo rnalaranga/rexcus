@@ -23,6 +23,8 @@ import { AccountingHub } from '@/pages/finance/AccountingHub'
 import { JournalBuilder } from '@/pages/finance/JournalBuilder'
 import { FinancialReports } from '@/pages/finance/FinancialReports'
 import { ExpenseBuilder } from '@/pages/finance/ExpenseBuilder'
+import { IncomeBuilder } from '@/pages/finance/IncomeBuilder'
+import { BankingHub } from '@/pages/finance/BankingHub'
 import { ARAPManager } from '@/pages/finance/ARAPManager'
 import { FixedAssets } from '@/pages/finance/FixedAssets'
 import { BankReconciliation } from '@/pages/finance/BankReconciliation'
@@ -109,6 +111,8 @@ function AppRoutes() {
             <Route path="/finance/journal-builder" element={<JournalBuilder />} />
             <Route path="/finance/reports" element={<FinancialReports />} />
             <Route path="/finance/expense-builder" element={<ExpenseBuilder />} />
+            <Route path="/finance/income-builder" element={<IncomeBuilder />} />
+            <Route path="/finance/banking" element={<BankingHub />} />
             <Route path="/finance/ap-ar" element={<ARAPManager />} />
             <Route path="/finance/fixed-assets" element={<FixedAssets />} />
             <Route path="/finance/bank-rec" element={<BankReconciliation />} />
