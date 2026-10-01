@@ -1,4 +1,4 @@
-﻿const mysql = require("mysql2/promise");
+const mysql = require("mysql2/promise");
 require("dotenv").config({ path: __dirname + "/.env" });
 
 async function run() {
@@ -15,6 +15,9 @@ async function run() {
       code VARCHAR(20) NOT NULL,
       name VARCHAR(100) NOT NULL,
       type VARCHAR(50) NOT NULL,
+      subtype VARCHAR(50),
+      accountNumber VARCHAR(50),
+      balance DECIMAL(15,2) DEFAULT 0.00,
       isTaxAccount BOOLEAN DEFAULT FALSE,
       createdAt DATETIME,
       updatedAt DATETIME
@@ -39,6 +42,7 @@ async function run() {
       description TEXT,
       totalAmount DECIMAL(15,2) NOT NULL,
       createdBy VARCHAR(50),
+      status VARCHAR(50) DEFAULT 'posted',
       createdAt DATETIME
     )
   `);
@@ -52,6 +56,7 @@ async function run() {
       credit DECIMAL(15,2) DEFAULT 0.00,
       description TEXT,
       partyId VARCHAR(50),
+      partyType VARCHAR(50),
       costCenterId VARCHAR(50)
     )
   `);

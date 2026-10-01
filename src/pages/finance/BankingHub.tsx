@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Landmark, ArrowLeft, ArrowRightLeft, Plus, Download, Search, CheckCircle2 } from 'lucide-react';
+import { Landmark, ArrowLeft, ArrowRightLeft, Plus, Download, Search, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -10,15 +10,16 @@ import { formatCurrency } from '@/lib/utils';
 import { AccountModal } from './AccountModal';
 import { Modal } from '@/components/ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { createJournal } from '@/lib/api';
+import { createJournal, deleteAccount } from '@/lib/api';
 
 export const BankingHub: React.FC = () => {
   const navigate = useNavigate();
   const { data: accounts, loading, refetch } = useAccounts();
   const [search, setSearch] = useState('');
   const [showAddBank, setShowAddBank] = useState(false);
+  const [editBank, setEditBank] = useState<any>(null);
   const [showTransfer, setShowTransfer] = useState(false);
-  const { showError, toast } = useDialog();
+  const { showError, toast, showConfirm } = useDialog();
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading bank accounts...</div>;
 
@@ -30,6 +31,19 @@ export const BankingHub: React.FC = () => {
   );
 
   const totalBalance = bankAccounts.reduce((acc, curr) => acc + Number(curr.balance), 0);
+
+  const handleDelete = async (id: string, name: string) => {
+    if (await showConfirm(`Are you sure you want to delete the bank account "${name}"?`)) {
+      try {
+        const res = await deleteAccount(id);
+        if (!res.success && res.error) throw new Error(res.error);
+        toast('Bank account deleted successfully', 'success');
+        refetch();
+      } catch (err: any) {
+        showError(err.message, 'Failed to Delete');
+      }
+    }
+  };
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,9 +140,10 @@ export const BankingHub: React.FC = () => {
                          {formatCurrency(Number(bank.balance))}
                        </p>
                      </div>
-                     <Button variant="ghost" size="sm" onClick={() => navigate('/finance?tab=coa')} className="opacity-0 group-hover:opacity-100 transition-opacity">
-                       Manage
-                     </Button>
+                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <Button variant="ghost" size="sm" icon={Edit2} onClick={() => setEditBank(bank)} />
+                       <Button variant="ghost" size="sm" icon={Trash2} className="text-red-500 hover:bg-red-500/10" onClick={() => handleDelete(bank.id, bank.name)} />
+                     </div>
                    </div>
                  </div>
                ))
@@ -143,6 +158,15 @@ export const BankingHub: React.FC = () => {
           isOpen={true}
           onClose={() => setShowAddBank(false)}
           onSuccess={() => { refetch(); setShowAddBank(false); }}
+        />
+      )}
+
+      {editBank && (
+        <AccountModal
+          initialData={editBank}
+          isOpen={true}
+          onClose={() => setEditBank(null)}
+          onSuccess={() => { refetch(); setEditBank(null); }}
         />
       )}
 

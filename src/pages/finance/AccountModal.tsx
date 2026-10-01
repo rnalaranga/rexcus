@@ -19,6 +19,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
     name: '',
     type: 'Asset',
     subtype: '',
+    accountNumber: '',
     balance: 0
   });
 
@@ -29,10 +30,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
         name: initialData.name || '',
         type: initialData.type || 'Asset',
         subtype: initialData.subtype || '',
+        accountNumber: initialData.accountNumber || '',
         balance: Number(initialData.balance) || 0
       });
     } else if (isOpen && !initialData) {
-      setFormData({ code: '', name: '', type: 'Asset', subtype: '', balance: 0 });
+      setFormData({ code: '', name: '', type: 'Asset', subtype: '', accountNumber: '', balance: 0 });
     }
   }, [initialData, isOpen]);
 
@@ -40,28 +42,30 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
     e.preventDefault();
     setLoading(true);
     try {
-      if (initialData) {
+      if (initialData && initialData.id) {
         const res = await updateAccount(initialData.id, formData);
-        if (!res.success) throw new Error('Failed to update account');
+        if (!res.success && res.error) throw new Error(res.error);
+        else if (!res.success) throw new Error('Failed to update account');
         toast(`"${formData.name}" account updated successfully!`, 'success');
       } else {
         const payload = { id: crypto.randomUUID(), ...formData };
         const res = await createAccount(payload);
-        if (!res.success) throw new Error('Failed to create account');
+        if (!res.success && res.error) throw new Error(res.error);
+        else if (!res.success) throw new Error('Failed to create account');
         toast(`"${formData.name}" account added successfully!`, 'success');
       }
       
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      showError('Failed to save account. The account code may already be in use.', 'Save Failed');
+      showError(error.message || 'Failed to save account. The account code may already be in use.', 'Save Failed');
     }
     setLoading(false);
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={initialData ? "Edit Account" : "Add New Account"}>
+    <Modal isOpen={isOpen} onClose={onClose} title={(initialData && initialData.id) ? "Edit Account" : "Add New Account"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
@@ -116,6 +120,19 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
             />
           </div>
         </div>
+
+        {formData.subtype === 'Bank' && (
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-secondary">Bank Account Number (Optional)</label>
+            <input
+              type="text"
+              value={formData.accountNumber}
+              onChange={e => setFormData(p => ({ ...p, accountNumber: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface border border-theme rounded-md text-sm text-primary"
+              placeholder="e.g. 1000-2000-3000"
+            />
+          </div>
+        )}
 
         <div className="space-y-1">
           <label className="text-xs font-medium text-secondary">Opening Balance</label>
