@@ -24,7 +24,7 @@ export const ExpenseBuilder: React.FC = () => {
   const [paymentAccountId, setPaymentAccountId] = useState('');
   const [taxRateId, setTaxRateId] = useState('');
 
-  const expenseAccounts = accounts.filter(a => a.type === 'Expense' || a.type === 'Asset');
+  const expenseAccounts = accounts.filter(a => a.type === 'Expense');
   const paymentAccounts = accounts.filter(a => a.type === 'Asset' || a.type === 'Liability');
 
   const selectedTax = taxes.find(t => t.id === taxRateId);
