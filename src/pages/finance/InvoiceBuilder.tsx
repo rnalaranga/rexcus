@@ -839,10 +839,23 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   <span className="text-sm text-muted">Subtotal</span>
                   <span className="font-mono text-sm">{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted">Tax</span>
-                  <span className="font-mono text-sm text-amber-500">{formatCurrency(taxAmount)}</span>
-                </div>
+                {selectedProfile?.tax2_name ? (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted">{selectedProfile.tax1_name}</span>
+                      <span className="font-mono text-sm text-amber-500">{formatCurrency(ssclAmount)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted">{selectedProfile.tax2_name}</span>
+                      <span className="font-mono text-sm text-amber-500">{formatCurrency(vatAmount)}</span>
+                    </div>
+                  </>
+                ) : taxType !== 'none' ? (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted">{selectedProfile?.tax1_name || 'Tax'}</span>
+                    <span className="font-mono text-sm text-amber-500">{formatCurrency(taxAmount)}</span>
+                  </div>
+                ) : null}
                 <div className="pt-4 border-t border-blue-500/30 flex justify-between items-center">
                   <span className="text-base font-black text-primary uppercase tracking-wide">Grand Total</span>
                   <span className="text-3xl font-black text-blue-600 font-mono">{formatCurrency(total)}</span>

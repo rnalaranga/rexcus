@@ -6,7 +6,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { useLeads, useInventory, useMachiningOperations } from '@/hooks/useData'
+import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
 import { createQuotation, fetchQuotations } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 // @ts-ignore
@@ -138,6 +138,7 @@ export const QuotationBuilder: React.FC = () => {
     const previewParam = searchParams.get('preview') === 'true'
   const navigate = useNavigate()
   const { data: leads, loading } = useLeads()
+  const { data: customers } = useCustomers()
   const { data: inventory } = useInventory()
   const { settings } = useSettings()
   const { user } = useAuth()
@@ -250,6 +251,27 @@ export const QuotationBuilder: React.FC = () => {
   const [subject, setSubject] = useState('To machining parts as per given sample')
   const [customerName, setCustomerName] = useState('')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
+
+  const handleSelectLeadOrCustomer = (id: string, name: string) => {
+    setSelectedLeadId(id);
+    const lead = leads.find((l: any) => l.id === id);
+    if (lead) {
+      if (lead.company) setAttention(lead.name);
+      
+      let cust = null;
+      if (lead.customerId) cust = customers.find((c: any) => c.id === lead.customerId);
+      
+      if (cust) {
+        setVatNo(cust.vat || cust.svat || '');
+        let terms = '';
+        if (cust.requiresAdvance) terms = 'Advance required. ';
+        if (cust.creditDays > 0) terms += `${cust.creditDays} days credit.`;
+        setCustTerms(terms.trim());
+      } else {
+        setVatNo(lead.vat || lead.svat || '');
+      }
+    }
+  };
 
   useEffect(() => {
      if (leadId && lead) {
@@ -664,7 +686,7 @@ export const QuotationBuilder: React.FC = () => {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
               <div className="md:col-span-2">
                 <label className="block text-[10px] font-bold text-secondary uppercase mb-1 flex items-center gap-1">Customer / Lead <span className="text-red-500">*</span></label>
-                <LeadSearchInput value={customerName} onChange={setCustomerName} onSelect={(id) => setSelectedLeadId(id)} leads={leads} className={docInputClass + " font-bold text-primary"} />
+                <LeadSearchInput value={customerName} onChange={setCustomerName} onSelect={handleSelectLeadOrCustomer} leads={leads} className={docInputClass + " font-bold text-primary"} />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-secondary uppercase mb-1 flex items-center gap-1">Quotation No <span className="text-red-500">*</span></label>

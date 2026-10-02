@@ -9,6 +9,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
 import { useInvoices, useLeads } from '@/hooks/useData'
+import { useTaxProfiles } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -17,6 +18,7 @@ export const Invoices: React.FC = () => {
   const navigate = useNavigate()
   const { data: invoices, loading, refetch } = useInvoices()
   const { data: leads } = useLeads()
+  const { data: taxProfiles } = useTaxProfiles()
   const { settings } = useSettings()
   
   const [search, setSearch] = useState('')
@@ -274,6 +276,18 @@ export const Invoices: React.FC = () => {
                 company={settings}
                 getTaxRate={() => 0}
                 taxRates={[]}
+                taxType={viewInvoice.taxType}
+                selectedProfile={taxProfiles?.find((p: any) => p.id === viewInvoice.taxType)}
+                ssclAmount={
+                  taxProfiles?.find((p: any) => p.id === viewInvoice.taxType)?.tax2_name 
+                    ? Number(viewInvoice.subtotal) * (Number(taxProfiles.find((p: any) => p.id === viewInvoice.taxType).tax1_rate) / 100) 
+                    : 0
+                }
+                vatAmount={
+                  taxProfiles?.find((p: any) => p.id === viewInvoice.taxType)?.tax2_name 
+                    ? Number(viewInvoice.taxAmount) - (Number(viewInvoice.subtotal) * (Number(taxProfiles.find((p: any) => p.id === viewInvoice.taxType).tax1_rate) / 100))
+                    : Number(viewInvoice.taxAmount)
+                }
               />
               </div>
             </div>

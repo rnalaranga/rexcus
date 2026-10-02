@@ -992,7 +992,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     const payment = req.body;
     
     // Get existing invoice
-    const [rows]: any = await db.query('SELECT payments, paidAmount, total, customerId FROM invoices WHERE id = ?', [id]);
+    const [rows]: any = await db.query('SELECT payments, paidAmount, subtotal, taxAmount, total, customerId FROM invoices WHERE id = ?', [id]);
     if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
     
     const invoice = rows[0];
@@ -1022,9 +1022,16 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       try {
         const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("3000", "4000") OR name LIKE "%Sales%" OR name LIKE "%Revenue%" LIMIT 1');
         const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" OR isTaxAccount = 1 LIMIT 1');
-        const [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
+        let [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
         
-        if (cashAcc.length > 0 && salesAcc.length > 0) {
+        // Auto-create Cash Account if it doesn't exist
+        if (cashAcc.length === 0) {
+          const cashId = 'ACC-' + Date.now().toString().slice(-6);
+          await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1000", "Cash and Equivalents", "Asset", "Cash", 0, NOW())', [cashId]);
+          cashAcc = [{ id: cashId }];
+        }
+        
+        if (salesAcc.length > 0) {
           const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
           const pmtAmount = Number(payment.amount);
           
