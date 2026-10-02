@@ -25,6 +25,15 @@ export const ExpenseBuilder: React.FC = () => {
   const [taxRateId, setTaxRateId] = useState('');
 
   const expenseAccounts = accounts.filter(a => a.type === 'Expense');
+  
+  // Group expenses by subtype
+  const groupedExpenses = expenseAccounts.reduce((acc, curr) => {
+    const group = curr.subtype || 'Other Expenses';
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(curr);
+    return acc;
+  }, {} as Record<string, any[]>);
+
   const paymentAccounts = accounts.filter(a => a.type === 'Asset' || a.type === 'Liability');
 
   const selectedTax = taxes.find(t => t.id === taxRateId);
@@ -94,7 +103,11 @@ export const ExpenseBuilder: React.FC = () => {
                 <label className="block text-[11px] font-bold text-red-500 uppercase mb-1 flex items-center gap-1.5"><Receipt size={12}/> Expense Account (Debit)</label>
                 <select value={expenseAccountId} onChange={e => setExpenseAccountId(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-red-500">
                   <option value="">-- Select Expense Category --</option>
-                  {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                  {Object.entries(groupedExpenses).sort(([a], [b]) => a.localeCompare(b)).map(([group, accs]) => (
+                    <optgroup key={group} label={group}>
+                      {accs.map((a: any) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
               <div>
