@@ -16,9 +16,8 @@ import { useDialog } from '@/components/ui/DialogProvider';
 
 // ─── Template Definitions ────────────────────────────────────────────────────
 export const TEMPLATES = [
-  { id: 'classic', name: 'Classic', description: 'Clean minimal white', color: '#1e1e2e', accent: '#2563eb' },
-  { id: 'modern',  name: 'Modern',  description: 'Bold dark gradient',  color: '#0f172a', accent: '#b91c1c' },
-  { id: 'elegant', name: 'Elegant', description: 'Light professional',   color: '#374151', accent: '#059669' },
+  { id: 'government', name: 'VAT Separate', description: 'Standard Tax Invoice (VAT added to total)', color: '#000000', accent: '#000000' },
+  { id: 'government_inclusive', name: 'VAT Included', description: 'Tax Invoice (Prices inclusive of VAT)', color: '#000000', accent: '#000000' }
 ];
 
 const docInputClass = "w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs outline-none focus:border-blue-500/50 transition-colors";
@@ -89,7 +88,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
               return (
                 <tr key={item.id} style={{ borderBottom: `1px solid ${borderColor}`, background: idx % 2 === 0 ? 'transparent' : '#f9fafb' }}>
                   <td style={{ padding: '7px 6px', color: '#9ca3af' }}>{idx + 1}</td>
-                  <td style={{ padding: '7px 6px', fontWeight: 500 }}>{item.description || '—'}</td>
+                  <td style={{ padding: '7px 6px', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description || '—'}</td>
                   <td style={{ padding: '7px 6px', textAlign: 'center' }}>{item.qty}</td>
                   <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(item.unitPrice)}</td>
                   <td style={{ padding: '7px 6px', textAlign: 'center', color: '#6b7280' }}>{tax ? `${tax.name} (${tax.rate}%)` : '—'}</td>
@@ -170,7 +169,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  const [template, setTemplate] = useState('classic');
+  const [template, setTemplate] = useState('government');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [company, setCompany] = useState<any>({});
@@ -326,7 +325,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                       {selectedCustomer.email && <p className="text-[10px] text-muted flex items-center gap-1"><Mail size={10} className="text-blue-400" />{selectedCustomer.email}</p>}
                       {selectedCustomer.phone && <p className="text-[10px] text-muted flex items-center gap-1"><Phone size={10} className="text-blue-400" />{selectedCustomer.phone}</p>}
                     </div>
-                    {Number(selectedCustomer.creditDays) > 0 && <p className="text-[10px] text-emerald-500 font-bold">Payment Terms: {selectedCustomer.creditDays} Days</p>}
+                    {Number(selectedCustomer.creditDays) > 0 ? <p className="text-[10px] text-emerald-500 font-bold">Payment Terms: {selectedCustomer.creditDays} Days</p> : null}
                     <div className="mt-2 pt-2 border-t border-theme-subtle">
                       <label className="text-[9px] font-bold text-muted uppercase block mb-1">Purchaser's VAT / TIN (Override if needed)</label>
                       <input type="text" value={customerVat} onChange={e => setCustomerVat(e.target.value)} placeholder="Enter VAT Number..." className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-md text-xs outline-none focus:border-blue-500 transition-colors" />
@@ -441,10 +440,10 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                       <tr key={item.id} className={`border-b border-theme-subtle last:border-0 group hover:bg-surface2/20 transition-colors ${idx % 2 === 0 ? '' : 'bg-surface2/10'}`}>
                         <td className="px-5 py-2 text-[10px] text-muted font-mono">{idx + 1}</td>
                         <td className="px-2 py-2">
-                          <SearchableSelect value={item.inventoryId} onChange={val => handleChangeItem(item.id, 'inventoryId', val)} options={itemOptions} placeholder="Search…" className="text-xs" />
+                          <SearchableSelect value={item.inventoryId} onChange={val => handleChangeItem(item.id, 'inventoryId', val)} options={itemOptions} placeholder="Select or skip..." className="text-xs" />
                         </td>
                         <td className="px-2 py-2">
-                          <input type="text" value={item.description} onChange={e => handleChangeItem(item.id, 'description', e.target.value)} placeholder="Description…" className={tableInputClass} />
+                          <textarea value={item.description} onChange={e => handleChangeItem(item.id, 'description', e.target.value)} placeholder="Description…\n(Multiple lines allowed)" className={`${tableInputClass} resize-y min-h-[40px] leading-relaxed`} rows={2} />
                         </td>
                         <td className="px-2 py-2">
                           <input type="number" min="1" value={item.qty} onChange={e => handleChangeItem(item.id, 'qty', Number(e.target.value))} className={`${tableInputClass} text-center`} />
