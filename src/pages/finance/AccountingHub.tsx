@@ -220,7 +220,12 @@ export const AccountingHub: React.FC = () => {
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/income-builder')} className="border border-theme-subtle text-emerald-500">Record Income</Button>
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/expense-builder')} className="border border-theme-subtle text-red-500">Record Expense</Button>
           {activeTab === 'coa' && (
-            <Button variant="primary" size="sm" icon={Plus} onClick={() => { setEditAccount(null); setShowAddAccount(true); }} className="bg-rex-600 hover:bg-rex-700">Add Account</Button>
+            <>
+              <Button variant="ghost" size="sm" icon={FileSpreadsheet} onClick={handleDownloadTemplate} className="border border-theme-subtle text-blue-500">Template</Button>
+              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+              <Button variant="ghost" size="sm" icon={Upload} onClick={() => fileInputRef.current?.click()} className="border border-theme-subtle text-amber-500">Import CSV</Button>
+              <Button variant="primary" size="sm" icon={Plus} onClick={() => { setEditAccount(null); setShowAddAccount(true); }} className="bg-rex-600 hover:bg-rex-700">Add Account</Button>
+            </>
           )}
           {activeTab === 'journals' && (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/finance/journal-builder')} className="bg-rex-600 hover:bg-rex-700">New Journal Entry</Button>
