@@ -146,6 +146,12 @@ export const InvoiceBuilder: React.FC = () => {
                       {Number(selectedCustomer.creditDays) > 0 && <p>Terms: <span className="font-mono">{selectedCustomer.creditDays} Days</span></p>}
                     </div>
                   )}
+                  {selectedCustomer?.requiresAdvance && (
+                    <div className="mt-2 flex items-start gap-1.5 p-2 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-500 text-xs">
+                      <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                      <p><strong>Advance Payment Required:</strong> Collect payment upfront before processing this order.</p>
+                    </div>
+                  )}
                   {creditWarning && (
                     <div className="mt-2 flex items-start gap-1.5 p-2 bg-red-500/10 border border-red-500/20 rounded-md text-red-500 text-xs">
                       <AlertCircle size={14} className="shrink-0 mt-0.5" />

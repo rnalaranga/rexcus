@@ -48,6 +48,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { UserManagement } from '@/pages/admin/UserManagement'
 import { Settings } from '@/pages/admin/Settings'
+import Approvals from '@/pages/admin/Approvals'
 
 const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-64">
@@ -129,6 +130,7 @@ function AppRoutes() {
 
           {/* Admin */}
           <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/approvals" element={<Approvals />} />
           <Route path="/admin/settings" element={<Settings />} />
 
           {/* 404 */}

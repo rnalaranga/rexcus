@@ -342,7 +342,14 @@ app.get('/api/customers', async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.creditLimit && Number(data.creditLimit) > 0) {
+      data.pendingCreditLimit = data.creditLimit;
+      data.creditLimit = 0;
+      data.creditLimitStatus = 'pending';
+    } else {
+      data.creditLimitStatus = 'approved';
+    }
     const [result] = await db.query('INSERT INTO customers SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) {
@@ -363,12 +370,41 @@ app.delete('/api/customers/:id', async (req, res) => {
 app.put('/api/customers/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    
+    const [existingRows] = await db.query('SELECT creditLimit FROM customers WHERE id = ?', [id]);
+    if (existingRows.length > 0) {
+       const existing = existingRows[0];
+       if (data.creditLimit !== undefined && Number(data.creditLimit) !== Number(existing.creditLimit)) {
+          data.pendingCreditLimit = data.creditLimit;
+          data.creditLimit = existing.creditLimit;
+          data.creditLimitStatus = 'pending';
+       }
+    }
+
     await db.query('UPDATE customers SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.post('/api/customers/:id/approve-credit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'approved' or 'rejected'
+    
+    if (status === 'approved') {
+      await db.query("UPDATE customers SET creditLimit = pendingCreditLimit, pendingCreditLimit = 0, creditLimitStatus = 'approved' WHERE id = ?", [id]);
+    } else if (status === 'rejected') {
+      await db.query("UPDATE customers SET pendingCreditLimit = 0, creditLimitStatus = 'approved' WHERE id = ?", [id]); // Reset back to active approved state with old limit
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -2079,7 +2115,12 @@ app.post('/api/production/operations/:id/qc', async (req, res) => {
       res.json({
         ram: { total: totalMem, used: usedMem, percent: memPercent },
         cpu: { percent: Math.min(cpuPercent, 100) },
-        storage: { total: totalStorage, used: usedStorage, percent: storagePercent }
+        storage: { total: totalStorage, used: usedStorage, percent: storagePercent },
+        network: { 
+           ping: Math.floor(Math.random() * 20 + 10), // 10-30 ms mock
+           download: (Math.random() * 50 + 50).toFixed(1), // 50-100 Mbps mock
+           upload: (Math.random() * 20 + 10).toFixed(1) // 10-30 Mbps mock
+        }
       });
     });
   });

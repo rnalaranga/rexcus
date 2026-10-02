@@ -82,6 +82,15 @@ export const TopBar: React.FC = () => {
         {/* System Stats Mini */}
         {sysStats && (
           <div className="hidden lg:flex items-center gap-3 mr-2 px-3 py-1 bg-surface/50 border border-theme-subtle rounded text-[9px] font-mono font-bold text-muted uppercase tracking-wider">
+            {sysStats.network && (
+              <>
+                <div className="flex items-center gap-1.5 text-blue-500" title="Internet Speed (Download)">
+                  <span>NET</span>
+                  <span>{sysStats.network.download} MBPS</span>
+                </div>
+                <div className="w-px h-3 bg-theme-subtle"></div>
+              </>
+            )}
             <div className="flex items-center gap-1.5" title="CPU Usage">
               <span>CPU</span>
               <div className="w-12 h-1.5 bg-theme-subtle rounded-full overflow-hidden">

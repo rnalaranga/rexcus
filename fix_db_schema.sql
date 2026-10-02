@@ -40,6 +40,20 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `avatar` varchar(10) DEFAULT NULL,
   `vat` varchar(50) DEFAULT NULL,
   `svat` varchar(50) DEFAULT NULL,
+  `brNumber` varchar(50) DEFAULT NULL,
+  `phone2` varchar(50) DEFAULT NULL,
+  `rating` int(11) DEFAULT '0',
+  `creditLimit` decimal(15,2) DEFAULT '0.00',
+  `creditDays` int(11) DEFAULT '30',
+  `financeContactName` varchar(100) DEFAULT NULL,
+  `financeContactEmail` varchar(100) DEFAULT NULL,
+  `financeContactPhone` varchar(50) DEFAULT NULL,
+  `bankName` varchar(100) DEFAULT NULL,
+  `bankBranch` varchar(100) DEFAULT NULL,
+  `bankAccountNo` varchar(50) DEFAULT NULL,
+  `requiresAdvance` tinyint(1) DEFAULT '0',
+  `pendingCreditLimit` decimal(15,2) DEFAULT '0.00',
+  `creditLimitStatus` varchar(50) DEFAULT 'approved',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -151,6 +165,10 @@ CREATE TABLE IF NOT EXISTS `invoices` (
   `paidAmount` decimal(15,2) DEFAULT '0.00',
   `total` decimal(15,2) DEFAULT '0.00',
   `date` date DEFAULT NULL,
+  `items` text,
+  `taxAmount` decimal(15,2) DEFAULT '0.00',
+  `subtotal` decimal(15,2) DEFAULT '0.00',
+  `notes` text,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -437,3 +455,18 @@ ALTER TABLE invoices ADD COLUMN notes TEXT;
 
 ALTER TABLE customers ADD COLUMN creditLimit DECIMAL(15,2) DEFAULT 0.00;
 ALTER TABLE customers ADD COLUMN creditDays INT(11) DEFAULT 30;
+
+ALTER TABLE customers ADD COLUMN brNumber VARCHAR(50) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN phone2 VARCHAR(50) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN rating INT(11) DEFAULT 0;
+
+ALTER TABLE customers ADD COLUMN financeContactName VARCHAR(100) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN financeContactEmail VARCHAR(100) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN financeContactPhone VARCHAR(50) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN bankName VARCHAR(100) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN bankBranch VARCHAR(100) DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN bankAccountNo VARCHAR(50) DEFAULT NULL;
+
+ALTER TABLE customers ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0;
+ALTER TABLE customers ADD COLUMN pendingCreditLimit DECIMAL(15,2) DEFAULT 0.00;
+ALTER TABLE customers ADD COLUMN creditLimitStatus VARCHAR(50) DEFAULT 'approved';

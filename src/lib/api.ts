@@ -355,3 +355,5 @@ export const createWorkOrder = async (data: any) => {
 };
 export const fetchPartyLedger = async (id: string) => (await (await fetch(`${API_URL}/finance/party/${id}/ledger`)).json());
 export const deleteJournal = async (id: string) => (await (await fetch(`${API_URL}/finance/journals/${id}`, { method: 'DELETE' })).json());
+
+export const approveCreditLimit = async (id: string, status: 'approved' | 'rejected') => (await (await fetch(`${API_URL}/customers/${id}/approve-credit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })).json());

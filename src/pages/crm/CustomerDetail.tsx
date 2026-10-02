@@ -28,6 +28,10 @@ export const CustomerDetail: React.FC = () => {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState<any>(null)
+  const [users, setUsers] = useState<any[]>([]);
+  React.useEffect(() => {
+    fetch('http://localhost:3000/api/users').then(res => res.json()).then(setUsers).catch(console.error);
+  }, []);
   
   // Ledger View State
   const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations'>('overview')
@@ -67,10 +71,25 @@ export const CustomerDetail: React.FC = () => {
       company: customer.company,
       email: customer.email,
       phone: customer.phone,
+      phone2: customer.phone2 || '',
       industry: customer.industry,
       segment: customer.segment,
       address: customer.address,
       status: customer.status,
+      vat: customer.vat || '',
+      svat: customer.svat || '',
+      brNumber: customer.brNumber || '',
+      rating: customer.rating || 0,
+      creditLimit: customer.creditLimit || 0,
+      creditDays: customer.creditDays || 30,
+      financeContactName: customer.financeContactName || '',
+      financeContactEmail: customer.financeContactEmail || '',
+      financeContactPhone: customer.financeContactPhone || '',
+      bankName: customer.bankName || '',
+      bankBranch: customer.bankBranch || '',
+      bankAccountNo: customer.bankAccountNo || '',
+      requiresAdvance: !!customer.requiresAdvance,
+      accountManager: customer.accountManager || 'System Admin'
     })
     setIsEditOpen(true)
   }
@@ -91,10 +110,18 @@ export const CustomerDetail: React.FC = () => {
 
   const infoRows = [
     { icon: Mail,      label: 'Email',           value: customer.email },
-    { icon: Phone,     label: 'Phone',           value: customer.phone },
+    { icon: Phone,     label: 'Primary Phone',   value: customer.phone },
+    ...(customer.phone2 ? [{ icon: Phone, label: 'Secondary Phone', value: customer.phone2 }] : []),
     { icon: MapPin,    label: 'Address',         value: customer.address },
     { icon: Building2, label: 'Industry',        value: customer.industry },
     { icon: User,      label: 'Account Manager', value: customer.accountManager },
+    ...(customer.rating ? [{ icon: Building2, label: 'Customer Rating', value: '⭐'.repeat(customer.rating) }] : []),
+    ...(customer.brNumber ? [{ icon: Building2, label: 'BR Number', value: customer.brNumber }] : []),
+    ...(customer.vat ? [{ icon: Building2, label: 'VAT Number', value: customer.vat }] : []),
+    ...(customer.creditLimit ? [{ icon: Building2, label: 'Credit Limit', value: `Rs. ${customer.creditLimit}` }] : []),
+    ...(customer.creditDays ? [{ icon: Building2, label: 'Payment Terms', value: `${customer.creditDays} Days` }] : []),
+    ...(customer.financeContactName ? [{ icon: User, label: 'Billing Contact', value: `${customer.financeContactName} (${customer.financeContactPhone || ''})` }] : []),
+    ...(customer.bankAccountNo ? [{ icon: Building2, label: 'Bank Details', value: `${customer.bankAccountNo} - ${customer.bankName} ${customer.bankBranch}` }] : []),
     { icon: Calendar,  label: 'Customer Since',  value: formatDate(customer.joinDate) },
     { icon: Calendar,  label: 'Last Order',      value: relativeTime(customer.lastOrder) },
   ]
@@ -143,9 +170,11 @@ export const CustomerDetail: React.FC = () => {
                 <p className="text-sm text-secondary">{customer.company}</p>
                 <p className="text-xs text-muted mt-0.5 font-mono">{customer.id}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge value={customer.segment} size="md" />
                 <Badge value={customer.status}  size="md" />
+                {customer.requiresAdvance ? <Badge value="Advance Required" variant="warning" size="md" /> : null}
+                {customer.creditLimitStatus === 'pending' ? <Badge value={`Limit Pending: ${customer.pendingCreditLimit}`} variant="error" size="md" /> : null}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4 mt-5 pt-4 border-t border-rex-500/20">
@@ -392,6 +421,17 @@ export const CustomerDetail: React.FC = () => {
                   <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Customer Rating</label>
+                  <select value={formData.rating} onChange={e => setFormData({...formData, rating: Number(e.target.value)})} className="w-full input-base">
+                    <option value={0}>Unrated</option>
+                    <option value={1}>⭐ (1) Poor</option>
+                    <option value={2}>⭐⭐ (2) Fair</option>
+                    <option value={3}>⭐⭐⭐ (3) Good</option>
+                    <option value={4}>⭐⭐⭐⭐ (4) Very Good</option>
+                    <option value={5}>⭐⭐⭐⭐⭐ (5) Excellent</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Industry</label>
                   <input value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full input-base" />
                 </div>
@@ -413,8 +453,50 @@ export const CustomerDetail: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1.5 col-span-2">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Account Manager</label>
+                  <select value={formData.accountManager} onChange={e => setFormData({...formData, accountManager: e.target.value})} className="w-full input-base">
+                    <option value="System Admin">System Admin</option>
+                    {users.map(u => (
+                       <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Physical Address</label>
                   <input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full input-base" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
+                <Building2 size={14} className="text-amber-500" />
+                Tax & Financials
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">BR Number</label>
+                  <input value={formData.brNumber} onChange={e => setFormData({...formData, brNumber: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">VAT Number</label>
+                  <input value={formData.vat} onChange={e => setFormData({...formData, vat: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">SVAT Number</label>
+                  <input value={formData.svat} onChange={e => setFormData({...formData, svat: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Credit Limit (Rs)</label>
+                  <input type="number" value={formData.creditLimit} onChange={e => setFormData({...formData, creditLimit: Number(e.target.value)})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Payment Period (Days)</label>
+                  <input type="number" value={formData.creditDays} onChange={e => setFormData({...formData, creditDays: Number(e.target.value)})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 flex items-center gap-2 mt-2">
+                  <input type="checkbox" id="editReqAdv" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} className="rounded border-secondary text-primary focus:ring-primary" />
+                  <label htmlFor="editReqAdv" className="text-xs font-semibold text-secondary">Requires Advance Payment (Orders must be paid upfront)</label>
                 </div>
               </div>
             </div>
@@ -429,13 +511,59 @@ export const CustomerDetail: React.FC = () => {
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Full Name <span className="text-rex-500">*</span></label>
                   <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" />
                 </div>
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Email Address</label>
                   <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full input-base" />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Phone Number</label>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Primary Phone</label>
                   <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Secondary Phone</label>
+                  <input type="tel" value={formData.phone2} onChange={e => setFormData({...formData, phone2: e.target.value})} className="w-full input-base" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
+                <User size={14} className="text-blue-500" />
+                Finance / Billing Contact
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 col-span-2">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Contact Name</label>
+                  <input value={formData.financeContactName} onChange={e => setFormData({...formData, financeContactName: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Email Address</label>
+                  <input type="email" value={formData.financeContactEmail} onChange={e => setFormData({...formData, financeContactEmail: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Phone Number</label>
+                  <input value={formData.financeContactPhone} onChange={e => setFormData({...formData, financeContactPhone: e.target.value})} className="w-full input-base" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
+                <Building2 size={14} className="text-emerald-500" />
+                Bank Account Details
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Bank Name</label>
+                  <input value={formData.bankName} onChange={e => setFormData({...formData, bankName: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Branch</label>
+                  <input value={formData.bankBranch} onChange={e => setFormData({...formData, bankBranch: e.target.value})} className="w-full input-base" />
+                </div>
+                <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Account Number</label>
+                  <input value={formData.bankAccountNo} onChange={e => setFormData({...formData, bankAccountNo: e.target.value})} className="w-full input-base" />
                 </div>
               </div>
             </div>
