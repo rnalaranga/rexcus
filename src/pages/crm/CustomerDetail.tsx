@@ -142,13 +142,18 @@ export const CustomerDetail: React.FC = () => {
   const wonDeals      = customerDeals.filter(d => d.stage === 'closed_won')
   const openDealsArr  = customerDeals.filter(d => !d.stage.includes('closed'))
 
-  const infoRows = [
+  const contactRows = [
     { icon: Mail,      label: 'Email',           value: customer.email },
     { icon: Phone,     label: 'Primary Phone',   value: customer.phone },
     { icon: Phone,     label: 'Secondary Phone', value: customer.phone2 || 'Not Set' },
     { icon: MapPin,    label: 'Address',         value: customer.address || 'Not Set' },
     { icon: Building2, label: 'Industry',        value: customer.industry || 'Not Set' },
     { icon: User,      label: 'Account Manager', value: customer.accountManager || 'System Admin' },
+    { icon: Calendar,  label: 'Customer Since',  value: formatDate(customer.joinDate) },
+    { icon: Calendar,  label: 'Last Order',      value: relativeTime(customer.lastOrder) },
+  ]
+
+  const financeRows = [
     { icon: Building2, label: 'BR Number',       value: customer.brNumber || 'Not Set' },
     { icon: Building2, label: 'VAT Number',      value: customer.vat || 'Not Set' },
     { icon: Building2, label: 'SVAT Number',     value: customer.svat || 'Not Set' },
@@ -157,8 +162,6 @@ export const CustomerDetail: React.FC = () => {
     { icon: User,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
     { icon: Mail,      label: 'Billing Email',   value: customer.financeContactEmail || 'Not Set' },
     { icon: Building2, label: 'Bank Details',    value: customer.bankAccountNo ? `${customer.bankAccountNo} - ${customer.bankName} ${customer.bankBranch}` : 'Not Set' },
-    { icon: Calendar,  label: 'Customer Since',  value: formatDate(customer.joinDate) },
-    { icon: Calendar,  label: 'Last Order',      value: relativeTime(customer.lastOrder) },
   ]
 
   return (
@@ -262,13 +265,13 @@ export const CustomerDetail: React.FC = () => {
         </div>
       </GlassCard>
 
-      {activeTab === 'overview' ? (
+      {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Contact Info */}
           <GlassCard className="col-span-1 p-5">
             <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest mb-4">Contact Information</h2>
             <div className="space-y-3">
-              {infoRows.map(row => {
+              {contactRows.map(row => {
                 const Icon = row.icon
                 return (
                   <div key={row.label} className="flex items-start gap-3">
@@ -375,20 +378,41 @@ export const CustomerDetail: React.FC = () => {
             )}
           </GlassCard>
         </div>
-      ) : (
-        <GlassCard className="p-0 overflow-hidden">
-          <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
-            <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
-              <Receipt size={14} className="text-rex-500" />
-              Customer Ledger
-            </h2>
-            <div className="flex items-center gap-4 text-xs">
-              <Button variant="ghost" size="sm" onClick={() => setShowAdjustModal(true)}>Adjust Balance</Button>
-              <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
-              <div className="ml-4"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true)}</span></div>
+      )}
+      
+      {activeTab === 'ledger' && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <GlassCard className="col-span-1 p-5">
+            <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest mb-4">Financial Details</h2>
+            <div className="space-y-3">
+              {financeRows.map(row => {
+                const Icon = row.icon
+                return (
+                  <div key={row.label} className="flex items-start gap-3">
+                    <Icon size={13} className="text-muted mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted uppercase tracking-wider">{row.label}</p>
+                      <p className="text-xs text-secondary mt-0.5 break-words">{row.value}</p>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          </div>
-          <div className="overflow-x-auto">
+          </GlassCard>
+          <div className="col-span-1 lg:col-span-3">
+            <GlassCard className="p-0 overflow-hidden h-full">
+              <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
+                <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                  <Receipt size={14} className="text-rex-500" />
+                  Customer Ledger
+                </h2>
+                <div className="flex items-center gap-4 text-xs">
+                  <Button variant="ghost" size="sm" onClick={() => setShowAdjustModal(true)}>Adjust Balance</Button>
+                  <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
+                  <div className="ml-4"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true)}</span></div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
             {ledgerLoading ? (
               <div className="p-8 text-center text-muted">Loading ledger...</div>
             ) : (
@@ -421,6 +445,8 @@ export const CustomerDetail: React.FC = () => {
             )}
           </div>
         </GlassCard>
+          </div>
+        </div>
       )}
 
       
