@@ -892,8 +892,8 @@ app.post('/api/invoices', async (req, res) => {
     await db.query('INSERT INTO invoices SET ?', data);
     
     try {
-      const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" LIMIT 1');
-      const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" LIMIT 1');
+      const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("1100", "1500") OR name LIKE "%Receivable%" LIMIT 1');
+      const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("3000", "4000") OR name LIKE "%Sales%" OR name LIKE "%Revenue%" LIMIT 1');
       const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" LIMIT 1');
       
       if (arAcc.length > 0 && salesAcc.length > 0) {
@@ -988,8 +988,8 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
 
       // Auto GL: Record Payment
       try {
-        const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" LIMIT 1');
-        const [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" LIMIT 1');
+        const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("1100", "1500") OR name LIKE "%Receivable%" LIMIT 1');
+        const [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
         if (arAcc.length > 0 && cashAcc.length > 0) {
           const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
           const pmtAmount = Number(payment.amount);
@@ -1532,7 +1532,7 @@ app.get('/api/finance/reports/aging', async (req, res) => {
       JOIN journal_entries je ON jl.entryId = je.id
       JOIN chart_of_accounts ca ON jl.accountId = ca.id
       JOIN customers p ON jl.partyId = p.id 
-      WHERE jl.partyType = 'Customer' AND ca.name LIKE '%Receivable%' 
+      WHERE jl.partyType = 'Customer' AND ca.name LIKE "%Receivable%" 
       GROUP BY jl.partyId, p.name 
       HAVING balance > 0
       `;

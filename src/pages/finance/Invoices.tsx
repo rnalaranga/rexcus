@@ -248,9 +248,11 @@ export const Invoices: React.FC = () => {
 
       {/* Invoice View Modal */}
       {viewInvoice && (
-        <Modal isOpen={true} onClose={() => setViewInvoice(null)} title={`Invoice ${viewInvoice.id}`} size="lg">
-          <div className="p-6">
-            <div className="bg-white text-black rounded-xl max-h-[60vh] overflow-y-auto mb-4 shadow-inner" style={{ transform: 'scale(0.85)', transformOrigin: 'top center', marginBottom: '-10%' }}>
+        <Modal isOpen={true} onClose={() => setViewInvoice(null)} title={`Invoice ${viewInvoice.id}`} size="2xl" className="rounded-2xl">
+          <div className="flex flex-col lg:flex-row h-full">
+            {/* Left side: Invoice Preview */}
+            <div className="flex-1 bg-[#525659] p-4 lg:p-8 max-h-[85vh] overflow-y-auto flex justify-center border-r border-theme-subtle">
+              <div className="shadow-2xl">
               <InvoicePreview 
                 template="government"
                 docNo={viewInvoice.id}
@@ -273,62 +275,74 @@ export const Invoices: React.FC = () => {
                 getTaxRate={() => 0}
                 taxRates={[]}
               />
+              </div>
             </div>
             
-            {/* Payments List */}
-            <div className="mb-6 relative z-10">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest">Payment History</h4>
-                {viewInvoice.status !== 'paid' && (
-                  <Button variant="ghost" size="sm" className="h-7 text-xs border border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={() => setShowPaymentModal(true)}>
-                    + Record Payment
-                  </Button>
+            {/* Right side: Sidebar (Payments & Actions) */}
+            <div className="w-full lg:w-80 flex flex-col bg-surface">
+              <div className="flex-1 overflow-y-auto p-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-[11px] font-black text-primary uppercase tracking-widest">Payment History</h4>
+                  {viewInvoice.status !== 'paid' && (
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 px-2 rounded-md" onClick={() => setShowPaymentModal(true)}>
+                      + Record
+                    </Button>
+                  )}
+                </div>
+                
+                {viewInvoice.payments && JSON.parse(viewInvoice.payments).length > 0 ? (
+                  <div className="space-y-2">
+                    {JSON.parse(viewInvoice.payments).map((p: any, i: number) => (
+                      <div key={i} className="bg-surface2 p-3 rounded-xl border border-theme-subtle">
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="text-xs font-bold">{new Date(p.date).toLocaleDateString()}</p>
+                          <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(p.amount)}</span>
+                        </div>
+                        <p className="text-[10px] text-muted uppercase">{p.method} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 bg-surface2/50 rounded-xl border border-dashed border-theme-subtle text-center">
+                    <p className="text-[11px] text-muted italic">No payments recorded</p>
+                  </div>
                 )}
               </div>
-              
-              {viewInvoice.payments && JSON.parse(viewInvoice.payments).length > 0 ? (
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-                  {JSON.parse(viewInvoice.payments).map((p: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-700 last:border-0">
-                      <div>
-                        <p className="text-sm font-medium">{new Date(p.date).toLocaleDateString()}</p>
-                        <p className="text-xs text-slate-500 uppercase">{p.method} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
-                      </div>
-                      <span className="font-mono font-semibold text-emerald-600">{formatCurrency(p.amount)}</span>
-                    </div>
+
+              {/* Actions Footer */}
+              <div className="p-5 border-t border-theme-subtle bg-surface2/30">
+                <p className="text-[10px] font-bold text-muted uppercase mb-3">Change Status</p>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {['draft', 'sent', 'paid', 'overdue'].map(s => (
+                    <button
+                      key={s}
+                      onClick={() => handleUpdateStatus(viewInvoice.id, s)}
+                      className={`text-[11px] font-bold uppercase tracking-wider py-2 rounded-lg border transition-colors ${
+                        viewInvoice.status === s 
+                          ? 'bg-primary text-surface border-primary' 
+                          : 'bg-surface text-muted border-theme-subtle hover:bg-surface2'
+                      }`}
+                    >
+                      {s}
+                    </button>
                   ))}
                 </div>
-              ) : (
-                <p className="text-sm text-slate-500 italic">No payments recorded yet.</p>
-              )}
-            </div>
-
-            {/* Actions Footer */}
-            <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-6 mt-2 relative z-10">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-semibold mr-2">Change Status:</p>
-                {['draft', 'sent', 'paid', 'overdue'].map(s => (
-                  <Button 
-                    key={s} 
-                    variant="ghost" 
-                    size="sm" 
-                    className={`h-7 px-3 text-xs uppercase tracking-wider ${viewInvoice.status === s ? 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500'}`}
-                    onClick={() => handleUpdateStatus(viewInvoice.id, s)}
-                  >
-                    {s}
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="ghost" className="h-9 text-xs border border-blue-500/30 text-blue-500 hover:bg-blue-500/10" onClick={() => {
+                      const content = document.getElementById('invoice-preview');
+                      if (!content) return;
+                      const win = window.open('', '_blank');
+                      if (!win) return;
+                      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${viewInvoice.id}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center}@page{size:A4;margin:0}@media print{body{margin:0;width:210mm;height:297mm}}</style></head><body>${content.innerHTML}</body></html>`);
+                      win.document.close(); win.focus(); win.print();
+                  }}>
+                    Print / PDF
                   </Button>
-                ))}
-              </div>
-              <div className="flex gap-3">
-                <Button variant="ghost" onClick={() => setViewInvoice(null)}>Close</Button>
-                <Button variant="primary" onClick={() => {
-                  const content = document.getElementById('invoice-preview');
-                  if (!content) return;
-                  const win = window.open('', '_blank');
-                  if (!win) return;
-                  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${viewInvoice.id}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center}@page{size:A4;margin:0}@media print{body{margin:0;width:210mm;height:297mm}}</style></head><body>${content.innerHTML}</body></html>`);
-                  win.document.close(); win.focus(); win.print();
-                }}>Print / PDF</Button>
+                  <Button variant="ghost" className="h-9 text-xs border border-red-500/30 text-red-500 hover:bg-red-500/10" onClick={() => setDeleteTarget(viewInvoice.id)}>
+                    Delete
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

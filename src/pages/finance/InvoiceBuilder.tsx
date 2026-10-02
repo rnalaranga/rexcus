@@ -450,7 +450,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     try {
-      const res = await createInvoice({ id: docNo, customerId, date, dueDate, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat });
+      const res = await createInvoice({ id: docNo, customerId, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
