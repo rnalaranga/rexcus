@@ -44,6 +44,7 @@ export const AccountingHub: React.FC = () => {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const [showAddTax, setShowAddTax] = useState(false);
+  const [editTax, setEditTax] = useState<any>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { showConfirm, showError, toast } = useDialog();
@@ -585,6 +586,69 @@ export const AccountingHub: React.FC = () => {
           </div>
         ) : null}
       </Modal>
+
+      {/* Edit Tax Modal */}
+      {editTax && (
+        <Modal isOpen={true} onClose={() => setEditTax(null)} title={`Edit: ${editTax.name}`}>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const updated = {
+              name: fd.get('name') as string,
+              tax1_name: fd.get('tax1_name') as string,
+              tax1_rate: Number(fd.get('tax1_rate')),
+              tax2_name: fd.get('tax2_name') as string || null,
+              tax2_rate: Number(fd.get('tax2_rate')) || 0,
+              tax2_compound: fd.get('tax2_compound') === 'on' ? 1 : 0
+            };
+            try {
+              const { updateTaxProfile } = await import('@/lib/api');
+              await updateTaxProfile(editTax.id, updated);
+              toast('Tax profile updated', 'success');
+              setEditTax(null);
+              refetchTaxes();
+            } catch(err: any) { showError(err.message, 'Error'); }
+          }}>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Profile Name</label>
+                <input name="name" required defaultValue={editTax.name} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-1">Primary Tax Name (e.g. SSCL)</label>
+                  <input name="tax1_name" required defaultValue={editTax.tax1_name} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
+                  <input name="tax1_rate" type="number" step="0.01" required defaultValue={editTax.tax1_rate} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+                </div>
+              </div>
+              <div className="border-t border-theme-subtle pt-4">
+                <label className="block text-xs font-bold text-primary mb-2">Secondary Tax (Optional)</label>
+                <div className="grid grid-cols-2 gap-4 mb-2">
+                  <div>
+                    <label className="block text-xs font-bold text-muted uppercase mb-1">Name (e.g. VAT)</label>
+                    <input name="tax2_name" defaultValue={editTax.tax2_name || ''} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
+                    <input name="tax2_rate" type="number" step="0.01" defaultValue={editTax.tax2_rate || 0} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-primary">
+                  <input type="checkbox" name="tax2_compound" defaultChecked={!!editTax.tax2_compound} />
+                  Calculate Secondary on (Subtotal + Primary Tax)
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="ghost" onClick={() => setEditTax(null)} type="button">Cancel</Button>
+              <Button variant="primary" type="submit">Update</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* Tax Modal */}
       <Modal isOpen={showAddTax} onClose={() => setShowAddTax(false)} title="Add Tax Profile">

@@ -466,11 +466,10 @@ export const InvoiceBuilder: React.FC = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  const [ssclRate, setSsclRate] = useState(2.5);
-  const [vatRate, setVatRate] = useState(18.0);
   const [taxEnabled, setTaxEnabled] = useState(true);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   // Keep taxType for DB compat
-  const taxType = taxEnabled ? 'vat_sscl' : 'none';
+  const taxType = taxEnabled && selectedProfileId ? selectedProfileId : 'none';
   const [template, setTemplate] = useState('government');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -527,12 +526,19 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
   let ssclAmount = 0;
   let vatAmount = 0;
   
-  // Hardcoded selectedProfile for preview compat
-  const selectedProfile = taxEnabled ? { tax1_name: 'SSCL', tax1_rate: ssclRate, tax2_name: 'VAT', tax2_rate: vatRate, tax2_compound: false } : null;
+  const selectedProfile = (taxEnabled && selectedProfileId)
+    ? taxProfiles?.find((p: any) => p.id === selectedProfileId)
+    : null;
 
-  if (taxEnabled) {
-    ssclAmount = subtotal * (ssclRate / 100);
-    vatAmount = subtotal * (vatRate / 100);
+  if (selectedProfile) {
+    const t1 = Number(selectedProfile.tax1_rate) / 100;
+    const t2 = Number(selectedProfile.tax2_rate) / 100;
+    ssclAmount = subtotal * t1;
+    if (selectedProfile.tax2_compound) {
+      vatAmount = (subtotal + ssclAmount) * t2;
+    } else {
+      vatAmount = subtotal * t2;
+    }
     taxAmount = ssclAmount + vatAmount;
   }
   

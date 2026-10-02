@@ -374,3 +374,10 @@ export const deleteTaxProfile = async (id: string) => {
   const res = await fetch(`${API_URL}/finance/tax-profiles/${id}`, { method: 'DELETE' });
   return res.json();
 };
+
+export const updateTaxProfile = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/finance/tax-profiles/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  });
+  return res.json();
+};

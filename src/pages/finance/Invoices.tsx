@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
-import { useInvoices, useLeads } from '@/hooks/useData'
+import { useInvoices, useLeads, useCustomers } from '@/hooks/useData'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
@@ -18,6 +18,7 @@ export const Invoices: React.FC = () => {
   const navigate = useNavigate()
   const { data: invoices, loading, refetch } = useInvoices()
   const { data: leads } = useLeads()
+  const { data: customers } = useCustomers()
   const { data: taxProfiles } = useTaxProfiles()
   const { settings } = useSettings()
   
@@ -266,7 +267,7 @@ export const Invoices: React.FC = () => {
                 dispatchNo={viewInvoice.dispatchNo || ''}
                 orderNo={viewInvoice.orderNo || ''}
                 poNo={viewInvoice.poNo || ''}
-                customer={leads?.find((l: any) => l.id === viewInvoice.customerId || l.id === viewInvoice.leadId) || { name: 'Unknown Customer', company: 'Unknown Company' }}
+                customer={customers?.find((c: any) => c.id === viewInvoice.customerId) || leads?.find((l: any) => l.id === viewInvoice.customerId || l.id === viewInvoice.leadId) || { name: 'Unknown Customer', company: 'Unknown Company' }}
                 customerVat={viewInvoice.customerVat || ''}
                 items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ description: i.desc || i.description, qty: Number(i.qty), unitPrice: Number(i.price || i.unitPrice) })) : []}
                 subtotal={Number(viewInvoice.subtotal)}
