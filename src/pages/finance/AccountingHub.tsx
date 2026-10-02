@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
+import { Download, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -41,6 +41,8 @@ export const AccountingHub: React.FC = () => {
   const [ledgerData, setLedgerData] = useState<any>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [expandedJournal, setExpandedJournal] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
   const [showAddTax, setShowAddTax] = useState(false);
   const navigate = useNavigate();
   const { showConfirm, showError, toast } = useDialog();
@@ -181,58 +183,73 @@ export const AccountingHub: React.FC = () => {
                   <span className="text-xs font-bold font-mono text-primary">{formatCurrency(totalBalance)}</span>
                 </div>
 
-                {/* Account Rows */}
-                <div className="border border-t-0 border-theme-subtle rounded-b-lg overflow-hidden">
-                  {accs.map((acc, idx) => (
-                    <div key={acc.id} className={`flex items-center gap-4 px-4 py-3 ${idx % 2 === 0 ? 'bg-surface' : 'bg-surface/50'} hover:bg-surface2 transition-colors group`}>
-                      {/* Code Badge */}
-                      <div className={`w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center text-white font-black text-[10px] ${TYPE_COLORS[type]}`}>
-                        {acc.code.substring(0, 4)}
-                      </div>
+                {/* Account Rows by Subtype */}
+                  <div className="border border-t-0 border-theme-subtle rounded-b-lg overflow-hidden bg-surface/30">
+                    {(() => {
+                      // Group by subtype
+                      const subGroups = accs.reduce((acc, curr) => {
+                        const sub = curr.subtype || curr.type;
+                        if (!acc[sub]) acc[sub] = [];
+                        acc[sub].push(curr);
+                        return acc;
+                      }, {} as Record<string, any[]>);
 
-                      {/* Name + Subtype */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-primary">{acc.name}</p>
-                        <p className="text-[10px] text-muted font-mono mt-0.5">{acc.subtype || acc.type}</p>
-                      </div>
+                      return Object.entries(subGroups).sort(([a], [b]) => a.localeCompare(b)).map(([sub, subAccs]: [string, any]) => {
+                        const groupKey = `${type}-${sub}`;
+                        const isCollapsed = collapsedGroups[groupKey];
+                        const subTotal = (subAccs as any[]).reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
+                        
+                        return (
+                          <div key={sub} className="border-b border-theme-subtle/50 last:border-0">
+                            {/* Subtype Header */}
+                            <button
+                              onClick={() => setCollapsedGroups(p => ({ ...p, [groupKey]: !p[groupKey] }))}
+                              className="w-full flex items-center justify-between px-4 py-2.5 bg-surface hover:bg-surface2 transition-colors border-l-2 border-transparent hover:border-blue-500"
+                            >
+                              <div className="flex items-center gap-2">
+                                {isCollapsed ? <ChevronRight size={14} className="text-muted"/> : <ChevronDown size={14} className="text-blue-500"/>}
+                                <span className="text-[11px] font-bold text-secondary uppercase tracking-widest">{sub}</span>
+                                <span className="text-[10px] text-muted ml-2 bg-theme-subtle/50 px-1.5 py-0.5 rounded-full">{(subAccs as any[]).length}</span>
+                              </div>
+                              <span className="text-xs font-mono font-bold text-secondary">{formatCurrency(subTotal)}</span>
+                            </button>
 
-                      {/* Balance */}
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-bold font-mono text-primary">{formatCurrency(Number(acc.balance || 0))}</p>
-                        <p className="text-[10px] text-muted">Balance</p>
-                      </div>
+                            {/* Subtype Accounts */}
+                            {!isCollapsed && (
+                              <div className="divide-y divide-theme-subtle/30 bg-surface/50">
+                                {(subAccs as any[]).map((acc: any, idx: number) => (
+                                  <div key={acc.id} className="flex items-center gap-4 px-6 py-2.5 hover:bg-surface2 transition-colors group pl-8">
+                                    {/* Code Badge */}
+                                    <div className={`w-8 h-8 flex-shrink-0 rounded-md flex items-center justify-center text-white font-black text-[9px] ${TYPE_COLORS[type]}`}>
+                                      {acc.code.substring(0, 4)}
+                                    </div>
 
-                      {/* Actions - visible on hover */}
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            setEditAccount(acc);
-                            setShowAddAccount(true);
-                          }}
-                          className="p-1.5 rounded-md hover:bg-amber-500/10 text-amber-500 transition-colors"
-                          title="Edit Account"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => openLedger(acc)}
-                          className="p-1.5 rounded-md hover:bg-blue-500/10 text-blue-500 transition-colors"
-                          title="View Ledger"
-                        >
-                          <BookOpen size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(acc)}
-                          className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
-                          title="Delete Account"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                                    {/* Name */}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-primary">{acc.name}</p>
+                                    </div>
+
+                                    {/* Balance */}
+                                    <div className="text-right flex-shrink-0">
+                                      <p className="text-sm font-bold font-mono text-primary">{formatCurrency(Number(acc.balance || 0))}</p>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => { setEditAccount(acc); setShowAddAccount(true); }} className="p-1 rounded hover:bg-amber-500/10 text-amber-500" title="Edit"><Edit2 size={14} /></button>
+                                      <button onClick={() => openLedger(acc)} className="p-1 rounded hover:bg-blue-500/10 text-blue-500" title="Ledger"><BookOpen size={14} /></button>
+                                      <button onClick={() => handleDelete(acc)} className="p-1 rounded hover:bg-rose-500/10 text-rose-500" title="Delete"><Trash2 size={14} /></button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
-              </div>
             );
           })}
         </div>
