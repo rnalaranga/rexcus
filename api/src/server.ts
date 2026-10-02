@@ -812,16 +812,33 @@ app.post('/api/invoices', async (req, res) => {
     try {
       const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" LIMIT 1');
       const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" LIMIT 1');
+      const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" LIMIT 1');
+      
       if (arAcc.length > 0 && salesAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
-          const totalAmount = Number(data.total) || 0;
-          await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.id, description: 'Auto GL: Invoice Generated', totalAmount });
-        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [
-          [
-            ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, totalAmount, 0, data.customerId || null, 'Customer'],
-            ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, totalAmount, null, null]
-          ]
-        ]);
+        const totalAmount = Number(data.total) || Number(data.amount) || 0;
+        const subtotal = Number(data.subtotal) || totalAmount;
+        const taxAmount = Number(data.taxAmount) || 0;
+        
+        await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.id, description: 'Auto GL: Invoice Generated', totalAmount, status: 'posted' });
+        
+        const lines = [
+          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, totalAmount, 0, 'Customer Invoice ' + data.id, data.customerId || null, null, 'Customer'],
+          ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, subtotal, 'Sales Revenue for ' + data.id, null, null, null]
+        ];
+        
+        if (taxAmount > 0 && taxAcc.length > 0) {
+          lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, taxAcc[0].id, 0, taxAmount, 'Tax Liability for ' + data.id, null, null, null]);
+        }
+        
+        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, description, partyId, costCenterId, partyType) VALUES ?', [lines]);
+        
+        // UPDATE BALANCES
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [totalAmount, arAcc[0].id]);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [subtotal, salesAcc[0].id]);
+        if (taxAmount > 0 && taxAcc.length > 0) {
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [taxAmount, taxAcc[0].id]);
+        }
       }
     } catch (e) { console.error('Auto GL Invoice Error:', e); }
 
@@ -902,6 +919,9 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
               ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, pmtAmount, invoice.customerId || null, 'Customer']
             ]
           ]);
+          // Cash gets Debit (+), AR gets Credit (-)
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [pmtAmount, cashAcc[0].id]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [pmtAmount, arAcc[0].id]);
         }
       } catch (e) { console.error('Auto GL Payment Error:', e); }
     

@@ -219,8 +219,7 @@ export const Invoices: React.FC = () => {
           <p className="text-sm text-secondary mt-1">Manage billing and payments for your generated quotes.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" className="border border-theme-subtle" icon={Plus} onClick={() => setShowCreateModal(true)}>Blank Invoice</Button>
-          <Button variant="primary" icon={Plus} onClick={() => navigate('/crm/leads')}>From Quote</Button>
+          <Button variant="primary" icon={Plus} onClick={() => navigate('/finance/invoices/new')}>Create Invoice</Button>
         </div>
       </div>
 
