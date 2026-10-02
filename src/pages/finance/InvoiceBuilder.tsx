@@ -500,7 +500,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
           <div className="grid grid-cols-3 gap-5">
             {/* Bill To */}
             <GlassCard className="col-span-2 p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                   <Building2 size={16} className="text-blue-500" /> Bill To — Customer
                 </h2>
@@ -508,45 +508,73 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   <Plus size={10} /> Add New Customer
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Select Customer</label>
-                  <SearchableSelect value={customerId} onChange={setCustomerId} options={customerOptions} placeholder="Search customer…" />
+
+              {/* Search row */}
+              <div className="mb-3">
+                <label className="block text-[10px] font-bold text-muted uppercase mb-1.5">Select Customer</label>
+                <SearchableSelect value={customerId} onChange={setCustomerId} options={customerOptions} placeholder="Search customer…" />
+              </div>
+
+              {/* Customer detail card — only shown when selected */}
+              {selectedCustomer && (
+                <div className="flex gap-3 p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                  {/* Avatar */}
+                  <div className="w-9 h-9 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <span className="text-blue-600 font-black text-sm">{(selectedCustomer.company || selectedCustomer.name || '?')[0].toUpperCase()}</span>
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-primary truncate">{selectedCustomer.company || selectedCustomer.name}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-0.5">
+                      {selectedCustomer.name && selectedCustomer.company && (
+                        <span className="text-[10px] text-muted">{selectedCustomer.name}</span>
+                      )}
+                      {selectedCustomer.email && (
+                        <span className="text-[10px] text-muted flex items-center gap-1">
+                          <Mail size={9} className="text-blue-400" />{selectedCustomer.email}
+                        </span>
+                      )}
+                      {selectedCustomer.phone && (
+                        <span className="text-[10px] text-muted flex items-center gap-1">
+                          <Phone size={9} className="text-blue-400" />{selectedCustomer.phone}
+                        </span>
+                      )}
+                      {Number(selectedCustomer.creditDays) > 0 && (
+                        <span className="text-[10px] text-emerald-500 font-semibold">Net {selectedCustomer.creditDays} Days</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* VAT field */}
+                  <div className="flex-shrink-0 w-44">
+                    <label className="text-[9px] font-bold text-muted uppercase block mb-1">Purchaser VAT / TIN</label>
+                    <input
+                      type="text"
+                      value={customerVat}
+                      onChange={e => setCustomerVat(e.target.value)}
+                      placeholder="VAT number…"
+                      className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-md text-xs outline-none focus:border-blue-500 transition-colors"
+                    />
+                  </div>
                 </div>
-                {selectedCustomer ? (
-                  <div className="p-2.5 bg-surface2/60 rounded-xl border border-theme-subtle space-y-1">
-                    <p className="text-sm font-bold text-primary">{selectedCustomer.company}</p>
-                    <div className="flex items-center gap-3">
-                      {selectedCustomer.email && <p className="text-[10px] text-muted flex items-center gap-1"><Mail size={10} className="text-blue-400" />{selectedCustomer.email}</p>}
-                      {selectedCustomer.phone && <p className="text-[10px] text-muted flex items-center gap-1"><Phone size={10} className="text-blue-400" />{selectedCustomer.phone}</p>}
-                    </div>
-                    {Number(selectedCustomer.creditDays) > 0 ? <p className="text-[10px] text-emerald-500 font-bold">Payment Terms: {selectedCustomer.creditDays} Days</p> : null}
-                    <div className="mt-1.5 pt-1.5 border-t border-theme-subtle">
-                      <label className="text-[9px] font-bold text-muted uppercase block mb-1">Purchaser's VAT / TIN (Override if needed)</label>
-                      <input type="text" value={customerVat} onChange={e => setCustomerVat(e.target.value)} placeholder="Enter VAT Number..." className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-md text-xs outline-none focus:border-blue-500 transition-colors" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-2 bg-surface2/30 rounded-xl border border-dashed border-theme-subtle flex items-center justify-center h-full">
-                    <p className="text-[10px] text-muted italic">Customer info will appear here</p>
-                  </div>
-                )}
-              </div>
+              )}
+
               {/* Warnings */}
-              <div className="mt-3 space-y-2">
-                {selectedCustomer?.requiresAdvance && (
-                  <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-600 text-xs">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    <span><strong>Advance Payment Required</strong> — Collect upfront before processing.</span>
-                  </div>
-                )}
-                {creditWarning && (
-                  <div className="flex items-start gap-2 p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-xs">
-                    <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                    <span>⚠ This invoice exceeds the customer's credit limit of {formatCurrency(selectedCustomer!.creditLimit)}.</span>
-                  </div>
-                )}
-              </div>
+              {(selectedCustomer?.requiresAdvance || creditWarning) && (
+                <div className="mt-2 space-y-1.5">
+                  {selectedCustomer?.requiresAdvance && (
+                    <div className="flex items-start gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-600 text-xs">
+                      <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                      <span><strong>Advance Payment Required</strong> — Collect upfront before processing.</span>
+                    </div>
+                  )}
+                  {creditWarning && (
+                    <div className="flex items-start gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-xs">
+                      <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                      <span>⚠ Exceeds credit limit of {formatCurrency(selectedCustomer!.creditLimit)}.</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </GlassCard>
 
             {/* Invoice Details */}
