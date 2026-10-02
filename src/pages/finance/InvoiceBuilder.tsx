@@ -15,6 +15,33 @@ import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 // ─── Template Definitions ────────────────────────────────────────────────────
+
+export function toWords(num: number): string {
+  if (num === 0) return 'Zero';
+  const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  const g = ['','Thousand','Million','Billion'];
+  const makeGroup = (n: number) => {
+    let str = '';
+    if (n > 99) { str += a[Math.floor(n / 100)] + ' Hundred '; n %= 100; }
+    if (n > 19) { str += b[Math.floor(n / 10)] + ' '; n %= 10; }
+    if (n > 0) { str += a[n] + ' '; }
+    return str.trim();
+  };
+  let result = '';
+  let i = 0;
+  let val = Math.floor(Math.abs(num));
+  while (val > 0) {
+    const chunk = val % 1000;
+    if (chunk !== 0) {
+      result = makeGroup(chunk) + ' ' + g[i] + ' ' + result;
+    }
+    val = Math.floor(val / 1000);
+    i++;
+  }
+  return result.trim() + ' Only';
+}
+
 export const TEMPLATES = [
   { id: 'government', name: 'VAT Separate', description: 'Standard Tax Invoice (VAT added to total)', color: '#000000', accent: '#000000' },
   { id: 'government_inclusive', name: 'VAT Included', description: 'Tax Invoice (Prices inclusive of VAT)', color: '#000000', accent: '#000000' }
@@ -25,6 +52,172 @@ const tableInputClass = "w-full bg-transparent border-b border-transparent hover
 
 // ─── Print Preview ────────────────────────────────────────────────────────────
 export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates }) => {
+
+  if (template.startsWith('government')) {
+    const isInclusive = template === 'government_inclusive';
+    return (
+      <div id="invoice-preview" style={{ fontFamily: "'Inter', system-ui, sans-serif", background: '#fff', color: '#000', fontSize: 12, lineHeight: 1.4, padding: '10mm 15mm', width: '210mm', minHeight: '297mm', margin: '0 auto', boxSizing: 'border-box' }}>
+        
+        {/* Logo and Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 15 }}>
+          {company.logo ? (
+            <img src={company.logo} alt="Logo" style={{ height: 70 }} />
+          ) : (
+             <div style={{ fontSize: 24, fontWeight: '900', color: '#dc2626' }}>{company.name}</div>
+          )}
+        </div>
+
+        {/* Title */}
+        <div style={{ border: '2px solid #000', textAlign: 'center', fontWeight: '900', fontSize: 20, padding: '6px', textTransform: 'uppercase' }}>
+          Tax Invoice
+        </div>
+        
+        {/* Dates and No */}
+        <div style={{ display: 'flex', borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000', marginTop: 15 }}>
+          <div style={{ flex: 1, padding: '6px 10px', borderRight: '2px solid #000', display: 'flex', gap: 10 }}>
+            <span style={{ fontWeight: 'bold' }}>Date :</span> <span>{date.split('-').reverse().join('-')}</span>
+          </div>
+          <div style={{ flex: 1, padding: '6px 10px', display: 'flex', gap: 10 }}>
+            <span style={{ fontWeight: 'bold' }}>Invoice no :</span> <span>{docNo}</span>
+          </div>
+        </div>
+
+        {/* Supplier / Purchaser */}
+        <div style={{ display: 'flex', borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000' }}>
+          {/* Supplier */}
+          <div style={{ flex: 1, padding: '10px 10px', borderRight: '2px solid #000' }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 6 }}>Supplier</div>
+            <div style={{ fontWeight: 'bold' }}>{company.name}</div>
+            <div>{company.address}</div>
+            <div style={{ marginTop: 6 }}><span style={{ fontWeight: 'bold' }}>VAT Registration No:</span> {company.vat || ''}</div>
+          </div>
+          {/* Purchaser */}
+          <div style={{ flex: 1, padding: '10px 10px' }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 6 }}>Purchaser</div>
+            <div style={{ fontWeight: 'bold' }}>{customer?.name || ''}</div>
+            <div>{customer?.address || ''}</div>
+            <div style={{ marginTop: 6 }}><span style={{ fontWeight: 'bold' }}>VAT Registration No:</span> {customerVat || ''}</div>
+          </div>
+        </div>
+
+        {/* Delivery Details */}
+        <div style={{ display: 'flex', borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000' }}>
+          <div style={{ flex: 1, padding: '6px 10px', borderRight: '2px solid #000', display: 'flex', gap: 10 }}>
+            <span style={{ fontWeight: 'bold' }}>Date of Delivery :</span> <span>{deliveryDate.split('-').reverse().join('-')}</span>
+          </div>
+          <div style={{ flex: 1, padding: '6px 10px', display: 'flex', gap: 10 }}>
+            <span style={{ fontWeight: 'bold' }}>Place Of Supply :</span> <span>{placeOfSupply || ''}</span>
+          </div>
+        </div>
+
+        {/* Additional Information */}
+        <div style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000', padding: 10, marginTop: 15 }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 6 }}>Additional Information if any</div>
+          <div style={{ display: 'flex' }}>
+            <div style={{ flex: 1 }}>Quotation no &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{quotationNo || ''}</div>
+            <div style={{ flex: 1 }}>Dispatch no &nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{dispatchNo || ''}</div>
+          </div>
+          <div style={{ display: 'flex', marginTop: 4 }}>
+            <div style={{ flex: 1 }}>ORDER NO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{orderNo || ''}</div>
+            <div style={{ flex: 1 }}>Po no &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{poNo || ''}</div>
+          </div>
+        </div>
+
+        {/* Table */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #000', marginTop: 15 }}>
+          <thead>
+            <tr>
+              <th style={{ border: '2px solid #000', padding: 6, textAlign: 'center', width: 50 }}>Ref</th>
+              <th style={{ border: '2px solid #000', padding: 6, textAlign: 'center' }}>Description of Goods Or Services</th>
+              <th style={{ border: '2px solid #000', padding: 6, textAlign: 'center', width: 60 }}>Qty</th>
+              <th style={{ border: '2px solid #000', padding: 6, textAlign: 'center', width: 90 }}>Unit Price</th>
+              <th style={{ border: '2px solid #000', padding: 6, textAlign: 'center', width: 110 }}>{isInclusive ? 'TOTAL VALUE' : 'Value Excluding VAT'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item: any, idx: number) => {
+              const lineVal = item.qty * item.unitPrice;
+              const lineTax = lineVal * (getTaxRate(item.taxRateId) / 100);
+              const displayVal = isInclusive ? lineVal + lineTax : lineVal;
+              return (
+                <tr key={item.id}>
+                  <td style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000', padding: '8px 6px', textAlign: 'center', fontWeight: 'bold', verticalAlign: 'top' }}>{idx + 1}.</td>
+                  <td style={{ borderRight: '2px solid #000', padding: '8px 6px', fontWeight: 'bold', verticalAlign: 'top', whiteSpace: 'pre-wrap' }}>{item.description}</td>
+                  <td style={{ borderRight: '2px solid #000', padding: '8px 6px', textAlign: 'center', fontWeight: 'bold', verticalAlign: 'top' }}>{item.qty.toFixed(2)}</td>
+                  <td style={{ borderRight: '2px solid #000', padding: '8px 6px', textAlign: 'right', fontWeight: 'bold', verticalAlign: 'top' }}>{item.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td style={{ borderRight: '2px solid #000', padding: '8px 6px', textAlign: 'right', fontWeight: 'bold', verticalAlign: 'top' }}>{displayVal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              )
+            })}
+            <tr style={{ height: '100px' }}>
+              <td style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000' }}></td>
+              <td style={{ borderRight: '2px solid #000' }}></td>
+              <td style={{ borderRight: '2px solid #000' }}></td>
+              <td style={{ borderRight: '2px solid #000' }}></td>
+              <td style={{ borderRight: '2px solid #000' }}></td>
+            </tr>
+            {!isInclusive && (
+              <>
+                <tr>
+                  <td colSpan={3} style={{ border: '2px solid #000', padding: '6px 10px', textAlign: 'right', fontWeight: 'bold' }}>Sub Total</td>
+                  <td style={{ border: '2px solid #000', padding: 6, fontWeight: 'bold', textAlign: 'center' }}>LKR</td>
+                  <td style={{ border: '2px solid #000', padding: '6px 10px', textAlign: 'right', fontWeight: 'bold' }}>{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                </tr>
+                <tr>
+                  <td colSpan={3} style={{ border: '2px solid #000', padding: '6px 10px', textAlign: 'center' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 100 }}>
+                        <span>VAT</span>
+                        <span>{taxAmount > 0 ? '18.00 %' : ''}</span>
+                     </div>
+                  </td>
+                  <td style={{ border: '2px solid #000', padding: 6 }}></td>
+                  <td style={{ border: '2px solid #000', padding: '6px 10px', textAlign: 'right' }}>{taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              </>
+            )}
+            <tr>
+              <td colSpan={3} style={{ border: '2px solid #000', padding: '6px 10px', textAlign: 'right', fontWeight: 'bold' }}>Grand Total</td>
+              <td style={{ border: '2px solid #000', padding: 6, fontWeight: 'bold', textAlign: 'center' }}>LKR</td>
+              <td style={{ border: '2px solid #000', padding: '6px 10px', textAlign: 'right', fontWeight: 'bold' }}>{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000', padding: '6px 10px', fontWeight: 'bold' }}>
+          LKR {toWords(total)}
+        </div>
+        
+        <div style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000', padding: 10, marginTop: 15 }}>
+          <span style={{ fontWeight: 'bold' }}>Mode of payment :</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; CREDIT
+        </div>
+        
+        <div style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000', borderBottom: '2px solid #000', padding: 12, lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 'bold' }}>Cheque to be written in favor of {company.name}</div>
+          <div style={{ fontWeight: 'bold' }}>Bank details</div>
+          <table style={{ width: '100%', border: 'none', marginBottom: 12 }}>
+              <tbody>
+                <tr><td style={{ width: 140 }}>Account Name</td><td>: {company.name}</td></tr>
+                <tr><td>Bank</td><td>: {company.bankName}</td></tr>
+                <tr><td>Account No</td><td>: {company.accountNo}</td></tr>
+                <tr><td>Branch</td><td>: {company.branch || 'Head Office'}</td></tr>
+              </tbody>
+          </table>
+          <div style={{ marginTop: 8 }}>Thanking You<br/>Yours faithfully</div>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 60, textAlign: 'center' }}>
+            <div>
+              .......................................................................<br/>
+              Manager/Authorized Officer
+            </div>
+            <div>
+              .......................................................................<br/>
+              Signature of Recipient
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const tmpl = TEMPLATES.find(t => t.id === template) || TEMPLATES[0];
   const headerBg = template === 'modern' ? `linear-gradient(135deg, ${tmpl.color} 0%, #1e3a5f 100%)` : template === 'elegant' ? '#f8fafc' : '#fff';
   const headerText = template === 'elegant' ? tmpl.color : '#fff';
@@ -132,7 +325,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
 const TemplatePicker: React.FC<{ current: string; onChange: (id: string) => void; onClose: () => void }> = ({ current, onChange, onClose }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
     <div className="bg-surface border border-theme rounded-2xl shadow-glass p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Palette size={16} className="text-rex-500" /> Print Template</h2>
         <button onClick={onClose} className="p-1.5 hover:bg-surface2 rounded-lg text-muted"><X size={14} /></button>
       </div>
@@ -198,7 +391,9 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (selectedCustomer) {
       const days = Number(selectedCustomer.creditDays) || 0;
       setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
-      if (selectedCustomer.vat) setCustomerVat(selectedCustomer.vat);
+      setCustomerVat(selectedCustomer.vat || '');
+    } else {
+      setCustomerVat('');
     }
   }, [selectedCustomer?.id, date]);
 
@@ -304,8 +499,8 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
           {/* Row 1 — Bill To + Invoice Details (side by side, full width) */}
           <div className="grid grid-cols-3 gap-5">
             {/* Bill To */}
-            <GlassCard className="col-span-2 p-5">
-              <div className="flex items-center justify-between mb-4">
+            <GlassCard className="col-span-2 p-4">
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                   <Building2 size={16} className="text-blue-500" /> Bill To — Customer
                 </h2>
@@ -313,26 +508,26 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   <Plus size={10} /> Add New Customer
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-muted uppercase mb-1.5">Select Customer</label>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Select Customer</label>
                   <SearchableSelect value={customerId} onChange={setCustomerId} options={customerOptions} placeholder="Search customer…" />
                 </div>
                 {selectedCustomer ? (
-                  <div className="p-3 bg-surface2/60 rounded-xl border border-theme-subtle space-y-2">
+                  <div className="p-2.5 bg-surface2/60 rounded-xl border border-theme-subtle space-y-1">
                     <p className="text-sm font-bold text-primary">{selectedCustomer.company}</p>
                     <div className="flex items-center gap-3">
                       {selectedCustomer.email && <p className="text-[10px] text-muted flex items-center gap-1"><Mail size={10} className="text-blue-400" />{selectedCustomer.email}</p>}
                       {selectedCustomer.phone && <p className="text-[10px] text-muted flex items-center gap-1"><Phone size={10} className="text-blue-400" />{selectedCustomer.phone}</p>}
                     </div>
                     {Number(selectedCustomer.creditDays) > 0 ? <p className="text-[10px] text-emerald-500 font-bold">Payment Terms: {selectedCustomer.creditDays} Days</p> : null}
-                    <div className="mt-2 pt-2 border-t border-theme-subtle">
+                    <div className="mt-1.5 pt-1.5 border-t border-theme-subtle">
                       <label className="text-[9px] font-bold text-muted uppercase block mb-1">Purchaser's VAT / TIN (Override if needed)</label>
                       <input type="text" value={customerVat} onChange={e => setCustomerVat(e.target.value)} placeholder="Enter VAT Number..." className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-md text-xs outline-none focus:border-blue-500 transition-colors" />
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3 bg-surface2/30 rounded-xl border border-dashed border-theme-subtle flex items-center justify-center">
+                  <div className="p-2 bg-surface2/30 rounded-xl border border-dashed border-theme-subtle flex items-center justify-center h-full">
                     <p className="text-[10px] text-muted italic">Customer info will appear here</p>
                   </div>
                 )}
@@ -355,11 +550,11 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
             </GlassCard>
 
             {/* Invoice Details */}
-            <GlassCard className="p-5 flex flex-col">
-              <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2 mb-4">
+            <GlassCard className="p-4 flex flex-col">
+              <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2 mb-3">
                 <Calendar size={16} className="text-blue-500" /> Details & References
               </h2>
-              <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+              <div className="flex-1 overflow-y-auto pr-2 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Invoice Date</label>
@@ -382,7 +577,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 border-t border-theme-subtle pt-3">
+                <div className="grid grid-cols-2 gap-3 border-t border-theme-subtle pt-2 mt-1">
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Quotation No</label>
                     <input type="text" value={quotationNo} onChange={e => setQuotationNo(e.target.value)} placeholder="AHSQ-..." className={docInputClass} />
@@ -401,7 +596,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   </div>
                 </div>
 
-                <div className="border-t border-theme-subtle pt-3">
+                <div className="border-t border-theme-subtle pt-2 mt-1">
                   <label className="block text-[10px] font-bold text-muted uppercase mb-1">Notes / Terms</label>
                   <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={`${docInputClass} resize-none`} placeholder="Payment terms, delivery, etc." />
                 </div>
@@ -443,7 +638,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                           <SearchableSelect value={item.inventoryId} onChange={val => handleChangeItem(item.id, 'inventoryId', val)} options={itemOptions} placeholder="Select or skip..." className="text-xs" />
                         </td>
                         <td className="px-2 py-2">
-                          <textarea value={item.description} onChange={e => handleChangeItem(item.id, 'description', e.target.value)} placeholder="Description…\n(Multiple lines allowed)" className={`${tableInputClass} resize-y min-h-[40px] leading-relaxed`} rows={2} />
+                          <textarea value={item.description} onChange={e => handleChangeItem(item.id, 'description', e.target.value)} onInput={(e: any) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} placeholder="Description…\n(Multiple lines allowed)" className={`${tableInputClass} resize-none overflow-hidden min-h-[40px] leading-relaxed`} rows={2} />
                         </td>
                         <td className="px-2 py-2">
                           <input type="number" min="1" value={item.qty} onChange={e => handleChangeItem(item.id, 'qty', Number(e.target.value))} className={`${tableInputClass} text-center`} />
