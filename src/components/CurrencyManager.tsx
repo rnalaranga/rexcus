@@ -12,7 +12,7 @@ export const CurrencyManager = () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`);
       const data = await res.json();
-      setCurrencies(data);
+      setCurrencies(Array.isArray(data) ? data : []);
     } catch(e) { console.error(e); }
   };
 

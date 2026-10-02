@@ -35,10 +35,10 @@ export const CustomerDetail: React.FC = () => {
   React.useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
       .then(res => res.json())
-      .then(setUsers).catch(console.error);
+      .then(data => setUsers(Array.isArray(data) ? data : [])).catch(console.error);
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
       .then(res => res.json())
-      .then(setCurrencies).catch(console.error);
+      .then(data => setCurrencies(Array.isArray(data) ? data : [])).catch(console.error);
   }, []);
   
   // Ledger View State
