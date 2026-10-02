@@ -1424,17 +1424,18 @@ app.get('/api/finance/dashboard', async (req, res) => {
     accounts.forEach(acc => {
       const type = acc.type.toLowerCase();
       const subtype = acc.subtype ? acc.subtype.toLowerCase() : '';
+      const name = acc.name ? acc.name.toLowerCase() : '';
       const bal = Number(acc.balance);
       
-      if (subtype.includes('bank') || subtype.includes('cash')) totalCash += bal;
-      if (subtype.includes('receivable')) totalAR += bal;
-      if (subtype.includes('payable') && !subtype.includes('tax')) totalAP += bal;
+      if (subtype.includes('bank') || subtype.includes('cash') || name.includes('bank') || name.includes('cash')) totalCash += bal;
+      if (subtype.includes('receivable') || name.includes('receivable')) totalAR += bal;
+      if ((subtype.includes('payable') || name.includes('payable')) && !subtype.includes('tax') && !name.includes('tax')) totalAP += bal;
       if (type === 'revenue') revenue += bal;
       if (type === 'expense') expenses += bal;
     });
     
     const [bills] = await db.query('SELECT SUM(amount) as pendingAP FROM supplier_bills WHERE status = "unpaid"');
-    const [invoices] = await db.query('SELECT SUM(total) as pendingAR FROM invoices WHERE status = "unpaid"');
+    const [invoices] = await db.query('SELECT SUM(total - IFNULL(paidAmount, 0)) as pendingAR FROM invoices WHERE status != "paid" AND status != "draft"');
 
     res.json({
       cash: totalCash,

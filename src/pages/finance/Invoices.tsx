@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
+import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
 import { useInvoices, useLeads } from '@/hooks/useData'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
@@ -248,114 +249,34 @@ export const Invoices: React.FC = () => {
       {/* Invoice View Modal */}
       {viewInvoice && (
         <Modal isOpen={true} onClose={() => setViewInvoice(null)} title={`Invoice ${viewInvoice.id}`} size="lg">
-          <div className="p-6 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
-            {/* Minimal Invoice Header */}
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">INVOICE</h2>
-                <p className="text-sm font-semibold text-blue-600 mt-1">{viewInvoice.id}</p>
-                <div className="mt-4">
-                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Status</p>
-                  {getStatusBadge(viewInvoice.status)}
-                </div>
-              </div>
-              <div className="text-right">
-                {settings?.company_logo ? (
-                  <img src={settings.company_logo} alt="Company Logo" className="max-h-16 ml-auto mb-2" />
-                ) : (
-                  <h3 className="font-bold text-lg">Rex Industries</h3>
-                )}
-                <p className="text-xs text-slate-500 mt-1">123 Industrial Estate<br/>Colombo, Sri Lanka</p>
-              </div>
+          <div className="p-6">
+            <div className="bg-white text-black rounded-xl max-h-[60vh] overflow-y-auto mb-4 shadow-inner" style={{ transform: 'scale(0.85)', transformOrigin: 'top center', marginBottom: '-10%' }}>
+              <InvoicePreview 
+                template="government"
+                docNo={viewInvoice.id}
+                date={viewInvoice.date}
+                dueDate={viewInvoice.dueDate}
+                deliveryDate={viewInvoice.deliveryDate || viewInvoice.date}
+                placeOfSupply={viewInvoice.placeOfSupply || ''}
+                quotationNo={viewInvoice.quotationNo || viewInvoice.quotationId || ''}
+                dispatchNo={viewInvoice.dispatchNo || ''}
+                orderNo={viewInvoice.orderNo || ''}
+                poNo={viewInvoice.poNo || ''}
+                customer={leads?.find((l: any) => l.id === viewInvoice.customerId || l.id === viewInvoice.leadId) || { name: 'Unknown Customer', company: 'Unknown Company' }}
+                customerVat={viewInvoice.customerVat || ''}
+                items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ description: i.desc || i.description, qty: Number(i.qty), unitPrice: Number(i.price || i.unitPrice) })) : []}
+                subtotal={Number(viewInvoice.subtotal)}
+                taxAmount={Number(viewInvoice.taxAmount || viewInvoice.tax || 0)}
+                total={Number(viewInvoice.total)}
+                notes={viewInvoice.notes || ''}
+                company={settings}
+                getTaxRate={() => 0}
+                taxRates={[]}
+              />
             </div>
-
-            {/* Bill To & Details */}
-            <div className="grid grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Bill To</p>
-                {(() => {
-                  const lead = leads.find((l: any) => l.id === viewInvoice.leadId)
-                  if (!lead) return <p>Unknown Customer</p>
-                  return (
-                    <div>
-                      <p className="font-bold text-lg">{lead.name}</p>
-                      <p className="text-sm text-slate-600">{lead.company}</p>
-                      <p className="text-sm text-slate-500 mt-2">{lead.email}</p>
-                      <p className="text-sm text-slate-500">{lead.phone}</p>
-                    </div>
-                  )
-                })()}
-              </div>
-              <div className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-500">Invoice Date:</span>
-                  <span className="text-sm font-medium">{new Date(viewInvoice.date).toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-500">Due Date:</span>
-                  <span className="text-sm font-medium">{new Date(viewInvoice.dueDate).toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-500">Ref Quotation:</span>
-                  <span className="text-sm font-medium">{viewInvoice.quotationId}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Line Items (if any) */}
-            {viewInvoice.items && JSON.parse(viewInvoice.items).length > 0 && JSON.parse(viewInvoice.items)[0].desc !== undefined && (
-              <div className="mb-8">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700 text-xs text-slate-500 uppercase tracking-wider">
-                      <th className="pb-3 font-semibold">Description</th>
-                      <th className="pb-3 font-semibold text-right">Qty</th>
-                      <th className="pb-3 font-semibold text-right">Price</th>
-                      <th className="pb-3 font-semibold text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {JSON.parse(viewInvoice.items).map((item: any, i: number) => (
-                      <tr key={i} className="border-b border-slate-100 dark:border-slate-800/50 last:border-0">
-                        <td className="py-3 font-medium">{item.desc}</td>
-                        <td className="py-3 text-right text-slate-600 dark:text-slate-400">{item.qty}</td>
-                        <td className="py-3 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(item.price)}</td>
-                        <td className="py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">{formatCurrency(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Totals */}
-            <div className="flex justify-end mb-8">
-              <div className="w-64 space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Subtotal:</span>
-                  <span className="font-mono">{formatCurrency(Number(viewInvoice.subtotal))}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Tax (0%):</span>
-                  <span className="font-mono">{formatCurrency(Number(viewInvoice.tax))}</span>
-                </div>
-                <div className="flex justify-between text-xl font-bold pt-3 border-t border-slate-200 dark:border-slate-700">
-                  <span>Total:</span>
-                  <span className="font-mono text-slate-800 dark:text-slate-200">{formatCurrency(Number(viewInvoice.total))}</span>
-                </div>
-                <div className="flex justify-between text-sm pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-500">Amount Paid:</span>
-                  <span className="font-mono text-emerald-600">{formatCurrency(Number(viewInvoice.paidAmount || 0))}</span>
-                </div>
-                <div className="flex justify-between text-xl font-bold pt-3 border-t border-slate-200 dark:border-slate-700">
-                  <span>Balance Due:</span>
-                  <span className="font-mono text-blue-600 dark:text-blue-400">{formatCurrency(Number(viewInvoice.total) - Number(viewInvoice.paidAmount || 0))}</span>
-                </div>
-              </div>
-            </div>
-
+            
             {/* Payments List */}
-            <div className="mb-8">
+            <div className="mb-6 relative z-10">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest">Payment History</h4>
                 {viewInvoice.status !== 'paid' && (
@@ -383,7 +304,7 @@ export const Invoices: React.FC = () => {
             </div>
 
             {/* Actions Footer */}
-            <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-6 mt-6">
+            <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-6 mt-2 relative z-10">
               <div className="flex items-center gap-2">
                 <p className="text-xs font-semibold mr-2">Change Status:</p>
                 {['draft', 'sent', 'paid', 'overdue'].map(s => (
@@ -400,7 +321,14 @@ export const Invoices: React.FC = () => {
               </div>
               <div className="flex gap-3">
                 <Button variant="ghost" onClick={() => setViewInvoice(null)}>Close</Button>
-                <Button variant="primary" icon={FileCheck} onClick={() => showToast('success', 'PDF Downloaded')}>Download PDF</Button>
+                <Button variant="primary" onClick={() => {
+                  const content = document.getElementById('invoice-preview');
+                  if (!content) return;
+                  const win = window.open('', '_blank');
+                  if (!win) return;
+                  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${viewInvoice.id}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center}@page{size:A4;margin:0}@media print{body{margin:0;width:210mm;height:297mm}}</style></head><body>${content.innerHTML}</body></html>`);
+                  win.document.close(); win.focus(); win.print();
+                }}>Print / PDF</Button>
               </div>
             </div>
           </div>

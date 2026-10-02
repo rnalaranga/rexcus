@@ -15,7 +15,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 // ─── Template Definitions ────────────────────────────────────────────────────
-export const TEMPLATES = [
+const TEMPLATES = [
   { id: 'classic', name: 'Classic', description: 'Clean minimal white', color: '#1e1e2e', accent: '#2563eb' },
   { id: 'modern',  name: 'Modern',  description: 'Bold dark gradient',  color: '#0f172a', accent: '#b91c1c' },
   { id: 'elegant', name: 'Elegant', description: 'Light professional',   color: '#374151', accent: '#059669' },
@@ -25,7 +25,7 @@ const docInputClass = "w-full bg-surface border border-theme-subtle px-3 py-2 ro
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-black/10 dark:hover:border-white/10 focus:border-blue-500 focus:bg-surface px-2 py-1 text-xs outline-none transition-all";
 
 // ─── Print Preview ────────────────────────────────────────────────────────────
-export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates }) => {
+const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, customer, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates }) => {
   const tmpl = TEMPLATES.find(t => t.id === template) || TEMPLATES[0];
   const headerBg = template === 'modern' ? `linear-gradient(135deg, ${tmpl.color} 0%, #1e3a5f 100%)` : template === 'elegant' ? '#f8fafc' : '#fff';
   const headerText = template === 'elegant' ? tmpl.color : '#fff';
@@ -61,7 +61,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
               {customer.email && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.email}</div>}
               {customer.phone && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.phone}</div>}
               {customer.address && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.address}</div>}
-              {(customerVat || customer.vat) && <div style={{ color: '#6b7280', fontSize: 10 }}>VAT: {customerVat || customer.vat}</div>}
+              {customer.vat && <div style={{ color: '#6b7280', fontSize: 10 }}>VAT: {customer.vat}</div>}
             </>
           ) : <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>No customer selected</div>}
         </div>
@@ -174,14 +174,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [company, setCompany] = useState<any>({});
-    const [deliveryDate, setDeliveryDate] = useState(date);
-  const [placeOfSupply, setPlaceOfSupply] = useState('');
-  const [quotationNo, setQuotationNo] = useState('');
-  const [dispatchNo, setDispatchNo] = useState('');
-  const [orderNo, setOrderNo] = useState('');
-  const [poNo, setPoNo] = useState('');
-  const [customerVat, setCustomerVat] = useState('');
-const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
+  const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
 
   const selectedCustomer = customers.find(c => c.id === customerId);
 
@@ -199,7 +192,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (selectedCustomer) {
       const days = Number(selectedCustomer.creditDays) || 0;
       setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
-      if (selectedCustomer.vat) setCustomerVat(selectedCustomer.vat);
+      if (selectedCustomer.vat) setNotes(prev => prev.includes('Customer VAT') ? prev : `Customer VAT: ${selectedCustomer.vat}\n` + prev);
     }
   }, [selectedCustomer?.id, date]);
 
@@ -227,7 +220,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     try {
-      const res = await createInvoice({ id: docNo, customerId, date, dueDate, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat });
+      const res = await createInvoice({ id: docNo, customerId, date, dueDate, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid' });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
@@ -239,11 +232,11 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (!content) return;
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${docNo}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center}@page{size:A4;margin:0}@media print{body{margin:0;width:210mm;height:297mm}}</style></head><body>${content.innerHTML}</body></html>`);
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${docNo}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff}@media print{body{margin:0}}</style></head><body>${content.innerHTML}</body></html>`);
     win.document.close(); win.focus(); win.print();
   };
 
-  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates };
+  const previewProps = { template, docNo, date, dueDate, customer: selectedCustomer, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates };
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative animate-fade-in">
@@ -320,17 +313,12 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   <SearchableSelect value={customerId} onChange={setCustomerId} options={customerOptions} placeholder="Search customer…" />
                 </div>
                 {selectedCustomer ? (
-                  <div className="p-3 bg-surface2/60 rounded-xl border border-theme-subtle space-y-2">
+                  <div className="p-3 bg-surface2/60 rounded-xl border border-theme-subtle space-y-1.5">
                     <p className="text-sm font-bold text-primary">{selectedCustomer.company}</p>
-                    <div className="flex items-center gap-3">
-                      {selectedCustomer.email && <p className="text-[10px] text-muted flex items-center gap-1"><Mail size={10} className="text-blue-400" />{selectedCustomer.email}</p>}
-                      {selectedCustomer.phone && <p className="text-[10px] text-muted flex items-center gap-1"><Phone size={10} className="text-blue-400" />{selectedCustomer.phone}</p>}
-                    </div>
+                    {selectedCustomer.email && <p className="text-[10px] text-muted flex items-center gap-1.5"><Mail size={10} className="text-blue-400" />{selectedCustomer.email}</p>}
+                    {selectedCustomer.phone && <p className="text-[10px] text-muted flex items-center gap-1.5"><Phone size={10} className="text-blue-400" />{selectedCustomer.phone}</p>}
+                    {selectedCustomer.vat && <p className="text-[10px] text-muted flex items-center gap-1.5"><Hash size={10} className="text-amber-400" />VAT: {selectedCustomer.vat}</p>}
                     {Number(selectedCustomer.creditDays) > 0 && <p className="text-[10px] text-emerald-500 font-bold">Payment Terms: {selectedCustomer.creditDays} Days</p>}
-                    <div className="mt-2 pt-2 border-t border-theme-subtle">
-                      <label className="text-[9px] font-bold text-muted uppercase block mb-1">Purchaser's VAT / TIN (Override if needed)</label>
-                      <input type="text" value={customerVat} onChange={e => setCustomerVat(e.target.value)} placeholder="Enter VAT Number..." className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-md text-xs outline-none focus:border-blue-500 transition-colors" />
-                    </div>
                   </div>
                 ) : (
                   <div className="p-3 bg-surface2/30 rounded-xl border border-dashed border-theme-subtle flex items-center justify-center">
@@ -356,55 +344,22 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
             </GlassCard>
 
             {/* Invoice Details */}
-            <GlassCard className="p-5 flex flex-col">
+            <GlassCard className="p-5">
               <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2 mb-4">
-                <Calendar size={16} className="text-blue-500" /> Details & References
+                <Calendar size={16} className="text-blue-500" /> Invoice Details
               </h2>
-              <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Invoice Date</label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className={docInputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Due Date</label>
-                    <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={docInputClass} />
-                  </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Invoice Date</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className={docInputClass} />
                 </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Delivery Date</label>
-                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className={docInputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Place of Supply</label>
-                    <input type="text" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)} placeholder="e.g. Negombo" className={docInputClass} />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Due Date</label>
+                  <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={docInputClass} />
                 </div>
-
-                <div className="grid grid-cols-2 gap-3 border-t border-theme-subtle pt-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Quotation No</label>
-                    <input type="text" value={quotationNo} onChange={e => setQuotationNo(e.target.value)} placeholder="AHSQ-..." className={docInputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Dispatch No</label>
-                    <input type="text" value={dispatchNo} onChange={e => setDispatchNo(e.target.value)} placeholder="DN-..." className={docInputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Order No (SO)</label>
-                    <input type="text" value={orderNo} onChange={e => setOrderNo(e.target.value)} placeholder="SO-..." className={docInputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">PO No</label>
-                    <input type="text" value={poNo} onChange={e => setPoNo(e.target.value)} placeholder="PO-..." className={docInputClass} />
-                  </div>
-                </div>
-
-                <div className="border-t border-theme-subtle pt-3">
+                <div>
                   <label className="block text-[10px] font-bold text-muted uppercase mb-1">Notes / Terms</label>
-                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={`${docInputClass} resize-none`} placeholder="Payment terms, delivery, etc." />
+                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4} className={`${docInputClass} resize-none`} placeholder="Payment terms, delivery, etc." />
                 </div>
               </div>
             </GlassCard>
