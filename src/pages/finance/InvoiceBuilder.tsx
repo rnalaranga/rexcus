@@ -248,23 +248,23 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                     {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                {selectedProfile?.tax2_name && (
+                {ssclAmount > 0 && (
                   <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
                     <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                      {selectedProfile.tax1_name} <span style={{ marginLeft: '20px' }}>{selectedProfile.tax1_rate} %</span>
+                      {selectedProfile?.tax1_name || 'SSCL'} <span style={{ marginLeft: '20px' }}>{selectedProfile?.tax1_rate ?? ''} %</span>
                     </div>
                     <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
                       {ssclAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </div>
                   </div>
                 )}
-                {taxType !== 'none' && (
+                {vatAmount > 0 && (
                   <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
                     <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                      {selectedProfile?.tax2_name || selectedProfile?.tax1_name || 'Tax'} <span style={{ marginLeft: '20px' }}>{taxType === 'line_items' ? 'As per items' : `${selectedProfile?.tax2_name ? selectedProfile.tax2_rate : selectedProfile?.tax1_rate} %`}</span>
+                      {selectedProfile?.tax2_name || 'VAT'} <span style={{ marginLeft: '20px' }}>{selectedProfile?.tax2_rate ?? ''} %</span>
                     </div>
                     <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
-                      {(selectedProfile?.tax2_name ? vatAmount : taxAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      {vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </div>
                   </div>
                 )}
@@ -466,7 +466,11 @@ export const InvoiceBuilder: React.FC = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  const [taxType, setTaxType] = useState('none');
+  const [ssclRate, setSsclRate] = useState(2.5);
+  const [vatRate, setVatRate] = useState(18.0);
+  const [taxEnabled, setTaxEnabled] = useState(true);
+  // Keep taxType for DB compat
+  const taxType = taxEnabled ? 'vat_sscl' : 'none';
   const [template, setTemplate] = useState('government');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -523,20 +527,13 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
   let ssclAmount = 0;
   let vatAmount = 0;
   
-  const selectedProfile = taxProfiles?.find((p: any) => p.id === taxType);
-  if (selectedProfile) {
-    const t1 = Number(selectedProfile.tax1_rate) / 100;
-    const t2 = Number(selectedProfile.tax2_rate) / 100;
-    
-    ssclAmount = subtotal * t1;
-    if (selectedProfile.tax2_compound) {
-      vatAmount = (subtotal + ssclAmount) * t2;
-    } else {
-      vatAmount = subtotal * t2;
-    }
+  // Hardcoded selectedProfile for preview compat
+  const selectedProfile = taxEnabled ? { tax1_name: 'SSCL', tax1_rate: ssclRate, tax2_name: 'VAT', tax2_rate: vatRate, tax2_compound: false } : null;
+
+  if (taxEnabled) {
+    ssclAmount = subtotal * (ssclRate / 100);
+    vatAmount = subtotal * (vatRate / 100);
     taxAmount = ssclAmount + vatAmount;
-  } else if (taxType === 'line_items') {
-    taxAmount = items.reduce((s, i) => s + i.qty * i.unitPrice * (getTaxRate(i.taxRateId) / 100), 0);
   }
   
   const total = subtotal + taxAmount;
