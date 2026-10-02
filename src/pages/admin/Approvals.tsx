@@ -63,14 +63,29 @@ export default function Approvals() {
                 <div key={customer.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="text-sm font-bold text-primary">{customer.name} {customer.company ? `(${customer.company})` : ''}</h3>
-                    <p className="text-xs text-secondary mt-0.5">{customer.segment.toUpperCase()} | Current Limit: {formatCurrency(customer.creditLimit || 0)}</p>
+                    <p className="text-xs text-secondary mt-0.5">
+                      {customer.segment.toUpperCase()} 
+                      <span className="mx-2">•</span> 
+                      Current Limit: {formatCurrency(customer.creditLimit || 0)}
+                      <span className="mx-2">•</span>
+                      Advance: {customer.requiresAdvance ? 'Required' : 'No'}
+                    </p>
                   </div>
                   
                   <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Requested Limit</p>
-                      <p className="text-lg font-bold text-amber-500">{formatCurrency(customer.pendingCreditLimit || 0)}</p>
-                    </div>
+                    {Number(customer.pendingCreditLimit) > 0 && Number(customer.pendingCreditLimit) !== Number(customer.creditLimit) && (
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Requested Limit</p>
+                        <p className="text-lg font-bold text-amber-500">{formatCurrency(customer.pendingCreditLimit || 0)}</p>
+                      </div>
+                    )}
+                    
+                    {customer.pendingRequiresAdvance !== null && Boolean(customer.pendingRequiresAdvance) !== Boolean(customer.requiresAdvance) && (
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Requested Advance</p>
+                        <p className="text-sm font-bold text-amber-500">{customer.pendingRequiresAdvance ? 'Required' : 'Not Required'}</p>
+                      </div>
+                    )}
                     
                     <div className="flex items-center gap-2">
                       <Button 

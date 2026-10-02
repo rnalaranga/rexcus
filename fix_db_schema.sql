@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `bankBranch` varchar(100) DEFAULT NULL,
   `bankAccountNo` varchar(50) DEFAULT NULL,
   `requiresAdvance` tinyint(1) DEFAULT '0',
+  `pendingRequiresAdvance` tinyint(1) DEFAULT NULL,
   `pendingCreditLimit` decimal(15,2) DEFAULT '0.00',
   `creditLimitStatus` varchar(50) DEFAULT 'approved',
   PRIMARY KEY (`id`)
@@ -470,3 +471,7 @@ ALTER TABLE customers ADD COLUMN bankAccountNo VARCHAR(50) DEFAULT NULL;
 ALTER TABLE customers ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0;
 ALTER TABLE customers ADD COLUMN pendingCreditLimit DECIMAL(15,2) DEFAULT 0.00;
 ALTER TABLE customers ADD COLUMN creditLimitStatus VARCHAR(50) DEFAULT 'approved';
+
+ALTER TABLE customers ADD COLUMN accountManager VARCHAR(100) DEFAULT NULL;
+
+ALTER TABLE customers ADD COLUMN pendingRequiresAdvance TINYINT(1) DEFAULT NULL;

@@ -343,13 +343,22 @@ app.get('/api/customers', async (req, res) => {
 app.post('/api/customers', async (req, res) => {
   try {
     const data = { ...req.body };
+    let isPending = false;
+    
     if (data.creditLimit && Number(data.creditLimit) > 0) {
       data.pendingCreditLimit = data.creditLimit;
       data.creditLimit = 0;
-      data.creditLimitStatus = 'pending';
-    } else {
-      data.creditLimitStatus = 'approved';
+      isPending = true;
     }
+    
+    if (data.requiresAdvance) {
+      data.pendingRequiresAdvance = 1;
+      data.requiresAdvance = 0;
+      isPending = true;
+    }
+
+    data.creditLimitStatus = isPending ? 'pending' : 'approved';
+
     const [result] = await db.query('INSERT INTO customers SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) {
@@ -372,13 +381,25 @@ app.put('/api/customers/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     
-    const [existingRows] = await db.query('SELECT creditLimit FROM customers WHERE id = ?', [id]);
+    const [existingRows] = await db.query('SELECT creditLimit, requiresAdvance FROM customers WHERE id = ?', [id]);
     if (existingRows.length > 0) {
        const existing = existingRows[0];
+       let isPending = false;
+
        if (data.creditLimit !== undefined && Number(data.creditLimit) !== Number(existing.creditLimit)) {
           data.pendingCreditLimit = data.creditLimit;
           data.creditLimit = existing.creditLimit;
-          data.creditLimitStatus = 'pending';
+          isPending = true;
+       }
+       
+       if (data.requiresAdvance !== undefined && Boolean(data.requiresAdvance) !== Boolean(existing.requiresAdvance)) {
+          data.pendingRequiresAdvance = data.requiresAdvance ? 1 : 0;
+          data.requiresAdvance = existing.requiresAdvance;
+          isPending = true;
+       }
+
+       if (isPending) {
+         data.creditLimitStatus = 'pending';
        }
     }
 
@@ -396,9 +417,19 @@ app.post('/api/customers/:id/approve-credit', async (req, res) => {
     const { status } = req.body; // 'approved' or 'rejected'
     
     if (status === 'approved') {
-      await db.query("UPDATE customers SET creditLimit = pendingCreditLimit, pendingCreditLimit = 0, creditLimitStatus = 'approved' WHERE id = ?", [id]);
+      await db.query(`UPDATE customers SET 
+        creditLimit = IF(pendingCreditLimit IS NOT NULL, pendingCreditLimit, creditLimit), 
+        pendingCreditLimit = 0, 
+        requiresAdvance = IF(pendingRequiresAdvance IS NOT NULL, pendingRequiresAdvance, requiresAdvance),
+        pendingRequiresAdvance = NULL,
+        creditLimitStatus = 'approved' 
+        WHERE id = ?`, [id]);
     } else if (status === 'rejected') {
-      await db.query("UPDATE customers SET pendingCreditLimit = 0, creditLimitStatus = 'approved' WHERE id = ?", [id]); // Reset back to active approved state with old limit
+      await db.query(`UPDATE customers SET 
+        pendingCreditLimit = 0, 
+        pendingRequiresAdvance = NULL,
+        creditLimitStatus = 'approved' 
+        WHERE id = ?`, [id]); 
     }
     
     res.json({ success: true });

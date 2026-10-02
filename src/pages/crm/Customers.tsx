@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, Download, Filter, Users, Star, UserCheck, UserX, Building2, User, Trash2 } from 'lucide-react'
+import { UserPlus, Download, Filter, Users, Star, UserCheck, UserX, Building2, User, Trash2, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -234,9 +234,25 @@ export const Customers: React.FC = () => {
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Payment Period (Days)</label>
                 <input type="number" value={formData.creditDays} onChange={e => setFormData({...formData, creditDays: Number(e.target.value)})} className="w-full input-base" placeholder="30" />
               </div>
-              <div className="space-y-1.5 col-span-3 flex items-center gap-2 mt-2">
-                <input type="checkbox" id="reqAdv" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} className="rounded border-secondary text-primary focus:ring-primary" />
-                <label htmlFor="reqAdv" className="text-xs font-semibold text-secondary">Requires Advance Payment (Orders must be paid upfront before processing)</label>
+              <div className="col-span-3 mt-2">
+                <label 
+                  className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                    formData.requiresAdvance 
+                      ? 'border-amber-500 bg-amber-500/10' 
+                      : 'border-theme-subtle bg-surface/50 hover:bg-surface'
+                  }`}
+                >
+                  <div className={`mt-0.5 flex items-center justify-center w-5 h-5 rounded border ${
+                    formData.requiresAdvance ? 'bg-amber-500 border-amber-500 text-white' : 'border-secondary/30'
+                  }`}>
+                    {formData.requiresAdvance && <CheckCircle2 size={14} />}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-primary">Requires Advance Payment</div>
+                    <div className="text-[10px] text-secondary mt-0.5">Customer orders must be paid upfront before processing. Changes require admin approval.</div>
+                  </div>
+                  <input type="checkbox" className="hidden" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} />
+                </label>
               </div>
             </div>
           </div>

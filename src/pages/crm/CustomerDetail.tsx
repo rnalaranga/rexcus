@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -64,7 +64,18 @@ export const CustomerDetail: React.FC = () => {
       </div>
     </div>
   )
-
+  const handleUpdateRating = async (rating: number) => {
+    try {
+      await fetch(`http://localhost:3000/api/customers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating })
+      });
+      refetch();
+    } catch (e) {
+      console.error(e);
+    }
+  };
   const handleEditOpen = () => {
     setFormData({
       name: customer.name,
@@ -115,7 +126,6 @@ export const CustomerDetail: React.FC = () => {
     { icon: MapPin,    label: 'Address',         value: customer.address },
     { icon: Building2, label: 'Industry',        value: customer.industry },
     { icon: User,      label: 'Account Manager', value: customer.accountManager },
-    ...(customer.rating ? [{ icon: Building2, label: 'Customer Rating', value: '⭐'.repeat(customer.rating) }] : []),
     ...(customer.brNumber ? [{ icon: Building2, label: 'BR Number', value: customer.brNumber }] : []),
     ...(customer.vat ? [{ icon: Building2, label: 'VAT Number', value: customer.vat }] : []),
     ...(customer.creditLimit ? [{ icon: Building2, label: 'Credit Limit', value: `Rs. ${customer.creditLimit}` }] : []),
@@ -168,7 +178,20 @@ export const CustomerDetail: React.FC = () => {
                   {customer.status === 'vip' && <Star size={14} className="text-rex-500 fill-rex-500" />}
                 </div>
                 <p className="text-sm text-secondary">{customer.company}</p>
-                <p className="text-xs text-muted mt-0.5 font-mono">{customer.id}</p>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <p className="text-xs text-muted font-mono">{customer.id}</p>
+                  <div className="w-px h-3 bg-theme-subtle"></div>
+                  <div className="flex items-center gap-1 cursor-pointer group" title="Click to update rating">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star 
+                        key={star} 
+                        size={12} 
+                        onClick={() => handleUpdateRating(star)} 
+                        className={`transition-colors ${star <= (customer.rating || 0) ? 'text-amber-500 fill-amber-500' : 'text-theme-subtle group-hover:text-amber-500/50'}`} 
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge value={customer.segment} size="md" />
@@ -494,9 +517,25 @@ export const CustomerDetail: React.FC = () => {
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Payment Period (Days)</label>
                   <input type="number" value={formData.creditDays} onChange={e => setFormData({...formData, creditDays: Number(e.target.value)})} className="w-full input-base" />
                 </div>
-                <div className="space-y-1.5 col-span-3 flex items-center gap-2 mt-2">
-                  <input type="checkbox" id="editReqAdv" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} className="rounded border-secondary text-primary focus:ring-primary" />
-                  <label htmlFor="editReqAdv" className="text-xs font-semibold text-secondary">Requires Advance Payment (Orders must be paid upfront)</label>
+                <div className="col-span-3 mt-2">
+                  <label 
+                    className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                      formData.requiresAdvance 
+                        ? 'border-amber-500 bg-amber-500/10' 
+                        : 'border-theme-subtle bg-surface/50 hover:bg-surface'
+                    }`}
+                  >
+                    <div className={`mt-0.5 flex items-center justify-center w-5 h-5 rounded border ${
+                      formData.requiresAdvance ? 'bg-amber-500 border-amber-500 text-white' : 'border-secondary/30'
+                    }`}>
+                      {formData.requiresAdvance && <CheckCircle2 size={14} />}
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-primary">Requires Advance Payment</div>
+                      <div className="text-[10px] text-secondary mt-0.5">Customer orders must be paid upfront before processing. Changes require admin approval.</div>
+                    </div>
+                    <input type="checkbox" className="hidden" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} />
+                  </label>
                 </div>
               </div>
             </div>
