@@ -161,8 +161,8 @@ CREATE TABLE IF NOT EXISTS `journal_entries` (
   `description` text,
   `totalAmount` decimal(15,2) NOT NULL,
   `createdBy` varchar(50) DEFAULT NULL,
-  `status` varchar(50) DEFAULT 'posted',
   `createdAt` datetime DEFAULT NULL,
+  `status` varchar(50) DEFAULT 'posted',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -424,9 +424,3 @@ CREATE TABLE IF NOT EXISTS `work_orders` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
-
-ALTER TABLE chart_of_accounts ADD COLUMN subtype VARCHAR(50) DEFAULT NULL;
-ALTER TABLE chart_of_accounts ADD COLUMN accountNumber VARCHAR(50) DEFAULT NULL;
-ALTER TABLE chart_of_accounts ADD COLUMN balance DECIMAL(15,2) DEFAULT 0.00;
-ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted';
-ALTER TABLE journal_lines ADD COLUMN partyType VARCHAR(50);

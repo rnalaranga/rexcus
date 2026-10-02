@@ -103,9 +103,9 @@ export const ExpenseBuilder: React.FC = () => {
                 <label className="block text-[11px] font-bold text-red-500 uppercase mb-1 flex items-center gap-1.5"><Receipt size={12}/> Expense Account (Debit)</label>
                 <select value={expenseAccountId} onChange={e => setExpenseAccountId(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-red-500">
                   <option value="">-- Select Expense Category --</option>
-                  {Object.entries(groupedExpenses).sort(([a], [b]) => a.localeCompare(b)).map(([group, accs]) => (
+                  {Object.entries(groupedExpenses).sort(([a], [b]) => a.localeCompare(b)).map(([group, accs]: [string, any]) => (
                     <optgroup key={group} label={group}>
-                      {accs.map((a: any) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                      {(accs as any[]).map((a: any) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
                     </optgroup>
                   ))}
                 </select>

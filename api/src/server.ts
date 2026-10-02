@@ -1972,6 +1972,68 @@ app.post('/api/production/operations/:id/qc', async (req, res) => {
   }
 });
 
+
+  // SYSTEM STATS ROUTE
+  // ==========================
+  app.get('/api/system/stats', (req, res) => {
+    const os = require('os');
+    const { exec } = require('child_process');
+
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const memPercent = (usedMem / totalMem) * 100;
+
+    const cpus = os.cpus();
+    const loadAvg = os.loadavg();
+    // Rough approximation for cross-platform CPU usage
+    const cpuPercent = cpus.length > 0 ? (loadAvg[0] / cpus.length) * 100 : 0;
+
+    const isWin = os.platform() === 'win32';
+    const cmd = isWin ? 'wmic logicaldisk get size,freespace,caption' : 'df -k /';
+
+    exec(cmd, (error, stdout) => {
+      let storagePercent = 0;
+      let totalStorage = 0;
+      let usedStorage = 0;
+
+      if (!error && stdout) {
+        if (isWin) {
+          const lines = stdout.trim().split('\n').slice(1);
+          for (let line of lines) {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 3) {
+              const free = parseInt(parts[1]) || 0;
+              const total = parseInt(parts[2]) || 0;
+              if (total > 0) {
+                totalStorage = total;
+                usedStorage = total - free;
+                storagePercent = (usedStorage / totalStorage) * 100;
+              }
+              break;
+            }
+          }
+        } else {
+          const lines = stdout.trim().split('\n');
+          if (lines.length > 1) {
+            const parts = lines[1].trim().split(/\s+/);
+            if (parts.length >= 5) {
+              totalStorage = parseInt(parts[1]) * 1024 || 0;
+              usedStorage = parseInt(parts[2]) * 1024 || 0;
+              storagePercent = parseFloat(parts[4].replace('%', '')) || 0;
+            }
+          }
+        }
+      }
+
+      res.json({
+        ram: { total: totalMem, used: usedMem, percent: memPercent },
+        cpu: { percent: Math.min(cpuPercent, 100) },
+        storage: { total: totalStorage, used: usedStorage, percent: storagePercent }
+      });
+    });
+  });
+
 app.listen(PORT, () => {
   console.log(`API Server running on http://localhost:${PORT}`);
 });
