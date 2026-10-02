@@ -502,3 +502,21 @@ ALTER TABLE invoices ADD COLUMN dispatchNo VARCHAR(50) DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN orderNo VARCHAR(50) DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN poNo VARCHAR(50) DEFAULT NULL;
 ALTER TABLE invoices ADD COLUMN customerVat VARCHAR(50) DEFAULT NULL;
+ALTER TABLE invoices ADD COLUMN taxType VARCHAR(50) DEFAULT 'none';
+
+CREATE TABLE IF NOT EXISTS `tax_profiles` (
+  `id` varchar(50) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `tax1_name` varchar(50) NOT NULL,
+  `tax1_rate` decimal(5,2) NOT NULL,
+  `tax2_name` varchar(50) DEFAULT NULL,
+  `tax2_rate` decimal(5,2) DEFAULT '0.00',
+  `tax2_compound` tinyint(1) DEFAULT '0',
+  `accountId` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL;
+ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL;
+
+INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId) VALUES ('tp_vat18', 'VAT (18%)', 'VAT', 18, NULL);
+INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, accountId) VALUES ('tp_vat_sscl', 'VAT (18%) + SSCL (2.5%)', 'SSCL', 2.5, 'VAT', 18, 1, NULL);

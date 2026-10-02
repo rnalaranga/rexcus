@@ -7,7 +7,7 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { useAccounts, useTaxes, useJournals } from '@/hooks/useFinance';
+import { useAccounts, useTaxes, useTaxProfiles, useJournals } from '@/hooks/useFinance';
 import { formatCurrency } from '@/lib/utils';
 import { AccountModal } from './AccountModal';
 import { deleteAccount, fetchAccountLedger } from '@/lib/api';
@@ -49,7 +49,7 @@ export const AccountingHub: React.FC = () => {
   const { showConfirm, showError, toast } = useDialog();
 
   const { data: accounts, loading: loadingCOA, refetch: refetchCOA } = useAccounts();
-  const { data: taxes, loading: loadingTaxes } = useTaxes();
+  const { data: taxProfiles, loading: loadingTaxes, refetch: refetchTaxes } = useTaxProfiles();
   const { data: journals, loading: loadingJournals, refetch: refetchJournals } = useJournals();
 
   const loading = loadingCOA || loadingTaxes || loadingJournals;
@@ -58,7 +58,7 @@ export const AccountingHub: React.FC = () => {
   let filteredCOA = accounts.filter(a => [a.code, a.name].some(v => v?.toLowerCase().includes(search.toLowerCase())));
   if (filterType !== 'All') filteredCOA = filteredCOA.filter(a => a.type === filterType);
 
-  const filteredTaxes = taxes.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredTaxes = taxProfiles.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
   const filteredJournals = journals.filter(j => [j.id, j.reference, j.description].some(v => v?.toLowerCase().includes(search.toLowerCase())));
 
   const openLedger = async (account: any) => {
@@ -205,7 +205,7 @@ export const AccountingHub: React.FC = () => {
     { key: 'isActive', header: 'Status', width: '90px', render: v => <Badge value={v !== false ? 'ACTIVE' : 'INACTIVE'} /> }
   ];
 
-  const countLabel = activeTab === 'coa' ? `${accounts.length} accounts` : activeTab === 'journals' ? `${journals.length} journal entries` : `${taxes.length} tax rates`;
+  const countLabel = activeTab === 'coa' ? `${accounts.length} accounts` : activeTab === 'journals' ? `${journals.length} journal entries` : `${taxProfiles.length} tax profiles`;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -231,7 +231,7 @@ export const AccountingHub: React.FC = () => {
             <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/finance/journal-builder')} className="bg-rex-600 hover:bg-rex-700">New Journal Entry</Button>
           )}
           {activeTab === 'taxes' && (
-            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowAddTax(true)} className="bg-amber-600 hover:bg-amber-700">Add Tax Rate</Button>
+            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowAddTax(true)} className="bg-amber-600 hover:bg-amber-700">Add Tax Profile</Button>
           )}
         </div>
       </div>
@@ -243,7 +243,7 @@ export const AccountingHub: React.FC = () => {
         <span className="text-xs text-muted flex items-center gap-1.5"><Filter size={12} /> View:</span>
         {(['coa', 'journals', 'taxes'] as Tab[]).map(t => (
           <button key={t} onClick={() => setActiveTab(t)} className={`px-3 py-1.5 text-xs border transition-colors ${activeTab === t ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}>
-            {t === 'coa' ? 'Chart of Accounts' : t === 'journals' ? 'Journals' : 'Tax Rates'}
+            {t === 'coa' ? 'Chart of Accounts' : t === 'journals' ? 'Journals' : 'Tax Profiles'}
           </button>
         ))}
         {activeTab === 'coa' && (
@@ -573,46 +573,69 @@ export const AccountingHub: React.FC = () => {
       </Modal>
 
       {/* Tax Modal */}
-      <Modal isOpen={showAddTax} onClose={() => setShowAddTax(false)} title="Add Tax Rate">
+      <Modal isOpen={showAddTax} onClose={() => setShowAddTax(false)} title="Add Tax Profile">
         <form onSubmit={async (e) => {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
           const name = formData.get('name') as string;
-          const rate = Number(formData.get('rate'));
-          const accountId = formData.get('accountId') as string;
+          const tax1_name = formData.get('tax1_name') as string;
+          const tax1_rate = Number(formData.get('tax1_rate'));
+          const tax2_name = formData.get('tax2_name') as string;
+          const tax2_rate = Number(formData.get('tax2_rate'));
+          const tax2_compound = formData.get('tax2_compound') === 'on' ? 1 : 0;
           
-          if (!name || isNaN(rate) || !accountId) return showError('Please fill all required fields.', 'Validation Error');
+          if (!name || !tax1_name) return showError('Please fill required fields.', 'Validation Error');
           
           try {
-            const { createTax } = await import('@/lib/api');
-            await createTax({ id: crypto.randomUUID(), name, rate, accountId });
-            toast('Tax rate created', 'success');
+            const { createTaxProfile } = await import('@/lib/api');
+            await createTaxProfile({ 
+              id: crypto.randomUUID(), 
+              name, 
+              tax1_name, tax1_rate: tax1_rate || 0,
+              tax2_name: tax2_name || null, tax2_rate: tax2_rate || 0,
+              tax2_compound
+            });
+            toast('Tax profile created', 'success');
             setShowAddTax(false);
-            window.location.reload();
+            refetchTaxes();
           } catch(err: any) {
             showError(err.message, 'Error');
           }
         }}>
-          <div className="space-y-4">
+                    <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-muted uppercase mb-1">Tax Name</label>
-              <input name="name" required placeholder="e.g. VAT" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+              <label className="block text-xs font-bold text-muted uppercase mb-1">Profile Name (e.g. VAT + SSCL)</label>
+              <input name="name" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
-              <input name="rate" type="number" step="0.01" required placeholder="15" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Primary Tax Name (e.g. SSCL)</label>
+                <input name="tax1_name" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
+                <input name="tax1_rate" type="number" step="0.01" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase mb-1">Tax Liability Account</label>
-              <select name="accountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
-                <option value="">-- Select Liability Account --</option>
-                {accounts.filter(a => a.type === 'Liability').map(a => (
-                  <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                ))}
-              </select>
+            <div className="border-t border-theme-subtle pt-4 mt-2">
+              <label className="block text-xs font-bold text-primary mb-2">Optional Secondary Tax</label>
+              <div className="grid grid-cols-2 gap-4 mb-2">
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-1">Secondary Tax Name (e.g. VAT)</label>
+                  <input name="tax2_name" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
+                  <input name="tax2_rate" type="number" step="0.01" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-primary">
+                <input type="checkbox" name="tax2_compound" />
+                Calculate Secondary Tax on (Subtotal + Primary Tax)
+              </label>
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-6">
+<div className="flex justify-end gap-2 mt-6">
             <Button variant="ghost" onClick={() => setShowAddTax(false)} type="button">Cancel</Button>
             <Button variant="primary" type="submit">Save Tax Rate</Button>
           </div>

@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
-import { useLeads, useFollowups } from '@/hooks/useData'
-import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice } from '@/lib/api'
+import { useLeads, useFollowups, useCustomers } from '@/hooks/useData'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { useDialog } from '@/components/ui/DialogProvider'
+import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
@@ -29,11 +31,12 @@ export const Leads: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   
   // Custom Confirmation Modal State
+  const { data: customers } = useCustomers()
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'lead' | 'quotation', id: string | number } | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: ''
+    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: ''
   })
 
   const [leadQuotations, setLeadQuotations] = React.useState<any[]>([])
@@ -49,7 +52,7 @@ export const Leads: React.FC = () => {
 
   const openCreateModal = () => {
     setEditId(null)
-    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '' })
+    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '' })
     setIsModalOpen(true)
   }
 
@@ -60,10 +63,12 @@ export const Leads: React.FC = () => {
       company: lead.company,
       email: lead.email,
       phone: lead.phone,
-      source: lead.source, vat: lead.vat || '', svat: lead.svat || '',
+      source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '',
       priority: lead.priority,
       value: String(lead.value),
-      stage: lead.stage
+      stage: lead.stage,
+      isNewCustomer: false,
+      address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: ''
     })
     setIsModalOpen(true)
   }
@@ -271,7 +276,8 @@ export const Leads: React.FC = () => {
                         <p className="text-xs font-medium text-primary leading-snug flex-1 mr-1">{lead.name}</p>
                         <Badge value={lead.priority} size="sm" />
                       </div>
-                      <p className="text-[10px] text-muted mb-2 truncate">{lead.company}</p>
+                      <p className="text-[10px] text-muted mb-1 truncate">{lead.company}</p>
+                      {lead.description && <p className="text-[9px] text-secondary mb-2 line-clamp-2 italic border-l-2 border-theme-subtle pl-1">{lead.description}</p>}
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] text-rex-600 dark:text-rex-300 font-semibold">{formatCurrency(lead.value)}</span>
                         <span className="text-[10px] text-muted">{lead.probability}%</span>
@@ -336,8 +342,8 @@ export const Leads: React.FC = () => {
                 <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" placeholder="e.g. Jane Doe" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company <span className="text-rex-500">*</span></label>
-                <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company</label>
+                <input value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Estimated Value (Rs.) <span className="text-rex-500">*</span></label>
@@ -354,8 +360,8 @@ export const Leads: React.FC = () => {
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Email Address <span className="text-rex-500">*</span></label>
-                <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full input-base" placeholder="jane@example.com" />
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Email Address</label>
+                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full input-base" placeholder="jane@example.com" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Phone Number <span className="text-rex-500">*</span></label>

@@ -9,7 +9,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useCustomers, useInventory } from '@/hooks/useData';
-import { useTaxes } from '@/hooks/useFinance';
+import { useTaxes, useTaxProfiles } from '@/hooks/useFinance';
 import { createInvoice } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -51,7 +51,7 @@ const docInputClass = "w-full bg-surface border border-theme-subtle px-3 py-2 ro
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-black/10 dark:hover:border-white/10 focus:border-blue-500 focus:bg-surface px-2 py-1 text-xs outline-none transition-all";
 
 // ─── Print Preview ────────────────────────────────────────────────────────────
-export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates }) => {
+export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, ssclAmount, vatAmount, selectedProfile }) => {
 
   if (template.startsWith('government')) {
     const isInclusive = template === 'government_inclusive';
@@ -248,14 +248,26 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                     {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-                  <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                    VAT <span style={{ marginLeft: '20px' }}>{taxAmount > 0 ? '18.00 %' : '0.00 %'}</span>
+                {selectedProfile?.tax2_name && (
+                  <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
+                    <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
+                      {selectedProfile.tax1_name} <span style={{ marginLeft: '20px' }}>{selectedProfile.tax1_rate} %</span>
+                    </div>
+                    <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
+                      {ssclAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
                   </div>
-                  <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
-                    {taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                )}
+                {taxType !== 'none' && (
+                  <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
+                    <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
+                      {selectedProfile?.tax2_name || selectedProfile?.tax1_name || 'Tax'} <span style={{ marginLeft: '20px' }}>{taxType === 'line_items' ? 'As per items' : `${selectedProfile?.tax2_name ? selectedProfile.tax2_rate : selectedProfile?.tax1_rate} %`}</span>
+                    </div>
+                    <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
+                      {(selectedProfile?.tax2_name ? vatAmount : taxAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
             <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
@@ -445,6 +457,7 @@ export const InvoiceBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { data: customers } = useCustomers();
   const { data: taxRates } = useTaxes();
+  const { data: taxProfiles } = useTaxProfiles();
   const { data: inventory } = useInventory();
   const { toast, showError } = useDialog();
 
@@ -453,6 +466,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  const [taxType, setTaxType] = useState('none');
   const [template, setTemplate] = useState('government');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -504,7 +518,27 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
 
   const getTaxRate = (id: string) => { const t = taxRates.find((x: any) => x.id === id); return t ? Number(t.rate) : 0; };
   const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const taxAmount = items.reduce((s, i) => s + i.qty * i.unitPrice * (getTaxRate(i.taxRateId) / 100), 0);
+  
+  let taxAmount = 0;
+  let ssclAmount = 0;
+  let vatAmount = 0;
+  
+  const selectedProfile = taxProfiles?.find((p: any) => p.id === taxType);
+  if (selectedProfile) {
+    const t1 = Number(selectedProfile.tax1_rate) / 100;
+    const t2 = Number(selectedProfile.tax2_rate) / 100;
+    
+    ssclAmount = subtotal * t1;
+    if (selectedProfile.tax2_compound) {
+      vatAmount = (subtotal + ssclAmount) * t2;
+    } else {
+      vatAmount = subtotal * t2;
+    }
+    taxAmount = ssclAmount + vatAmount;
+  } else if (taxType === 'line_items') {
+    taxAmount = items.reduce((s, i) => s + i.qty * i.unitPrice * (getTaxRate(i.taxRateId) / 100), 0);
+  }
+  
   const total = subtotal + taxAmount;
   const creditWarning = selectedCustomer && Number(selectedCustomer.creditLimit) > 0 && (Number(selectedCustomer.totalRevenue || 0) + total > Number(selectedCustomer.creditLimit));
 
@@ -512,7 +546,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     try {
-      const res = await createInvoice({ id: docNo, customerId, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat });
+      const res = await createInvoice({ id: docNo, customerId, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
@@ -528,7 +562,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     win.document.close(); win.focus(); win.print();
   };
 
-  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates };
+  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, ssclAmount, vatAmount, selectedProfile };
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative animate-fade-in">

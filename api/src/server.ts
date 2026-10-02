@@ -891,38 +891,7 @@ app.post('/api/invoices', async (req, res) => {
     const data = req.body;
     await db.query('INSERT INTO invoices SET ?', data);
     
-    try {
-      const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("1100", "1500") OR name LIKE "%Receivable%" LIMIT 1');
-      const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("3000", "4000") OR name LIKE "%Sales%" OR name LIKE "%Revenue%" LIMIT 1');
-      const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" LIMIT 1');
-      
-      if (arAcc.length > 0 && salesAcc.length > 0) {
-        const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
-        const totalAmount = Number(data.total) || Number(data.amount) || 0;
-        const subtotal = Number(data.subtotal) || totalAmount;
-        const taxAmount = Number(data.taxAmount) || 0;
-        
-        await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.id, description: 'Auto GL: Invoice Generated', totalAmount, status: 'posted' });
-        
-        const lines = [
-          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, totalAmount, 0, 'Customer Invoice ' + data.id, data.customerId || null, null, 'Customer'],
-          ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, subtotal, 'Sales Revenue for ' + data.id, null, null, null]
-        ];
-        
-        if (taxAmount > 0 && taxAcc.length > 0) {
-          lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, taxAcc[0].id, 0, taxAmount, 'Tax Liability for ' + data.id, null, null, null]);
-        }
-        
-        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, description, partyId, costCenterId, partyType) VALUES ?', [lines]);
-        
-        // UPDATE BALANCES
-        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [totalAmount, arAcc[0].id]);
-        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [subtotal, salesAcc[0].id]);
-        if (taxAmount > 0 && taxAcc.length > 0) {
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [taxAmount, taxAcc[0].id]);
-        }
-      }
-    } catch (e) { console.error('Auto GL Invoice Error:', e); }
+    // Auto GL removed from creation for Cash-Basis accounting
 
     res.json({ success: true, id: data.id });
   } catch (error) {
@@ -968,45 +937,39 @@ app.delete('/api/invoices/:id', async (req, res) => {
         // Find Journal Lines to reverse balances
         const [lines]: any = await db.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId IN (?)', [jeIds]);
         
-        // Let's reverse the balances manually.
-        // Wait, since we know exactly how they were added, we can use the same logic:
-        // Asset/Expense normally +Debit, -Credit.
-        // Liability/Equity/Revenue normally -Debit, +Credit.
-        // However, in our system, ALL balances were just absolute positive numbers!
-        // Invoice Creation: AR (+), Sales (+), Tax (+)
-        // Payment: Cash (+), AR (-)
-        
-        // To precisely reverse them:
-        // We know what accounts were used:
+        // Cash Basis GL Reversal on Invoice Deletion
+        // Invoice creation never hit GL. Only Payments hit GL (Cash, Sales, Tax).
         try {
-          const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("1100", "1500") OR name LIKE "%Receivable%" LIMIT 1');
           const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("3000", "4000") OR name LIKE "%Sales%" OR name LIKE "%Revenue%" LIMIT 1');
-          const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" LIMIT 1');
+          const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" OR isTaxAccount = 1 LIMIT 1');
           const [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
           
-          const totalAmount = Number(invoice.total) || Number(invoice.amount) || 0;
-          const subtotal = Number(invoice.subtotal) || totalAmount;
-          const taxAmount = Number(invoice.taxAmount) || 0;
-          const totalPaid = Number(invoice.paidAmount) || 0;
+          const invTotal = Number(invoice.total) || 1;
+          const invTax = Number(invoice.taxAmount) || 0;
           
-          if (arAcc.length > 0) {
-            // Reverse invoice AR addition: Subtract totalAmount
-            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [totalAmount, arAcc[0].id]);
-            // Reverse payment AR subtraction: Add totalPaid
-            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [totalPaid, arAcc[0].id]);
+          let totalSalesReversed = 0;
+          let totalTaxReversed = 0;
+          let totalCashReversed = 0;
+          
+          existingPayments.forEach((p: any) => {
+             const pmtAmount = Number(p.amount);
+             const pmtTax = pmtAmount * (invTax / invTotal);
+             const pmtSales = pmtAmount - pmtTax;
+             totalCashReversed += pmtAmount;
+             totalTaxReversed += pmtTax;
+             totalSalesReversed += pmtSales;
+          });
+          
+          if (cashAcc.length > 0 && totalCashReversed > 0) {
+             await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [totalCashReversed, cashAcc[0].id]);
           }
-          if (salesAcc.length > 0) {
-            // Reverse invoice Sales addition: Subtract subtotal
-            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [subtotal, salesAcc[0].id]);
+          if (salesAcc.length > 0 && totalSalesReversed > 0) {
+             await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [totalSalesReversed, salesAcc[0].id]);
           }
-          if (taxAcc.length > 0 && taxAmount > 0) {
-             await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [taxAmount, taxAcc[0].id]);
+          if (taxAcc.length > 0 && totalTaxReversed > 0) {
+             await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [totalTaxReversed, taxAcc[0].id]);
           }
-          if (cashAcc.length > 0 && totalPaid > 0) {
-             // Reverse payment Cash addition: Subtract totalPaid
-             await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [totalPaid, cashAcc[0].id]);
-          }
-        } catch(e) { console.error('Error reversing GL balances:', e); }
+        } catch(e) { console.error('Error reversing Cash Basis GL:', e); }
         
         // Delete the journal lines and entries
         await db.query('DELETE FROM journal_lines WHERE entryId IN (?)', [jeIds]);
@@ -1057,22 +1020,40 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
 
       // Auto GL: Record Payment
       try {
-        const [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("1100", "1500") OR name LIKE "%Receivable%" LIMIT 1');
+        const [salesAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code IN ("3000", "4000") OR name LIKE "%Sales%" OR name LIKE "%Revenue%" LIMIT 1');
+        const [taxAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" OR isTaxAccount = 1 LIMIT 1');
         const [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
-        if (arAcc.length > 0 && cashAcc.length > 0) {
+        
+        if (cashAcc.length > 0 && salesAcc.length > 0) {
           const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
           const pmtAmount = Number(payment.amount);
-          await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: newPayment.date, reference: newPayment.id, description: 'Auto GL: Invoice Payment Received', totalAmount: pmtAmount });
           
-          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [
-            [
-              ['JL-' + Date.now().toString().slice(-5) + '1', jeId, cashAcc[0].id, pmtAmount, 0, null, null],
-              ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, pmtAmount, invoice.customerId || null, 'Customer']
-            ]
-          ]);
-          // Cash gets Debit (+), AR gets Credit (-)
+          // Proportionally split the payment between Sales and Tax
+          const invTotal = Number(invoice.total) || 1; // avoid div by zero
+          const invTax = Number(invoice.taxAmount) || 0;
+          const invSub = Number(invoice.subtotal) || invTotal;
+          
+          const pmtTax = pmtAmount * (invTax / invTotal);
+          const pmtSales = pmtAmount - pmtTax;
+          
+          await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: newPayment.date, reference: newPayment.id, description: 'Auto GL: Invoice Payment Received (Cash Basis Sales)', totalAmount: pmtAmount });
+          
+          const lines = [
+            ['JL-' + Date.now().toString().slice(-5) + '1', jeId, cashAcc[0].id, pmtAmount, 0, null, null],
+            ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, pmtSales, invoice.customerId || null, 'Customer']
+          ];
+          
+          if (pmtTax > 0 && taxAcc.length > 0) {
+             lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, taxAcc[0].id, 0, pmtTax, null, null]);
+          }
+          
+          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+          
           await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [pmtAmount, cashAcc[0].id]);
-          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [pmtAmount, arAcc[0].id]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [pmtSales, salesAcc[0].id]);
+          if (pmtTax > 0 && taxAcc.length > 0) {
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [pmtTax, taxAcc[0].id]);
+          }
         }
       } catch (e) { console.error('Auto GL Payment Error:', e); }
     
@@ -1258,6 +1239,29 @@ app.get('/api/finance/taxes', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM tax_rates');
     res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/finance/tax-profiles', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM tax_profiles');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/finance/tax-profiles', async (req, res) => {
+  try {
+    const data = req.body;
+    await db.query('INSERT INTO tax_profiles SET ?', data);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/finance/tax-profiles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM tax_profiles WHERE id = ?', [id]);
+    res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1590,20 +1594,18 @@ app.get('/api/finance/reports/aging', async (req, res) => {
     if (type === 'ar') {
       query = `
       SELECT 
-        jl.partyId,
+        i.customerId as partyId,
         COALESCE(p.name, p.company, l.name, l.company, 'Unknown') as partyName,
-        SUM(jl.debit - jl.credit) as balance,
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) <= 30 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket30',
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 31 AND 60 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket60',
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 61 AND 90 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket90',
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) > 90 THEN (jl.debit - jl.credit) ELSE 0 END) as 'bucket90plus'
-      FROM journal_lines jl
-      JOIN journal_entries je ON jl.entryId = je.id
-      JOIN chart_of_accounts ca ON jl.accountId = ca.id
-      LEFT JOIN customers p ON jl.partyId = p.id 
-      LEFT JOIN leads l ON jl.partyId = l.id
-      WHERE jl.partyType = 'Customer' AND (ca.name LIKE "%Receivable%" OR ca.code IN ("1100", "1500"))
-      GROUP BY jl.partyId, partyName 
+        SUM(i.total - COALESCE(i.paidAmount, 0)) as balance,
+        SUM(CASE WHEN DATEDIFF(NOW(), i.date) <= 30 THEN (i.total - COALESCE(i.paidAmount, 0)) ELSE 0 END) as 'bucket30',
+        SUM(CASE WHEN DATEDIFF(NOW(), i.date) BETWEEN 31 AND 60 THEN (i.total - COALESCE(i.paidAmount, 0)) ELSE 0 END) as 'bucket60',
+        SUM(CASE WHEN DATEDIFF(NOW(), i.date) BETWEEN 61 AND 90 THEN (i.total - COALESCE(i.paidAmount, 0)) ELSE 0 END) as 'bucket90',
+        SUM(CASE WHEN DATEDIFF(NOW(), i.date) > 90 THEN (i.total - COALESCE(i.paidAmount, 0)) ELSE 0 END) as 'bucket90plus'
+      FROM invoices i
+      LEFT JOIN customers p ON i.customerId = p.id 
+      LEFT JOIN leads l ON i.customerId = l.id
+      WHERE i.status != 'paid' AND i.status != 'draft'
+      GROUP BY i.customerId, partyName 
       HAVING balance > 0
       `;
     } else {

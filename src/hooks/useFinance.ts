@@ -77,3 +77,21 @@ export function useCostCenters() {
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
 }
+
+export function useTaxProfiles() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { fetchTaxProfiles } = await import('@/lib/api');
+      const res = await fetchTaxProfiles();
+      setData(res);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, refetch: load };
+}

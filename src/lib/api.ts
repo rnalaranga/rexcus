@@ -357,3 +357,20 @@ export const fetchPartyLedger = async (id: string) => (await (await fetch(`${API
 export const deleteJournal = async (id: string) => (await (await fetch(`${API_URL}/finance/journals/${id}`, { method: 'DELETE' })).json());
 
 export const approveCreditLimit = async (id: string, status: 'approved' | 'rejected') => (await (await fetch(`${API_URL}/customers/${id}/approve-credit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })).json());
+
+export const fetchTaxProfiles = async () => {
+  const res = await fetch(`${API_URL}/finance/tax-profiles`);
+  return res.json();
+};
+
+export const createTaxProfile = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/tax-profiles`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deleteTaxProfile = async (id: string) => {
+  const res = await fetch(`${API_URL}/finance/tax-profiles/${id}`, { method: 'DELETE' });
+  return res.json();
+};
