@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2 } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -67,6 +67,98 @@ export const AccountingHub: React.FC = () => {
     const data = await fetchAccountLedger(account.id);
     setLedgerData(data);
     setLedgerLoading(false);
+  };
+
+  
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const handleDownloadTemplate = () => {
+    const csvContent = "Code,Name,Type,Subtype,Balance\n" +
+      "1000,Commercial Bank,Asset,Bank,0\n" +
+      "1500,Accounts Receivable,Asset,Current Asset,0\n" +
+      "2000,Accounts Payable,Liability,Current Liability,0\n" +
+      "3000,Sales Revenue,Revenue,Sales,0\n" +
+      "4000,Raw Materials,Expense,Production Material,0\n" +
+      "4001,Electric item,Expense,Production Material,0\n" +
+      "4002,Sub Contract,Expense,Production Material,0\n" +
+      "5000,Diesel for Generator,Expense,Production Overhead,0\n" +
+      "5001,Electricity,Expense,Production Overhead,0\n" +
+      "5002,Factory Maintenance,Expense,Production Overhead,0\n" +
+      "6000,Audit & Accounting Fees,Expense,Administration,0\n" +
+      "6001,Bonus,Expense,Administration,0\n" +
+      "6002,Salaries & Wages,Expense,Administration,0\n" +
+      "7000,Advertising,Expense,Selling & Distribution,0\n" +
+      "7001,Sales Commissions,Expense,Selling & Distribution,0\n" +
+      "8000,Bank Charges,Expense,Finance,0\n" +
+      "9000,Exchange Gain or Loss,Expense,Non Operating,0";
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Chart_of_Accounts_Template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split('\n').filter(l => l.trim().length > 0);
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      
+      const codeIdx = headers.indexOf('code');
+      const nameIdx = headers.indexOf('name');
+      const typeIdx = headers.indexOf('type');
+      const subIdx = headers.indexOf('subtype');
+      const balIdx = headers.indexOf('balance');
+
+      if (codeIdx === -1 || nameIdx === -1 || typeIdx === -1) {
+        showError('CSV must contain Code, Name, and Type columns', 'Error');
+        return;
+      }
+
+      const parsedAccounts = lines.slice(1).map(line => {
+        // Handle basic quotes (simplistic csv parse)
+        const cols = line.split(','); 
+        return {
+          id: crypto.randomUUID(),
+          code: cols[codeIdx]?.trim() || '',
+          name: cols[nameIdx]?.trim() || '',
+          type: cols[typeIdx]?.trim() || 'Expense',
+          subtype: subIdx !== -1 ? cols[subIdx]?.trim() : '',
+          balance: balIdx !== -1 ? parseFloat(cols[balIdx]) || 0 : 0
+        };
+      }).filter(a => a.code && a.name);
+
+      if (parsedAccounts.length === 0) {
+        showError('No valid accounts found in CSV', 'Error');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/accounts/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accounts: parsedAccounts })
+        });
+        const data = await res.json();
+        if (data.success) {
+          toast(`Imported ${data.count} accounts successfully`, 'success');
+          refetchCOA();
+        } else {
+          showError(data.error, 'Error');
+        }
+      } catch (err) {
+        showError('Import failed', 'Error');
+      }
+    };
+    reader.readAsText(file);
+    // reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const getAccountName = (id: string) => {
