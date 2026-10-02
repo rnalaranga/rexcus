@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText, Calculator } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText, Calculator, AlertCircle } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { useCustomers } from '@/hooks/useData';
+import { useCustomers, useInventory } from '@/hooks/useData';
 import { useTaxes } from '@/hooks/useFinance';
 import { createInvoice } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -13,6 +13,7 @@ export const InvoiceBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { data: customers } = useCustomers();
   const { data: taxRates } = useTaxes();
+  const { data: inventory } = useInventory();
   const { toast, showError } = useDialog();
   
   const [docNo] = useState('INV-' + Date.now().toString().slice(-4));
@@ -21,10 +22,24 @@ export const InvoiceBuilder: React.FC = () => {
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   
-  const [items, setItems] = useState([{ id: crypto.randomUUID(), description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
+  const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
   
+  // Find selected customer
+  const selectedCustomer = customers.find(c => c.id === customerId);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const days = Number(selectedCustomer.creditDays) || 0;
+      const newDue = new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0];
+      setDueDate(newDue);
+      if (selectedCustomer.vat) {
+        setNotes((prev) => prev.includes('Customer VAT') ? prev : `Customer VAT: ${selectedCustomer.vat}\n` + prev);
+      }
+    }
+  }, [selectedCustomer?.id, date]);
+
   const handleAddItem = () => {
-    setItems([...items, { id: crypto.randomUUID(), description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
+    setItems([...items, { id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
   };
   
   const handleRemoveItem = (id: string) => {
@@ -32,7 +47,18 @@ export const InvoiceBuilder: React.FC = () => {
   };
   
   const handleChangeItem = (id: string, field: string, value: any) => {
-    setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
+    setItems(items.map(i => {
+      if (i.id !== id) return i;
+      const updated = { ...i, [field]: value };
+      if (field === 'inventoryId') {
+        const invItem = inventory.find(inv => inv.id === value);
+        if (invItem) {
+          updated.description = invItem.name;
+          updated.unitPrice = Number(invItem.unitPrice) || 0;
+        }
+      }
+      return updated;
+    }));
   };
 
   const getTaxRate = (taxRateId: string) => {
@@ -43,6 +69,8 @@ export const InvoiceBuilder: React.FC = () => {
   const subtotal = items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
   const taxAmount = items.reduce((sum, item) => sum + (item.qty * item.unitPrice * (getTaxRate(item.taxRateId)/100)), 0);
   const total = subtotal + taxAmount;
+
+  const creditWarning = selectedCustomer && Number(selectedCustomer.creditLimit) > 0 && (Number(selectedCustomer.totalRevenue || 0) + total > Number(selectedCustomer.creditLimit));
 
   const handleSave = async () => {
     if (!customerId) return showError('Please select a customer.');
@@ -100,11 +128,30 @@ export const InvoiceBuilder: React.FC = () => {
               </h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-muted uppercase mb-1">Select Customer</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-muted uppercase">Select Customer</label>
+                    <button type="button" onClick={() => navigate('/crm/customers')} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1">
+                      <Plus size={10} /> Add New
+                    </button>
+                  </div>
                   <select value={customerId} onChange={e => setCustomerId(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm focus:border-blue-500 outline-none">
                     <option value="">-- Choose Customer --</option>
                     {customers.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>)}
                   </select>
+                  {selectedCustomer && (
+                    <div className="mt-2 text-[11px] text-muted space-y-0.5">
+                      {selectedCustomer.vat && <p>VAT: <span className="font-mono">{selectedCustomer.vat}</span></p>}
+                      {selectedCustomer.svat && <p>SVAT: <span className="font-mono">{selectedCustomer.svat}</span></p>}
+                      {Number(selectedCustomer.creditLimit) > 0 && <p>Credit Limit: <span className="font-mono">{formatCurrency(selectedCustomer.creditLimit)}</span></p>}
+                      {Number(selectedCustomer.creditDays) > 0 && <p>Terms: <span className="font-mono">{selectedCustomer.creditDays} Days</span></p>}
+                    </div>
+                  )}
+                  {creditWarning && (
+                    <div className="mt-2 flex items-start gap-1.5 p-2 bg-red-500/10 border border-red-500/20 rounded-md text-red-500 text-xs">
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                      <p>Warning: This invoice exceeds the customer's credit limit of {formatCurrency(selectedCustomer.creditLimit)}.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </GlassCard>
@@ -136,6 +183,7 @@ export const InvoiceBuilder: React.FC = () => {
                <table className="w-full text-left border-collapse min-w-[600px]">
                  <thead>
                    <tr className="border-b border-theme-subtle">
+                     <th className="pb-2 text-xs font-bold text-muted uppercase w-48">Product / Service</th>
                      <th className="pb-2 text-xs font-bold text-muted uppercase">Description</th>
                      <th className="pb-2 text-xs font-bold text-muted uppercase w-24">Qty</th>
                      <th className="pb-2 text-xs font-bold text-muted uppercase w-32">Unit Price</th>
@@ -147,6 +195,12 @@ export const InvoiceBuilder: React.FC = () => {
                  <tbody className="divide-y divide-theme-subtle">
                    {items.map((item, index) => (
                      <tr key={item.id} className="group">
+                       <td className="py-2 pr-2">
+                         <select value={item.inventoryId} onChange={e => handleChangeItem(item.id, 'inventoryId', e.target.value)} className="w-full bg-transparent border border-transparent hover:border-theme-subtle focus:border-blue-500 px-2 py-1.5 rounded text-sm outline-none">
+                           <option value="">-- Custom --</option>
+                           {inventory?.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                         </select>
+                       </td>
                        <td className="py-2 pr-2">
                          <input type="text" value={item.description} onChange={e => handleChangeItem(item.id, 'description', e.target.value)} placeholder="Item or Service Description" className="w-full bg-transparent border border-transparent hover:border-theme-subtle focus:border-blue-500 px-2 py-1.5 rounded text-sm outline-none" />
                        </td>

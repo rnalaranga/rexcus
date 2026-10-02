@@ -25,7 +25,7 @@ export const Customers: React.FC = () => {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', industry: '', segment: 'sme', address: ''
+    name: '', company: '', email: '', phone: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', creditLimit: 0, creditDays: 30
   })
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading customers...</div>
@@ -65,7 +65,7 @@ export const Customers: React.FC = () => {
     await refetch()
     setSubmitting(false)
     setIsModalOpen(false)
-    setFormData({ name: '', company: '', email: '', phone: '', industry: '', segment: 'sme', address: '' })
+    setFormData({ name: '', company: '', email: '', phone: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', creditLimit: 0, creditDays: 30 })
   }
 
   const filtered = customers.filter(c => {
@@ -171,6 +171,32 @@ export const Customers: React.FC = () => {
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Physical Address</label>
                 <input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full input-base" placeholder="123 Main St, City" />
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Tax & Financials */}
+          <div>
+            <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
+              <Building2 size={14} className="text-amber-500" />
+              Tax & Financials
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">VAT Number</label>
+                <input value={formData.vat} onChange={e => setFormData({...formData, vat: e.target.value})} className="w-full input-base" placeholder="VAT Registration No" />
+              </div>
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">SVAT Number</label>
+                <input value={formData.svat} onChange={e => setFormData({...formData, svat: e.target.value})} className="w-full input-base" placeholder="SVAT Registration No" />
+              </div>
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Credit Limit (Rs)</label>
+                <input type="number" value={formData.creditLimit} onChange={e => setFormData({...formData, creditLimit: Number(e.target.value)})} className="w-full input-base" placeholder="e.g. 500000" />
+              </div>
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Payment Period (Days)</label>
+                <input type="number" value={formData.creditDays} onChange={e => setFormData({...formData, creditDays: Number(e.target.value)})} className="w-full input-base" placeholder="30" />
               </div>
             </div>
           </div>
