@@ -43,6 +43,7 @@ export const CustomerDetail: React.FC = () => {
   const [ledgerLoading, setLedgerLoading] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showAdjustModal, setShowAdjustModal] = useState(false)
+  const [adjustType, setAdjustType] = useState<'adjust' | 'opening'>('adjust')
 
   React.useEffect(() => {
     if (activeTab === 'ledger' && id) {
@@ -406,10 +407,11 @@ export const CustomerDetail: React.FC = () => {
                   <Receipt size={14} className="text-rex-500" />
                   Customer Ledger
                 </h2>
-                <div className="flex items-center gap-4 text-xs">
-                  <Button variant="ghost" size="sm" onClick={() => setShowAdjustModal(true)}>Adjust Balance</Button>
+                <div className="flex items-center gap-2 text-xs">
+                  <Button variant="ghost" size="sm" onClick={() => { setAdjustType('opening'); setShowAdjustModal(true); }}>Opening Balance</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setAdjustType('adjust'); setShowAdjustModal(true); }}>Adjust Balance</Button>
                   <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
-                  <div className="ml-4"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true)}</span></div>
+                  <div className="ml-4 pl-4 border-l border-theme-subtle"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true)}</span></div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -756,7 +758,7 @@ export const CustomerDetail: React.FC = () => {
       </Modal>
 
       {/* Adjust Balance Modal */}
-      <Modal isOpen={showAdjustModal} onClose={() => setShowAdjustModal(false)} title="Adjust Customer Balance">
+      <Modal isOpen={showAdjustModal} onClose={() => setShowAdjustModal(false)} title={adjustType === 'opening' ? "Set Opening Balance" : "Adjust Customer Balance"}>
         <form onSubmit={async (e) => {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
@@ -776,7 +778,7 @@ export const CustomerDetail: React.FC = () => {
               id: 'ADJ-' + Date.now().toString().slice(-4),
               date,
               reference,
-              description: `Balance Adjustment: ${description}`,
+              description: adjustType === 'opening' ? `Opening Balance: ${description}` : `Balance Adjustment: ${description}`,
               totalAmount: amount,
               createdBy: 'System',
               lines: [
@@ -785,7 +787,7 @@ export const CustomerDetail: React.FC = () => {
               ]
             };
             await createJournal(je);
-            toast('Adjustment recorded successfully', 'success');
+            toast(adjustType === 'opening' ? 'Opening balance recorded successfully' : 'Adjustment recorded successfully', 'success');
             setShowAdjustModal(false);
             setActiveTab('overview'); setTimeout(() => setActiveTab('ledger'), 10);
           } catch(err: any) { showError(err.message, 'Error'); }
@@ -794,9 +796,9 @@ export const CustomerDetail: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
                <div>
                   <label className="block text-xs font-bold text-muted uppercase mb-1">Adjustment Type</label>
-                  <select name="type" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
-                    <option value="increase">Increase Balance (Invoice/Charge)</option>
-                    <option value="decrease">Decrease Balance (Credit Note)</option>
+                  <select name="type" defaultValue="increase" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                    <option value="increase">Increase Balance (Debit AR)</option>
+                    <option value="decrease">Decrease Balance (Credit AR)</option>
                   </select>
                </div>
                <div>
@@ -824,7 +826,7 @@ export const CustomerDetail: React.FC = () => {
             </div>
             <div>
               <label className="block text-xs font-bold text-muted uppercase mb-1">Description</label>
-              <input type="text" name="description" required placeholder="e.g. Opening Balance" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
+              <input type="text" name="description" required defaultValue={adjustType === 'opening' ? 'Opening Balance' : ''} placeholder="e.g. Opening Balance" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-6">
