@@ -2221,3 +2221,21 @@ app.delete('/api/currencies/:code', async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// Auto-sync currencies daily
+setInterval(async () => {
+  try {
+    const response = await fetch('https://open.er-api.com/v6/latest/LKR');
+    const data = await response.json();
+    if (data && data.rates) {
+      const [existing] = await db.query('SELECT code FROM currencies');
+      for (const row of existing) {
+        const code = row.code;
+        if (data.rates[code] && code !== 'LKR') {
+          await db.query('UPDATE currencies SET exchangeRate = ?, lastUpdated = NOW() WHERE code = ?', [1 / data.rates[code], code]);
+        }
+      }
+      console.log('Auto-synced currencies successfully.');
+    }
+  } catch (err) { console.error('Failed to auto-sync currencies:', err); }
+}, 24 * 60 * 60 * 1000);

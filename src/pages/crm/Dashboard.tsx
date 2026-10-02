@@ -47,6 +47,14 @@ export const CRMDashboard: React.FC = () => {
   const { data: deals, loading: dl } = useDeals()
   const { data: followupsRaw } = useFollowups()
 
+  const [currencies, setCurrencies] = React.useState<any[]>([])
+  React.useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
+      .then(res => res.json())
+      .then(data => setCurrencies(Array.isArray(data) ? data : []))
+      .catch(console.error)
+  }, [])
+
   // Enrich followups with overdue status
   const followups = useMemo(() => {
     const now = new Date()
@@ -324,6 +332,27 @@ export const CRMDashboard: React.FC = () => {
           <div className="text-xs text-muted mt-0.5">VIP Customers</div>
         </GlassCard>
       </div>
+
+      {/* Exchange Rates Widget */}
+      <GlassCard className="p-5 mt-4">
+        <h2 className="text-sm font-semibold text-primary mb-1 flex items-center gap-2">
+          <DollarSign size={16} className="text-emerald-500" />
+          Live Exchange Rates (Base: LKR)
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 mt-4">
+          {currencies.filter(c => c.code !== 'LKR').map(c => (
+            <div key={c.code} className="p-3 bg-surface/30 rounded-lg border border-theme-subtle text-center">
+              <div className="text-[10px] font-bold text-muted uppercase tracking-widest">{c.code}</div>
+              <div className="text-sm font-semibold text-primary mt-1">
+                {Number(c.exchangeRate).toFixed(2)}
+              </div>
+            </div>
+          ))}
+          {currencies.filter(c => c.code !== 'LKR').length === 0 && (
+            <div className="col-span-full text-xs text-muted py-2">No foreign currencies configured. Add them in Settings.</div>
+          )}
+        </div>
+      </GlassCard>
 
     </div>
   )
