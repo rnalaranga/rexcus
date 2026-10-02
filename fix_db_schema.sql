@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `pendingCreditLimit` decimal(15,2) DEFAULT '0.00',
   `pendingCreditDays` int(11) DEFAULT NULL,
   `creditLimitStatus` varchar(50) DEFAULT 'approved',
+  `currency` varchar(3) DEFAULT 'LKR',
+  `isForeign` tinyint(1) DEFAULT '0',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -478,3 +480,17 @@ ALTER TABLE customers ADD COLUMN accountManager VARCHAR(100) DEFAULT NULL;
 ALTER TABLE customers ADD COLUMN pendingRequiresAdvance TINYINT(1) DEFAULT NULL;
 
 ALTER TABLE customers ADD COLUMN pendingCreditDays INT(11) DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `currencies` (
+  `code` varchar(3) NOT NULL,
+  `name` varchar(50) DEFAULT NULL,
+  `symbol` varchar(5) DEFAULT NULL,
+  `exchangeRate` decimal(15,4) DEFAULT '1.0000',
+  `isBase` tinyint(1) DEFAULT '0',
+  `lastUpdated` datetime DEFAULT NULL,
+  PRIMARY KEY (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+ALTER TABLE customers ADD COLUMN currency VARCHAR(3) DEFAULT 'LKR';
+
+ALTER TABLE customers ADD COLUMN isForeign TINYINT(1) DEFAULT 0;

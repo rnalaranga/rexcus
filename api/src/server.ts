@@ -2177,3 +2177,47 @@ app.listen(PORT, () => {
 
 
 
+
+
+app.get('/api/currencies', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM currencies');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/currencies/sync', async (req, res) => {
+  try {
+    const response = await fetch('https://open.er-api.com/v6/latest/LKR');
+    const data = await response.json();
+    if (data && data.rates) {
+      const [existing] = await db.query('SELECT code FROM currencies');
+      const existingCodes = existing.map(c => c.code);
+      if (!existingCodes.includes('LKR')) {
+        await db.query('INSERT INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES (?, ?, ?, ?, ?)', ['LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1]);
+      }
+      for (const code of existingCodes) {
+        if (data.rates[code] && code !== 'LKR') {
+          await db.query('UPDATE currencies SET exchangeRate = ?, lastUpdated = NOW() WHERE code = ?', [1 / data.rates[code], code]);
+        }
+      }
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Failed to fetch rates' });
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/currencies', async (req, res) => {
+  try {
+    await db.query('INSERT INTO currencies SET ?', req.body);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/currencies/:code', async (req, res) => {
+  try {
+    await db.query('DELETE FROM currencies WHERE code = ?', [req.params.code]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});

@@ -31,10 +31,14 @@ export const CustomerDetail: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState<any>(null)
   const [users, setUsers] = useState<any[]>([]);
+  const [currencies, setCurrencies] = useState<any[]>([]);
   React.useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
       .then(res => res.json())
       .then(setUsers).catch(console.error);
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
+      .then(res => res.json())
+      .then(setCurrencies).catch(console.error);
   }, []);
   
   // Ledger View State
@@ -124,6 +128,7 @@ export const CustomerDetail: React.FC = () => {
       bankBranch: customer.bankBranch || '',
       bankAccountNo: customer.bankAccountNo || '',
       requiresAdvance: !!customer.requiresAdvance,
+      isForeign: !!customer.isForeign,
       accountManager: customer.accountManager || 'System Admin'
     })
     setIsEditOpen(true)
@@ -158,7 +163,8 @@ export const CustomerDetail: React.FC = () => {
     { icon: Building2, label: 'BR Number',       value: customer.brNumber || 'Not Set' },
     { icon: Building2, label: 'VAT Number',      value: customer.vat || 'Not Set' },
     { icon: Building2, label: 'SVAT Number',     value: customer.svat || 'Not Set' },
-    { icon: Building2, label: 'Credit Limit',    value: customer.creditLimit ? `Rs. ${customer.creditLimit}` : 'Not Set' },
+    { icon: Building2, label: 'Currency',        value: customer.currency || 'LKR' },
+    { icon: Building2, label: 'Credit Limit',    value: customer.creditLimit ? formatCurrency(customer.creditLimit, false, customer.currency) : 'Not Set' },
     { icon: Building2, label: 'Payment Terms',   value: customer.creditDays ? `${customer.creditDays} Days` : 'Not Set' },
     { icon: User,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
     { icon: Mail,      label: 'Billing Email',   value: customer.financeContactEmail || 'Not Set' },
@@ -199,7 +205,7 @@ export const CustomerDetail: React.FC = () => {
             <div>
               <h3 className="text-sm font-bold text-amber-500">Pending Approvals Required</h3>
               <p className="text-xs text-secondary mt-1">
-                {Number(customer.pendingCreditLimit) > 0 && Number(customer.pendingCreditLimit) !== Number(customer.creditLimit) && <span>Requested Limit: {formatCurrency(customer.pendingCreditLimit)} &nbsp;&bull;&nbsp; </span>}
+                {Number(customer.pendingCreditLimit) > 0 && Number(customer.pendingCreditLimit) !== Number(customer.creditLimit) && <span>Requested Limit: {formatCurrency(customer.pendingCreditLimit, false, customer.currency)} &nbsp;&bull;&nbsp; </span>}
                 {customer.pendingCreditDays !== null && customer.pendingCreditDays !== customer.creditDays && <span>Requested Period: {customer.pendingCreditDays} Days &nbsp;&bull;&nbsp; </span>}
                 {customer.pendingRequiresAdvance !== null && Boolean(customer.pendingRequiresAdvance) !== Boolean(customer.requiresAdvance) && <span>Requested Advance: {customer.pendingRequiresAdvance ? 'Required' : 'Not Required'}</span>}
               </p>
@@ -215,8 +221,16 @@ export const CustomerDetail: React.FC = () => {
       {/* Profile card */}
       <GlassCard variant="red" className="p-6">
         <div className="flex items-start gap-5">
-          <div className="w-16 h-16 flex-shrink-0 bg-rex-700 border border-rex-600/60 flex items-center justify-center shadow-glow-red-sm">
-            <span className="text-xl font-bold text-white">{customer.avatar}</span>
+          <div className="relative">
+            <div className="w-16 h-16 flex-shrink-0 bg-rex-700 border border-rex-600/60 flex items-center justify-center shadow-glow-red-sm">
+              <span className="text-xl font-bold text-white">{customer.avatar}</span>
+            </div>
+            {customer.isForeign ? (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 border-2 border-surface"></span>
+              </span>
+            ) : null}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between">
@@ -251,11 +265,11 @@ export const CustomerDetail: React.FC = () => {
             <div className="grid grid-cols-3 gap-4 mt-5 pt-4 border-t border-rex-500/20">
               <div>
                 <p className="text-[10px] text-muted uppercase tracking-widest">Lifetime Value</p>
-                <p className="text-lg font-bold text-rex-600 dark:text-rex-300 mt-0.5">{formatCurrency(customer.lifetimeValue, true)}</p>
+                <p className="text-lg font-bold text-rex-600 dark:text-rex-300 mt-0.5">{formatCurrency(customer.lifetimeValue, true, customer.currency)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-muted uppercase tracking-widest">Total Revenue</p>
-                <p className="text-lg font-bold text-primary mt-0.5">{formatCurrency(customer.totalRevenue, true)}</p>
+                <p className="text-lg font-bold text-primary mt-0.5">{formatCurrency(customer.totalRevenue, true, customer.currency)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-muted uppercase tracking-widest">Open Deals</p>
@@ -339,7 +353,7 @@ export const CustomerDetail: React.FC = () => {
                     </div>
                     <Badge value={lead.stage} size="sm" />
                     <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(lead.value, true)}</p>
+                      <p className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(lead.value, true, customer.currency)}</p>
                       <p className="text-[10px] text-muted">{lead.probability}%</p>
                     </div>
                   </div>
@@ -370,7 +384,7 @@ export const CustomerDetail: React.FC = () => {
                     </div>
                     <Badge value={deal.stage.replace('closed_', '')} size="sm" />
                     <div className="text-right flex-shrink-0">
-                      <p className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(deal.value, true)}</p>
+                      <p className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(deal.value, true, customer.currency)}</p>
                       <p className="text-[10px] text-muted">{deal.probability}%</p>
                     </div>
                   </div>
@@ -411,7 +425,7 @@ export const CustomerDetail: React.FC = () => {
                   <Button variant="ghost" size="sm" onClick={() => { setAdjustType('opening'); setShowAdjustModal(true); }}>Opening Balance</Button>
                   <Button variant="ghost" size="sm" onClick={() => { setAdjustType('adjust'); setShowAdjustModal(true); }}>Adjust Balance</Button>
                   <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
-                  <div className="ml-4 pl-4 border-l border-theme-subtle"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true)}</span></div>
+                  <div className="ml-4 pl-4 border-l border-theme-subtle"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true, customer.currency)}</span></div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -486,7 +500,7 @@ export const CustomerDetail: React.FC = () => {
                      <div className="flex items-center gap-6">
                        <div className="text-right">
                          <p className="text-[10px] uppercase tracking-wider text-muted font-bold mb-0.5">Amount</p>
-                         <p className="text-sm font-black text-primary font-mono">{formatCurrency(Number(q.totalAmount))}</p>
+                         <p className="text-sm font-black text-primary font-mono">{formatCurrency(Number(q.totalAmount), false, customer.currency)}</p>
                        </div>
                        <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${id}?quoteId=${q.id}`)} className="opacity-0 group-hover:opacity-100 transition-opacity">
                          Open <ArrowRight size={14} className="ml-1" />
@@ -547,12 +561,21 @@ export const CustomerDetail: React.FC = () => {
                     <option value="inactive">Inactive</option>
                   </select>
                 </div>
-                <div className="space-y-1.5 col-span-2">
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Account Manager</label>
                   <select value={formData.accountManager} onChange={e => setFormData({...formData, accountManager: e.target.value})} className="w-full input-base">
                     <option value="System Admin">System Admin</option>
                     {users.map(u => (
                        <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Currency</label>
+                  <select value={formData.currency || 'LKR'} onChange={e => setFormData({...formData, currency: e.target.value})} className="w-full input-base">
+                    <option value="LKR">LKR (Base)</option>
+                    {currencies.map(c => (
+                       <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
                     ))}
                   </select>
                 </div>
@@ -607,6 +630,26 @@ export const CustomerDetail: React.FC = () => {
                       <div className="text-[10px] text-secondary mt-0.5">Customer orders must be paid upfront before processing. Changes require admin approval.</div>
                     </div>
                     <input type="checkbox" className="hidden" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} />
+                  </label>
+                </div>
+                <div className="col-span-3 mt-1">
+                  <label 
+                    className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                      formData.isForeign 
+                        ? 'border-blue-500 bg-blue-500/10' 
+                        : 'border-theme-subtle bg-surface/50 hover:bg-surface'
+                    }`}
+                  >
+                    <div className={`mt-0.5 flex items-center justify-center w-5 h-5 rounded border ${
+                      formData.isForeign ? 'bg-blue-500 border-blue-500 text-white' : 'border-secondary/30'
+                    }`}>
+                      {formData.isForeign && <CheckCircle2 size={14} />}
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-primary">Foreign Customer</div>
+                      <div className="text-[10px] text-secondary mt-0.5">Customer is based outside the local region. A blue indicator will be shown.</div>
+                    </div>
+                    <input type="checkbox" className="hidden" checked={formData.isForeign} onChange={e => setFormData({...formData, isForeign: e.target.checked})} />
                   </label>
                 </div>
               </div>

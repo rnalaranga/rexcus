@@ -26,14 +26,18 @@ export const Customers: React.FC = () => {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin'
+    name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false
   })
 
   const [users, setUsers] = useState<any[]>([]);
+  const [currencies, setCurrencies] = useState<any[]>([]);
   React.useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
       .then(res => res.json())
       .then(setUsers).catch(console.error);
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
+      .then(res => res.json())
+      .then(setCurrencies).catch(console.error);
   }, []);
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading customers...</div>
@@ -72,7 +76,7 @@ export const Customers: React.FC = () => {
     await refetch()
     setSubmitting(false)
     setIsModalOpen(false)
-    setFormData({ name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin' })
+    setFormData({ name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false })
   }
 
   const filtered = customers.filter(c => {
@@ -88,8 +92,16 @@ export const Customers: React.FC = () => {
       key: 'name', header: 'Customer', sortable: true,
       render: (_, row) => (
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-white">{row.avatar}</span>
+          <div className="relative">
+            <div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-white">{row.avatar}</span>
+            </div>
+            {row.isForeign ? (
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500 border border-surface"></span>
+              </span>
+            ) : null}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-primary truncate leading-snug">{row.name}</p>
@@ -102,7 +114,7 @@ export const Customers: React.FC = () => {
     { key: 'email',    header: 'Contact',  width: '180px', render: (_, row) => <div className="text-xs text-secondary truncate">{row.email}<br/><span className="text-[10px] text-muted">{row.phone}</span></div> },
     { key: 'status',   header: 'Status',   width: '90px',  render: v => <Badge value={String(v)} size="sm" /> },
     { key: 'segment',  header: 'Segment',  width: '90px',  render: v => <Badge value={String(v)} size="sm" /> },
-    { key: 'lifetimeValue', header: 'LTV', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v), true)}</span> },
+    { key: 'lifetimeValue', header: 'LTV', align: 'right', sortable: true, render: (v, row) => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v), true, row.currency)}</span> },
     
     { key: 'lastOrder', header: 'Last Order', sortable: true, render: v => <span className="text-xs text-muted">{relativeTime(String(v))}</span> },
     { key: 'actions', header: '', align: 'right', render: (_, row) => (
@@ -193,12 +205,21 @@ export const Customers: React.FC = () => {
                   <option value="retail">Retail</option>
                 </select>
               </div>
-              <div className="space-y-1.5 col-span-2">
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Account Manager</label>
                 <select value={formData.accountManager} onChange={e => setFormData({...formData, accountManager: e.target.value})} className="w-full input-base">
                   <option value="System Admin">System Admin</option>
                   {users.map(u => (
                      <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Currency</label>
+                <select value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})} className="w-full input-base">
+                  <option value="LKR">LKR (Base)</option>
+                  {currencies.map(c => (
+                     <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
                   ))}
                 </select>
               </div>
@@ -254,6 +275,26 @@ export const Customers: React.FC = () => {
                     <div className="text-[10px] text-secondary mt-0.5">Customer orders must be paid upfront before processing. Changes require admin approval.</div>
                   </div>
                   <input type="checkbox" className="hidden" checked={formData.requiresAdvance} onChange={e => setFormData({...formData, requiresAdvance: e.target.checked})} />
+                </label>
+              </div>
+              <div className="col-span-3 mt-1">
+                <label 
+                  className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                    formData.isForeign 
+                      ? 'border-blue-500 bg-blue-500/10' 
+                      : 'border-theme-subtle bg-surface/50 hover:bg-surface'
+                  }`}
+                >
+                  <div className={`mt-0.5 flex items-center justify-center w-5 h-5 rounded border ${
+                    formData.isForeign ? 'bg-blue-500 border-blue-500 text-white' : 'border-secondary/30'
+                  }`}>
+                    {formData.isForeign && <CheckCircle2 size={14} />}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-primary">Foreign Customer</div>
+                    <div className="text-[10px] text-secondary mt-0.5">Customer is based outside the local region. A blue indicator will be shown.</div>
+                  </div>
+                  <input type="checkbox" className="hidden" checked={formData.isForeign} onChange={e => setFormData({...formData, isForeign: e.target.checked})} />
                 </label>
               </div>
             </div>

@@ -3,6 +3,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
 import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick } from 'lucide-react';
+import { CurrencyManager } from '@/components/CurrencyManager';
 
 export const Settings = () => {
   const { settings, updateSettings } = useSettings();
@@ -162,6 +163,10 @@ export const Settings = () => {
             </div>
           </div>
         </GlassCard>
+        
+        <div className="col-span-1 md:col-span-2">
+          <CurrencyManager />
+        </div>
       
         
         <GlassCard className="p-6 col-span-1 md:col-span-2 border-blue-500/30">

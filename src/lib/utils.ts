@@ -7,8 +7,10 @@ export function toMySQLDate(date: Date): string {
   return localDate.toISOString().slice(0, 19).replace('T', ' ')
 }
 
-export function formatCurrency(amount: number, short = false): string {
-  return `Rs. ${(amount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+export function formatCurrency(amount: number, short = false, currencyCode = 'LKR'): string {
+  const isRs = currencyCode === 'LKR' || currencyCode === 'Rs' || !currencyCode;
+  const sym = isRs ? 'Rs.' : (currencyCode + ' ');
+  return `${sym}${(amount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export function formatDate(dateStr: string): string {
