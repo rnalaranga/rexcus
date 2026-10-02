@@ -44,6 +44,7 @@ export const AccountingHub: React.FC = () => {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const [showAddTax, setShowAddTax] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { showConfirm, showError, toast } = useDialog();
 
@@ -69,8 +70,6 @@ export const AccountingHub: React.FC = () => {
     setLedgerLoading(false);
   };
 
-  
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const handleDownloadTemplate = () => {
     const csvContent = "Code,Name,Type,Subtype,Balance\n" +
       "1000,Commercial Bank,Asset,Bank,0\n" +
