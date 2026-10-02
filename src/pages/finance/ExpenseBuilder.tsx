@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Receipt, Wallet, Calendar, Percent } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useAccounts, useTaxes } from '@/hooks/useFinance';
 import { createJournal } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -101,21 +102,23 @@ export const ExpenseBuilder: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[11px] font-bold text-red-500 uppercase mb-1 flex items-center gap-1.5"><Receipt size={12}/> Expense Account (Debit)</label>
-                <select value={expenseAccountId} onChange={e => setExpenseAccountId(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-red-500">
-                  <option value="">-- Select Expense Category --</option>
-                  {Object.entries(groupedExpenses).sort(([a], [b]) => a.localeCompare(b)).map(([group, accs]: [string, any]) => (
-                    <optgroup key={group} label={group}>
-                      {(accs as any[]).map((a: any) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={expenseAccountId}
+                  onChange={setExpenseAccountId}
+                  placeholder="-- Select Expense Category --"
+                  options={expenseAccounts.map(a => ({ value: a.id, label: a.name, extra: a.code, group: a.subtype || 'Other' }))}
+                  className="focus:ring-red-500"
+                />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-blue-500 uppercase mb-1 flex items-center gap-1.5"><Wallet size={12}/> Paid Through (Credit)</label>
-                <select value={paymentAccountId} onChange={e => setPaymentAccountId(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-blue-500">
-                  <option value="">-- Select Payment Method --</option>
-                  {paymentAccounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name} ({formatCurrency(a.balance)})</option>)}
-                </select>
+                <SearchableSelect
+                  value={paymentAccountId}
+                  onChange={setPaymentAccountId}
+                  placeholder="-- Select Payment Method --"
+                  options={paymentAccounts.map(a => ({ value: a.id, label: a.name, extra: `${a.code} - ${formatCurrency(a.balance)}`, group: a.subtype || a.type }))}
+                  className="focus:ring-blue-500"
+                />
               </div>
             </div>
 
