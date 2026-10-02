@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `requiresAdvance` tinyint(1) DEFAULT '0',
   `pendingRequiresAdvance` tinyint(1) DEFAULT NULL,
   `pendingCreditLimit` decimal(15,2) DEFAULT '0.00',
+  `pendingCreditDays` int(11) DEFAULT NULL,
   `creditLimitStatus` varchar(50) DEFAULT 'approved',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -475,3 +476,5 @@ ALTER TABLE customers ADD COLUMN creditLimitStatus VARCHAR(50) DEFAULT 'approved
 ALTER TABLE customers ADD COLUMN accountManager VARCHAR(100) DEFAULT NULL;
 
 ALTER TABLE customers ADD COLUMN pendingRequiresAdvance TINYINT(1) DEFAULT NULL;
+
+ALTER TABLE customers ADD COLUMN pendingCreditDays INT(11) DEFAULT NULL;

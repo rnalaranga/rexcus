@@ -10,12 +10,14 @@ import { updateCustomer } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 import { useAccounts } from '@/hooks/useFinance'
 import { useDialog } from '@/components/ui/DialogProvider'
+import { useAuth } from '@/contexts/AuthContext'
 
 // Using real ledger API now
 
 export const CustomerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate  = useNavigate()
+  const { user } = useAuth()
   
   const { data: quotations } = useQuotations()
   const { data: customers, loading: cl, refetch } = useCustomers()
@@ -30,7 +32,9 @@ export const CustomerDetail: React.FC = () => {
   const [formData, setFormData] = useState<any>(null)
   const [users, setUsers] = useState<any[]>([]);
   React.useEffect(() => {
-    fetch('http://localhost:3000/api/users').then(res => res.json()).then(setUsers).catch(console.error);
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
+      .then(res => res.json())
+      .then(setUsers).catch(console.error);
   }, []);
   
   // Ledger View State
@@ -76,6 +80,25 @@ export const CustomerDetail: React.FC = () => {
       console.error(e);
     }
   };
+
+  const handleApprove = async (status: 'approved' | 'rejected') => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/approve-credit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        toast(`Customer changes ${status} successfully`, 'success');
+        refetch();
+      } else {
+        showError(`Failed to ${status} changes`);
+      }
+    } catch (e: any) {
+      showError(e.message);
+    }
+  };
+
   const handleEditOpen = () => {
     setFormData({
       name: customer.name,
@@ -122,16 +145,18 @@ export const CustomerDetail: React.FC = () => {
   const infoRows = [
     { icon: Mail,      label: 'Email',           value: customer.email },
     { icon: Phone,     label: 'Primary Phone',   value: customer.phone },
-    ...(customer.phone2 ? [{ icon: Phone, label: 'Secondary Phone', value: customer.phone2 }] : []),
-    { icon: MapPin,    label: 'Address',         value: customer.address },
-    { icon: Building2, label: 'Industry',        value: customer.industry },
-    { icon: User,      label: 'Account Manager', value: customer.accountManager },
-    ...(customer.brNumber ? [{ icon: Building2, label: 'BR Number', value: customer.brNumber }] : []),
-    ...(customer.vat ? [{ icon: Building2, label: 'VAT Number', value: customer.vat }] : []),
-    ...(customer.creditLimit ? [{ icon: Building2, label: 'Credit Limit', value: `Rs. ${customer.creditLimit}` }] : []),
-    ...(customer.creditDays ? [{ icon: Building2, label: 'Payment Terms', value: `${customer.creditDays} Days` }] : []),
-    ...(customer.financeContactName ? [{ icon: User, label: 'Billing Contact', value: `${customer.financeContactName} (${customer.financeContactPhone || ''})` }] : []),
-    ...(customer.bankAccountNo ? [{ icon: Building2, label: 'Bank Details', value: `${customer.bankAccountNo} - ${customer.bankName} ${customer.bankBranch}` }] : []),
+    { icon: Phone,     label: 'Secondary Phone', value: customer.phone2 || 'Not Set' },
+    { icon: MapPin,    label: 'Address',         value: customer.address || 'Not Set' },
+    { icon: Building2, label: 'Industry',        value: customer.industry || 'Not Set' },
+    { icon: User,      label: 'Account Manager', value: customer.accountManager || 'System Admin' },
+    { icon: Building2, label: 'BR Number',       value: customer.brNumber || 'Not Set' },
+    { icon: Building2, label: 'VAT Number',      value: customer.vat || 'Not Set' },
+    { icon: Building2, label: 'SVAT Number',     value: customer.svat || 'Not Set' },
+    { icon: Building2, label: 'Credit Limit',    value: customer.creditLimit ? `Rs. ${customer.creditLimit}` : 'Not Set' },
+    { icon: Building2, label: 'Payment Terms',   value: customer.creditDays ? `${customer.creditDays} Days` : 'Not Set' },
+    { icon: User,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
+    { icon: Mail,      label: 'Billing Email',   value: customer.financeContactEmail || 'Not Set' },
+    { icon: Building2, label: 'Bank Details',    value: customer.bankAccountNo ? `${customer.bankAccountNo} - ${customer.bankName} ${customer.bankBranch}` : 'Not Set' },
     { icon: Calendar,  label: 'Customer Since',  value: formatDate(customer.joinDate) },
     { icon: Calendar,  label: 'Last Order',      value: relativeTime(customer.lastOrder) },
   ]
@@ -163,6 +188,25 @@ export const CustomerDetail: React.FC = () => {
         <Button variant="ghost" size="sm" icon={Edit2} onClick={handleEditOpen}>Edit</Button>
         <Button variant="primary" size="sm" icon={Briefcase} onClick={() => navigate('/crm/deals')}>New Deal</Button>
       </div>
+
+      {customer.creditLimitStatus === 'pending' && user?.role === 'admin' && (
+        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg animate-pulse-slow">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-amber-500">Pending Approvals Required</h3>
+              <p className="text-xs text-secondary mt-1">
+                {Number(customer.pendingCreditLimit) > 0 && Number(customer.pendingCreditLimit) !== Number(customer.creditLimit) && <span>Requested Limit: {formatCurrency(customer.pendingCreditLimit)} &nbsp;&bull;&nbsp; </span>}
+                {customer.pendingCreditDays !== null && customer.pendingCreditDays !== customer.creditDays && <span>Requested Period: {customer.pendingCreditDays} Days &nbsp;&bull;&nbsp; </span>}
+                {customer.pendingRequiresAdvance !== null && Boolean(customer.pendingRequiresAdvance) !== Boolean(customer.requiresAdvance) && <span>Requested Advance: {customer.pendingRequiresAdvance ? 'Required' : 'Not Required'}</span>}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-500/10" onClick={() => handleApprove('rejected')}>Reject</Button>
+              <Button variant="primary" size="sm" onClick={() => handleApprove('approved')}>Approve Changes</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Profile card */}
       <GlassCard variant="red" className="p-6">

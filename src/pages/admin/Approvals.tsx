@@ -86,6 +86,13 @@ export default function Approvals() {
                         <p className="text-sm font-bold text-amber-500">{customer.pendingRequiresAdvance ? 'Required' : 'Not Required'}</p>
                       </div>
                     )}
+
+                    {customer.pendingCreditDays !== null && customer.pendingCreditDays !== customer.creditDays && (
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Requested Period</p>
+                        <p className="text-sm font-bold text-amber-500">{customer.pendingCreditDays} Days</p>
+                      </div>
+                    )}
                     
                     <div className="flex items-center gap-2">
                       <Button 

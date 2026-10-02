@@ -26,12 +26,14 @@ export const Customers: React.FC = () => {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: false, accountManager: 'System Admin'
+    name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin'
   })
 
   const [users, setUsers] = useState<any[]>([]);
   React.useEffect(() => {
-    fetch('http://localhost:3000/api/users').then(res => res.json()).then(setUsers).catch(console.error);
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
+      .then(res => res.json())
+      .then(setUsers).catch(console.error);
   }, []);
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading customers...</div>
@@ -49,7 +51,7 @@ export const Customers: React.FC = () => {
       }
       setDeleting(null);
     }
-  };
+  }
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,7 +72,7 @@ export const Customers: React.FC = () => {
     await refetch()
     setSubmitting(false)
     setIsModalOpen(false)
-    setFormData({ name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: false, accountManager: 'System Admin' })
+    setFormData({ name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin' })
   }
 
   const filtered = customers.filter(c => {

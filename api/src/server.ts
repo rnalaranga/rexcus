@@ -357,6 +357,12 @@ app.post('/api/customers', async (req, res) => {
       isPending = true;
     }
 
+    if (data.creditDays && Number(data.creditDays) !== 30) {
+      data.pendingCreditDays = data.creditDays;
+      data.creditDays = 30;
+      isPending = true;
+    }
+
     data.creditLimitStatus = isPending ? 'pending' : 'approved';
 
     const [result] = await db.query('INSERT INTO customers SET ?', data);
@@ -381,7 +387,7 @@ app.put('/api/customers/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     
-    const [existingRows] = await db.query('SELECT creditLimit, requiresAdvance FROM customers WHERE id = ?', [id]);
+    const [existingRows] = await db.query('SELECT creditLimit, requiresAdvance, creditDays FROM customers WHERE id = ?', [id]);
     if (existingRows.length > 0) {
        const existing = existingRows[0];
        let isPending = false;
@@ -395,6 +401,12 @@ app.put('/api/customers/:id', async (req, res) => {
        if (data.requiresAdvance !== undefined && Boolean(data.requiresAdvance) !== Boolean(existing.requiresAdvance)) {
           data.pendingRequiresAdvance = data.requiresAdvance ? 1 : 0;
           data.requiresAdvance = existing.requiresAdvance;
+          isPending = true;
+       }
+
+       if (data.creditDays !== undefined && Number(data.creditDays) !== Number(existing.creditDays)) {
+          data.pendingCreditDays = data.creditDays;
+          data.creditDays = existing.creditDays;
           isPending = true;
        }
 
@@ -418,16 +430,19 @@ app.post('/api/customers/:id/approve-credit', async (req, res) => {
     
     if (status === 'approved') {
       await db.query(`UPDATE customers SET 
-        creditLimit = IF(pendingCreditLimit IS NOT NULL, pendingCreditLimit, creditLimit), 
+        creditLimit = IF(pendingCreditLimit IS NOT NULL AND pendingCreditLimit > 0, pendingCreditLimit, creditLimit), 
         pendingCreditLimit = 0, 
         requiresAdvance = IF(pendingRequiresAdvance IS NOT NULL, pendingRequiresAdvance, requiresAdvance),
         pendingRequiresAdvance = NULL,
+        creditDays = IF(pendingCreditDays IS NOT NULL AND pendingCreditDays > 0, pendingCreditDays, creditDays),
+        pendingCreditDays = NULL,
         creditLimitStatus = 'approved' 
         WHERE id = ?`, [id]);
     } else if (status === 'rejected') {
       await db.query(`UPDATE customers SET 
         pendingCreditLimit = 0, 
         pendingRequiresAdvance = NULL,
+        pendingCreditDays = NULL,
         creditLimitStatus = 'approved' 
         WHERE id = ?`, [id]); 
     }
