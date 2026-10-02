@@ -336,15 +336,67 @@ export const Leads: React.FC = () => {
               <User size={14} className="text-rex-500" />
               Lead Information
             </h3>
+            
+            {/* Customer Selection / Creation Toggle */}
+            <div className="flex gap-2 mb-4 p-1 bg-surface2 rounded-lg inline-flex">
+              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: false})} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${!formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>Select Existing Customer</button>
+              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: true, customerId: '', name: '', company: '', email: '', phone: ''})} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>+ Register New Customer</button>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5 col-span-2">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Lead Full Name <span className="text-rex-500">*</span></label>
-                <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" placeholder="e.g. Jane Doe" />
-              </div>
-              <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company</label>
-                <input value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
-              </div>
+              {!formData.isNewCustomer ? (
+                <div className="space-y-1.5 col-span-2">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Select Customer <span className="text-rex-500">*</span></label>
+                  <SearchableSelect
+                    options={customers.map((c: any) => ({ value: c.id, label: c.company ? `${c.company} (${c.name})` : c.name }))}
+                    value={formData.customerId}
+                    onChange={(val) => {
+                      setFormData({...formData, customerId: val});
+                      if (val) {
+                        const c = customers.find((x: any) => x.id === val);
+                        if (c) {
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            customerId: val,
+                            name: prev.name || c.name || '',
+                            company: prev.company || c.company || '',
+                            email: prev.email || c.email || '',
+                            phone: prev.phone || c.phone || '',
+                            vat: prev.vat || c.vat || '',
+                            svat: prev.svat || c.svat || ''
+                          }));
+                        }
+                      }
+                    }}
+                    placeholder="Search existing customer..."
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="col-span-2"><div className="h-px bg-theme-subtle my-2" /><p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">New Customer Details</p></div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Customer Name <span className="text-rex-500">*</span></label>
+                    <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" placeholder="e.g. Jane Doe" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company / Business Name <span className="text-rex-500">*</span></label>
+                    <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Full Address</label>
+                    <input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full input-base" placeholder="123 Main St, City" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Business Registration No.</label>
+                    <input value={formData.brNumber} onChange={e => setFormData({...formData, brNumber: e.target.value})} className="w-full input-base" placeholder="e.g. PV00123" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Industry</label>
+                    <input value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full input-base" placeholder="e.g. Manufacturing" />
+                  </div>
+                </>
+              )}
+
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Estimated Value (Rs.) <span className="text-rex-500">*</span></label>
                 <input type="number" required value={formData.value} onChange={e => setFormData({...formData, value: e.target.value})} className="w-full input-base" placeholder="100000" />
@@ -375,6 +427,10 @@ export const Leads: React.FC = () => {
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">SVAT Number</label>
                 <input value={formData.svat} onChange={e => setFormData({...formData, svat: e.target.value})} className="w-full input-base" placeholder="SVAT Number" />
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Description / Notes</label>
+                <textarea rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full input-base resize-none" placeholder="Requirements, context, etc..." />
               </div>
 
               <div className="space-y-1.5 col-span-2 sm:col-span-1">

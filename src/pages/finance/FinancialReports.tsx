@@ -41,10 +41,10 @@ export const FinancialReports: React.FC = () => {
 
       <div className="flex items-center gap-2 mb-6">
         <span className="text-[10px] uppercase font-semibold text-muted mr-2">Report Type:</span>
-        <button onClick={() => setActiveReport('pnl')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'pnl' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><PieChart size={12}/> Profit & Loss</button>
-        <button onClick={() => setActiveReport('bs')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'bs' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><Landmark size={12}/> Balance Sheet</button>
-        <button onClick={() => setActiveReport('tb')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'tb' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><FileText size={12}/> Trial Balance</button>
-        <button onClick={() => setActiveReport('exp')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'exp' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><FileText size={12}/> Expenses Sheet</button>
+        <button onClick={() => { setData(null); setActiveReport('pnl'); }} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'pnl' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><PieChart size={12}/> Profit & Loss</button>
+        <button onClick={() => { setData(null); setActiveReport('bs'); }} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'bs' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><Landmark size={12}/> Balance Sheet</button>
+        <button onClick={() => { setData(null); setActiveReport('tb'); }} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'tb' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><FileText size={12}/> Trial Balance</button>
+        <button onClick={() => { setData(null); setActiveReport('exp'); }} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors flex items-center gap-1.5 ${activeReport === 'exp' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}><FileText size={12}/> Expenses Sheet</button>
       </div>
 
       <div className="min-h-[60vh] relative bg-white border border-gray-200 shadow-sm rounded-lg overflow-hidden">
@@ -64,7 +64,7 @@ export const FinancialReports: React.FC = () => {
             </div>
 
                           {/* P&L RENDER - CUSTOMIZED MANAGEMENT ACCOUNT FORMAT */}
-              {activeReport === 'pnl' && data && (() => {
+              {activeReport === 'pnl' && data && data.revenue && (() => {
                 // Categorization Logic
                 const matchSub = (acc: any, keywords: string[]) => {
                   const sub = (acc.subtype || '').toLowerCase();
