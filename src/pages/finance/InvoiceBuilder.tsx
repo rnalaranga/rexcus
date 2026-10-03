@@ -51,7 +51,7 @@ const docInputClass = "w-full bg-surface border border-theme-subtle px-3 py-2 ro
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-black/10 dark:hover:border-white/10 focus:border-blue-500 focus:bg-surface px-2 py-1 text-xs outline-none transition-all";
 
 // ─── Print Preview ────────────────────────────────────────────────────────────
-export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, ssclAmount, vatAmount, selectedProfile }) => {
+export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, selectedTaxes }) => {
 
   if (template.startsWith('government')) {
     const isInclusive = template === 'government_inclusive';
@@ -248,26 +248,19 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                     {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                {ssclAmount > 0 && (
-                  <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-                    <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                      {selectedProfile?.tax1_name || 'SSCL'} <span style={{ marginLeft: '20px' }}>{selectedProfile?.tax1_rate ?? ''} %</span>
+                {selectedTaxes && selectedTaxes.length > 0 && selectedTaxes.map((tax: any) => {
+                  const lineTaxAmt = subtotal * (Number(tax.rate) / 100);
+                  return (
+                    <div key={tax.id} style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
+                      <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
+                        {tax.name} <span style={{ marginLeft: '20px' }}>{tax.rate} %</span>
+                      </div>
+                      <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
+                        {lineTaxAmt.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </div>
                     </div>
-                    <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
-                      {ssclAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                )}
-                {vatAmount > 0 && (
-                  <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-                    <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                      {selectedProfile?.tax2_name || 'VAT'} <span style={{ marginLeft: '20px' }}>{selectedProfile?.tax2_rate ?? ''} %</span>
-                    </div>
-                    <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
-                      {vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                )}
+                  );
+                })}
               </>
             )}
             <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
@@ -467,9 +460,9 @@ export const InvoiceBuilder: React.FC = () => {
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [taxEnabled, setTaxEnabled] = useState(true);
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [selectedTaxes, setSelectedTaxes] = useState<any[]>([]);
   // Keep taxType for DB compat
-  const taxType = taxEnabled && selectedProfileId ? selectedProfileId : 'none';
+  const taxType = 'none';
   const [template, setTemplate] = useState('government');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -523,23 +516,10 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
   const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   
   let taxAmount = 0;
-  let ssclAmount = 0;
-  let vatAmount = 0;
   
-  const selectedProfile = (taxEnabled && selectedProfileId)
-    ? taxProfiles?.find((p: any) => p.id === selectedProfileId)
-    : null;
-
-  if (selectedProfile) {
-    const t1 = Number(selectedProfile.tax1_rate) / 100;
-    const t2 = Number(selectedProfile.tax2_rate) / 100;
-    ssclAmount = subtotal * t1;
-    if (selectedProfile.tax2_compound) {
-      vatAmount = (subtotal + ssclAmount) * t2;
-    } else {
-      vatAmount = subtotal * t2;
-    }
-    taxAmount = ssclAmount + vatAmount;
+  if (taxEnabled) {
+    const totalTaxPct = selectedTaxes.reduce((s, t) => s + Number(t.rate), 0);
+    taxAmount = subtotal * (totalTaxPct / 100);
   }
   
   const total = subtotal + taxAmount;
@@ -549,7 +529,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     try {
-      const res = await createInvoice({ id: docNo, customerId, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType });
+      const res = await createInvoice({ id: docNo, customerId, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType, data: JSON.stringify({ selectedTaxes }) });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
@@ -565,7 +545,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     win.document.close(); win.focus(); win.print();
   };
 
-  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, ssclAmount, vatAmount, selectedProfile };
+  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, selectedTaxes };
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative animate-fade-in">
@@ -842,23 +822,39 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                   <span className="text-sm text-muted">Subtotal</span>
                   <span className="font-mono text-sm">{formatCurrency(subtotal)}</span>
                 </div>
-                {selectedProfile?.tax2_name ? (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted">{selectedProfile.tax1_name}</span>
-                      <span className="font-mono text-sm text-amber-500">{formatCurrency(ssclAmount)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted">{selectedProfile.tax2_name}</span>
-                      <span className="font-mono text-sm text-amber-500">{formatCurrency(vatAmount)}</span>
-                    </div>
-                  </>
-                ) : taxType !== 'none' ? (
+                {taxEnabled && taxRates && taxRates.length > 0 && (
+                  <div className="py-2 border-t border-theme-subtle space-y-2 mt-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
+                    {taxRates.map((tax: any) => {
+                      const isSelected = selectedTaxes.some((t: any) => t.id === tax.id);
+                      return (
+                        <label key={tax.id} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedTaxes([...selectedTaxes, tax]);
+                              } else {
+                                setSelectedTaxes(selectedTaxes.filter((t: any) => t.id !== tax.id));
+                              }
+                            }}
+                            className="w-3.5 h-3.5 rounded border-theme-subtle text-blue-500 focus:ring-blue-500 bg-surface"
+                          />
+                          <span className="text-xs text-secondary">{tax.name} ({tax.rate}%)</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {taxAmount > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted">{selectedProfile?.tax1_name || 'Tax'}</span>
+                    <span className="text-sm text-muted">Total Tax</span>
                     <span className="font-mono text-sm text-amber-500">{formatCurrency(taxAmount)}</span>
                   </div>
-                ) : null}
+                )}
+                
                 <div className="pt-4 border-t border-blue-500/30 flex justify-between items-center">
                   <span className="text-base font-black text-primary uppercase tracking-wide">Grand Total</span>
                   <span className="text-3xl font-black text-blue-600 font-mono">{formatCurrency(total)}</span>

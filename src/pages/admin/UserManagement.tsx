@@ -11,6 +11,7 @@ type UserRecord = {
   id: string;
   name: string;
   username: string;
+  prefix?: string;
   role: string;
   created_at: string;
 };
@@ -26,7 +27,7 @@ const RoleBadge = ({ role }: { role: string }) => (
   </span>
 );
 
-const emptyForm = { name: '', username: '', password: '', role: 'user' };
+const emptyForm = { name: '', username: '', password: '', role: 'user', prefix: '' };
 
 export const UserManagement = () => {
   const { user: currentUser } = useAuth();
@@ -86,7 +87,7 @@ export const UserManagement = () => {
       await fetch(`${API}/api/users/${showEdit.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: showEdit.name, role: showEdit.role })
+        body: JSON.stringify({ name: showEdit.name, role: showEdit.role, prefix: showEdit.prefix })
       });
       showToast('success', 'User updated');
       setShowEdit(null);
@@ -240,6 +241,17 @@ export const UserManagement = () => {
               />
             </div>
             <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">User Prefix</label>
+              <input
+                type="text"
+                value={form.prefix}
+                onChange={e => setForm({ ...form, prefix: e.target.value })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
+                placeholder="e.g. SP"
+                maxLength={5}
+              />
+            </div>
+            <div>
               <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Username</label>
               <input
                 type="text"
@@ -291,6 +303,17 @@ export const UserManagement = () => {
                 value={showEdit.name}
                 onChange={e => setShowEdit({ ...showEdit, name: e.target.value })}
                 className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">User Prefix</label>
+              <input
+                type="text"
+                value={showEdit.prefix || ''}
+                onChange={e => setShowEdit({ ...showEdit, prefix: e.target.value })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
+                placeholder="e.g. SP"
+                maxLength={5}
               />
             </div>
             <div>

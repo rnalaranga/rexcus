@@ -141,7 +141,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'rex-erp-secret-key-super-secure';
 // -- AUTH --
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, username, password, role } = req.body;
+    const { name, username, password, role, prefix } = req.body;
     
     // Check if user exists
     const [existing]: any = await db.query('SELECT id FROM users WHERE username = ?', [username]);
@@ -186,7 +186,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ 
       success: true, 
       token, 
-      user: { id: user.id, name: user.name, username: user.username, role: user.role } 
+      user: { id: user.id, name: user.name, username: user.username, role: user.role, prefix: user.prefix } 
     });
   } catch (error) {
     console.error(error);
@@ -270,7 +270,7 @@ app.post('/api/settings', async (req, res) => {
 // -- USER MANAGEMENT --
 app.get('/api/users', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, name, username, role, created_at FROM users ORDER BY created_at DESC');
+    const [rows] = await db.query('SELECT id, name, username, role, prefix, created_at FROM users ORDER BY created_at DESC');
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -280,14 +280,14 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, username, password, role } = req.body;
+    const { name, username, password, role, prefix } = req.body;
     const [existing]: any = await db.query('SELECT id FROM users WHERE username = ?', [username]);
     if (existing.length > 0) return res.status(400).json({ error: 'Username already taken' });
 
     const password_hash = await bcrypt.hash(password, 10);
     const id = `USR-${Date.now()}`;
     const created_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    await db.query('INSERT INTO users SET ?', { id, name, username, password_hash, role: role || 'user', created_at });
+    await db.query('INSERT INTO users SET ?', { id, name, username, password_hash, role: role || 'user', prefix: prefix || null, created_at });
     res.json({ success: true, user: { id, name, username, role: role || 'user' } });
   } catch (error) {
     console.error(error);
@@ -297,8 +297,8 @@ app.post('/api/users', async (req, res) => {
 
 app.put('/api/users/:id', async (req, res) => {
   try {
-    const { name, role } = req.body;
-    await db.query('UPDATE users SET name=?, role=? WHERE id=?', [name, role, req.params.id]);
+    const { name, role, prefix } = req.body;
+    await db.query('UPDATE users SET name=?, role=?, prefix=? WHERE id=?', [name, role, prefix || null, req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -634,6 +634,33 @@ app.delete('/api/quotations/:id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// -- CUSTOMER GRNS --
+app.get('/api/crm/grns/:quoteId', async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const [rows] = await db.query('SELECT * FROM customer_grns WHERE quoteId = ? ORDER BY createdAt DESC', [quoteId]);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/crm/grns', async (req, res) => {
+  try {
+    const data = req.body;
+    const item = {
+      ...data,
+      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    };
+    await db.query('INSERT INTO customer_grns SET ?', item);
+    res.json({ success: true, item });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -1271,6 +1298,13 @@ app.post('/api/finance/taxes', async (req, res) => {
     const data = req.body;
     data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO tax_rates SET ?', data);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/finance/taxes/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM tax_rates WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });

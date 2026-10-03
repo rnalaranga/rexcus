@@ -125,6 +125,21 @@ export const deleteQuotation = async (id: string) => {
   return res.json();
 };
 
+// -- CUSTOMER GRNS --
+export const fetchCustomerGRNs = async (quoteId: string) => {
+  const res = await fetch(`${API_URL}/crm/grns/${quoteId}`);
+  return res.json();
+};
+
+export const createCustomerGRN = async (data: any) => {
+  const res = await fetch(`${API_URL}/crm/grns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
 // -- INVENTORY --
 export const fetchInventory = async () => {
   const res = await fetch(`${API_URL}/inventory`);
@@ -324,6 +339,7 @@ export const fetchAccountLedger = async (id: string) => (await (await fetch(`${A
 
 export const fetchTaxes = async () => (await (await fetch(`${API_URL}/finance/taxes`)).json());
 export const createTax = async (data: any) => (await (await fetch(`${API_URL}/finance/taxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deleteTax = async (id: string) => (await (await fetch(`${API_URL}/finance/taxes/${id}`, { method: 'DELETE' })).json());
 
 export const fetchJournals = async () => (await (await fetch(`${API_URL}/finance/journals`)).json());
 export const createJournal = async (data: any) => (await (await fetch(`${API_URL}/finance/journals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());

@@ -5,6 +5,7 @@ type User = {
   name: string;
   username: string;
   role: string;
+  prefix?: string;
 };
 
 type AuthContextType = {

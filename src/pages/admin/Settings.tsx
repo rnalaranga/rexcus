@@ -4,11 +4,10 @@ import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
 import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick } from 'lucide-react';
 import { CurrencyManager } from '@/components/CurrencyManager';
-
+import { TaxManager } from '@/components/TaxManager';
 export const Settings = () => {
   const { settings, updateSettings } = useSettings();
   const [logo, setLogo] = useState<string | null>(settings.company_logo || null);
-  const [vatPercent, setVatPercent] = useState<string>(settings.vat_percentage || '18');
   const [saving, setSaving] = useState(false);
 
   const [sysStats, setSysStats] = useState<any>(null);
@@ -56,7 +55,7 @@ export const Settings = () => {
 
   
   const handleFixDb = async () => {
-    if (confirm('This will safely scan and fix missing database tables and columns. No data will be deleted. Proceed?')) {
+    if (await showConfirm('This will safely scan and fix missing database tables and columns. No data will be deleted. Proceed?', 'Fix Database Structure', { confirmLabel: 'Proceed' })) {
       try {
         const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/fix-db`, { 
           method: 'POST', 
@@ -64,12 +63,12 @@ export const Settings = () => {
         });
         const data = await res.json();
         if (data.success) {
-          alert('Database structure fixed successfully!');
+          toast('Database structure fixed successfully!', 'success');
         } else {
-          alert('Failed to fix DB: ' + data.error);
+          toast('Failed to fix DB: ' + data.error, 'error');
         }
       } catch (e: any) {
-        alert('Error: ' + e.message);
+        toast('Error: ' + e.message, 'error');
       }
     }
   };
@@ -77,7 +76,7 @@ export const Settings = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ company_logo: logo || '', vat_percentage: vatPercent });
+      await updateSettings({ company_logo: logo || '' });
     } finally {
       setSaving(false);
     }
@@ -146,25 +145,8 @@ export const Settings = () => {
           </div>
         </GlassCard>
 
-        <GlassCard className="p-6">
-          <h2 className="text-sm font-bold text-primary uppercase tracking-widest mb-4">Finance Settings</h2>
-          <div className="space-y-4">
-            <p className="text-xs text-muted">Configure default tax rates and financial preferences.</p>
-            <div>
-              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Global VAT Percentage (%)</label>
-              <input 
-                type="number" 
-                min="0" step="0.01"
-                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary text-sm rounded" 
-                value={vatPercent} 
-                onChange={(e) => setVatPercent(e.target.value)}
-                placeholder="18"
-              />
-            </div>
-          </div>
-        </GlassCard>
-        
-        <div className="col-span-1 md:col-span-2">
+        <div className="col-span-1 md:col-span-2 space-y-6">
+          <TaxManager />
           <CurrencyManager />
         </div>
       

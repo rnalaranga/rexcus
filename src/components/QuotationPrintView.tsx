@@ -1,4 +1,4 @@
-﻿import React from 'react'
+import React from 'react'
 import { formatCurrency } from '@/lib/utils'
 
 function toWords(num: number): string {
@@ -141,8 +141,8 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           <div className="flex font-bold border-b border-black text-center bg-gray-50">
             <div className="w-[55%] p-2 border-r border-black">DESCRIPTION</div>
             <div className="w-[10%] p-2 border-r border-black">QTY</div>
-            <div className="w-[15%] p-2 border-r border-black">UNIT PRICE<br/>(LKR)</div>
-            <div className="w-[20%] p-2">AMOUNT<br/>(LKR)</div>
+            <div className="w-[15%] p-2 border-r border-black">UNIT PRICE<br/>({data.currency || 'LKR'})</div>
+            <div className="w-[20%] p-2">AMOUNT<br/>({data.currency || 'LKR'})</div>
           </div>
 
           {/* Table Body */}
@@ -167,12 +167,12 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             </div>
             <div className="w-[15%] p-2 border-r border-black text-right flex flex-col gap-4">
                {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{formatCurrency(item.unitPrice).replace('Rs.','').trim()}</div>
+                 <div key={idx}>{(item.unitPrice || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
               ))}
             </div>
             <div className="w-[20%] p-2 text-right flex flex-col gap-4">
                {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{formatCurrency(item.qty * item.unitPrice).replace('Rs.','').trim()}</div>
+                 <div key={idx}>{((item.qty * item.unitPrice) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
               ))}
             </div>
           </div>
@@ -181,9 +181,9 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           <div className="border-t border-black flex flex-col">
             <div className="flex border-b border-black items-center h-8">
               <div className="w-[65%] text-right font-bold pr-6">Sub Total</div>
-              <div className="w-[15%] font-bold text-center">LKR</div>
+              <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
               <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                {formatCurrency(quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal).replace('Rs.','').trim()}
+                {Number(quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </div>
             </div>
             
@@ -193,31 +193,48 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                  <div className="w-[65%] text-right pr-6">Discount</div>
                  <div className="w-[15%] text-center">{custDiscount} %</div>
                  <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                   {formatCurrency(custTotals.discount).replace('Rs.','').trim()}
+                   {Number(custTotals.discount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                  </div>
                </div>
             )}
 
-            <div className="flex border-b border-black items-center h-8">
-              <div className="w-[65%] text-right pr-6">VAT</div>
-              <div className="w-[15%] text-center">{Number(settings?.vat_percentage || 0).toFixed(2)} %</div>
-              <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                {formatCurrency(quotationType === 'job' ? jobTotals.totalCost * (Number(settings?.vat_percentage || 0) / 100) : custTotals.total * (Number(settings?.vat_percentage || 0) / 100)).replace('Rs.','').trim()}
-              </div>
-            </div>
+            {data.selectedTaxes && data.selectedTaxes.length > 0 ? (
+               data.selectedTaxes.map((tax: any, idx: number) => {
+                 const taxAmount = (quotationType === 'job' ? jobTotals.totalCost : custTotals.total) * (Number(tax.rate) / 100);
+                 return (
+                   <div key={idx} className="flex border-b border-black items-center h-8">
+                     <div className="w-[65%] text-right pr-6">{tax.name}</div>
+                     <div className="w-[15%] text-center">{Number(tax.rate).toFixed(2)} %</div>
+                     <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+                       {Number(taxAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                     </div>
+                   </div>
+                 )
+               })
+            ) : (
+               Number(settings?.vat_percentage) > 0 && (
+                 <div className="flex border-b border-black items-center h-8">
+                   <div className="w-[65%] text-right pr-6">VAT</div>
+                   <div className="w-[15%] text-center">{Number(settings?.vat_percentage || 0).toFixed(2)} %</div>
+                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+                     {Number(quotationType === 'job' ? jobTotals.totalCost * (Number(settings?.vat_percentage || 0) / 100) : custTotals.total * (Number(settings?.vat_percentage || 0) / 100) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                   </div>
+                 </div>
+               )
+            )}
 
             <div className="flex items-center h-8 bg-gray-100">
               <div className="w-[65%] text-right font-bold pr-6">Grand Total</div>
-              <div className="w-[15%] font-bold text-center">LKR</div>
+              <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
               <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                {formatCurrency(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL).replace('Rs.','').trim()}
+                {Number(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </div>
             </div>
           </div>
 
           {/* Value in words */}
           <div className="p-2 border-b border-t border-black text-[11px] font-bold">
-            <span className="uppercase">VALUE : LKR {toWords(Math.round(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL))}</span>
+            <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL))}</span>
           </div>
 
           {/* Footer Notes & Bank */}

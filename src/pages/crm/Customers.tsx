@@ -26,7 +26,7 @@ export const Customers: React.FC = () => {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false
+    prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false
   })
 
   const [users, setUsers] = useState<any[]>([]);
@@ -76,7 +76,7 @@ export const Customers: React.FC = () => {
     await refetch()
     setSubmitting(false)
     setIsModalOpen(false)
-    setFormData({ name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false })
+    setFormData({ prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false })
   }
 
   const filtered = customers.filter(c => {
@@ -183,6 +183,10 @@ export const Customers: React.FC = () => {
                 <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corporation" />
               </div>
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Customer Prefix</label>
+                <input value={formData.prefix || ''} onChange={e => setFormData({...formData, prefix: e.target.value})} className="w-full input-base" placeholder="e.g. ACM" maxLength={5} />
+              </div>
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Customer Rating</label>
                 <select value={formData.rating} onChange={e => setFormData({...formData, rating: Number(e.target.value)})} className="w-full input-base">
                   <option value={0}>Unrated</option>
@@ -256,6 +260,14 @@ export const Customers: React.FC = () => {
               <div className="space-y-1.5 col-span-3 sm:col-span-1">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Payment Period (Days)</label>
                 <input type="number" value={formData.creditDays} onChange={e => setFormData({...formData, creditDays: Number(e.target.value)})} className="w-full input-base" placeholder="30" />
+              </div>
+              <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Default Payment Terms</label>
+                <textarea value={formData.paymentTerms || ''} onChange={e => setFormData({...formData, paymentTerms: e.target.value})} placeholder="e.g. 50% Advance" className="w-full input-base resize-y min-h-[40px]" />
+              </div>
+              <div className="space-y-1.5 col-span-3 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Default Delivery Terms</label>
+                <textarea value={formData.deliveryTerms || ''} onChange={e => setFormData({...formData, deliveryTerms: e.target.value})} placeholder="e.g. Ex-Works" className="w-full input-base resize-y min-h-[40px]" />
               </div>
               <div className="col-span-3 mt-2">
                 <label 

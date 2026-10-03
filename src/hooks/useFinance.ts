@@ -95,3 +95,20 @@ export function useTaxProfiles() {
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
 }
+
+export function useCurrencies() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:3000/api') + '/currencies').then(r => r.json());
+      setData(Array.isArray(res) ? res : []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, refetch: load };
+}
