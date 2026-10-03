@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
 import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick } from 'lucide-react';
 import { CurrencyManager } from '@/components/CurrencyManager';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
 export const Settings = () => {
+  const { toast, showConfirm } = useDialog();
   const { settings, updateSettings } = useSettings();
   const [logo, setLogo] = useState<string | null>(settings.company_logo || null);
   const [saving, setSaving] = useState(false);

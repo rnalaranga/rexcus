@@ -1,64 +1,37 @@
+import codecs
 import re
 
-with open('H:/ANTIGRAVITY/REXNW/src/components/layout/TopBar.tsx', 'r', encoding='utf-8') as f:
+with codecs.open('H:/ANTIGRAVITY/REXNW/src/components/layout/TopBar.tsx', 'r', 'utf-8') as f:
     content = f.read()
 
-# Add useEffect import
-content = content.replace('import React, { useState } from \'react\'', 'import React, { useState, useEffect } from \'react\'')
+# Add import
+if "useCurrencies" not in content:
+    content = content.replace("import { Menu, Search, Bell, Sun, Moon, X } from 'lucide-react'", "import { Menu, Search, Bell, Sun, Moon, X, Banknote } from 'lucide-react'\nimport { useCurrencies } from '@/hooks/useFinance'")
 
-# Insert logic
-logic = '''
-  const [sysStats, setSysStats] = useState<any>(null)
+# Add hook
+if "const { data: currencies } = useCurrencies()" not in content:
+    content = content.replace("const [sysStats, setSysStats] = useState<any>(null)", "const [sysStats, setSysStats] = useState<any>(null)\n  const { data: currencies } = useCurrencies()")
 
-  useEffect(() => {
-    fetch(${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats)
-      .then(res => res.json())
-      .then(setSysStats)
-      .catch(() => {})
-      
-    const interval = setInterval(() => {
-      fetch(${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats)
-        .then(res => res.json())
-        .then(setSysStats)
-        .catch(() => {})
-    }, 15000)
-    return () => clearInterval(interval)
-  }, [])
-'''
-
-state_anchor = "const [searchFocus, setSearchFocus] = useState(false)"
-content = content.replace(state_anchor, state_anchor + '\n' + logic)
-
-# Insert UI
-ui = '''
-        {/* System Stats Mini */}
-        {sysStats && (
-          <div className="hidden lg:flex items-center gap-3 mr-2 px-3 py-1 bg-surface/50 border border-theme-subtle rounded text-[9px] font-mono font-bold text-muted uppercase tracking-wider">
-            <div className="flex items-center gap-1.5" title="CPU Usage">
-              <span>CPU</span>
-              <div className="w-12 h-1.5 bg-theme-subtle rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: ${Math.min(sysStats.cpu.percent, 100)}% }} />
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5" title="RAM Usage">
-              <span>RAM</span>
-              <div className="w-12 h-1.5 bg-theme-subtle rounded-full overflow-hidden">
-                <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: ${Math.min(sysStats.ram.percent, 100)}% }} />
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5" title="Disk Usage">
-              <span>DSK</span>
-              <div className="w-12 h-1.5 bg-theme-subtle rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: ${Math.min(sysStats.storage.percent, 100)}% }} />
-              </div>
-            </div>
+# Add JSX
+currency_jsx = """        {/* Currency Rates */}
+        {currencies && currencies.length > 0 && (
+          <div className="hidden lg:flex items-center gap-3 mr-2 px-3 py-1 bg-surface/50 border border-theme-subtle rounded text-[10px] font-mono font-bold text-muted uppercase tracking-wider">
+            {currencies.filter((c: any) => !c.isBase).map((c: any, idx: number) => (
+              <React.Fragment key={c.code}>
+                <div className="flex items-center gap-1.5 text-emerald-500/90" title={`${c.name} Exchange Rate`}>
+                  <Banknote size={12} />
+                  <span>{c.code}</span>
+                  <span>{Number(c.exchangeRate).toFixed(2)}</span>
+                </div>
+                {idx < currencies.filter((c: any) => !c.isBase).length - 1 && <div className="w-px h-3 bg-theme-subtle"></div>}
+              </React.Fragment>
+            ))}
           </div>
         )}
-'''
 
-ui_anchor = "{/* Search bar */}"
-content = content.replace(ui_anchor, ui + '\n        ' + ui_anchor)
+        {/* System Stats Mini */}"""
 
-with open('H:/ANTIGRAVITY/REXNW/src/components/layout/TopBar.tsx', 'w', encoding='utf-8') as f:
+content = content.replace("{/* System Stats Mini */}", currency_jsx)
+
+with codecs.open('H:/ANTIGRAVITY/REXNW/src/components/layout/TopBar.tsx', 'w', 'utf-8') as f:
     f.write(content)
-print('Patched TopBar')

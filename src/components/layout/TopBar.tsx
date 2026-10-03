@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell, Search, ChevronRight, Sun, Moon, X,
-  CheckCircle2, TrendingUp, AlertCircle, Star,
+  CheckCircle2, TrendingUp, AlertCircle, Star, Banknote,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/store/theme'
+import { useCurrencies } from '@/hooks/useFinance'
 
 const breadcrumbMap: Record<string, string> = {
   '/crm':           'Dashboard',
@@ -32,6 +33,7 @@ export const TopBar: React.FC = () => {
   const [searchFocus, setSearchFocus] = useState(false)
 
   const [sysStats, setSysStats] = useState<any>(null)
+  const { data: currencies } = useCurrencies()
 
   useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats`)
@@ -79,6 +81,22 @@ export const TopBar: React.FC = () => {
       <div className="flex items-center gap-2 flex-shrink-0">
 
         
+                {/* Currency Rates */}
+        {currencies && currencies.length > 0 && (
+          <div className="hidden lg:flex items-center gap-3 mr-2 px-3 py-1 bg-surface/50 border border-theme-subtle rounded text-[10px] font-mono font-bold text-muted uppercase tracking-wider">
+            {currencies.filter((c: any) => !c.isBase).map((c: any, idx: number) => (
+              <React.Fragment key={c.code}>
+                <div className="flex items-center gap-1.5 text-emerald-500/90" title={`${c.name} Exchange Rate`}>
+                  <Banknote size={12} />
+                  <span>{c.code}</span>
+                  <span>{Number(c.exchangeRate).toFixed(2)}</span>
+                </div>
+                {idx < currencies.filter((c: any) => !c.isBase).length - 1 && <div className="w-px h-3 bg-theme-subtle"></div>}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+
         {/* System Stats Mini */}
         {sysStats && (
           <div className="hidden lg:flex items-center gap-3 mr-2 px-3 py-1 bg-surface/50 border border-theme-subtle rounded text-[9px] font-mono font-bold text-muted uppercase tracking-wider">
