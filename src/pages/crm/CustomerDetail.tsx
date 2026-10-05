@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useDeals, useFollowups, useLeads, useQuotations } from '@/hooks/useData'
-import { updateCustomer } from '@/lib/api'
+import { updateCustomer, fetchAllCustomerGRNs } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 import { useAccounts } from '@/hooks/useFinance'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -42,7 +42,20 @@ export const CustomerDetail: React.FC = () => {
   }, []);
   
   // Ledger View State
-  const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations' | 'samples'>('overview')
+  const [grns, setGrns] = useState<any[]>([])
+  
+  React.useEffect(() => {
+    const cust = customers?.find(c => c.id === id);
+    fetchAllCustomerGRNs().then(data => {
+      setGrns(data.filter((g: any) => {
+        // filter logic: grn leadId might belong to this customer
+        const lead = leads?.find((l: any) => l.id === g.leadId);
+        return lead?.customerId === id || g.customerId === id || g.customerName === cust?.name;
+      }))
+    }).catch(console.error)
+  }, [id, leads, customers])
+  
   const [ledgerData, setLedgerData] = useState<{ lines: any[], balance: number }>({ lines: [], balance: 0 })
   const [ledgerLoading, setLedgerLoading] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -193,6 +206,12 @@ export const CustomerDetail: React.FC = () => {
                className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'quotations' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
              >
                Quotations
+             </button>
+             <button 
+               onClick={() => setActiveTab('samples')}
+               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'samples' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+             >
+               Customer Samples
              </button>
         </div>
         <Button variant="ghost" size="sm" icon={Edit2} onClick={handleEditOpen}>Edit</Button>
@@ -505,6 +524,52 @@ export const CustomerDetail: React.FC = () => {
                        <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${id}?quoteId=${q.id}`)} className="opacity-0 group-hover:opacity-100 transition-opacity">
                          Open <ArrowRight size={14} className="ml-1" />
                        </Button>
+                     </div>
+                   </div>
+                 );
+               })
+            )}
+          </div>
+        </GlassCard>
+      )}
+
+      {activeTab === 'samples' && (
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+              <FileText size={14} className="text-emerald-500" />
+              Customer Samples (GRNs)
+            </h2>
+          </div>
+          <div className="divide-y divide-theme-subtle">
+            {grns.length === 0 ? (
+               <div className="p-8 text-center text-muted text-sm">No samples found for this customer.</div>
+            ) : (
+               grns.map((g: any) => {
+                 return (
+                   <div key={g.id} className="p-4 hover:bg-surface2/30 transition-colors flex flex-col gap-2 group">
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-4">
+                         <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                           <FileText size={18} />
+                         </div>
+                         <div>
+                           <h4 className="text-sm font-bold text-primary">{g.id}</h4>
+                           <p className="text-xs text-muted flex items-center gap-2 mt-0.5">
+                             <span>{new Date(g.createdAt).toLocaleString()}</span>
+                           </p>
+                         </div>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-[10px] uppercase tracking-wider text-muted font-bold mb-0.5">Received By</p>
+                         <p className="text-sm font-semibold text-primary">{g.receivedBy}</p>
+                       </div>
+                     </div>
+                     <div className="pl-14">
+                       <p className="text-sm text-secondary bg-surface2/50 p-2 rounded border border-theme-subtle">
+                         {g.items}
+                       </p>
+                       {g.notes && <p className="text-xs text-muted mt-1 italic">{g.notes}</p>}
                      </div>
                    </div>
                  );

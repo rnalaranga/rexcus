@@ -640,6 +640,22 @@ app.delete('/api/quotations/:id', async (req, res) => {
 });
 
 // -- CUSTOMER GRNS --
+app.get('/api/crm/grns', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT g.*, l.name as leadName, c.name as customerName 
+      FROM customer_grns g 
+      LEFT JOIN leads l ON g.leadId = l.id 
+      LEFT JOIN customers c ON l.customerId = c.id 
+      ORDER BY g.createdAt DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/crm/grns/:quoteId', async (req, res) => {
   try {
     const { quoteId } = req.params;
@@ -654,8 +670,18 @@ app.get('/api/crm/grns/:quoteId', async (req, res) => {
 app.post('/api/crm/grns', async (req, res) => {
   try {
     const data = req.body;
+    
+    // Auto-generate GRN ID (S-XXXX)
+    let grnId = data.id;
+    if (!grnId) {
+      const [countResult] = await db.query('SELECT COUNT(*) as c FROM customer_grns');
+      const nextNum = (countResult[0].c || 0) + 1;
+      grnId = 'S-' + nextNum.toString().padStart(4, '0');
+    }
+
     const item = {
       ...data,
+      id: grnId,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     };
     await db.query('INSERT INTO customer_grns SET ?', item);

@@ -1,4 +1,6 @@
-import React from 'react';
+import codecs
+
+new_content = """import React from 'react';
 import { formatDate } from '@/lib/utils';
 
 export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: any }> = ({ grn, group, settings }) => {
@@ -77,13 +79,13 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
         {/* Table Body */}
         <div className="flex flex-1">
           <div className="flex-1 p-4 border-r border-black text-[14px] whitespace-pre-wrap leading-relaxed">
-            {itemsList.length > 0 ? itemsList.map((i:any) => i.description || i.items).join('\n') : grn.items}
+            {itemsList.length > 0 ? itemsList.map((i:any) => i.description || i.items).join('\\n') : grn.items}
           </div>
           <div className="w-32 p-4 border-r border-black text-[14px] text-center leading-relaxed">
-            {itemsList.length > 0 ? itemsList.map((i:any) => Number(i.qty || 1).toFixed(2)).join('\n') : '1.00'}
+            {itemsList.length > 0 ? itemsList.map((i:any) => Number(i.qty || 1).toFixed(2)).join('\\n') : '1.00'}
           </div>
           <div className="w-32 p-4 text-[14px] text-center leading-relaxed">
-            {itemsList.length > 0 ? itemsList.map((i:any) => i.unit || 'Nos').join('\n') : 'Nos'}
+            {itemsList.length > 0 ? itemsList.map((i:any) => i.unit || 'Nos').join('\\n') : 'Nos'}
           </div>
         </div>
       </div>
@@ -113,3 +115,7 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
     </div>
   );
 };
+"""
+
+with codecs.open('H:/ANTIGRAVITY/REXNW/src/components/CustomerGRNPrintView.tsx', 'w', 'utf-8') as f:
+    f.write(new_content)

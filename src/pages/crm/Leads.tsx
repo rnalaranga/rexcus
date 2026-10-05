@@ -10,7 +10,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useLeads, useFollowups, useCustomers } from '@/hooks/useData'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { useDialog } from '@/components/ui/DialogProvider'
-import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer } from '@/lib/api'
+import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
@@ -36,7 +36,7 @@ export const Leads: React.FC = () => {
   const [editId, setEditId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: ''
+    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: ''
   })
 
   const [leadQuotations, setLeadQuotations] = React.useState<any[]>([])
@@ -52,7 +52,7 @@ export const Leads: React.FC = () => {
 
   const openCreateModal = () => {
     setEditId(null)
-    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '' })
+    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '' })
     setIsModalOpen(true)
   }
 
@@ -68,7 +68,7 @@ export const Leads: React.FC = () => {
       value: String(lead.value),
       stage: lead.stage,
       isNewCustomer: false,
-      address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: ''
+      address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: ''
     })
     setIsModalOpen(true)
   }
@@ -77,6 +77,8 @@ export const Leads: React.FC = () => {
     e.preventDefault()
     setSubmitting(true)
     
+    let currentLeadId = editId;
+
     if (editId) {
       // Update existing lead
       const updatedLead = {
@@ -84,6 +86,9 @@ export const Leads: React.FC = () => {
         value: Number(formData.value) || 0,
         lastActivity: toMySQLDate(new Date())
       }
+      delete (updatedLead as any).includeGRN;
+      delete (updatedLead as any).grnItems;
+      delete (updatedLead as any).grnReceivedBy;
       await updateLead(editId, updatedLead)
     } else {
       // Create new lead
@@ -95,7 +100,23 @@ export const Leads: React.FC = () => {
         assignedTo: 'System Admin',
         lastActivity: toMySQLDate(new Date())
       }
+      currentLeadId = newLead.id;
+      delete (newLead as any).includeGRN;
+      delete (newLead as any).grnItems;
+      delete (newLead as any).grnReceivedBy;
       await createLead(newLead)
+    }
+
+    if (formData.includeGRN && currentLeadId) {
+      await createCustomerGRN({
+        id: 'GRN-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
+        quoteId: '',
+        quoNo: '',
+        leadId: currentLeadId,
+        items: formData.grnItems,
+        receivedBy: formData.grnReceivedBy,
+        notes: 'Sample received during lead creation'
+      })
     }
     
     await refetch()
@@ -449,6 +470,33 @@ export const Leads: React.FC = () => {
                   ))}
                 </select>
               </div>
+            </div>
+          </div>
+
+          {/* Section: Customer Sample (GRN) */}
+          <div>
+            <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
+              <FileText size={14} className="text-emerald-500" />
+              Customer Sample (GRN)
+            </h3>
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 text-sm text-primary">
+                <input type="checkbox" checked={formData.includeGRN} onChange={e => setFormData({...formData, includeGRN: e.target.checked})} className="rounded border-theme" />
+                Include Customer Sample (GRN)
+              </label>
+              
+              {formData.includeGRN && (
+                <div className="grid grid-cols-2 gap-4 mt-2 p-3 bg-surface2 rounded-lg border border-theme-subtle">
+                  <div className="space-y-1.5 col-span-2">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
+                    <textarea required placeholder="E.g., 2 boxes of damaged parts..." value={formData.grnItems} onChange={e => setFormData({...formData, grnItems: e.target.value})} className="w-full input-base" rows={2}></textarea>
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Received By <span className="text-rex-500">*</span></label>
+                    <input type="text" required placeholder="Name of employee" value={formData.grnReceivedBy} onChange={e => setFormData({...formData, grnReceivedBy: e.target.value})} className="w-full input-base" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

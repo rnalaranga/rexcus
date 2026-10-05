@@ -7,10 +7,10 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useInventory, useSuppliers, useStockLedger } from '@/hooks/useData'
-import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry } from '@/lib/api'
+import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 
-type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service'
+type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample'
 
 const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpdate: () => void }) => {
   const { data: ledger, loading, refetch } = useStockLedger(inventoryId)
@@ -100,6 +100,11 @@ export const Inventory: React.FC = () => {
   const { data: suppliersList } = useSuppliers()
   const [activeTab, setActiveTab] = useState<TabType>('all')
   const [search, setSearch] = useState('')
+  const [grns, setGrns] = useState<any[]>([])
+  
+  React.useEffect(() => {
+    fetchAllCustomerGRNs().then(setGrns).catch(console.error)
+  }, [])
   
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -568,7 +573,8 @@ export const Inventory: React.FC = () => {
             { id: 'raw_material', label: 'Raw Materials' },
             { id: 'finished_product', label: 'Finished Products' },
             { id: 'company_asset', label: 'Company Assets' },
-            { id: 'service', label: 'Services' }
+            { id: 'service', label: 'Services' },
+            { id: 'customer_sample', label: 'Customer Samples' }
           ].map(t => (
             <button 
               key={t.id}
@@ -585,7 +591,23 @@ export const Inventory: React.FC = () => {
       </div>
 
       <GlassCard className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
+        {activeTab === 'customer_sample' ? (
+          <DataTable 
+            columns={[
+              { header: 'Date', key: 'createdAt', render: (val: any) => new Date(val).toLocaleString() },
+              { header: 'Customer/Lead', key: 'leadName', render: (_: any, row: any) => row.customerName || row.leadName || 'Unknown' },
+              { header: 'Items', key: 'items', render: (val: any) => val },
+              { header: 'Received By', key: 'receivedBy', render: (val: any) => val },
+              { header: 'Notes', key: 'notes', render: (val: any) => val || '-' },
+            ]} 
+            data={grns} 
+            keyExtractor={(item: any) => item.id} 
+            pagination 
+            itemsPerPage={50} 
+          />
+        ) : (
+          <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
+        )}
       </GlassCard>
 
       {/* Toast Notification */}

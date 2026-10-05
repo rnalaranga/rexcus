@@ -126,6 +126,11 @@ export const deleteQuotation = async (id: string) => {
 };
 
 // -- CUSTOMER GRNS --
+export const fetchAllCustomerGRNs = async () => {
+  const res = await fetch(`${API_URL}/crm/grns`);
+  return res.json();
+};
+
 export const fetchCustomerGRNs = async (quoteId: string) => {
   const res = await fetch(`${API_URL}/crm/grns/${quoteId}`);
   return res.json();
