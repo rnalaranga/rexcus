@@ -7,9 +7,10 @@ import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
+import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
-import { createQuotation, fetchQuotations } from '@/lib/api'
+import { createQuotation, fetchQuotations, updateQuotation } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
@@ -189,6 +190,7 @@ export const QuotationBuilder: React.FC = () => {
   const [savedVersions, setSavedVersions] = useState<any[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [currentId, setCurrentId] = useState<string | null>(null)
+  const [draftId, setDraftId] = useState<string | null>(null)
 
   const loadVersions = useCallback(async () => {
       if (!leadId) return
@@ -229,6 +231,9 @@ export const QuotationBuilder: React.FC = () => {
   const [subject, setSubject] = useState('To machining parts as per given sample')
   const [customerName, setCustomerName] = useState('')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', company: '', email: '', phone: '', address: '', vatNo: '', tinNo: '' })
+  const [isSubmittingCust, setIsSubmittingCust] = useState(false)
 
   const handleCurrencyChange = (newCurrencyCode: string) => {
      if (!currencies || currencies.length === 0) return;
@@ -509,6 +514,43 @@ export const QuotationBuilder: React.FC = () => {
     setCustDiscount(snap.custDiscount || 0)
   }
 
+
+  // --- Auto Save Draft (DB) ---
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!selectedLeadId && custItems.length === 0 && boms.length === 0) return; // Don't save empty state
+      if (currentId) return; // If we are editing an already saved active version, don't auto-save as draft
+      const snapshot: any = {
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName,
+        taxEnabled, selectedProfileId,
+        boms,
+        custItems, custTerms, custValidity, custDelivery, custDiscount
+      }
+      const amount = 0; // Will be correctly set in DB on final save
+      
+      // We will recalculate amount here or just save 0 if not available
+      const sub = custItems.reduce((s, i) => s + Number(i.qty) * Number(i.unitPrice), 0);
+      const dis = sub * (Number(custDiscount) / 100);
+      const am = sub - dis;
+      
+      try {
+        if (!draftId) {
+          const res = await createQuotation({
+            leadId: selectedLeadId || 'WALK-IN', type: 'draft', data: snapshot,
+            totalAmount: am, customAmount: null, selectedProfileId, taxEnabled
+          });
+          if (res.success && res.quotation) setDraftId(res.quotation.id);
+        } else {
+          await updateQuotation(draftId, {
+            type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled
+          });
+        }
+      } catch (err) {}
+    }, 3000)
+    return () => clearTimeout(timer)
+  })
+
+
   const [isSaving, setIsSaving] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [showMarginModal, setShowMarginModal] = useState(false)
@@ -542,21 +584,11 @@ export const QuotationBuilder: React.FC = () => {
         const matTypes = [...b.autoMats.map(m => m.type || m.shape || m.material), ...b.manualMats.map(m => m.material)].filter(Boolean);
         const uniqueMats = Array.from(new Set(matTypes)).join(', ');
         
-        let finalDesc = '';
-        if (!b.title.startsWith('BOM Part ')) {
-            finalDesc += b.title.toUpperCase();
-        }
+        const itemName = b.title.startsWith('BOM Part ') ? 'Machined Component' : b.title.toUpperCase();
+        let finalDesc = `Precision manufacturing and fabrication of ${itemName} as per the provided technical specifications and requirements.`;
         
         if (b.description) {
-            finalDesc += (finalDesc ? '\n' : '') + b.description;
-        }
-        
-        if (!finalDesc) {
-            finalDesc = "Machining & Fabrication";
-        }
-        
-        if (uniqueMats) {
-            finalDesc += `\n• Material: ${uniqueMats}`;
+            finalDesc += `\n\nScope of work includes: ${b.description}`;
         }
         
         return {
@@ -624,6 +656,7 @@ export const QuotationBuilder: React.FC = () => {
       })
       if (result.success) {
         setCurrentId(result.quotation?.id || null)
+        
         showToast('success', `Quotation v${result.quotation?.version || ''} saved!`)
         await loadVersions()
       } else {
@@ -758,7 +791,7 @@ export const QuotationBuilder: React.FC = () => {
                 <div>
                   <div className="flex justify-between items-center mb-1.5">
                     <label className="block text-[11px] text-muted">Customer / Lead <span className="text-red-400">*</span></label>
-                    <button type="button" onClick={() => navigate('/crm/customers')} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
+                    <button type="button" onClick={() => setShowAddCustomer(true)} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
                       <Plus size={10} /> Add New Customer
                     </button>
                   </div>
@@ -1479,6 +1512,75 @@ export const QuotationBuilder: React.FC = () => {
           </div>
         </div>
       </Modal>
+      {/* Add Customer Modal */}
+      <Modal isOpen={showAddCustomer} onClose={() => setShowAddCustomer(false)} title="Register New Customer">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          setIsSubmittingCust(true);
+          try {
+            const custId = 'CUST-' + Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+            const newCustomer = {
+              ...newCustomerForm,
+              id: custId,
+              status: 'active',
+              lifetimeValue: 0, totalRevenue: 0, openDeals: 0,
+              lastOrder: new Date().toISOString().slice(0,19).replace('T',' '),
+              joinDate: new Date().toISOString().slice(0,19).replace('T',' '),
+              avatar: newCustomerForm.name.substring(0, 2).toUpperCase()
+            };
+            await createCustomer(newCustomer);
+            showToast('success', 'Customer registered successfully!');
+            // Auto-select
+            setSelectedLeadId(custId);
+            setCustomerName(newCustomerForm.name + (newCustomerForm.company ? ` (${newCustomerForm.company})` : ''));
+            setShowAddCustomer(false);
+            setNewCustomerForm({ name: '', company: '', email: '', phone: '', address: '', vatNo: '', tinNo: '' });
+            // Ideally refetch customers here, but we rely on the next refresh/optimistic UI
+          } catch(err: any) {
+            showToast('error', err.message || 'Failed to create customer');
+          } finally {
+            setIsSubmittingCust(false);
+          }
+        }}>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Full Name *</label>
+                <input required value={newCustomerForm.name} onChange={e => setNewCustomerForm(p => ({...p, name: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Company</label>
+                <input value={newCustomerForm.company} onChange={e => setNewCustomerForm(p => ({...p, company: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Email</label>
+                <input type="email" value={newCustomerForm.email} onChange={e => setNewCustomerForm(p => ({...p, email: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Phone</label>
+                <input value={newCustomerForm.phone} onChange={e => setNewCustomerForm(p => ({...p, phone: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Address</label>
+                <input value={newCustomerForm.address} onChange={e => setNewCustomerForm(p => ({...p, address: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">VAT No</label>
+                <input value={newCustomerForm.vatNo} onChange={e => setNewCustomerForm(p => ({...p, vatNo: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">SVAT / TIN No</label>
+                <input value={newCustomerForm.tinNo} onChange={e => setNewCustomerForm(p => ({...p, tinNo: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-theme-subtle">
+              <Button type="button" variant="ghost" onClick={() => setShowAddCustomer(false)}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={isSubmittingCust}>{isSubmittingCust ? 'Saving...' : 'Register Customer'}</Button>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   )
 }

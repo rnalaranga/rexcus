@@ -215,6 +215,9 @@ export const Quotations: React.FC = () => {
         
         {filtered.map(group => {
           const latestMain = group.main[0]
+          // Hide drafts from the main list, as they are shown in the Active Drafts section above
+          if (latestMain?.type === 'draft' && !group.job.length && !group.customer.length && group.main.length === 1) return null;
+          
           const latestJob = group.job[0]
           const latestCust = group.customer[0]
           
