@@ -50,7 +50,7 @@ export const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       const res = await fetch(`${API}/api/users`);
-      setUsers(await res.json());
+      const data = await res.json(); setUsers(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
     }

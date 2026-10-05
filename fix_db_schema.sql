@@ -540,3 +540,4 @@ ALTER TABLE chart_of_accounts ADD COLUMN subtype VARCHAR(50);
 ALTER TABLE tax_rates ADD COLUMN accountId VARCHAR(50);
 ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted';
 ALTER TABLE quotations ADD COLUMN status VARCHAR(50) DEFAULT 'Draft';
+ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL;
