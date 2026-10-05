@@ -242,7 +242,7 @@ export const Quotations: React.FC = () => {
                         {snap?.subject && <p className="text-xs text-muted truncate mt-1">{snap.subject}</p>}
                         
                         <div className="mt-4 flex gap-2">
-                           <button onClick={() => navigate(`/crm/quotation-builder/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors">
+                           <button onClick={() => navigate(`/crm/quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors">
                              Resume Draft
                            </button>
                         </div>
