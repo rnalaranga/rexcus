@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -136,8 +136,27 @@ export const Quotations: React.FC = () => {
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
   const [quoteGrns, setQuoteGrns] = useState<Record<string, any[]>>({})
   const { settings } = useSettings()
-
   const groupedQuotations = useMemo(() => {
+
+
+  useEffect(() => {
+    import('@/lib/api').then(({ fetchAllCustomerGRNs }) => {
+      fetchAllCustomerGRNs().then(grns => {
+        if (Array.isArray(grns)) {
+           const map: Record<string, any[]> = {};
+           grns.forEach(g => {
+              if (g.quoteId) {
+                if (!map[g.quoteId]) map[g.quoteId] = [];
+                map[g.quoteId].push(g);
+              }
+           });
+           setQuoteGrns(map);
+        }
+      }).catch(() => {});
+    });
+  }, [groupedQuotations]);
+
+  
     const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
     
     quotations.forEach(q => {
@@ -309,7 +328,16 @@ export const Quotations: React.FC = () => {
                           
                             {latestMain && latestMain.status === 'Approved' && (
                               <>
-                              <Button 
+                              {quoteGrns[latestMain.id] && quoteGrns[latestMain.id].length > 0 ? (
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
+                                     Print Sample GRN
+                                   </Button>
+                                ) : (
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain }); }}>
+                                     Receive Sample
+                                   </Button>
+                                )}
+                                <Button 
                                 variant="primary" 
                                 size="sm" 
                                 icon={Banknote} 
@@ -661,7 +689,8 @@ export const Quotations: React.FC = () => {
                      receivedBy: 'System', // from auth
                      notes: grnDialog.notes
                    });
-                   setGrnDialog(null);
+                    window.location.reload();
+                    setGrnDialog(null);
                 }
               }}>Confirm Receipt</Button>
             </div>
