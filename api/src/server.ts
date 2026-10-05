@@ -239,7 +239,8 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted'",
       "ALTER TABLE quotations ADD COLUMN status VARCHAR(50) DEFAULT 'Draft'",
       "ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
-      "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL"
+            "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
+      "ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock'"
     ];
 
     for (const patch of patches) {
@@ -687,6 +688,18 @@ app.post('/api/crm/grns', async (req, res) => {
     };
     await db.query('INSERT INTO customer_grns SET ?', item);
     res.json({ success: true, item });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/crm/grns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    await db.query('UPDATE customer_grns SET status = ? WHERE id = ?', [status, id]);
+    res.json({ success: true, id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });

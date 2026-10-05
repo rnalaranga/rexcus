@@ -719,20 +719,7 @@ export const Quotations: React.FC = () => {
                 };
                 html2pdf().set(opt).from(element).save();
               }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
-              <Button variant="primary" onClick={() => {
-                const content = document.getElementById('grn-print-section');
-                if (content) {
-                  const printWindow = window.open('', '_blank');
-                  if (printWindow) {
-                    printWindow.document.write(`<html><head><title>Print</title><script src="https://cdn.tailwindcss.com"></script></head><body>${content.outerHTML}</body></html>`);
-                    printWindow.document.close();
-                    setTimeout(() => {
-                      printWindow.print();
-                      printWindow.close();
-                    }, 500);
-                  }
-                }
-              }}>Print</Button>
+              <Button variant="primary" onClick={() => window.print()}>Print</Button>
             </div>
           </div>
         )}

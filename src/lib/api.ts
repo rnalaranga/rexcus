@@ -402,3 +402,5 @@ export const updateTaxProfile = async (id: string, data: any) => {
   });
   return res.json();
 };
+
+export const updateCustomerGRN = async (id: string, data: any) => (await (await fetch(`${API_URL}/crm/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());

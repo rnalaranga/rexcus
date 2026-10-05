@@ -13,6 +13,15 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
   } catch(e) {}
 
   return (
+    
+      <>
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #grn-print-section, #grn-print-section * { visibility: visible; }
+          #grn-print-section { position: absolute; left: 0; top: 0; width: 210mm; }
+        }
+      `}</style>
     <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col" style={{ width: '210mm', minHeight: '297mm', color: '#000', fontFamily: 'Arial, sans-serif' }}>
       
       {/* Header Row */}
@@ -111,5 +120,6 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
         </div>
       </div>
     </div>
+    </>
   );
 };

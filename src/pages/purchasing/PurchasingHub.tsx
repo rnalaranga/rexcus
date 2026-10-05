@@ -220,7 +220,35 @@ export const PurchasingHub: React.FC = () => {
       <GlassCard className="overflow-hidden">
         <DataTable columns={generateColumns()} data={filtered} keyExtractor={row => row.id} />
       </GlassCard>
+
+      <Modal isOpen={!!printGrnData} onClose={() => setPrintGrnData(null)} title="Print Customer GRN" size="xl">
+        {printGrnData && (
+          <div className="bg-white text-black p-8 max-h-[80vh] overflow-y-auto w-[900px] max-w-full">
+            <CustomerGRNPrintView 
+               grn={printGrnData.grn} 
+               group={printGrnData.group}
+               settings={settings}
+            />
+            <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
+              <Button variant="ghost" onClick={() => {
+                const element = document.getElementById('grn-print-section');
+                if (!element) return;
+                const opt: any = {
+                  margin: 0.5,
+                  filename: `GRN-${printGrnData.grn.id}.pdf`,
+                  image: { type: 'jpeg', quality: 0.98 },
+                  html2canvas: { scale: 2, useCORS: true },
+                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                };
+                html2pdf().set(opt).from(element).save();
+              }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
+              <Button variant="primary" onClick={() => window.print()}>Print</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
+
 

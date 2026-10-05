@@ -7,7 +7,7 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useInventory, useSuppliers, useStockLedger } from '@/hooks/useData'
-import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs } from '@/lib/api'
+import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 
 type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample'
