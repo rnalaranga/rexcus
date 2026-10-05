@@ -59,7 +59,7 @@ export function useFinanceDashboard() {
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true);
-    try { const res = await fetchFinanceDashboard(); setData(Array.isArray(res) ? res : []); } catch (e) { console.error(e); }
+    try { const res = await fetchFinanceDashboard(); setData(res && !res.error ? res : { cash: 0, ar: 0, ap: 0, profit: 0, revenue: 0, expenses: 0 }); } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
