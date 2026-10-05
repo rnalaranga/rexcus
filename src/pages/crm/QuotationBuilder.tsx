@@ -531,7 +531,7 @@ export const QuotationBuilder: React.FC = () => {
   useEffect(() => {
     const timer = setTimeout(async () => {
       // Don't save completely empty state
-      if (!selectedLeadId && custItems.length === 0 && boms.length === 0 && !subject && !customerName) return; 
+      if (!selectedLeadId) return; // Only auto-save if a customer is explicitly selected 
       if (currentIdRef.current) return; // If we are editing an active version, don't auto-save as draft
       
       setSaveStatus('saving');

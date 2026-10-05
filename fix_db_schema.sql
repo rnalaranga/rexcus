@@ -403,6 +403,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `password_hash` varchar(255) NOT NULL,
   `role` varchar(50) DEFAULT 'user',
   `created_at` datetime DEFAULT NULL,
+  `prefix` varchar(10) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -541,3 +542,4 @@ ALTER TABLE tax_rates ADD COLUMN accountId VARCHAR(50);
 ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted';
 ALTER TABLE quotations ADD COLUMN status VARCHAR(50) DEFAULT 'Draft';
 ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL;
+ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL;
