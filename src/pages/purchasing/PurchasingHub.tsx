@@ -1,6 +1,11 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
+import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
+import { useSettings } from '@/contexts/SettingsContext';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -26,6 +31,8 @@ export const PurchasingHub: React.FC = () => {
   const { data: bills, loading: loadingBills } = useBills();
   const { data: suppliers } = useSuppliers();
 
+    const { settings } = useSettings();
+  const [printGrnData, setPrintGrnData] = useState<any>(null);
   const [custGrns, setCustGrns] = useState<any[]>([]);
   useEffect(() => {
     fetchAllCustomerGRNs().then(setCustGrns).catch(console.error);
@@ -132,9 +139,18 @@ export const PurchasingHub: React.FC = () => {
         { key: 'supplier', header: 'Source', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}</span> },
         { key: 'status', header: 'Status', width: '90px', render: (_, row) => row.isCustomerSample ? <Badge value="Sample" size="sm" /> : <Badge value={String(row.status)} size="sm" /> },
         { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-[10px] text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
-        { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{String(row.isCustomerSample ? row.receivedAt : row.date).split('T')[0]}</span> },
+        { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{(row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '')).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          !row.isCustomerSample ? <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">Create Bill</Button> : null
+          <div className="flex justify-end gap-2">
+               {row.isCustomerSample ? (
+                  <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-[10px] uppercase h-6 text-blue-500">Print Sample GRN</Button>
+               ) : (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder?id=${row.id}`)} className="text-[10px] uppercase h-6 text-primary">View</Button>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">Create Bill</Button>
+                  </>
+               )}
+            </div>
         )}
       ];
     }
