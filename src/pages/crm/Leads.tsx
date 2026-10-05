@@ -86,11 +86,10 @@ export const Leads: React.FC = () => {
         value: Number(formData.value) || 0,
         lastActivity: toMySQLDate(new Date())
       }
-      delete (updatedLead as any).includeGRN;
-      delete (updatedLead as any).grnItems;
-      delete (updatedLead as any).grnReceivedBy;
-      await updateLead(editId, updatedLead)
-    } else {
+      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
+        keysToRemove.forEach(k => delete (updatedLead as any)[k]);
+        await updateLead(editId, updatedLead)
+      } else {
       // Create new lead
       const newLead = {
         id: 'LEAD-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
@@ -101,11 +100,34 @@ export const Leads: React.FC = () => {
         lastActivity: toMySQLDate(new Date())
       }
       currentLeadId = newLead.id;
-      delete (newLead as any).includeGRN;
-      delete (newLead as any).grnItems;
-      delete (newLead as any).grnReceivedBy;
-      await createLead(newLead)
-    }
+      if (formData.isNewCustomer) {
+          const custId = 'CUST-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+          try {
+             const { createCustomer } = await import('@/lib/api');
+             await createCustomer({
+                id: custId,
+                name: formData.name,
+                company: formData.company,
+                email: formData.email,
+                phone: formData.phone,
+                address: formData.address || '',
+                brNumber: formData.brNumber || '',
+                financeContactName: formData.financeContactName || '',
+                financeContactPhone: formData.financeContactPhone || '',
+                industry: formData.industry || '',
+                status: 'active', segment: 'sme', lifetimeValue: 0, totalRevenue: 0, openDeals: 0, 
+                lastOrder: new Date().toISOString().slice(0, 19).replace('T', ' '), joinDate: new Date().toISOString().slice(0, 19).replace('T', ' '), 
+                avatar: (formData.name || '').substring(0,2).toUpperCase(),
+                vat: formData.vat, svat: formData.svat, creditLimit: 0, creditDays: 30, rating: 0, requiresAdvance: true, currency: 'LKR', isForeign: false
+             });
+             newLead.customerId = custId;
+          } catch(e) {}
+        }
+
+        const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
+        keysToRemove.forEach(k => delete (newLead as any)[k]);
+        await createLead(newLead)
+      }
 
     if (formData.includeGRN && currentLeadId) {
       await createCustomerGRN({
