@@ -119,7 +119,8 @@ export const CustomerDetail: React.FC = () => {
 
   const handleEditOpen = () => {
     setFormData({
-      name: customer.name,
+      prefix: customer.prefix || '',
+        name: customer.name,
       company: customer.company,
       email: customer.email,
       phone: customer.phone,

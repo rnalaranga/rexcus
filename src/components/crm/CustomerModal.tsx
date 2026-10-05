@@ -54,8 +54,12 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
               Company / Entity Details
             </h3>
             <div className="grid grid-cols-6 gap-4">
-              <div className="space-y-1.5 col-span-6 sm:col-span-3">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company Name</label>
+                <div className="space-y-1.5 col-span-6 sm:col-span-1">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Prefix</label>
+                  <input value={formData.prefix} onChange={e => setFormData({...formData, prefix: e.target.value})} className="w-full input-base" placeholder="ACM" maxLength={5} />
+                </div>
+                <div className="space-y-1.5 col-span-6 sm:col-span-3">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company Name</label>
                 <input value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="Acme Corp" />
               </div>
               <div className="space-y-1.5 col-span-6 sm:col-span-3">

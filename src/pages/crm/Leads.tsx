@@ -377,15 +377,18 @@ export const Leads: React.FC = () => {
                         const c = customers.find((x: any) => x.id === val);
                         if (c) {
                           setFormData((prev: any) => ({
-                            ...prev,
-                            customerId: val,
-                            name: prev.name || c.name || '',
-                            company: prev.company || c.company || '',
-                            email: prev.email || c.email || '',
-                            phone: prev.phone || c.phone || '',
-                            vat: prev.vat || c.vat || '',
-                            svat: prev.svat || c.svat || ''
-                          }));
+                              ...prev,
+                              customerId: val,
+                              name: c.name || '',
+                              company: c.company || '',
+                              email: c.email || '',
+                              phone: c.phone || '',
+                              vat: c.vat || '',
+                              svat: c.svat || '',
+                              address: c.address || '',
+                              brNumber: c.brNumber || '',
+                              industry: c.industry || ''
+                            }));
                         }
                       }
                     }}
