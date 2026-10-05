@@ -191,36 +191,31 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             {quotationType !== 'job' && custTotals.discount > 0 && (
                <div className="flex border-b border-black items-center h-8">
                  <div className="w-[65%] text-right pr-6">Discount</div>
-                 <div className="w-[15%] text-center">{custDiscount} %</div>
+                 <div className="w-[15%] text-center">{data.custDiscount} %</div>
                  <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
                    {Number(custTotals.discount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                  </div>
                </div>
             )}
 
-            {data.selectedTaxes && data.selectedTaxes.length > 0 ? (
-               data.selectedTaxes.map((tax: any, idx: number) => {
-                 const taxAmount = (quotationType === 'job' ? jobTotals.totalCost : custTotals.total) * (Number(tax.rate) / 100);
-                 return (
-                   <div key={idx} className="flex border-b border-black items-center h-8">
-                     <div className="w-[65%] text-right pr-6">{tax.name}</div>
-                     <div className="w-[15%] text-center">{Number(tax.rate).toFixed(2)} %</div>
-                     <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                       {Number(taxAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                     </div>
-                   </div>
-                 )
-               })
-            ) : (
-               Number(settings?.vat_percentage) > 0 && (
+            {data.selectedProfile && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
                  <div className="flex border-b border-black items-center h-8">
-                   <div className="w-[65%] text-right pr-6">VAT</div>
-                   <div className="w-[15%] text-center">{Number(settings?.vat_percentage || 0).toFixed(2)} %</div>
+                   <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</div>
+                   <div className="w-[15%] text-center">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</div>
                    <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                     {Number(quotationType === 'job' ? jobTotals.totalCost * (Number(settings?.vat_percentage || 0) / 100) : custTotals.total * (Number(settings?.vat_percentage || 0) / 100) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                     {Number(quotationType === 'job' ? data.jobSscl : data.custSscl).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                    </div>
                  </div>
-               )
+            )}
+            
+            {data.selectedProfile && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
+                 <div className="flex border-b border-black items-center h-8">
+                   <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</div>
+                   <div className="w-[15%] text-center">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</div>
+                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+                     {Number(quotationType === 'job' ? data.jobVat : data.custVat).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                   </div>
+                 </div>
             )}
 
             <div className="flex items-center h-8 bg-gray-100">

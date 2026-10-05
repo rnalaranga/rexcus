@@ -7,6 +7,7 @@ import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
+import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { createQuotation, fetchQuotations } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
@@ -158,9 +159,11 @@ export const QuotationBuilder: React.FC = () => {
   const { data: currencies } = useCurrencies()
   const { data: taxes } = useTaxes()
   const [currency, setCurrency] = useState('LKR')
-  const [selectedTaxes, setSelectedTaxes] = useState<any[]>([])
+  const { data: taxProfiles } = useTaxProfiles()
+  const [taxEnabled, setTaxEnabled] = useState(true)
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('')
   
-  const lead = leads.find(l => l.id === leadId)
+  const lead = customers?.find(c => c.id === leadId) || leads?.find(l => l.id === leadId)
   
   const { data: rawOperations } = useMachiningOperations()
   const EXCEL_PROCESSES = React.useMemo(() => {
@@ -438,13 +441,32 @@ export const QuotationBuilder: React.FC = () => {
   })
 
   const jobTotalCost = totalMaterialCost + totalMachiningCost
-  const vatPct = Number(settings?.vat_percentage || 0);
-  const jobWithSSCL = jobTotalCost * (1 + (vatPct / 100));
-
   const custSubtotal = custItems.reduce((s, i) => s + Number(i.qty) * Number(i.unitPrice), 0)
   const custDiscountAmt = custSubtotal * (Number(custDiscount) / 100)
   const custTotal = custSubtotal - custDiscountAmt
-  const custWithSSCL = custTotal * (1 + (vatPct / 100));
+  
+  let jobTaxAmount = 0; let jobSscl = 0; let jobVat = 0;
+  let custTaxAmount = 0; let custSscl = 0; let custVat = 0;
+  
+  const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
+  
+  if (selectedProfile) {
+    const t1 = Number(selectedProfile.tax1_rate) / 100;
+    const t2 = Number(selectedProfile.tax2_rate) / 100;
+    
+    // Job Taxes
+    jobSscl = jobTotalCost * t1;
+    jobVat = selectedProfile.tax2_compound ? (jobTotalCost + jobSscl) * t2 : jobTotalCost * t2;
+    jobTaxAmount = jobSscl + jobVat;
+    
+    // Cust Taxes
+    custSscl = custTotal * t1;
+    custVat = selectedProfile.tax2_compound ? (custTotal + custSscl) * t2 : custTotal * t2;
+    custTaxAmount = custSscl + custVat;
+  }
+  
+  const jobWithSSCL = jobTotalCost + jobTaxAmount;
+  const custWithSSCL = custTotal + custTaxAmount;
   
   const expectedProfit = custWithSSCL - jobWithSSCL
   const expectedMargin = custWithSSCL > 0 ? (expectedProfit / custWithSSCL) * 100 : 0
@@ -460,6 +482,8 @@ export const QuotationBuilder: React.FC = () => {
     setJobQty(snap.jobQty || '1')
     setAttention(snap.attention || '')
     setSubject(snap.subject || 'To machining parts as per given sample')
+    setTaxEnabled(snap.taxEnabled ?? true)
+    setSelectedProfileId(snap.selectedProfileId || '')
     setJobItems(snap.jobItems || [])
     setAttachments(snap.attachments || [])
     
@@ -596,7 +620,7 @@ export const QuotationBuilder: React.FC = () => {
 
       const result = await createQuotation({
         leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
-        totalAmount: amount, customAmount: null
+        totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled
       })
       if (result.success) {
         setCurrentId(result.quotation?.id || null)
@@ -732,12 +756,17 @@ export const QuotationBuilder: React.FC = () => {
               {/* Left Column */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[11px] text-muted mb-1.5">Customer / Lead <span className="text-red-400">*</span></label>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[11px] text-muted">Customer / Lead <span className="text-red-400">*</span></label>
+                    <button type="button" onClick={() => navigate('/crm/customers')} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
+                      <Plus size={10} /> Add New Customer
+                    </button>
+                  </div>
                   <LeadSearchInput
                     value={customerName}
                     onChange={setCustomerName}
                     onSelect={handleSelectLeadOrCustomer}
-                    leads={leads}
+                    leads={[...(customers || []), ...(leads || [])]}
                     className={docInputClass + " " + (selectedLeadId ? "border-emerald-500/30" : "")}
                   />
                 </div>
@@ -1312,6 +1341,18 @@ export const QuotationBuilder: React.FC = () => {
                 </div>
                 
                 <div className="space-y-2 relative z-10">
+                  <div className="flex items-center gap-2 mb-3 border-b border-theme-subtle/50 pb-2">
+                    <button onClick={() => setTaxEnabled(t => !t)} className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-blue-500' : 'bg-surface2 border border-theme-subtle'}`}>
+                      <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
+                    </button>
+                    {taxEnabled && (
+                      <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
+                        className="flex-1 bg-surface border border-theme-subtle px-1.5 py-1 rounded text-[10px] outline-none focus:border-blue-500">
+                        <option value="">— Select Tax Profile —</option>
+                        {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    )}
+                  </div>
                   <div className="flex justify-between items-center">
                      <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Margin</span>
                      <span className={`text-[13px] font-bold ${expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{expectedMargin.toFixed(1)}%</span>
@@ -1347,8 +1388,8 @@ export const QuotationBuilder: React.FC = () => {
                          docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
                          custItems, custDiscount, boms,
                          custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-                         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
-                         custTerms, custValidity, custDelivery, selectedTaxes
+                         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
+                         custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat
                       }}
                       type="main"
                       lead={lead}
@@ -1381,7 +1422,7 @@ export const QuotationBuilder: React.FC = () => {
                docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
                custItems, custDiscount, boms,
                custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-               jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+               jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
                custTerms, custValidity, custDelivery
             }}
             type="main"
