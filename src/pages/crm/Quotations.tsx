@@ -221,7 +221,22 @@ export const Quotations: React.FC = () => {
                      <div key={g.main[0].id} className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 hover:border-orange-500/40 transition-colors relative group">
                         <div className="flex justify-between items-start mb-2">
                            <span className="text-[10px] font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">Draft</span>
-                           <span className="text-xs text-muted font-mono">{String(g.main[0].date).slice(0, 16).replace('T', ' ')}</span>
+                           <div className="flex items-center gap-2">
+                             <span className="text-xs text-muted font-mono">{String(g.main[0].date).slice(0, 16).replace('T', ' ')}</span>
+                             <button 
+                               onClick={async (e) => {
+                                 e.stopPropagation();
+                                 if (await showConfirm('Are you sure you want to delete this draft?', 'Delete Draft', { confirmLabel: 'Delete' })) {
+                                   await deleteQuotation(g.main[0].id);
+                                   refetch();
+                                 }
+                               }} 
+                               className="text-red-500/70 hover:text-red-500 transition-colors p-0.5"
+                               title="Delete Draft"
+                             >
+                               <Trash2 size={14} />
+                             </button>
+                           </div>
                         </div>
                         <h4 className="font-bold text-sm text-primary truncate">{g.leadName || snap?.customerName || 'Unknown Customer'}</h4>
                         {snap?.subject && <p className="text-xs text-muted truncate mt-1">{snap.subject}</p>}
