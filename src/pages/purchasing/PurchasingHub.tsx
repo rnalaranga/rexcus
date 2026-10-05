@@ -36,7 +36,7 @@ export const PurchasingHub: React.FC = () => {
   const getSupplierContact = (id: string) => suppliers.find((s: any) => s.id === id)?.email || 'N/A';
 
   const loading = loadingMRs || loadingPOs || loadingGRNs || loadingBills;
-  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading purchasing data...</div>;
+
 
   const handleAdd = () => {
     switch (activeTab) {
@@ -168,6 +168,8 @@ export const PurchasingHub: React.FC = () => {
       case 'bill': return 'Add Supplier Bill';
     }
   };
+  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading purchasing data...</div>;
+
 
   return (
     <div className="space-y-4 animate-fade-in">

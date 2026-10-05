@@ -794,6 +794,88 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
+
+// -- PURCHASING --
+app.get('/api/purchasing/mrs', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM material_requests ORDER BY date DESC, createdAt DESC');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.post('/api/purchasing/mrs', async (req, res) => {
+  try {
+    const data = req.body;
+    await db.query('INSERT INTO material_requests SET ?', data);
+    res.json({ success: true, id: data.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.put('/api/purchasing/mrs/:id', async (req, res) => {
+  try {
+    await db.query('UPDATE material_requests SET ? WHERE id = ?', [req.body, req.params.id]);
+    res.json({ success: true, id: req.params.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/purchasing/pos', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM purchase_orders ORDER BY date DESC, createdAt DESC');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.post('/api/purchasing/pos', async (req, res) => {
+  try {
+    const data = req.body;
+    await db.query('INSERT INTO purchase_orders SET ?', data);
+    res.json({ success: true, id: data.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.put('/api/purchasing/pos/:id', async (req, res) => {
+  try {
+    await db.query('UPDATE purchase_orders SET ? WHERE id = ?', [req.body, req.params.id]);
+    res.json({ success: true, id: req.params.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/purchasing/grns', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM grns ORDER BY date DESC, createdAt DESC');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.post('/api/purchasing/grns', async (req, res) => {
+  try {
+    const data = req.body;
+    await db.query('INSERT INTO grns SET ?', data);
+    res.json({ success: true, id: data.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.put('/api/purchasing/grns/:id', async (req, res) => {
+  try {
+    await db.query('UPDATE grns SET ? WHERE id = ?', [req.body, req.params.id]);
+    res.json({ success: true, id: req.params.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/purchasing/bills', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM supplier_bills ORDER BY date DESC, createdAt DESC');
+    res.json(rows);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.post('/api/purchasing/bills', async (req, res) => {
+  try {
+    const data = req.body;
+    await db.query('INSERT INTO supplier_bills SET ?', data);
+    res.json({ success: true, id: data.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.put('/api/purchasing/bills/:id', async (req, res) => {
+  try {
+    await db.query('UPDATE supplier_bills SET ? WHERE id = ?', [req.body, req.params.id]);
+    res.json({ success: true, id: req.params.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // -- SUPPLIERS --
 app.get('/api/suppliers', async (req, res) => {
   try {
