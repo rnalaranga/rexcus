@@ -11,7 +11,7 @@ export function useAccounts() {
     setLoading(true);
     try {
       const res = await fetchAccounts();
-      setData(res);
+      setData(Array.isArray(res) ? res : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -28,7 +28,7 @@ export function useTaxes() {
     setLoading(true);
     try {
       const res = await fetchTaxes();
-      setData(res);
+      setData(Array.isArray(res) ? res : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -45,7 +45,7 @@ export function useJournals() {
     setLoading(true);
     try {
       const res = await fetchJournals();
-      setData(res);
+      setData(Array.isArray(res) ? res : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -59,7 +59,7 @@ export function useFinanceDashboard() {
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true);
-    try { const res = await fetchFinanceDashboard(); setData(res); } catch (e) { console.error(e); }
+    try { const res = await fetchFinanceDashboard(); setData(Array.isArray(res) ? res : []); } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -71,7 +71,7 @@ export function useCostCenters() {
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true);
-    try { const res = await fetchCostCenters(); setData(res); } catch (e) { console.error(e); }
+    try { const res = await fetchCostCenters(); setData(Array.isArray(res) ? res : []); } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -87,7 +87,7 @@ export function useTaxProfiles() {
     try {
       const { fetchTaxProfiles } = await import('@/lib/api');
       const res = await fetchTaxProfiles();
-      setData(res);
+      setData(Array.isArray(res) ? res : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);

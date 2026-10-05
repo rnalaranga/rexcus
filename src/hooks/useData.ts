@@ -8,7 +8,7 @@ export function useCustomers() {
 
   const refetch = useCallback(() => {
     api.fetchCustomers().then(d => {
-      setData(d);
+      setData(Array.isArray(d) ? d : []);
       setLoading(false);
     });
   }, []);
@@ -24,7 +24,7 @@ export function useLeads() {
 
   const refetch = useCallback(() => {
     api.fetchLeads().then(d => {
-      setData(d);
+      setData(Array.isArray(d) ? d : []);
       setLoading(false);
     });
   }, []);
@@ -40,7 +40,7 @@ export function useDeals() {
 
   const refetch = useCallback(() => {
     api.fetchDeals().then(d => {
-      setData(d);
+      setData(Array.isArray(d) ? d : []);
       setLoading(false);
     });
   }, []);
@@ -56,7 +56,7 @@ export function useInventory() {
 
   const refetch = useCallback(() => {
     api.fetchInventory().then(d => {
-      setData(d);
+      setData(Array.isArray(d) ? d : []);
       setLoading(false);
     });
   }, []);
@@ -89,7 +89,7 @@ export function useSuppliers() {
 
   const refetch = useCallback(() => {
     api.fetchSuppliers().then(d => {
-      setData(d);
+      setData(Array.isArray(d) ? d : []);
       setLoading(false);
     });
   }, []);
@@ -139,7 +139,7 @@ export function useQuotations() {
 
   const refetch = useCallback(() => {
     api.fetchQuotations().then(d => {
-      setData(d);
+      setData(Array.isArray(d) ? d : []);
       setLoading(false);
     });
   }, []);
