@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -209,6 +209,35 @@ export const Quotations: React.FC = () => {
       </GlassCard>
 
       <div className="grid grid-cols-1 gap-4">
+        {groupedQuotations.some((g: any) => g.main[0]?.type === 'draft') && (
+           <div className="mb-4">
+             <h3 className="text-sm font-bold text-orange-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+               <FileEdit size={16} /> Active Drafts
+             </h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {groupedQuotations.filter((g: any) => g.main[0]?.type === 'draft').map((g: any) => {
+                   const snap = g.main[0]?.data ? (typeof g.main[0].data === 'string' ? JSON.parse(g.main[0].data) : g.main[0].data) : null
+                   return (
+                     <div key={g.main[0].id} className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 hover:border-orange-500/40 transition-colors relative group">
+                        <div className="flex justify-between items-start mb-2">
+                           <span className="text-[10px] font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">Draft</span>
+                           <span className="text-xs text-muted font-mono">{String(g.main[0].date).slice(0, 16).replace('T', ' ')}</span>
+                        </div>
+                        <h4 className="font-bold text-sm text-primary truncate">{g.leadName || snap?.customerName || 'Unknown Customer'}</h4>
+                        {snap?.subject && <p className="text-xs text-muted truncate mt-1">{snap.subject}</p>}
+                        
+                        <div className="mt-4 flex gap-2">
+                           <button onClick={() => navigate(`/crm/quotation-builder/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors">
+                             Resume Draft
+                           </button>
+                        </div>
+                     </div>
+                   )
+                })}
+             </div>
+           </div>
+        )}
+        
         {filtered.length === 0 && (
            <div className="p-8 text-center text-muted">No quotations match your search.</div>
         )}
