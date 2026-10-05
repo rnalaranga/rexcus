@@ -6,6 +6,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { CustomerModal } from '@/components/crm/CustomerModal'
 import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
@@ -191,6 +192,7 @@ export const QuotationBuilder: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false)
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [draftId, setDraftId] = useState<string | null>(null)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const loadVersions = useCallback(async () => {
       if (!leadId) return
@@ -204,7 +206,11 @@ export const QuotationBuilder: React.FC = () => {
            if (target && currentId !== target.id) {
               const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data
               restoreSnapshot(snap)
-              setCurrentId(target.id)
+              if (target.type === 'draft') {
+                 setDraftId(target.id)
+              } else {
+                 setCurrentId(target.id)
+              }
               
               if (previewParam) {
                  setShowPreview(true)
@@ -232,8 +238,6 @@ export const QuotationBuilder: React.FC = () => {
   const [customerName, setCustomerName] = useState('')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', company: '', email: '', phone: '', address: '', vatNo: '', tinNo: '' })
-  const [isSubmittingCust, setIsSubmittingCust] = useState(false)
 
   const handleCurrencyChange = (newCurrencyCode: string) => {
      if (!currencies || currencies.length === 0) return;
@@ -520,6 +524,8 @@ export const QuotationBuilder: React.FC = () => {
     const timer = setTimeout(async () => {
       if (!selectedLeadId && custItems.length === 0 && boms.length === 0) return; // Don't save empty state
       if (currentId) return; // If we are editing an already saved active version, don't auto-save as draft
+      
+      setSaveStatus('saving');
       const snapshot: any = {
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName,
         taxEnabled, selectedProfileId,
@@ -545,7 +551,11 @@ export const QuotationBuilder: React.FC = () => {
             type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled
           });
         }
-      } catch (err) {}
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err) {
+        setSaveStatus('idle');
+      }
     }, 3000)
     return () => clearTimeout(timer)
   })
@@ -1513,73 +1523,15 @@ export const QuotationBuilder: React.FC = () => {
         </div>
       </Modal>
       {/* Add Customer Modal */}
-      <Modal isOpen={showAddCustomer} onClose={() => setShowAddCustomer(false)} title="Register New Customer">
-        <form onSubmit={async (e) => {
-          e.preventDefault();
-          setIsSubmittingCust(true);
-          try {
-            const custId = 'CUST-' + Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-            const newCustomer = {
-              ...newCustomerForm,
-              id: custId,
-              status: 'active',
-              lifetimeValue: 0, totalRevenue: 0, openDeals: 0,
-              lastOrder: new Date().toISOString().slice(0,19).replace('T',' '),
-              joinDate: new Date().toISOString().slice(0,19).replace('T',' '),
-              avatar: newCustomerForm.name.substring(0, 2).toUpperCase()
-            };
-            await createCustomer(newCustomer);
-            showToast('success', 'Customer registered successfully!');
-            // Auto-select
-            setSelectedLeadId(custId);
-            setCustomerName(newCustomerForm.name + (newCustomerForm.company ? ` (${newCustomerForm.company})` : ''));
-            setShowAddCustomer(false);
-            setNewCustomerForm({ name: '', company: '', email: '', phone: '', address: '', vatNo: '', tinNo: '' });
-            // Ideally refetch customers here, but we rely on the next refresh/optimistic UI
-          } catch(err: any) {
-            showToast('error', err.message || 'Failed to create customer');
-          } finally {
-            setIsSubmittingCust(false);
-          }
-        }}>
-          <div className="p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Full Name *</label>
-                <input required value={newCustomerForm.name} onChange={e => setNewCustomerForm(p => ({...p, name: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Company</label>
-                <input value={newCustomerForm.company} onChange={e => setNewCustomerForm(p => ({...p, company: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Email</label>
-                <input type="email" value={newCustomerForm.email} onChange={e => setNewCustomerForm(p => ({...p, email: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Phone</label>
-                <input value={newCustomerForm.phone} onChange={e => setNewCustomerForm(p => ({...p, phone: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Address</label>
-                <input value={newCustomerForm.address} onChange={e => setNewCustomerForm(p => ({...p, address: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">VAT No</label>
-                <input value={newCustomerForm.vatNo} onChange={e => setNewCustomerForm(p => ({...p, vatNo: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">SVAT / TIN No</label>
-                <input value={newCustomerForm.tinNo} onChange={e => setNewCustomerForm(p => ({...p, tinNo: e.target.value}))} className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-theme-subtle">
-              <Button type="button" variant="ghost" onClick={() => setShowAddCustomer(false)}>Cancel</Button>
-              <Button type="submit" variant="primary" disabled={isSubmittingCust}>{isSubmittingCust ? 'Saving...' : 'Register Customer'}</Button>
-            </div>
-          </div>
-        </form>
-      </Modal>
+      <CustomerModal 
+        isOpen={showAddCustomer} 
+        onClose={() => setShowAddCustomer(false)} 
+        onSuccess={(newCustomer) => {
+           showToast('success', 'Customer registered successfully!');
+           setSelectedLeadId(newCustomer.id);
+           setCustomerName(newCustomer.name + (newCustomer.company ? ` (${newCustomer.company})` : ''));
+        }} 
+      />
 
     </div>
   )
