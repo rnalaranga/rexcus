@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Filter, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2 } from 'lucide-react'
+import { Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -37,7 +37,7 @@ export const Leads: React.FC = () => {
   const [editId, setEditId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<any>({
-    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '', grnList: []
+    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '', grnList: [] as any[]
   })
 
   const [leadQuotations, setLeadQuotations] = React.useState<any[]>([])
@@ -56,7 +56,7 @@ export const Leads: React.FC = () => {
 
   const openCreateModal = () => {
     setEditId(null)
-        setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', grnList: [] })
+        setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', grnList: [] as any[] })
     setIsModalOpen(true)
   }
 
@@ -64,7 +64,7 @@ export const Leads: React.FC = () => {
     setEditId(lead.id)
           setFormData({
         name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '', priority: lead.priority, value: String(lead.value), stage: lead.stage, isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '',
-        grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => ({ id: g.id, items: g.items, receivedBy: g.receivedBy || '', notes: g.notes || '' }))
+        grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => ({ id: g.id, items: (typeof g.items === 'string' && g.items.startsWith('[')) ? JSON.parse(g.items) : [{description: g.items || '', qty: 1}], receivedBy: g.receivedBy || '', notes: g.notes || '' }))
       })
     setIsModalOpen(true)
   }
@@ -129,12 +129,12 @@ export const Leads: React.FC = () => {
       if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
         for (const g of formData.grnList) {
           if (g.id) {
-            await updateCustomerGRN(g.id, { items: g.items, receivedBy: g.receivedBy, notes: g.notes });
+            await updateCustomerGRN(g.id, { items: (typeof g.items === 'string' && g.items.startsWith('[')) ? JSON.parse(g.items) : [{description: g.items || '', qty: 1}], receivedBy: g.receivedBy, notes: g.notes });
           } else {
             await createCustomerGRN({
               id: 'GRN-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
               quoteId: '', quoNo: '', leadId: currentLeadId,
-              items: g.items, receivedBy: g.receivedBy, notes: g.notes
+              items: (typeof g.items === 'string' && g.items.startsWith('[')) ? JSON.parse(g.items) : [{description: g.items || '', qty: 1}], receivedBy: g.receivedBy, notes: g.notes
             });
           }
         }
@@ -506,7 +506,7 @@ export const Leads: React.FC = () => {
                 <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
                   <Package size={14} className="text-rex-500" /> Customer Samples
                 </h3>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setFormData({...formData, grnList: [...(formData.grnList || []), { items: '', receivedBy: '', notes: '' }]})} className="h-6 text-[10px]"><Plus size={12}/> Add Sample</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setFormData({...formData, grnList: [...(formData.grnList || []), { items: [{description: '', qty: 1}], receivedBy: '', notes: '' }]})} className="h-6 text-[10px]"><Plus size={12}/> Add Sample</Button>
               </div>
               
               <div className="space-y-3">
@@ -519,10 +519,39 @@ export const Leads: React.FC = () => {
                     }} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12}/></button>
                     
                     <div className="space-y-1.5 col-span-2">
-                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
-                      <textarea required placeholder="E.g., 2 boxes of damaged parts..." value={g.items} onChange={e => {
-                        const l = [...formData.grnList]; l[i].items = e.target.value; setFormData({...formData, grnList: l});
-                      }} className="w-full input-base text-xs py-1.5 min-h-[50px]"></textarea>
+                      <div className="flex justify-between items-center mb-1">
+                         <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
+                         <Button type="button" variant="ghost" size="sm" onClick={() => {
+                            const l = [...formData.grnList];
+                            if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                            l[i].items.push({description: '', qty: 1});
+                            setFormData({...formData, grnList: l});
+                         }} className="h-5 text-[9px] py-0 px-1"><Plus size={10} className="mr-1"/> Add Item</Button>
+                      </div>
+                      <div className="space-y-1.5">
+                         {(Array.isArray(g.items) ? g.items : (typeof g.items === 'string' && g.items.startsWith('[') ? JSON.parse(g.items) : [{description: g.items||'', qty: 1}])).map((item: any, idx: number) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                               <input className="input-base text-xs flex-1 py-1 h-7" placeholder="Item description" value={item.description} onChange={e => {
+                                  const l = [...formData.grnList];
+                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                                  l[i].items[idx].description = e.target.value;
+                                  setFormData({...formData, grnList: l});
+                               }} />
+                               <input type="number" className="input-base text-xs w-16 py-1 h-7" placeholder="Qty" value={item.qty} onChange={e => {
+                                  const l = [...formData.grnList];
+                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                                  l[i].items[idx].qty = Number(e.target.value);
+                                  setFormData({...formData, grnList: l});
+                               }} />
+                               <button type="button" onClick={() => {
+                                  const l = [...formData.grnList];
+                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                                  l[i].items.splice(idx, 1);
+                                  setFormData({...formData, grnList: l});
+                               }} className="text-red-400 hover:text-red-600"><X size={12} /></button>
+                            </div>
+                         ))}
+                      </div>
                     </div>
                     <div className="space-y-1.5 col-span-1">
                       <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Received By <span className="text-rex-500">*</span></label>

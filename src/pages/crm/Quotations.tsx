@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer } from 'lucide-react'
+import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -131,7 +132,7 @@ export const Quotations: React.FC = () => {
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
   const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string} | null>(null)
   const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
-  const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: string, receivedAt?: string, notes?: string } | null>(null)
+  const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string } | null>(null)
   const [printGrnData, setPrintGrnData] = useState<{ grn: any, group: any } | null>(null)
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
   const [quoteGrns, setQuoteGrns] = useState<Record<string, any[]>>({})
@@ -333,7 +334,7 @@ export const Quotations: React.FC = () => {
                                      Print Sample GRN
                                    </Button>
                                 ) : (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain }); }}>
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain, items: [{description: '', qty: 1}] }); }}>
                                      Receive Sample
                                    </Button>
                                 )}
@@ -649,15 +650,33 @@ export const Quotations: React.FC = () => {
       <Modal isOpen={!!grnDialog} onClose={() => setGrnDialog(null)} title="Receive Customer Sample (GRN)" size="md">
         <div className="p-6">
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-secondary mb-1">Items Received (Details/Qty)</label>
-              <textarea 
-                className="w-full bg-surface border border-theme-subtle rounded p-2 text-sm text-primary" 
-                rows={4}
-                value={grnDialog?.items || ''}
-                onChange={e => setGrnDialog(p => p ? { ...p, items: e.target.value } : null)}
-              ></textarea>
-            </div>
+                          <div>
+                <div className="flex justify-between items-center mb-1">
+                   <label className="block text-xs font-bold text-secondary">Items Received (Details/Qty)</label>
+                   <Button variant="ghost" size="sm" onClick={() => setGrnDialog(p => p ? { ...p, items: [...(p.items || []), {description: '', qty: 1}] } : null)} className="h-6 text-[10px]"><Plus size={12} className="mr-1"/> Add Item</Button>
+                </div>
+                <div className="space-y-2">
+                   {(grnDialog?.items || []).map((item: any, idx: number) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                         <input className="w-full bg-surface border border-theme-subtle rounded p-1.5 text-xs text-primary" placeholder="Item description" value={item.description} onChange={e => {
+                            const newItems = [...(grnDialog?.items || [])];
+                            newItems[idx].description = e.target.value;
+                            setGrnDialog(p => p ? { ...p, items: newItems } : null);
+                         }} />
+                         <input type="number" className="w-20 bg-surface border border-theme-subtle rounded p-1.5 text-xs text-primary" placeholder="Qty" value={item.qty} onChange={e => {
+                            const newItems = [...(grnDialog?.items || [])];
+                            newItems[idx].qty = Number(e.target.value);
+                            setGrnDialog(p => p ? { ...p, items: newItems } : null);
+                         }} />
+                         <button type="button" onClick={() => {
+                            const newItems = [...(grnDialog?.items || [])];
+                            newItems.splice(idx, 1);
+                            setGrnDialog(p => p ? { ...p, items: newItems } : null);
+                         }} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                      </div>
+                   ))}
+                </div>
+              </div>
             <div>
               <label className="block text-xs font-bold text-secondary mb-1">Received Date</label>
               <input 
@@ -684,7 +703,7 @@ export const Quotations: React.FC = () => {
                      quoteId: grnDialog.latestMain.id,
                      quoNo: grnDialog.group.quoNo,
                      leadId: grnDialog.group.leadId,
-                     items: grnDialog.items,
+                     items: JSON.stringify(grnDialog.items),
                      receivedAt: grnDialog.receivedAt,
                      receivedBy: 'System', // from auth
                      notes: grnDialog.notes
