@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Filter, LayoutGrid, List, User, Phone, FileText, Bell, Trash2 } from 'lucide-react'
+import { Plus, Filter, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useLeads, useFollowups, useCustomers } from '@/hooks/useData'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { useDialog } from '@/components/ui/DialogProvider'
-import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN } from '@/lib/api'
+import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
@@ -28,6 +28,7 @@ export const Leads: React.FC = () => {
   const [view, setView]     = useState<ViewMode>('kanban')
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [leadGrns, setLeadGrns] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
   
   // Custom Confirmation Modal State
@@ -35,8 +36,8 @@ export const Leads: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'lead' | 'quotation', id: string | number } | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
 
-  const [formData, setFormData] = useState({
-    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: ''
+  const [formData, setFormData] = useState<any>({
+    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '', grnList: []
   })
 
   const [leadQuotations, setLeadQuotations] = React.useState<any[]>([])
@@ -48,28 +49,23 @@ export const Leads: React.FC = () => {
     }
   }, [editId])
 
+    useEffect(() => {
+    fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
+  }, []);
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading leads...</div>
 
   const openCreateModal = () => {
     setEditId(null)
-    setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '' })
+        setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', grnList: [] })
     setIsModalOpen(true)
   }
 
   const openEditModal = (lead: any) => {
     setEditId(lead.id)
-    setFormData({
-      name: lead.name,
-      company: lead.company,
-      email: lead.email,
-      phone: lead.phone,
-      source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '',
-      priority: lead.priority,
-      value: String(lead.value),
-      stage: lead.stage,
-      isNewCustomer: false,
-      address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: ''
-    })
+          setFormData({
+        name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '', priority: lead.priority, value: String(lead.value), stage: lead.stage, isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '',
+        grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => ({ id: g.id, items: g.items, receivedBy: g.receivedBy || '', notes: g.notes || '' }))
+      })
     setIsModalOpen(true)
   }
 
@@ -86,7 +82,7 @@ export const Leads: React.FC = () => {
         value: Number(formData.value) || 0,
         lastActivity: toMySQLDate(new Date())
       }
-      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
+      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
         keysToRemove.forEach(k => delete (updatedLead as any)[k]);
         await updateLead(editId, updatedLead)
       } else {
@@ -124,24 +120,29 @@ export const Leads: React.FC = () => {
           } catch(e) {}
         }
 
-        const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
+        const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
         keysToRemove.forEach(k => delete (newLead as any)[k]);
         await createLead(newLead)
       }
 
-    if (formData.includeGRN && currentLeadId) {
-      await createCustomerGRN({
-        id: 'GRN-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
-        quoteId: '',
-        quoNo: '',
-        leadId: currentLeadId,
-        items: formData.grnItems,
-        receivedBy: formData.grnReceivedBy,
-        notes: 'Sample received during lead creation'
-      })
-    }
     
-    await refetch()
+      if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
+        for (const g of formData.grnList) {
+          if (g.id) {
+            await updateCustomerGRN(g.id, { items: g.items, receivedBy: g.receivedBy, notes: g.notes });
+          } else {
+            await createCustomerGRN({
+              id: 'GRN-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
+              quoteId: '', quoNo: '', leadId: currentLeadId,
+              items: g.items, receivedBy: g.receivedBy, notes: g.notes
+            });
+          }
+        }
+      }
+      
+      fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
+      
+      await refetch()
     setSubmitting(false)
     setIsModalOpen(false)
   }
@@ -498,32 +499,50 @@ export const Leads: React.FC = () => {
             </div>
           </div>
 
-          {/* Section: Customer Sample (GRN) */}
-          <div>
-            <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
-              <FileText size={14} className="text-emerald-500" />
-              Customer Sample (GRN)
-            </h3>
-            <div className="space-y-4">
-              <label className="flex items-center gap-2 text-sm text-primary">
-                <input type="checkbox" checked={formData.includeGRN} onChange={e => setFormData({...formData, includeGRN: e.target.checked})} className="rounded border-theme" />
-                Include Customer Sample (GRN)
-              </label>
+          
+            {/* Section: Customer Samples */}
+            <div>
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-theme-subtle">
+                <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                  <Package size={14} className="text-rex-500" /> Customer Samples
+                </h3>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setFormData({...formData, grnList: [...(formData.grnList || []), { items: '', receivedBy: '', notes: '' }]})} className="h-6 text-[10px]"><Plus size={12}/> Add Sample</Button>
+              </div>
               
-              {formData.includeGRN && (
-                <div className="grid grid-cols-2 gap-4 mt-2 p-3 bg-surface2 rounded-lg border border-theme-subtle">
-                  <div className="space-y-1.5 col-span-2">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
-                    <textarea required placeholder="E.g., 2 boxes of damaged parts..." value={formData.grnItems} onChange={e => setFormData({...formData, grnItems: e.target.value})} className="w-full input-base" rows={2}></textarea>
+              <div className="space-y-3">
+                {formData.grnList?.map((g: any, i: number) => (
+                  <div key={i} className="p-3 bg-surface2 rounded-lg border border-theme-subtle grid grid-cols-2 gap-3 relative group">
+                    <button type="button" onClick={() => {
+                        const newList = [...formData.grnList];
+                        newList.splice(i, 1);
+                        setFormData({...formData, grnList: newList});
+                    }} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12}/></button>
+                    
+                    <div className="space-y-1.5 col-span-2">
+                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
+                      <textarea required placeholder="E.g., 2 boxes of damaged parts..." value={g.items} onChange={e => {
+                        const l = [...formData.grnList]; l[i].items = e.target.value; setFormData({...formData, grnList: l});
+                      }} className="w-full input-base text-xs py-1.5 min-h-[50px]"></textarea>
+                    </div>
+                    <div className="space-y-1.5 col-span-1">
+                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Received By <span className="text-rex-500">*</span></label>
+                      <input type="text" required placeholder="Name of employee" value={g.receivedBy} onChange={e => {
+                        const l = [...formData.grnList]; l[i].receivedBy = e.target.value; setFormData({...formData, grnList: l});
+                      }} className="w-full input-base text-xs py-1.5 h-8" />
+                    </div>
+                    <div className="space-y-1.5 col-span-1">
+                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Notes</label>
+                      <input type="text" placeholder="Optional notes" value={g.notes} onChange={e => {
+                        const l = [...formData.grnList]; l[i].notes = e.target.value; setFormData({...formData, grnList: l});
+                      }} className="w-full input-base text-xs py-1.5 h-8" />
+                    </div>
                   </div>
-                  <div className="space-y-1.5 col-span-2">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Received By <span className="text-rex-500">*</span></label>
-                    <input type="text" required placeholder="Name of employee" value={formData.grnReceivedBy} onChange={e => setFormData({...formData, grnReceivedBy: e.target.value})} className="w-full input-base" />
-                  </div>
-                </div>
-              )}
+                ))}
+                {(!formData.grnList || formData.grnList.length === 0) && (
+                  <p className="text-xs text-muted text-center py-2 bg-surface rounded border border-dashed border-theme-subtle">No samples added yet.</p>
+                )}
+              </div>
             </div>
-          </div>
 
           {/* Section: Linked Follow-ups (Only visible in edit mode) */}
           {editId && (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -11,7 +11,7 @@ import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
-import { createQuotation, fetchQuotations, updateQuotation } from '@/lib/api'
+import { createQuotation, fetchQuotations, updateQuotation, fetchAllCustomerGRNs } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
@@ -238,6 +238,14 @@ export const QuotationBuilder: React.FC = () => {
   const [customerName, setCustomerName] = useState('')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [allGrns, setAllGrns] = useState<any[]>([]);
+  
+  useEffect(() => {
+    fetchAllCustomerGRNs().then(setAllGrns).catch(() => {});
+  }, []);
+  
+  const leadGrns = allGrns.filter(g => g.leadId === selectedLeadId || g.customerId === selectedLeadId);
+
 
   const handleCurrencyChange = (newCurrencyCode: string) => {
      if (!currencies || currencies.length === 0) return;
@@ -809,10 +817,18 @@ export const QuotationBuilder: React.FC = () => {
               <h2 className="text-[11px] font-medium text-secondary">Document Details</h2>
             </div>
             {selectedLeadId && (
-              <span className="flex items-center gap-1.5 text-[10px] text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Customer Linked
-              </span>
+              <div className="flex gap-2">
+                <span className="flex items-center gap-1.5 text-[10px] text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Customer Linked
+                </span>
+                {leadGrns.length > 0 && (
+                  <span className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20" title={leadGrns.map((g: any) => g.items).join(', ')}>
+                    <Package size={12} className="text-blue-500" />
+                    {leadGrns.length} Sample(s) Received
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
