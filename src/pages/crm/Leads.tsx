@@ -64,7 +64,7 @@ export const Leads: React.FC = () => {
     setEditId(lead.id)
           setFormData({
         name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '', priority: lead.priority, value: String(lead.value), stage: lead.stage, isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '',
-        grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => ({ id: g.id, items: (typeof g.items === 'string' && g.items.startsWith('[')) ? JSON.parse(g.items) : [{description: g.items || '', qty: 1}], receivedBy: g.receivedBy || '', notes: g.notes || '' }))
+        grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => ({ id: g.id, items: (typeof g.items === 'string' ? (() => { try { return JSON.parse(g.items) } catch(e) { return [{description: g.items||'', qty: 1}] } })() : (Array.isArray(g.items) ? g.items : [{description: g.items||'', qty: 1}])), receivedBy: g.receivedBy || '', notes: g.notes || '' }))
       })
     setIsModalOpen(true)
   }
@@ -129,12 +129,12 @@ export const Leads: React.FC = () => {
       if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
         for (const g of formData.grnList) {
           if (g.id) {
-            await updateCustomerGRN(g.id, { items: (typeof g.items === 'string' && g.items.startsWith('[')) ? JSON.parse(g.items) : [{description: g.items || '', qty: 1}], receivedBy: g.receivedBy, notes: g.notes });
+            await updateCustomerGRN(g.id, { items: typeof g.items === 'string' ? g.items : JSON.stringify(g.items), receivedBy: g.receivedBy, notes: g.notes });
           } else {
             await createCustomerGRN({
               id: 'GRN-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
               quoteId: '', quoNo: '', leadId: currentLeadId,
-              items: (typeof g.items === 'string' && g.items.startsWith('[')) ? JSON.parse(g.items) : [{description: g.items || '', qty: 1}], receivedBy: g.receivedBy, notes: g.notes
+              items: typeof g.items === 'string' ? g.items : JSON.stringify(g.items), receivedBy: g.receivedBy, notes: g.notes
             });
           }
         }
@@ -523,29 +523,29 @@ export const Leads: React.FC = () => {
                          <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
                          <Button type="button" variant="ghost" size="sm" onClick={() => {
                             const l = [...formData.grnList];
-                            if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                            if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
                             l[i].items.push({description: '', qty: 1});
                             setFormData({...formData, grnList: l});
                          }} className="h-5 text-[9px] py-0 px-1"><Plus size={10} className="mr-1"/> Add Item</Button>
                       </div>
                       <div className="space-y-1.5">
-                         {(Array.isArray(g.items) ? g.items : (typeof g.items === 'string' && g.items.startsWith('[') ? JSON.parse(g.items) : [{description: g.items||'', qty: 1}])).map((item: any, idx: number) => (
+                         {(Array.isArray(g.items) ? g.items : (typeof g.items === 'string' ? (() => { try { return JSON.parse(g.items) } catch(e) { return [{description: g.items||'', qty: 1}] } })() : [{description: g.items||'', qty: 1}])).map((item: any, idx: number) => (
                             <div key={idx} className="flex gap-2 items-center">
                                <input className="input-base text-xs flex-1 py-1 h-7" placeholder="Item description" value={item.description} onChange={e => {
                                   const l = [...formData.grnList];
-                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
                                   l[i].items[idx].description = e.target.value;
                                   setFormData({...formData, grnList: l});
                                }} />
                                <input type="number" className="input-base text-xs w-16 py-1 h-7" placeholder="Qty" value={item.qty} onChange={e => {
                                   const l = [...formData.grnList];
-                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
                                   l[i].items[idx].qty = Number(e.target.value);
                                   setFormData({...formData, grnList: l});
                                }} />
                                <button type="button" onClick={() => {
                                   const l = [...formData.grnList];
-                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' && l[i].items.startsWith('[') ? JSON.parse(l[i].items) : [{description: l[i].items||'', qty: 1}];
+                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
                                   l[i].items.splice(idx, 1);
                                   setFormData({...formData, grnList: l});
                                }} className="text-red-400 hover:text-red-600"><X size={12} /></button>

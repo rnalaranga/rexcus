@@ -578,12 +578,28 @@ app.post('/api/quotations', async (req, res) => {
   try {
     const data = req.body;
     const qType = data.type || 'customer';
+    
+    if (qType === 'draft') {
+      const [existing]: any = await db.query(
+        'SELECT id FROM quotations WHERE leadId = ? AND type = ? LIMIT 1',
+        [data.leadId, 'draft']
+      );
+      if (existing && existing.length > 0) {
+        const draftId = existing[0].id;
+        await db.query(
+          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=? WHERE id=?',
+          [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, new Date().toISOString().slice(0, 19).replace('T', ' '), draftId]
+        );
+        return res.json({ success: true, quotation: { id: draftId, version: 1, type: 'draft' } });
+      }
+    }
+
     // Version per leadId+type
     const [rows]: any = await db.query(
       'SELECT MAX(version) as maxVer FROM quotations WHERE leadId = ? AND type = ?',
       [data.leadId, qType]
     );
-    const nextVersion = (rows[0].maxVer || 0) + 1;
+    const nextVersion = (qType === 'draft') ? 1 : ((rows[0].maxVer || 0) + 1);
     
     const newQuotation = {
       id: `QT-${Date.now().toString().slice(-6)}`,
