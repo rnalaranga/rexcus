@@ -144,6 +144,7 @@ export interface BOM {
   autoMats: any[];
   manualMats: any[];
   procState: Record<string, { estHr: string; setTime: string; quoHr: string; hrRate?: number; setTimeRate?: number; rate?: number }>;
+  attachments?: any[];
 }
 
 export const QuotationBuilder: React.FC = () => {
@@ -327,6 +328,21 @@ export const QuotationBuilder: React.FC = () => {
 
   // --- BOMs ---
   const [boms, setBoms] = useState<BOM[]>([])
+
+  
+  const handleBomFileUpload = (bomId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+         if (ev.target?.result) {
+            setBoms(prev => prev.map(b => b.id === bomId ? { ...b, attachments: [...(b.attachments || []), { id: Date.now() + Math.random(), name: file.name, dataUrl: ev.target?.result as string, type: file.type }] } : b));
+         }
+      }
+      reader.readAsDataURL(file);
+    });
+  }
 
   const addBOM = () => {
     setBoms(prev => [...prev, {
