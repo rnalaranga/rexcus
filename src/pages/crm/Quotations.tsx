@@ -137,15 +137,12 @@ export const Quotations: React.FC = () => {
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
   const [quoteGrns, setQuoteGrns] = useState<Record<string, any[]>>({})
   const { settings } = useSettings()
-  const groupedQuotations = useMemo(() => {
-
-
-  useEffect(() => {
+    useEffect(() => {
     import('@/lib/api').then(({ fetchAllCustomerGRNs }) => {
       fetchAllCustomerGRNs().then(grns => {
         if (Array.isArray(grns)) {
            const map: Record<string, any[]> = {};
-           grns.forEach(g => {
+           grns.forEach((g: any) => {
               if (g.quoteId) {
                 if (!map[g.quoteId]) map[g.quoteId] = [];
                 map[g.quoteId].push(g);
@@ -155,7 +152,12 @@ export const Quotations: React.FC = () => {
         }
       }).catch(() => {});
     });
-  }, [groupedQuotations]);
+  }, []); // Remove groupedQuotations dependency, just run once on mount!
+
+  const groupedQuotations = useMemo(() => {
+
+
+
 
   
     const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
