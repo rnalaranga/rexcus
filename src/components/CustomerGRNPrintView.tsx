@@ -3,14 +3,16 @@ import { formatDate } from '@/lib/utils';
 
 export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: any }> = ({ grn, group, settings }) => {
   // Try to parse items string if it's JSON
-  let itemsList = [];
+    let itemsList: any[] = [];
   try {
     if (typeof grn.items === 'string' && grn.items.startsWith('[')) {
       itemsList = JSON.parse(grn.items);
     } else if (grn.items) {
       itemsList = [{ description: grn.items, qty: 1 }];
     }
-  } catch(e) {}
+  } catch (e) {
+    itemsList = [{ description: grn.items, qty: 1 }];
+  }
 
   return (
     

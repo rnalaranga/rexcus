@@ -596,7 +596,7 @@ export const Inventory: React.FC = () => {
             columns={[
               { header: 'Date', key: 'createdAt', render: (val: any) => new Date(val).toLocaleString() },
               { header: 'Customer/Lead', key: 'leadName', render: (_: any, row: any) => row.customerName || row.leadName || 'Unknown' },
-              { header: 'Items', key: 'items', render: (val: any) => val },
+              { header: 'Items', key: 'items', render: (val: any) => { try { const p = JSON.parse(val); if(Array.isArray(p)) return p.map(i => `${i.description} (x${i.qty})`).join(', '); return val; } catch(e){ return val; } } },
               { header: 'Received By', key: 'receivedBy', render: (val: any) => val },
               { header: 'Notes', key: 'notes', render: (val: any) => val || '-' },
             ]} 

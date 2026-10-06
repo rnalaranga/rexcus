@@ -567,9 +567,15 @@ export const CustomerDetail: React.FC = () => {
                        </div>
                      </div>
                      <div className="pl-14">
-                       <p className="text-sm text-secondary bg-surface2/50 p-2 rounded border border-theme-subtle">
-                         {g.items}
-                       </p>
+                       <div className="text-sm text-secondary bg-surface2/50 p-2 rounded border border-theme-subtle space-y-1">
+                           {(() => {
+                              try {
+                                const parsed = JSON.parse(g.items);
+                                if (Array.isArray(parsed)) return parsed.map((item: any, i: number) => <div key={i}>• {item.description} (Qty: {item.qty})</div>);
+                                return g.items;
+                              } catch(e) { return g.items; }
+                           })()}
+                         </div>
                        {g.notes && <p className="text-xs text-muted mt-1 italic">{g.notes}</p>}
                      </div>
                    </div>
