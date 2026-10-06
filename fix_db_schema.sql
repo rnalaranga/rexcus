@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `creditLimitStatus` varchar(50) DEFAULT 'approved',
   `currency` varchar(3) DEFAULT 'LKR',
   `isForeign` tinyint(1) DEFAULT '0',
+    `prefix` varchar(10) DEFAULT NULL,
+    `paymentTerms` text,
+    `deliveryTerms` text,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -403,6 +406,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `password_hash` varchar(255) NOT NULL,
   `role` varchar(50) DEFAULT 'user',
   `created_at` datetime DEFAULT NULL,
+    `prefix` varchar(10) DEFAULT NULL,
   `prefix` varchar(10) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`)
@@ -531,7 +535,8 @@ CREATE TABLE IF NOT EXISTS `customer_grns` (
   `receivedAt` datetime DEFAULT NULL,
   `receivedBy` varchar(100) DEFAULT NULL,
   `notes` text,
-  `createdAt` datetime DEFAULT NULL,
+  `status` varchar(50) DEFAULT 'In Stock',
+    `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
