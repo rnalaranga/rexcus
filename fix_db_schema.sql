@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
     `prefix` varchar(10) DEFAULT NULL,
     `paymentTerms` text,
     `deliveryTerms` text,
+      `contacts` text,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -556,3 +557,5 @@ ALTER TABLE customers ADD COLUMN paymentTerms TEXT;
 ALTER TABLE customers ADD COLUMN deliveryTerms TEXT;
 
 ALTER TABLE tax_profiles ADD COLUMN tax1_hidden TINYINT(1) DEFAULT '0';
+
+ALTER TABLE customers ADD COLUMN contacts TEXT;

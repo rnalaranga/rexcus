@@ -151,7 +151,7 @@ export const CustomerDetail: React.FC = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
-    await updateCustomer(customer.id, formData)
+    await updateCustomer(customer.id, { ...formData, contacts: JSON.stringify(formData.contacts) })
     await refetch()
     setSubmitting(false)
     setIsEditOpen(false)

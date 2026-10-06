@@ -246,6 +246,8 @@ export const QuotationBuilder: React.FC = () => {
   }, []);
   
   const leadGrns = allGrns.filter(g => g.leadId === selectedLeadId || g.customerId === selectedLeadId);
+    const currentEntity = customers?.find((c: any) => c.id === selectedLeadId) || leads?.find((l: any) => l.id === selectedLeadId);
+    const currentContacts = (() => { try { return typeof currentEntity?.contacts === 'string' ? JSON.parse(currentEntity.contacts) : (currentEntity?.contacts || []); } catch { return []; } })();
 
 
   const handleCurrencyChange = (newCurrencyCode: string) => {
@@ -877,9 +879,26 @@ export const QuotationBuilder: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] text-muted mb-1.5">Attention To</label>
-                    <input type="text" value={attention} onChange={e => setAttention(e.target.value)}
-                      placeholder="Mr. / Ms." className={docInputClass} />
+                    <label className="block text-[11px] text-muted mb-1.5 flex justify-between items-center">
+                        Attention To
+                        {currentContacts.length > 0 && (
+                          <select 
+                            className="bg-transparent border-none text-[10px] text-rex-500 font-bold outline-none text-right cursor-pointer"
+                            onChange={e => {
+                               if (e.target.value) {
+                                  setAttention(e.target.value);
+                               }
+                            }}
+                          >
+                            <option value="">(Select Contact)</option>
+                            {currentContacts.map((c: any, i: number) => (
+                               <option key={i} value={`${c.name}${c.designation ? ` - ${c.designation}` : ''}`}>{c.name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </label>
+                      <input type="text" value={attention} onChange={e => setAttention(e.target.value)}
+                        placeholder="Mr. / Ms." className={docInputClass} />
                   </div>
                   <div>
                     <label className="block text-[11px] text-muted mb-1.5">Customer VAT</label>

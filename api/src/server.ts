@@ -241,6 +241,7 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
       "ALTER TABLE customers ADD COLUMN paymentTerms TEXT",
       "ALTER TABLE customers ADD COLUMN deliveryTerms TEXT",
+      "ALTER TABLE customers ADD COLUMN contacts TEXT",
       "ALTER TABLE tax_profiles ADD COLUMN tax1_hidden TINYINT(1) DEFAULT '0'",
             "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
       "ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock'"
