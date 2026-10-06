@@ -45,7 +45,9 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const custDiscount = data.custDiscount || 0
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
   
-  const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 }
+  const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 };
+  const isHidden = data.taxEnabled && data.selectedProfile?.tax1_hidden === 1;
+  const multiplier = isHidden ? (1 + (Number(data.selectedProfile?.tax1_rate) || 0) / 100) : 1;
   
   const custTerms = data.custTerms || ''
   const custValidity = data.custValidity || ''
@@ -167,12 +169,12 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             </div>
             <div className="w-[15%] p-2 border-r border-black text-right flex flex-col gap-4">
                {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{(item.unitPrice || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                 <div key={idx}>{((item.unitPrice || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
               ))}
             </div>
             <div className="w-[20%] p-2 text-right flex flex-col gap-4">
                {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{((item.qty * item.unitPrice) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                 <div key={idx}>{(((item.qty * item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
               ))}
             </div>
           </div>
@@ -198,7 +200,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                </div>
             )}
 
-            {data.selectedProfile && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
+            {data.selectedProfile && !isHidden && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
                  <div className="flex border-b border-black items-center h-8">
                    <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</div>
                    <div className="w-[15%] text-center">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</div>

@@ -517,6 +517,7 @@ CREATE TABLE IF NOT EXISTS `tax_profiles` (
   `tax2_name` varchar(50) DEFAULT NULL,
   `tax2_rate` decimal(5,2) DEFAULT '0.00',
   `tax2_compound` tinyint(1) DEFAULT '0',
+    `tax1_hidden` tinyint(1) DEFAULT '0',
   `accountId` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -553,3 +554,5 @@ ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock';
 
 ALTER TABLE customers ADD COLUMN paymentTerms TEXT;
 ALTER TABLE customers ADD COLUMN deliveryTerms TEXT;
+
+ALTER TABLE tax_profiles ADD COLUMN tax1_hidden TINYINT(1) DEFAULT '0';

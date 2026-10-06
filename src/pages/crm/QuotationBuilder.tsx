@@ -1392,9 +1392,9 @@ export const QuotationBuilder: React.FC = () => {
                 </h3>
                 
                 <div className="space-y-4 relative z-10">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted font-medium">Sub Total</span>
-                    <span className="font-mono font-semibold text-secondary text-sm">{formatCurrency(custSubtotal)}</span>
+                                    <div className="flex justify-between items-center text-xs">
+                    <span className="text-muted font-medium">{taxEnabled && selectedProfile?.tax1_hidden ? `Sub Total (incl. ${selectedProfile.tax1_name})` : 'Sub Total'}</span>
+                    <span className="font-mono font-semibold text-secondary text-sm">{formatCurrency(taxEnabled && selectedProfile?.tax1_hidden ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100)) : custSubtotal)}</span>
                   </div>
                   
                   <div className="flex items-center justify-between text-xs group">
@@ -1405,15 +1405,25 @@ export const QuotationBuilder: React.FC = () => {
                             className="w-14 bg-transparent text-center text-[12px] font-bold text-primary outline-none" />
                           <span className="text-[10px] text-muted pr-1">%</span>
                       </div>
-                      <span className="font-mono text-red-500/90 font-semibold text-[12px] w-20 text-right">-{formatCurrency(custDiscountAmt)}</span>
+                      <span className="font-mono text-red-500/90 font-semibold text-[12px] w-20 text-right">-{formatCurrency(taxEnabled && selectedProfile?.tax1_hidden ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100) : custDiscountAmt)}</span>
                     </div>
                   </div>
                   
-                  {Number(settings?.vat_percentage || 0) > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-muted font-medium">VAT ({Number(settings?.vat_percentage || 0)}%)</span>
-                      <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custTotal * (Number(settings?.vat_percentage || 0)/100))}</span>
-                    </div>
+                                    {taxEnabled && selectedProfile && (
+                    <>
+                      {(!selectedProfile.tax1_hidden && custSscl > 0) && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-muted font-medium">{selectedProfile.tax1_name} ({selectedProfile.tax1_rate}%)</span>
+                          <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custSscl)}</span>
+                        </div>
+                      )}
+                      {custVat > 0 && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-muted font-medium">{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}%)</span>
+                          <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custVat)}</span>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <div className="pt-4 mt-2 border-t border-dashed border-theme-subtle/50">
