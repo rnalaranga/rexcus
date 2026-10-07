@@ -339,7 +339,12 @@ app.delete('/api/users/:id', async (req, res) => {
 // -- CUSTOMERS --
 app.get('/api/customers', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM customers ORDER BY joinDate DESC');
+    const [rows] = await db.query('SELECT * FROM customers ORDER BY joinDate DESC') as any[];
+    for (const r of rows) {
+      if (typeof r.contacts === 'string') {
+        try { r.contacts = JSON.parse(r.contacts); } catch(e) { r.contacts = []; }
+      }
+    }
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -351,6 +356,7 @@ app.get('/api/customers', async (req, res) => {
 app.post('/api/customers', async (req, res) => {
   try {
     const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     let isPending = false;
     
     if (data.creditLimit && Number(data.creditLimit) > 0) {
@@ -394,6 +400,7 @@ app.put('/api/customers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     
     const [existingRows] = await db.query('SELECT creditLimit, requiresAdvance, creditDays FROM customers WHERE id = ?', [id]);
     if (existingRows.length > 0) {
@@ -475,7 +482,8 @@ app.get('/api/leads', async (req, res) => {
 
 app.post('/api/leads', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const [result] = await db.query('INSERT INTO leads SET ?', data);
     
     res.json({ success: true, id: data.id });
@@ -488,7 +496,8 @@ app.post('/api/leads', async (req, res) => {
 app.put('/api/leads/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('UPDATE leads SET ? WHERE id = ?', [data, id]);
     
     res.json({ success: true, id });
@@ -512,7 +521,8 @@ app.delete('/api/leads/:id', async (req, res) => {
 app.put('/api/deals/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('UPDATE deals SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
   } catch (error) {
@@ -545,7 +555,8 @@ app.get('/api/deals', async (req, res) => {
 
 app.post('/api/deals', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const [result] = await db.query('INSERT INTO deals SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) {
@@ -578,7 +589,8 @@ app.get('/api/quotations/:leadId', async (req, res) => {
 
 app.post('/api/quotations', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const qType = data.type || 'customer';
     
     if (qType === 'draft') {
@@ -625,7 +637,8 @@ app.post('/api/quotations', async (req, res) => {
 app.put('/api/quotations/update/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query(
       'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, type=? WHERE id=?',
       [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, data.type || 'customer', id]
@@ -691,7 +704,8 @@ app.get('/api/crm/grns/:quoteId', async (req, res) => {
 
 app.post('/api/crm/grns', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     
     // Auto-generate GRN ID (S-XXXX)
     let grnId = data.id;
@@ -739,7 +753,8 @@ app.get('/api/inventory', async (req, res) => {
 
 app.post('/api/inventory', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const item = {
       ...data,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -756,7 +771,8 @@ app.post('/api/inventory', async (req, res) => {
 app.put('/api/inventory/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE inventory SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
@@ -804,7 +820,8 @@ app.get('/api/inventory/ledger/wo/:woId', async (req, res) => {
 app.post('/api/inventory/:id/ledger', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     
     const entry = {
         id: 'LGR-' + Date.now().toString().slice(-5),
@@ -837,7 +854,8 @@ app.get('/api/purchasing/mrs', async (req, res) => {
 });
 app.post('/api/purchasing/mrs', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO material_requests SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -857,7 +875,8 @@ app.get('/api/purchasing/pos', async (req, res) => {
 });
 app.post('/api/purchasing/pos', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO purchase_orders SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -877,7 +896,8 @@ app.get('/api/purchasing/grns', async (req, res) => {
 });
 app.post('/api/purchasing/grns', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO grns SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -897,7 +917,8 @@ app.get('/api/purchasing/bills', async (req, res) => {
 });
 app.post('/api/purchasing/bills', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO supplier_bills SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -922,7 +943,8 @@ app.get('/api/suppliers', async (req, res) => {
 
 app.post('/api/suppliers', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const item = {
       ...data,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -939,7 +961,8 @@ app.post('/api/suppliers', async (req, res) => {
 app.put('/api/suppliers/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE suppliers SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
@@ -984,7 +1007,8 @@ app.get('/api/followups/related/:type/:id', async (req, res) => {
 
 app.post('/api/followups', async (req, res) => {
     try {
-      const data = req.body;
+      const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
       if (!data.id) {
         data.id = 'FOL-' + Date.now().toString().slice(-6);
         data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -1000,7 +1024,8 @@ app.post('/api/followups', async (req, res) => {
 app.put('/api/followups/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('UPDATE followups SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
   } catch (error) {
@@ -1053,7 +1078,8 @@ app.get('/api/invoices', async (req, res) => {
 
 app.post('/api/invoices', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO invoices SET ?', data);
     
     // Auto GL: Accrual Basis - Record Receivable & Sales
@@ -1141,7 +1167,8 @@ app.post('/api/invoices', async (req, res) => {
 app.put('/api/invoices/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('UPDATE invoices SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
   } catch (error) {
@@ -1310,7 +1337,8 @@ app.get('/api/supplier-ledger/:supplierId', async (req, res) => {
 
 app.post('/api/supplier-ledger', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const item = {
       ...data,
       id: `SL-${Date.now().toString().slice(-8)}`,
@@ -1381,7 +1409,8 @@ app.post('/api/finance/accounts/import', async (req, res) => {
 
 app.post('/api/finance/accounts', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO chart_of_accounts SET ?', data);
     res.json({ success: true });
@@ -1390,7 +1419,8 @@ app.post('/api/finance/accounts', async (req, res) => {
 
 app.put('/api/finance/accounts/:id', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE chart_of_accounts SET ? WHERE id = ?', [data, req.params.id]);
     res.json({ success: true });
@@ -1470,7 +1500,8 @@ app.get('/api/finance/tax-profiles', async (req, res) => {
 
 app.post('/api/finance/tax-profiles', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO tax_profiles SET ?', data);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -1479,7 +1510,8 @@ app.post('/api/finance/tax-profiles', async (req, res) => {
 app.put('/api/finance/tax-profiles/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('UPDATE tax_profiles SET ? WHERE id = ?', [data, id]);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -1495,7 +1527,8 @@ app.delete('/api/finance/tax-profiles/:id', async (req, res) => {
 
 app.post('/api/finance/taxes', async (req, res) => {
   try {
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO tax_rates SET ?', data);
     res.json({ success: true });

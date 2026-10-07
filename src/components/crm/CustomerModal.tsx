@@ -3,7 +3,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { createCustomer } from '@/lib/api'
 import { toMySQLDate } from '@/lib/utils'
-import { Building2, Briefcase, User, MapPin, Search, Tags, CheckCircle2 } from 'lucide-react'
+import { Building2, Briefcase, User, Users, Plus, Trash2, MapPin, Search, Tags, CheckCircle2 } from 'lucide-react'
 
 interface CustomerModalProps {
   isOpen: boolean
@@ -14,7 +14,7 @@ interface CustomerModalProps {
 export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState({
-    prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false, contacts: []
+    prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false, contacts: [] as any[]
   })
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
@@ -36,7 +36,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
       await createCustomer(newCustomer)
       if (onSuccess) onSuccess(newCustomer)
       onClose()
-      setFormData({ prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false, contacts: [] })
+      setFormData({ prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false, contacts: [] as any[] })
     } catch (err: any) {
       alert('Failed to create customer: ' + err.message)
     } finally {
@@ -168,6 +168,72 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
               </div>
             </div>
           </div>
+
+          
+          {/* Section: Additional Contacts */}
+          <div className="col-span-full">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-theme-subtle">
+              <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <Users size={14} className="text-purple-500" />
+                Additional Contacts
+              </h3>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setFormData(f => ({...f, contacts: [...(f.contacts || []), { id: Date.now(), name: '', designation: '', phone: '', email: '' }] }))} icon={Plus}>Add Contact</Button>
+            </div>
+            
+            <div className="space-y-3">
+              {(formData.contacts || []).map((c: any, i: number) => (
+                <div key={c.id || i} className="flex items-start gap-2 bg-surface2 p-3 rounded-lg border border-theme-subtle/50 relative">
+                  <div className="grid grid-cols-4 gap-3 flex-1">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Name</label>
+                      <input value={c.name} onChange={e => {
+                        const newContacts = [...formData.contacts];
+                        newContacts[i].name = e.target.value;
+                        setFormData({...formData, contacts: newContacts});
+                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="John Doe" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Designation</label>
+                      <input value={c.designation} onChange={e => {
+                        const newContacts = [...formData.contacts];
+                        newContacts[i].designation = e.target.value;
+                        setFormData({...formData, contacts: newContacts});
+                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="Manager" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Phone</label>
+                      <input value={c.phone} onChange={e => {
+                        const newContacts = [...formData.contacts];
+                        newContacts[i].phone = e.target.value;
+                        setFormData({...formData, contacts: newContacts});
+                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="+94 7X..." />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Email</label>
+                      <input value={c.email} onChange={e => {
+                        const newContacts = [...formData.contacts];
+                        newContacts[i].email = e.target.value;
+                        setFormData({...formData, contacts: newContacts});
+                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="john@..." />
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => {
+                    const newContacts = [...formData.contacts];
+                    newContacts.splice(i, 1);
+                    setFormData({...formData, contacts: newContacts});
+                  }} className="text-red-500 hover:bg-red-500/10 p-1.5 rounded mt-5">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              {(!formData.contacts || formData.contacts.length === 0) && (
+                <div className="text-center py-4 border border-dashed border-theme-subtle rounded-lg text-xs text-muted">
+                  No additional contacts added yet.
+                </div>
+              )}
+            </div>
+          </div>
+
 
           {/* Section: Bank Details */}
           <div>

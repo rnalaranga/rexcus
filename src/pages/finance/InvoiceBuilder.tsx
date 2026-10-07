@@ -51,7 +51,7 @@ const docInputClass = "w-full bg-surface border border-theme-subtle px-3 py-2 ro
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-black/10 dark:hover:border-white/10 focus:border-blue-500 focus:bg-surface px-2 py-1 text-xs outline-none transition-all";
 
 // ─── Print Preview ────────────────────────────────────────────────────────────
-export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, selectedTaxes, taxProfile, taxBreakdown }) => {
+export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, selectedTaxes, taxProfile, taxBreakdown, attention }) => {
 
   if (template.startsWith('government')) {
     const isInclusive = template === 'government_inclusive';
@@ -133,6 +133,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                     <td style={{ fontWeight: '700', verticalAlign: 'top' }}>
                       {customer?.company || customer?.name || '-'}
                       {customer?.name && customer?.company && <><br/>{customer.name}</>}
+                      {attention && <><br/>Attn: {attention}</>}
                     </td>
                   </tr>
                   <tr>
@@ -358,6 +359,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
           {customer ? (
             <>
               <div style={{ fontWeight: 700, fontSize: 13 }}>{customer.name}</div>
+              {attention && <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>Attn: {attention}</div>}
               <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.company}</div>
               {customer.email && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.email}</div>}
               {customer.phone && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.phone}</div>}
@@ -483,6 +485,7 @@ export const InvoiceBuilder: React.FC = () => {
 
   const [docNo, setDocNo] = useState('');
   const [customerId, setCustomerId] = useState('');
+  const [attention, setAttention] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -570,7 +573,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     try {
-      const res = await createInvoice({ id: docNo, invoiceNo: docNo, customerId, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType, taxProfileId, taxBreakdown: JSON.stringify(taxBreakdown) });
+      const res = await createInvoice({ id: docNo, invoiceNo: docNo, customerId, attention, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType, taxProfileId, taxBreakdown: JSON.stringify(taxBreakdown) });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
@@ -586,7 +589,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     win.document.close(); win.focus(); win.print();
   };
 
-  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, taxProfile: selectedTaxProfile, taxBreakdown };
+  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, taxProfile: selectedTaxProfile, taxBreakdown, attention };
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative animate-fade-in">

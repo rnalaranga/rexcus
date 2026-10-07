@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -168,7 +168,7 @@ export const CustomerDetail: React.FC = () => {
     { icon: Phone,     label: 'Secondary Phone', value: customer.phone2 || 'Not Set' },
     { icon: MapPin,    label: 'Address',         value: customer.address || 'Not Set' },
     { icon: Building2, label: 'Industry',        value: customer.industry || 'Not Set' },
-    { icon: User,      label: 'Account Manager', value: customer.accountManager || 'System Admin' },
+    { icon: User, Plus,      label: 'Account Manager', value: customer.accountManager || 'System Admin' },
     { icon: Calendar,  label: 'Customer Since',  value: formatDate(customer.joinDate) },
     { icon: Calendar,  label: 'Last Order',      value: relativeTime(customer.lastOrder) },
   ]
@@ -180,7 +180,7 @@ export const CustomerDetail: React.FC = () => {
     { icon: Building2, label: 'Currency',        value: customer.currency || 'LKR' },
     { icon: Building2, label: 'Credit Limit',    value: customer.creditLimit ? formatCurrency(customer.creditLimit, false, customer.currency) : 'Not Set' },
     { icon: Building2, label: 'Payment Terms',   value: customer.creditDays ? `${customer.creditDays} Days` : 'Not Set' },
-    { icon: User,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
+    { icon: User, Plus,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
     { icon: Mail,      label: 'Billing Email',   value: customer.financeContactEmail || 'Not Set' },
     { icon: Building2, label: 'Bank Details',    value: customer.bankAccountNo ? `${customer.bankAccountNo} - ${customer.bankName} ${customer.bankBranch}` : 'Not Set' },
   ]
@@ -256,10 +256,10 @@ export const CustomerDetail: React.FC = () => {
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h1 className="text-xl font-bold text-primary">{customer.name}</h1>
+                  <h1 className="text-xl font-bold text-primary">{customer.company}</h1>
                   {customer.status === 'vip' && <Star size={14} className="text-rex-500 fill-rex-500" />}
                 </div>
-                <p className="text-sm text-secondary">{customer.company}</p>
+                <p className="text-sm text-secondary">{customer.name}</p>
                 <div className="flex items-center gap-3 mt-0.5">
                   <p className="text-xs text-muted font-mono">{customer.id}</p>
                   <div className="w-px h-3 bg-theme-subtle"></div>

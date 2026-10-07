@@ -317,10 +317,10 @@ export const Leads: React.FC = () => {
                       onDragStart={(e) => handleDragStart(e, lead.id)}
                     >
                       <div className="flex items-start justify-between mb-1.5">
-                        <p className="text-xs font-medium text-primary leading-snug flex-1 mr-1">{lead.name}</p>
+                        <p className="text-xs font-medium text-primary leading-snug flex-1 mr-1">{lead.company}</p>
                         <Badge value={lead.priority} size="sm" />
                       </div>
-                      <p className="text-[10px] text-muted mb-1 truncate">{lead.company}</p>
+                      <p className="text-[10px] text-muted mb-1 truncate">{lead.name}</p>
                       {lead.description && <p className="text-[9px] text-secondary mb-2 line-clamp-2 italic border-l-2 border-theme-subtle pl-1">{lead.description}</p>}
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] text-rex-600 dark:text-rex-300 font-semibold">{formatCurrency(lead.value)}</span>
@@ -391,7 +391,7 @@ export const Leads: React.FC = () => {
               {!formData.isNewCustomer ? (
                 <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Select Customer <span className="text-rex-500">*</span></label>
-                  <SearchableSelect
+<SearchableSelect
                     options={customers.map((c: any) => ({ value: c.id, label: c.company ? `${c.company} (${c.name})` : c.name }))}
                     value={formData.customerId}
                     onChange={(val) => {
@@ -417,6 +417,30 @@ export const Leads: React.FC = () => {
                     }}
                     placeholder="Search existing customer..."
                   />
+                  {formData.customerId && (() => {
+                     const sc = customers.find((x:any) => x.id === formData.customerId);
+                     if (sc && sc.contacts && sc.contacts.length > 0) {
+                        return (
+                           <div className="mt-3 bg-surface p-2 rounded border border-theme-subtle">
+                             <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1 block">Attention / Contact Person</label>
+                             <select className="w-full input-base text-xs" onChange={e => {
+                                 if (!e.target.value) {
+                                     setFormData((f: any) => ({...f, name: sc.name, email: sc.email, phone: sc.phone}));
+                                 } else {
+                                     const contact = sc.contacts.find((x:any) => x.id.toString() === e.target.value);
+                                     if (contact) setFormData((f: any) => ({...f, name: contact.name, email: contact.email, phone: contact.phone}));
+                                 }
+                             }}>
+                                <option value="">{sc.name} (Primary)</option>
+                                {sc.contacts.map((c: any, i: number) => (
+                                   <option key={i} value={c.id}>{c.name} {c.designation ? `- ${c.designation}` : ''}</option>
+                                ))}
+                             </select>
+                           </div>
+                        );
+                     }
+                     return null;
+                  })()}
                 </div>
               ) : (
                 <>

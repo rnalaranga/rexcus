@@ -303,6 +303,7 @@ export const QuotationBuilder: React.FC = () => {
      if (leadId && lead) {
         setCustomerName(lead.name + (lead.company ? ` (${lead.company})` : ''))
         setSelectedLeadId(lead.id)
+        if (!attention) setAttention(lead.name || '')
      }
   }, [leadId, lead])
 
