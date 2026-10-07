@@ -46,7 +46,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
   
   const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 };
-  const isHidden = data.taxEnabled && data.selectedProfile?.tax1_hidden === 1;
+  const isHidden = data.taxEnabled && data.selectedProfile?.tax1_show_separately === 0;
   const multiplier = isHidden ? (1 + (Number(data.selectedProfile?.tax1_rate) || 0) / 100) : 1;
   
   const custTerms = data.custTerms || ''
@@ -210,7 +210,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                  </div>
             )}
             
-            {data.selectedProfile && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
+            {data.selectedProfile && data.selectedProfile.tax2_show_separately === 1 && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
                  <div className="flex border-b border-black items-center h-8">
                    <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</div>
                    <div className="w-[15%] text-center">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</div>
