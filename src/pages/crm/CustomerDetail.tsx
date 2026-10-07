@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -168,7 +168,7 @@ export const CustomerDetail: React.FC = () => {
     { icon: Phone,     label: 'Secondary Phone', value: customer.phone2 || 'Not Set' },
     { icon: MapPin,    label: 'Address',         value: customer.address || 'Not Set' },
     { icon: Building2, label: 'Industry',        value: customer.industry || 'Not Set' },
-    { icon: User, Plus,      label: 'Account Manager', value: customer.accountManager || 'System Admin' },
+    { icon: User, Users, Trash2, Plus,      label: 'Account Manager', value: customer.accountManager || 'System Admin' },
     { icon: Calendar,  label: 'Customer Since',  value: formatDate(customer.joinDate) },
     { icon: Calendar,  label: 'Last Order',      value: relativeTime(customer.lastOrder) },
   ]
@@ -180,7 +180,7 @@ export const CustomerDetail: React.FC = () => {
     { icon: Building2, label: 'Currency',        value: customer.currency || 'LKR' },
     { icon: Building2, label: 'Credit Limit',    value: customer.creditLimit ? formatCurrency(customer.creditLimit, false, customer.currency) : 'Not Set' },
     { icon: Building2, label: 'Payment Terms',   value: customer.creditDays ? `${customer.creditDays} Days` : 'Not Set' },
-    { icon: User, Plus,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
+    { icon: User, Users, Trash2, Plus,      label: 'Billing Contact', value: customer.financeContactName ? `${customer.financeContactName} ${customer.financeContactPhone ? `(${customer.financeContactPhone})` : ''}` : 'Not Set' },
     { icon: Mail,      label: 'Billing Email',   value: customer.financeContactEmail || 'Not Set' },
     { icon: Building2, label: 'Bank Details',    value: customer.bankAccountNo ? `${customer.bankAccountNo} - ${customer.bankName} ${customer.bankBranch}` : 'Not Set' },
   ]
@@ -318,8 +318,25 @@ export const CustomerDetail: React.FC = () => {
                   </div>
                 )
               })}
+
             </div>
+
+            {customer.contacts && customer.contacts.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-theme-subtle">
+                <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest mb-3">Additional Contacts</h2>
+                <div className="space-y-3">
+                  {customer.contacts.map((c: any, i: number) => (
+                    <div key={i} className="bg-surface2 p-2.5 rounded border border-theme-subtle/50">
+                      <p className="text-xs font-semibold text-primary">{c.name} {c.designation ? <span className="text-[10px] font-normal text-muted">- {c.designation}</span> : ''}</p>
+                      {c.phone && <p className="text-[10px] text-secondary mt-1 flex items-center gap-1.5"><Phone size={10} /> {c.phone}</p>}
+                      {c.email && <p className="text-[10px] text-secondary mt-0.5 flex items-center gap-1.5"><Mail size={10} /> {c.email}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </GlassCard>
+
 
           <GlassCard className="col-span-1 lg:col-span-2 p-5">
             <div className="flex items-center justify-between mb-4">
@@ -432,8 +449,25 @@ export const CustomerDetail: React.FC = () => {
                   </div>
                 )
               })}
+
             </div>
+
+            {customer.contacts && customer.contacts.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-theme-subtle">
+                <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest mb-3">Additional Contacts</h2>
+                <div className="space-y-3">
+                  {customer.contacts.map((c: any, i: number) => (
+                    <div key={i} className="bg-surface2 p-2.5 rounded border border-theme-subtle/50">
+                      <p className="text-xs font-semibold text-primary">{c.name} {c.designation ? <span className="text-[10px] font-normal text-muted">- {c.designation}</span> : ''}</p>
+                      {c.phone && <p className="text-[10px] text-secondary mt-1 flex items-center gap-1.5"><Phone size={10} /> {c.phone}</p>}
+                      {c.email && <p className="text-[10px] text-secondary mt-0.5 flex items-center gap-1.5"><Mail size={10} /> {c.email}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </GlassCard>
+
           <div className="col-span-1 lg:col-span-3">
             <GlassCard className="p-0 overflow-hidden h-full">
               <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
@@ -782,6 +816,71 @@ export const CustomerDetail: React.FC = () => {
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Phone Number</label>
                   <input value={formData.financeContactPhone} onChange={e => setFormData({...formData, financeContactPhone: e.target.value})} className="w-full input-base" />
                 </div>
+              </div>
+            </div>
+
+
+            {/* Section: Additional Contacts */}
+            <div className="col-span-full mt-4">
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-theme-subtle">
+                <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                  <Users size={14} className="text-purple-500" />
+                  Additional Contacts
+                </h3>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setFormData((f: any) => ({...f, contacts: [...(f.contacts || []), { id: Date.now(), name: '', designation: '', phone: '', email: '' }] }))} icon={Plus}>Add Contact</Button>
+              </div>
+              
+              <div className="space-y-3">
+                {(formData.contacts || []).map((c: any, i: number) => (
+                  <div key={c.id || i} className="flex items-start gap-2 bg-surface2 p-3 rounded-lg border border-theme-subtle/50 relative">
+                    <div className="grid grid-cols-4 gap-3 flex-1">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Name</label>
+                        <input value={c.name} onChange={e => {
+                          const newContacts = [...formData.contacts];
+                          newContacts[i].name = e.target.value;
+                          setFormData({...formData, contacts: newContacts});
+                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="John Doe" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Designation</label>
+                        <input value={c.designation} onChange={e => {
+                          const newContacts = [...formData.contacts];
+                          newContacts[i].designation = e.target.value;
+                          setFormData({...formData, contacts: newContacts});
+                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="Manager" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Phone</label>
+                        <input value={c.phone} onChange={e => {
+                          const newContacts = [...formData.contacts];
+                          newContacts[i].phone = e.target.value;
+                          setFormData({...formData, contacts: newContacts});
+                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="+94 7X..." />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Email</label>
+                        <input value={c.email} onChange={e => {
+                          const newContacts = [...formData.contacts];
+                          newContacts[i].email = e.target.value;
+                          setFormData({...formData, contacts: newContacts});
+                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="john@..." />
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => {
+                      const newContacts = [...formData.contacts];
+                      newContacts.splice(i, 1);
+                      setFormData({...formData, contacts: newContacts});
+                    }} className="text-red-500 hover:bg-red-500/10 p-1.5 rounded mt-5">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                {(!formData.contacts || formData.contacts.length === 0) && (
+                  <div className="text-center py-4 border border-dashed border-theme-subtle rounded-lg text-xs text-muted">
+                    No additional contacts added yet.
+                  </div>
+                )}
               </div>
             </div>
 
