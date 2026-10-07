@@ -510,7 +510,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
 
   const selectedCustomer = customers.find(c => c.id === customerId);
 
-  const customerOptions = customers.map(c => ({ value: c.id, label: `${c.name} (${c.company})`, group: c.segment || 'Customers', extra: c.email || '' }));
+  const customerOptions = customers.map(c => ({ value: c.id, label: c.company ? `${c.company} (${c.name})` : c.name, group: c.segment || 'Customers', extra: c.email || '' }));
   const itemOptions = inventory.map(i => ({ value: i.id, label: `${i.sku} - ${i.name}`, group: i.category || 'Products', extra: `Stock: ${i.qtyOnHand}` }));
 
   useEffect(() => {

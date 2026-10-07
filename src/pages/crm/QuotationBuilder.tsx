@@ -121,9 +121,9 @@ const LeadSearchInput: React.FC<LeadSearchProps> = ({ value, onChange, onSelect,
         <ul style={{ top: wrapRef.current?.getBoundingClientRect().bottom! + window.scrollY, left: wrapRef.current?.getBoundingClientRect().left! + window.scrollX, width: Math.max(wrapRef.current?.getBoundingClientRect().width || 0, 300) }} className="absolute z-[99999] mt-1 bg-surface border border-theme-subtle/40 shadow-glass rounded-xl py-1 max-h-48 overflow-y-auto">
           {filtered.map((l, i) => (
             <li key={i} className="px-3 py-1.5 text-xs hover:bg-surface2 cursor-pointer flex justify-between items-center"
-              onMouseDown={e => { e.preventDefault(); onSelect(l.id, l.name); onChange(l.name); setOpen(false) }}>
-              <span className="text-primary font-medium">{l.name}</span>
-              {l.company && <span className="text-[10px] text-muted ml-2">{l.company}</span>}
+              onMouseDown={e => { e.preventDefault(); const disp = l.company || l.name; onSelect(l.id, disp); onChange(disp); setOpen(false) }}>
+              <span className="text-primary font-medium">{l.company || l.name}</span>
+              {l.company && l.name && <span className="text-[10px] text-muted ml-2">{l.name}</span>}
             </li>
           ))}
         </ul>,
@@ -301,7 +301,7 @@ export const QuotationBuilder: React.FC = () => {
 
   useEffect(() => {
      if (leadId && lead) {
-        setCustomerName(lead.name + (lead.company ? ` (${lead.company})` : ''))
+        setCustomerName(lead.company || lead.name)
         setSelectedLeadId(lead.id)
         if (!attention) setAttention(lead.name || '')
      }
@@ -882,7 +882,7 @@ export const QuotationBuilder: React.FC = () => {
                   <div>
                     <label className="block text-[11px] text-muted mb-1.5 flex justify-between items-center">
                         Attention To
-                        {currentContacts.length > 0 && (
+                        {currentEntity && (currentContacts.length > 0 || currentEntity.name) && (
                           <select 
                             className="bg-transparent border-none text-[10px] text-rex-500 font-bold outline-none text-right cursor-pointer"
                             onChange={e => {
@@ -892,6 +892,7 @@ export const QuotationBuilder: React.FC = () => {
                             }}
                           >
                             <option value="">(Select Contact)</option>
+                            {currentEntity.name && <option value={currentEntity.name}>{currentEntity.name} (Primary)</option>}
                             {currentContacts.map((c: any, i: number) => (
                                <option key={i} value={`${c.name}${c.designation ? ` - ${c.designation}` : ''}`}>{c.name}</option>
                             ))}
