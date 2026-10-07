@@ -109,19 +109,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               <table className="w-full h-full">
                 <tbody>
                   <tr className="border-b border-black">
-                    <td className="p-1.5 border-r border-black font-bold w-24">DOC NO</td>
-                    <td className="p-1.5">: {docNo}</td>
-                  </tr>
-                  <tr className="border-b border-black">
-                    <td className="p-1.5 border-r border-black font-bold">ISSUE NO</td>
-                    <td className="p-1.5">: {issueNo}</td>
-                  </tr>
-                  <tr className="border-b border-black">
-                    <td className="p-1.5 border-r border-black font-bold">ISSUE DATE</td>
-                    <td className="p-1.5">: {issueDate}</td>
-                  </tr>
-                  <tr className="border-b border-black">
-                    <td className="p-1.5 border-r border-black font-bold">QUO DATE</td>
+                    <td className="p-1.5 border-r border-black font-bold w-24">QUO DATE</td>
                     <td className="p-1.5">: {quoDate}</td>
                   </tr>
                   <tr>
