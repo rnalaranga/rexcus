@@ -80,8 +80,8 @@ export const Customers: React.FC = () => {
             ) : null}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-primary truncate leading-snug">{row.name}</p>
-            <p className="text-[10px] text-muted truncate mt-0.5">{row.company}</p>
+            <p className="text-sm font-semibold text-primary truncate leading-snug">{row.company}</p>
+            <p className="text-[10px] text-muted truncate mt-0.5">{row.name}</p>
           </div>
         </div>
       ),

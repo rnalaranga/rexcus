@@ -225,8 +225,8 @@ export const Leads: React.FC = () => {
       key: 'name', header: 'Lead', sortable: true,
       render: (_, row) => (
         <div>
-          <p className="text-sm font-medium text-primary">{row.name}</p>
-          <p className="text-[10px] text-muted">{row.company}</p>
+          <p className="text-sm font-medium text-primary">{row.company}</p>
+          <p className="text-[10px] text-muted">{row.name}</p>
         </div>
       ),
     },
