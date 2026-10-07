@@ -577,7 +577,7 @@ export const QuotationBuilder: React.FC = () => {
         if (!draftIdRef.current) {
           const res = await createQuotation({
             leadId: selectedLeadId || 'WALK-IN', type: 'draft', data: snapshot,
-            totalAmount: am, customAmount: null, selectedProfileId, taxEnabled
+            totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
           if (res.success && res.quotation) {
              setDraftId(res.quotation.id);
@@ -585,7 +585,7 @@ export const QuotationBuilder: React.FC = () => {
           }
         } else {
           await updateQuotation(draftIdRef.current, {
-            type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled
+            type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
         }
         setSaveStatus('saved');
@@ -705,7 +705,7 @@ export const QuotationBuilder: React.FC = () => {
 
       const result = await createQuotation({
         leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
-        totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled
+        totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
       })
       if (result.success) {
         setCurrentId(result.quotation?.id || null)

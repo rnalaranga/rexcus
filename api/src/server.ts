@@ -601,8 +601,8 @@ app.post('/api/quotations', async (req, res) => {
       if (existing && existing.length > 0) {
         const draftId = existing[0].id;
         await db.query(
-          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=? WHERE id=?',
-          [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, new Date().toISOString().slice(0, 19).replace('T', ' '), draftId]
+          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=?, docNo=?, issueNo=?, issueDate=? WHERE id=?',
+          [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, new Date().toISOString().slice(0, 19).replace('T', ' '), data.docNo || null, data.issueNo || null, data.issueDate || null, draftId]
         );
         return res.json({ success: true, quotation: { id: draftId, version: 1, type: 'draft' } });
       }

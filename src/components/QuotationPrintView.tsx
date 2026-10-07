@@ -265,6 +265,11 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             </div>
           </div>
 
+          <div className="mt-auto border-t flex items-center justify-between px-4 py-2 text-[9px] font-bold text-black w-full">
+            <span>DOC NO: {docNo}</span>
+            <span>ISSUE NO: {issueNo}</span>
+            <span>ISSUE DATE: {issueDate}</span>
+          </div>
         </div>
       </div>
     </>
