@@ -11,6 +11,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { useQuotations, useLeads } from '@/hooks/useData'
+import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
@@ -127,6 +128,7 @@ export const Quotations: React.FC = () => {
 
   const navigate = useNavigate()
   const { data: quotations, loading, refetch } = useQuotations()
+  const { data: taxProfiles } = useTaxProfiles()
   const { data: leads = [] } = useLeads()
   const [search, setSearch] = useState('')
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
@@ -490,7 +492,20 @@ export const Quotations: React.FC = () => {
         {previewData && (
           <div className="bg-white text-black p-8 max-h-[80vh] overflow-y-auto w-[900px] max-w-full">
             <QuotationPrintView 
-               data={typeof previewData.quotation.data === 'string' ? JSON.parse(previewData.quotation.data) : previewData.quotation.data} 
+               data={((): any => {
+                  const parsed = typeof previewData.quotation.data === 'string' ? JSON.parse(previewData.quotation.data) : previewData.quotation.data;
+                  if (parsed.taxEnabled && parsed.selectedProfileId && !parsed.selectedProfile && taxProfiles) {
+                      parsed.selectedProfile = taxProfiles.find((p: any) => p.id === parsed.selectedProfileId);
+                      if (parsed.selectedProfile) {
+                          const t1 = Number(parsed.selectedProfile.tax1_rate) / 100;
+                          const t2 = Number(parsed.selectedProfile.tax2_rate) / 100;
+                          const cTotal = parsed.custTotals?.total || 0;
+                          parsed.custSscl = cTotal * t1;
+                          parsed.custVat = parsed.selectedProfile.tax2_compound ? (cTotal + parsed.custSscl) * t2 : cTotal * t2;
+                      }
+                  }
+                  return parsed;
+               })()} 
                type={previewData.type}
                lead={previewData.lead}
                settings={settings}

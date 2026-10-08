@@ -278,17 +278,8 @@ export const Invoices: React.FC = () => {
                 getTaxRate={() => 0}
                 taxRates={[]}
                 taxType={viewInvoice.taxType}
-                selectedProfile={taxProfiles?.find((p: any) => p.id === viewInvoice.taxType)}
-                ssclAmount={
-                  taxProfiles?.find((p: any) => p.id === viewInvoice.taxType)?.tax2_name 
-                    ? Number(viewInvoice.subtotal) * (Number(taxProfiles.find((p: any) => p.id === viewInvoice.taxType).tax1_rate) / 100) 
-                    : 0
-                }
-                vatAmount={
-                  taxProfiles?.find((p: any) => p.id === viewInvoice.taxType)?.tax2_name 
-                    ? Number(viewInvoice.taxAmount) - (Number(viewInvoice.subtotal) * (Number(taxProfiles.find((p: any) => p.id === viewInvoice.taxType).tax1_rate) / 100))
-                    : Number(viewInvoice.taxAmount)
-                }
+                taxProfile={taxProfiles?.find((p: any) => p.id === viewInvoice.taxProfileId)}
+                taxBreakdown={viewInvoice.taxBreakdown ? (typeof viewInvoice.taxBreakdown === 'string' ? JSON.parse(viewInvoice.taxBreakdown) : viewInvoice.taxBreakdown) : null}
               />
               </div>
             </div>

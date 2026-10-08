@@ -566,7 +566,10 @@ export const QuotationBuilder: React.FC = () => {
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName,
         taxEnabled, selectedProfileId,
         boms,
-        custItems, custTerms, custValidity, custDelivery, custDiscount
+        custItems, custTerms, custValidity, custDelivery, custDiscount,
+        custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+        jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+        selectedProfile, custSscl, custVat, jobSscl, jobVat
       }
       
       const sub = custItems.reduce((s, i) => s + Number(i.qty) * Number(i.unitPrice), 0);
@@ -1555,7 +1558,7 @@ export const QuotationBuilder: React.FC = () => {
                custItems, custDiscount, boms,
                custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
-               custTerms, custValidity, custDelivery
+               custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat
             }}
             type="main"
             lead={lead}
