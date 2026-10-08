@@ -640,11 +640,13 @@ export const QuotationBuilder: React.FC = () => {
         const matTypes = [...b.autoMats.map(m => m.type || m.shape || m.material), ...b.manualMats.map(m => m.material)].filter(Boolean);
         const uniqueMats = Array.from(new Set(matTypes)).join(', ');
         
-        const itemName = b.title.startsWith('BOM Part ') ? 'Machined Component' : b.title.toUpperCase();
-        let finalDesc = `Precision manufacturing and fabrication of ${itemName} as per the provided technical specifications and requirements.`;
-        
-        if (b.description) {
-            finalDesc += `\n\nScope of work includes: ${b.description}`;
+        let finalDesc = b.title;
+        if (b.title.startsWith('BOM Part ')) {
+            finalDesc = b.description ? b.description : 'Machined Component';
+        } else {
+            if (b.description) {
+                finalDesc += `\n\n${b.description}`;
+            }
         }
         
         return {
