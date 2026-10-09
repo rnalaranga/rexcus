@@ -52,6 +52,8 @@ const tableInputClass = "w-full bg-transparent border-b border-transparent hover
 
 // ─── Print Preview ────────────────────────────────────────────────────────────
 export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, selectedTaxes, taxProfile, taxBreakdown, attention }) => {
+  const isHidden = taxProfile && taxProfile.tax1_show_separately === 0;
+  const multiplier = isHidden ? (1 + (Number(taxProfile.tax1_rate) || 0) / 100) : 1;
 
   if (template.startsWith('government')) {
     const isInclusive = template === 'government_inclusive';
@@ -223,8 +225,8 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{idx + 1}.</td>
                     <td style={{ padding: '8px', borderRight: `1.2px solid ${borderColor}`, whiteSpace: 'pre-wrap', verticalAlign: 'top', fontWeight: '700' }}>{item.description}</td>
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{Number(item.qty).toFixed(2)}</td>
-                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{Number(item.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', verticalAlign: 'top' }}>{displayVal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{Number(item.unitPrice * multiplier).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', verticalAlign: 'top' }}>{(displayVal * multiplier).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 );
               })}
@@ -248,7 +250,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                     Sub Total <span style={{ marginLeft: '10px', fontSize: 9 }}>LKR</span>
                   </div>
                   <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right', fontWeight: '700' }}>
-                    {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {(subtotal * multiplier).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 {taxProfile && taxBreakdown && (
@@ -394,9 +396,9 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
                   <td style={{ padding: '7px 6px', color: '#9ca3af' }}>{idx + 1}</td>
                   <td style={{ padding: '7px 6px', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description || '—'}</td>
                   <td style={{ padding: '7px 6px', textAlign: 'center' }}>{item.qty}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(item.unitPrice)}</td>
+                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(item.unitPrice * multiplier)}</td>
                   <td style={{ padding: '7px 6px', textAlign: 'center', color: '#6b7280' }}>{tax ? `${tax.name} (${tax.rate}%)` : '—'}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{formatCurrency(line + lineTax)}</td>
+                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{formatCurrency((line + lineTax) * multiplier)}</td>
                 </tr>
               );
             })}
@@ -407,7 +409,7 @@ export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, 
         <div style={{ minWidth: 240 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
             <span style={{ color: '#6b7280' }}>Subtotal</span>
-            <span style={{ fontFamily: 'monospace' }}>{formatCurrency(subtotal)}</span>
+            <span style={{ fontFamily: 'monospace' }}>{formatCurrency(subtotal * multiplier)}</span>
           </div>
           {taxProfile && taxBreakdown && (
             <>

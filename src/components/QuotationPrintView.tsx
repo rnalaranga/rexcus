@@ -173,7 +173,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               <div className="w-[65%] text-right font-bold pr-6">Sub Total</div>
               <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
               <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                {Number(quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                {Number((quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </div>
             </div>
             
@@ -183,7 +183,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                  <div className="w-[65%] text-right pr-6">Discount</div>
                  <div className="w-[15%] text-center">{data.custDiscount} %</div>
                  <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
-                   {Number(custTotals.discount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                   {Number((custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                  </div>
                </div>
             )}

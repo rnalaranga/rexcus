@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils';
 import { AccountModal } from './AccountModal';
 import { deleteAccount, fetchAccountLedger } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { TaxManager } from '@/components/TaxManager';
 
 type Tab = 'coa' | 'journals' | 'taxes';
 
@@ -43,8 +44,7 @@ export const AccountingHub: React.FC = () => {
   const [expandedJournal, setExpandedJournal] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  const [showAddTax, setShowAddTax] = useState(false);
-  const [editTax, setEditTax] = useState<any>(null);
+
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { showConfirm, showError, toast } = useDialog();
@@ -59,7 +59,7 @@ export const AccountingHub: React.FC = () => {
   let filteredCOA = accounts.filter(a => [a.code, a.name].some(v => v?.toLowerCase().includes(search.toLowerCase())));
   if (filterType !== 'All') filteredCOA = filteredCOA.filter(a => a.type === filterType);
 
-  const filteredTaxes = taxProfiles.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
+
   const filteredJournals = journals.filter(j => [j.id, j.reference, j.description].some(v => v?.toLowerCase().includes(search.toLowerCase())));
 
   const openLedger = async (account: any) => {
@@ -189,36 +189,7 @@ export const AccountingHub: React.FC = () => {
     return acc;
   }, {} as Record<string, any[]>);
 
-    const generateTaxColumns = (): Column<any>[] => [
-    {
-      key: 'tax', header: 'Tax Profile Details', sortable: true,
-      render: (_, row) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 flex-shrink-0 bg-amber-600 border border-amber-500/40 flex items-center justify-center text-white font-bold text-xs">TX</div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-primary truncate leading-snug">{row.name}</p>
-            <p className="text-[10px] text-muted truncate mt-0.5">
-              {row.tax1_name} ({row.tax1_rate}%)
-              {row.tax2_name ? ` + ${row.tax2_name} (${row.tax2_rate}%${row.tax2_compound ? ' Compound' : ''})` : ''}
-            </p>
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'actions', header: '', align: 'right',
-      render: (_, row) => (
-        <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-500/10" onClick={async () => {
-          if (await showConfirm('Delete Profile', 'Are you sure you want to delete this tax profile?')) {
-            const { deleteTaxProfile } = await import('@/lib/api');
-            await deleteTaxProfile(row.id);
-            toast('Deleted', 'success');
-            refetchTaxes();
-          }
-        }}>Delete</Button>
-      )
-    }
-  ];
+
 
   const countLabel = activeTab === 'coa' ? `${accounts.length} accounts` : activeTab === 'journals' ? `${journals.length} journal entries` : `${taxProfiles.length} tax profiles`;
 
@@ -244,9 +215,6 @@ export const AccountingHub: React.FC = () => {
           )}
           {activeTab === 'journals' && (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/finance/journal-builder')} className="bg-rex-600 hover:bg-rex-700">New Journal Entry</Button>
-          )}
-          {activeTab === 'taxes' && (
-            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowAddTax(true)} className="bg-amber-600 hover:bg-amber-700">Add Tax Profile</Button>
           )}
         </div>
       </div>
@@ -489,9 +457,7 @@ export const AccountingHub: React.FC = () => {
 
       {/* Taxes Table */}
       {activeTab === 'taxes' && (
-        <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-          <DataTable columns={generateTaxColumns()} data={filteredTaxes} keyExtractor={row => row.id} />
-        </GlassCard>
+        <TaxManager />
       )}
 
       {/* Add/Edit Account Modal */}
@@ -651,74 +617,7 @@ export const AccountingHub: React.FC = () => {
       )}
 
       {/* Tax Modal */}
-      <Modal isOpen={showAddTax} onClose={() => setShowAddTax(false)} title="Add Tax Profile">
-        <form onSubmit={async (e) => {
-          e.preventDefault();
-          const formData = new FormData(e.currentTarget);
-          const name = formData.get('name') as string;
-          const tax1_name = formData.get('tax1_name') as string;
-          const tax1_rate = Number(formData.get('tax1_rate'));
-          const tax2_name = formData.get('tax2_name') as string;
-          const tax2_rate = Number(formData.get('tax2_rate'));
-          const tax2_compound = formData.get('tax2_compound') === 'on' ? 1 : 0;
-          
-          if (!name || !tax1_name) return showError('Please fill required fields.', 'Validation Error');
-          
-          try {
-            const { createTaxProfile } = await import('@/lib/api');
-            await createTaxProfile({ 
-              id: crypto.randomUUID(), 
-              name, 
-              tax1_name, tax1_rate: tax1_rate || 0,
-              tax2_name: tax2_name || null, tax2_rate: tax2_rate || 0,
-              tax2_compound
-            });
-            toast('Tax profile created', 'success');
-            setShowAddTax(false);
-            refetchTaxes();
-          } catch(err: any) {
-            showError(err.message, 'Error');
-          }
-        }}>
-                    <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase mb-1">Profile Name (e.g. VAT + SSCL)</label>
-              <input name="name" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Primary Tax Name (e.g. SSCL)</label>
-                <input name="tax1_name" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
-                <input name="tax1_rate" type="number" step="0.01" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
-              </div>
-            </div>
-            <div className="border-t border-theme-subtle pt-4 mt-2">
-              <label className="block text-xs font-bold text-primary mb-2">Optional Secondary Tax</label>
-              <div className="grid grid-cols-2 gap-4 mb-2">
-                <div>
-                  <label className="block text-xs font-bold text-muted uppercase mb-1">Secondary Tax Name (e.g. VAT)</label>
-                  <input name="tax2_name" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted uppercase mb-1">Rate (%)</label>
-                  <input name="tax2_rate" type="number" step="0.01" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
-                </div>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-primary">
-                <input type="checkbox" name="tax2_compound" />
-                Calculate Secondary Tax on (Subtotal + Primary Tax)
-              </label>
-            </div>
-          </div>
-<div className="flex justify-end gap-2 mt-6">
-            <Button variant="ghost" onClick={() => setShowAddTax(false)} type="button">Cancel</Button>
-            <Button variant="primary" type="submit">Save Tax Rate</Button>
-          </div>
-        </form>
-      </Modal>
+
     </div>
   );
 };
