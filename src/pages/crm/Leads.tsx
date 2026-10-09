@@ -330,7 +330,7 @@ export const Leads: React.FC = () => {
                         <div className="h-full bg-rex-500" style={{ width: `${lead.probability}%`, opacity: 0.6 }} />
                       </div>
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-[9px] text-faint">{lead.assignedTo.split(' ')[0]}</span>
+                        <span className="text-[9px] text-faint">{lead.assignedTo?.split(' ')[0] || ''}</span>
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate('/crm/followups') }}

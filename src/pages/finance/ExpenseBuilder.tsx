@@ -5,6 +5,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { useAccounts, useTaxes } from '@/hooks/useFinance';
+import { useSuppliers } from '@/hooks/useData';
 import { createJournal } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -13,9 +14,11 @@ export const ExpenseBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { data: accounts } = useAccounts();
   const { data: taxes } = useTaxes();
+  const { data: suppliers = [] } = useSuppliers();
   const { showError, toast } = useDialog();
 
   const [docNo] = useState('EXP-' + Date.now().toString().slice(-4));
+  const [supplierId, setSupplierId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [reference, setReference] = useState('');
   const [description, setDescription] = useState('');
@@ -46,12 +49,14 @@ export const ExpenseBuilder: React.FC = () => {
       return showError('Please fill all fields correctly. Amount must be greater than 0.', 'Missing Fields');
     }
     
+    const partyInfo = supplierId ? { partyType: 'Supplier', partyId: supplierId } : {};
+
     const lines = [];
-    lines.push({ id: crypto.randomUUID(), accountId: expenseAccountId, description, debit: amount, credit: 0 });
+    lines.push({ id: crypto.randomUUID(), accountId: expenseAccountId, description, debit: amount, credit: 0, ...partyInfo });
     if (selectedTax && taxAmount > 0) {
-      lines.push({ id: crypto.randomUUID(), accountId: selectedTax.accountId, description: `VAT Input: ${description}`, debit: taxAmount, credit: 0 });
+      lines.push({ id: crypto.randomUUID(), accountId: selectedTax.accountId, description: `VAT Input: ${description}`, debit: taxAmount, credit: 0, ...partyInfo });
     }
-    lines.push({ id: crypto.randomUUID(), accountId: paymentAccountId, description, debit: 0, credit: totalAmount });
+    lines.push({ id: crypto.randomUUID(), accountId: paymentAccountId, description, debit: 0, credit: totalAmount, ...partyInfo });
 
     await createJournal({
       id: docNo, date, reference, description: `Direct Expense: ${description}`, totalAmount, lines, createdBy: 'Admin'
@@ -92,7 +97,16 @@ export const ExpenseBuilder: React.FC = () => {
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1">Receipt / Ref #</label>
                 <input type="text" value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. REC-9923" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm font-mono" />
              </div>
-             <div className="md:col-span-2">
+             <div className="md:col-span-1">
+                <label className="block text-[11px] font-bold text-muted uppercase mb-1">Supplier (Optional)</label>
+                <SearchableSelect
+                  value={supplierId}
+                  onChange={setSupplierId}
+                  placeholder="-- Select a Supplier --"
+                  options={[{ value: '', label: 'None / Not Applicable' }, ...suppliers.map(s => ({ value: s.id, label: s.name }))]}
+                />
+             </div>
+             <div className="md:col-span-1">
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1">Expense Description / Payee</label>
                 <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Office Stationery from Keells" className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm" />
              </div>
