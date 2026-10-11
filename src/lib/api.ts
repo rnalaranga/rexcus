@@ -404,3 +404,37 @@ export const updateTaxProfile = async (id: string, data: any) => {
 };
 
 export const updateCustomerGRN = async (id: string, data: any) => (await (await fetch(`${API_URL}/crm/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+
+// -- GATE PASSES --
+export const fetchGatePasses = async () => {
+  const res = await fetch(`${API_URL}/gate-passes`);
+  return res.json();
+};
+
+export const fetchGatePassById = async (id: string) => {
+  const res = await fetch(`${API_URL}/gate-passes/${id}`);
+  return res.json();
+};
+
+export const createGatePass = async (data: any) => {
+  const res = await fetch(`${API_URL}/gate-passes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const updateGatePass = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/gate-passes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deleteGatePass = async (id: string) => {
+  const res = await fetch(`${API_URL}/gate-passes/${id}`, { method: 'DELETE' });
+  return res.json();
+};

@@ -43,7 +43,7 @@ export const AccountingHub: React.FC = () => {
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [expandedJournal, setExpandedJournal] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
+  const [editTax, setEditTax] = useState<any>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const navigate = useNavigate();

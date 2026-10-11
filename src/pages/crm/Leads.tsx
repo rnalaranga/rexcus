@@ -52,6 +52,78 @@ export const Leads: React.FC = () => {
     useEffect(() => {
     fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
   }, []);
+
+  // Dedicated Collect Sample Modal State
+  const [sampleModalLead, setSampleModalLead] = useState<any | null>(null);
+  const [sampleModalData, setSampleModalData] = useState<any>({
+    quoteId: '',
+    quoNo: '',
+    items: [{ description: '', qty: 1, unit: 'Nos' }],
+    receivedAt: new Date().toISOString().slice(0, 10),
+    receivedBy: 'System Admin',
+    notes: ''
+  });
+  const [leadQuotesForSample, setLeadQuotesForSample] = useState<any[]>([]);
+  const [collectingSample, setCollectingSample] = useState(false);
+
+  const openCollectSampleModal = async (lead: any) => {
+    setSampleModalLead(lead);
+    setSampleModalData({
+      quoteId: '',
+      quoNo: '',
+      items: [{ description: '', qty: 1, unit: 'Nos' }],
+      receivedAt: new Date().toISOString().slice(0, 10),
+      receivedBy: 'System Admin',
+      notes: ''
+    });
+    try {
+      const quotes = await fetchQuotations(lead.id);
+      const qList = Array.isArray(quotes) ? quotes : [];
+      setLeadQuotesForSample(qList);
+      if (qList.length === 1) {
+        setSampleModalData((prev: any) => ({
+          ...prev,
+          quoteId: qList[0].id,
+          quoNo: qList[0].docNo || qList[0].id
+        }));
+      }
+    } catch (e) {
+      setLeadQuotesForSample([]);
+    }
+  };
+
+  const handleSaveSampleFromLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sampleModalLead) return;
+    setCollectingSample(true);
+    try {
+      const res = await createCustomerGRN({
+        leadId: sampleModalLead.id,
+        customerCompany: sampleModalLead.company,
+        customerName: sampleModalLead.name,
+        customerPhone: sampleModalLead.phone || '',
+        quoteId: sampleModalData.quoteId || '',
+        quoNo: sampleModalData.quoNo || '',
+        items: JSON.stringify(sampleModalData.items),
+        receivedAt: sampleModalData.receivedAt,
+        receivedBy: sampleModalData.receivedBy,
+        notes: sampleModalData.notes,
+        status: 'In Stock'
+      });
+      if (res && res.success) {
+        const updatedGrns = await fetchAllCustomerGRNs();
+        setLeadGrns(updatedGrns);
+        setSampleModalLead(null);
+      } else {
+        alert('Failed to save sample: ' + (res?.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setCollectingSample(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading leads...</div>
 
   const openCreateModal = () => {
@@ -248,6 +320,24 @@ export const Leads: React.FC = () => {
     },
     { key: 'assignedTo',   header: 'Owner',    render: v => <span className="text-xs text-muted">{String(v).split(' ')[0]}</span> },
     { key: 'lastActivity', header: 'Activity', sortable: true, width: '100px', render: v => <span className="text-xs text-muted">{relativeTime(String(v))}</span> },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      width: '120px',
+      render: (_, row) => (
+        <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => openCollectSampleModal(row)}
+            className="px-2 py-1 text-[10px] font-semibold rounded bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 hover:text-rex-600 transition-colors flex items-center gap-1"
+            title="Collect Customer Sample (GRN)"
+          >
+            <Package size={11} className="text-rex-600 dark:text-rex-400" /> Collect Sample
+          </button>
+        </div>
+      )
+    }
   ]
 
   const stageColorBorder: Record<string, string> = {
@@ -339,18 +429,27 @@ export const Leads: React.FC = () => {
                           <span className="text-[9px] text-faint">{relativeTime(lead.lastActivity)}</span>
                         </div>
                       </div>
-                      {lead.stage === 'qualified' && (
-                        <div className="mt-2 pt-2 border-t border-theme-subtle">
-                          <Button 
-                            variant="primary" 
-                            size="sm" 
-                            className="w-full text-[10px] h-6 py-0 flex items-center justify-center gap-1"
+                      {/* Action buttons on kanban card */}
+                      <div className="mt-2 pt-1.5 border-t border-theme-subtle flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openCollectSampleModal(lead); }}
+                          className="flex-1 text-[10px] font-semibold py-1 px-1.5 rounded bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 hover:text-rex-600 transition-colors flex items-center justify-center gap-1"
+                          title="Collect Customer Sample (GRN)"
+                        >
+                          <Package size={10} className="text-rex-600 dark:text-rex-400" /> Collect Sample
+                        </button>
+                        {lead.stage === 'qualified' && (
+                          <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${lead.id}`); }}
+                            className="text-[10px] font-semibold py-1 px-2 rounded bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center justify-center gap-1"
+                            title="Create Quotation"
                           >
-                            <FileText size={10} /> Create Quote
-                          </Button>
-                        </div>
-                      )}
+                            <FileText size={10} /> Quote
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {stageLeads.length === 0 && (
@@ -766,6 +865,179 @@ export const Leads: React.FC = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Collect Customer Sample Modal */}
+      <Modal 
+        isOpen={!!sampleModalLead} 
+        onClose={() => setSampleModalLead(null)} 
+        title="Collect Customer Sample (GRN)"
+        size="md"
+      >
+        {sampleModalLead && (
+          <form onSubmit={handleSaveSampleFromLead} className="p-6 space-y-4">
+            {/* Lead Summary Info */}
+            <div className="bg-surface2/50 p-3 rounded-lg border border-theme-subtle flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-primary">{sampleModalLead.company}</p>
+                <p className="text-[11px] text-muted">{sampleModalLead.name} · {sampleModalLead.id}</p>
+              </div>
+              <Badge variant="warning" className="text-xs font-mono font-bold">
+                {sampleModalLead.stage.toUpperCase()}
+              </Badge>
+            </div>
+
+            {/* Quotation Link if exists */}
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">
+                Link to Quotation (Optional)
+              </label>
+              <select
+                className="w-full input-base text-xs"
+                value={sampleModalData.quoteId}
+                onChange={e => {
+                  const qId = e.target.value;
+                  const found = leadQuotesForSample.find(q => q.id === qId);
+                  setSampleModalData({
+                    ...sampleModalData,
+                    quoteId: found ? found.id : '',
+                    quoNo: found ? (found.docNo || found.id) : ''
+                  });
+                }}
+              >
+                <option value="">-- Direct Sample (No Quotation Yet) --</option>
+                {leadQuotesForSample.map(q => (
+                  <option key={q.id} value={q.id}>
+                    {q.docNo || q.id} - Total: {formatCurrency(Number(q.totalAmount))} ({q.status || 'Draft'})
+                  </option>
+                ))}
+              </select>
+              {leadQuotesForSample.length === 0 && (
+                <p className="text-[10px] text-muted mt-1 italic">
+                  No quotations created for this lead yet. Sample will be registered directly under {sampleModalLead.company}.
+                </p>
+              )}
+            </div>
+
+            {/* Receipt Date & Received By */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Received Date *</label>
+                <input
+                  required
+                  type="date"
+                  className="w-full input-base text-xs"
+                  value={sampleModalData.receivedAt}
+                  onChange={e => setSampleModalData({...sampleModalData, receivedAt: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Received By *</label>
+                <input
+                  required
+                  type="text"
+                  className="w-full input-base text-xs"
+                  value={sampleModalData.receivedBy}
+                  onChange={e => setSampleModalData({...sampleModalData, receivedBy: e.target.value})}
+                  placeholder="Employee name"
+                />
+              </div>
+            </div>
+
+            {/* Item Rows */}
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-secondary">Sample Items Received *</label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() => setSampleModalData({
+                    ...sampleModalData,
+                    items: [...sampleModalData.items, { description: '', qty: 1, unit: 'Nos' }]
+                  })}
+                  className="h-6 text-[10px]"
+                >
+                  <Plus size={12} className="mr-1" /> Add Item
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {sampleModalData.items.map((it: any, idx: number) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <input
+                      required
+                      className="flex-1 input-base text-xs py-1.5"
+                      placeholder="Item description (e.g. Flange Part, Bracket Sample)"
+                      value={it.description}
+                      onChange={e => {
+                        const updated = [...sampleModalData.items];
+                        updated[idx].description = e.target.value;
+                        setSampleModalData({...sampleModalData, items: updated});
+                      }}
+                    />
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      className="w-20 input-base text-xs py-1.5 font-mono text-center"
+                      placeholder="Qty"
+                      value={it.qty}
+                      onChange={e => {
+                        const updated = [...sampleModalData.items];
+                        updated[idx].qty = Number(e.target.value);
+                        setSampleModalData({...sampleModalData, items: updated});
+                      }}
+                    />
+                    <input
+                      className="w-20 input-base text-xs py-1.5 text-center"
+                      placeholder="Unit"
+                      value={it.unit}
+                      onChange={e => {
+                        const updated = [...sampleModalData.items];
+                        updated[idx].unit = e.target.value;
+                        setSampleModalData({...sampleModalData, items: updated});
+                      }}
+                    />
+                    {sampleModalData.items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...sampleModalData.items];
+                          updated.splice(idx, 1);
+                          setSampleModalData({...sampleModalData, items: updated});
+                        }}
+                        className="text-red-400 hover:text-red-600 p-1"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Notes / Sample Condition</label>
+              <input
+                type="text"
+                className="w-full input-base text-xs"
+                value={sampleModalData.notes}
+                onChange={e => setSampleModalData({...sampleModalData, notes: e.target.value})}
+                placeholder="e.g. Received for dimension verification and quotation estimation"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
+              <Button variant="ghost" type="button" onClick={() => setSampleModalLead(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" disabled={collectingSample}>
+                {collectingSample ? 'Saving GRN...' : 'Confirm & Collect Sample'}
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   )

@@ -1,14 +1,20 @@
 import React, { useState } from 'react'
-import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { useInventory, useSuppliers, useStockLedger } from '@/hooks/useData'
-import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
+import { useInventory, useSuppliers, useStockLedger, useLeads } from '@/hooks/useData'
+import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN, fetchGatePasses, createGatePass, deleteGatePass, fetchQuotations, createCustomerGRN } from '@/lib/api'
+import { formatCurrency, formatDate } from '@/lib/utils'
+import { useSettings } from '@/contexts/SettingsContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView'
+import { GatePassPrintView } from '@/components/GatePassPrintView'
+import html2pdf from 'html2pdf.js'
 
 type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample'
 
@@ -96,15 +102,81 @@ const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpd
 }
 
 export const Inventory: React.FC = () => {
+  const [searchParams] = useSearchParams()
   const { data: inventory, loading, refetch } = useInventory()
   const { data: suppliersList } = useSuppliers()
+  const { data: leadsList = [] } = useLeads()
+  const [sampleSearchQuery, setSampleSearchQuery] = useState('')
+  const { settings } = useSettings()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<TabType>('all')
   const [search, setSearch] = useState('')
   const [grns, setGrns] = useState<any[]>([])
-  
+  const [gatePasses, setGatePasses] = useState<any[]>([])
+  const [quotationsList, setQuotationsList] = useState<any[]>([])
+  const [sampleSubTab, setSampleSubTab] = useState<'samples' | 'gate_passes'>('samples')
+  const [sampleFilterStatus, setSampleFilterStatus] = useState<'all' | 'in_stock' | 'dispatched'>('all')
+
+  const [printGrnData, setPrintGrnData] = useState<any | null>(null)
+  const [printGatePassData, setPrintGatePassData] = useState<any | null>(null)
+  const [gatePassDialog, setGatePassDialog] = useState<any | null>(null)
+  const [receiveSampleOpen, setReceiveSampleOpen] = useState(false)
+  const [newSampleData, setNewSampleData] = useState<any>({
+    quoteId: '',
+    quoNo: '',
+    leadId: '',
+    customerCompany: '',
+    customerName: '',
+    items: [{ description: '', qty: 1, unit: 'Nos' }],
+    receivedAt: new Date().toISOString().slice(0, 10),
+    receivedBy: user?.name || 'System Admin',
+    notes: ''
+  })
+
+  const loadGrnData = async () => {
+    try {
+      const [grnList, gpList] = await Promise.all([
+        fetchAllCustomerGRNs(),
+        fetchGatePasses()
+      ]);
+      setGrns(Array.isArray(grnList) ? grnList : []);
+      setGatePasses(Array.isArray(gpList) ? gpList : []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   React.useEffect(() => {
-    fetchAllCustomerGRNs().then(setGrns).catch(console.error)
-  }, [])
+    loadGrnData();
+    fetchQuotations().then(data => setQuotationsList(Array.isArray(data) ? data : [])).catch(console.error);
+
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'customer_sample') {
+      setActiveTab('customer_sample');
+    }
+    const actionParam = searchParams.get('action');
+    const leadIdParam = searchParams.get('leadId');
+    const quoteIdParam = searchParams.get('quoteId');
+    if (actionParam === 'receive' || leadIdParam || quoteIdParam) {
+      setActiveTab('customer_sample');
+      setReceiveSampleOpen(true);
+      if (leadIdParam) {
+        setNewSampleData((prev: any) => ({
+          ...prev,
+          leadId: leadIdParam,
+          customerCompany: searchParams.get('company') || prev.customerCompany,
+          customerName: searchParams.get('name') || prev.customerName
+        }));
+      }
+      if (quoteIdParam) {
+        setNewSampleData((prev: any) => ({
+          ...prev,
+          quoteId: quoteIdParam,
+          quoNo: searchParams.get('quoNo') || prev.quoNo
+        }));
+      }
+    }
+  }, [searchParams]);
   
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -355,6 +427,530 @@ export const Inventory: React.FC = () => {
     }
   ]
 
+  const handleOpenGatePassDialog = (sample: any) => {
+    let parsedItems: any[] = [];
+    try {
+      if (typeof sample.items === 'string' && sample.items.startsWith('[')) {
+        parsedItems = JSON.parse(sample.items);
+      } else if (Array.isArray(sample.items)) {
+        parsedItems = sample.items;
+      } else if (sample.items) {
+        parsedItems = [{ description: sample.items, qty: 1, unit: 'Nos', remarks: '' }];
+      }
+    } catch (e) {
+      parsedItems = [{ description: String(sample.items || ''), qty: 1, unit: 'Nos', remarks: '' }];
+    }
+
+    if (parsedItems.length === 0) {
+      parsedItems = [{ description: 'Sample Item', qty: 1, unit: 'Nos', remarks: '' }];
+    }
+
+    setGatePassDialog({
+      open: true,
+      grn: sample,
+      customerCompany: sample.customerCompany || sample.companyName || sample.leadCompany || sample.customerName || sample.leadName || '',
+      customerName: sample.customerName || sample.leadName || '',
+      address: sample.customerAddress || '',
+      phone: sample.customerPhone || sample.phone || '',
+      email: sample.customerEmail || sample.email || '',
+      attention: sample.personName || sample.customerName || sample.leadName || '',
+      quoteId: sample.quoteId || '',
+      quoNo: sample.displayQuoNo || sample.quoNo || sample.quotationDocNo || '',
+      carrier: 'Hand Delivery',
+      vehicleNo: '',
+      reason: 'Customer sample return after quotation / inspection',
+      items: parsedItems.map((it: any) => ({
+        description: it.description || it.items || '',
+        qty: Number(it.qty || 1),
+        unit: it.unit || 'Nos',
+        remarks: it.remarks || ''
+      })),
+      issuedBy: user?.name || 'System Admin',
+      issuedDate: new Date().toISOString().slice(0, 10),
+      notes: ''
+    });
+  };
+
+  const handlePrintExistingGatePass = (sample: any) => {
+    const gpId = sample.gatePassId || sample.gpId;
+    const existing = gatePasses.find(g => g.id === gpId || g.grnId === sample.id);
+    if (existing) {
+      setPrintGatePassData(existing);
+      return;
+    }
+    const fallbackGp = {
+      id: gpId || `GP-${sample.id}`,
+      grnId: sample.id,
+      quoteId: sample.quoteId,
+      quoNo: sample.displayQuoNo || sample.quoNo,
+      customerCompany: sample.customerCompany || sample.companyName || sample.leadCompany,
+      customerName: sample.customerName || sample.leadName,
+      address: sample.customerAddress,
+      phone: sample.customerPhone || sample.phone,
+      email: sample.customerEmail || sample.email,
+      attention: sample.personName || sample.customerName,
+      carrier: sample.gpCarrier || 'Hand Delivery',
+      vehicleNo: sample.gpVehicleNo || '',
+      reason: sample.gpReason || 'Customer Sample Return',
+      items: sample.items,
+      issuedDate: sample.gpDate || sample.dispatchedAt || sample.createdAt,
+      issuedBy: sample.receivedBy || 'System Admin',
+      status: 'Dispatched',
+      notes: sample.notes
+    };
+    setPrintGatePassData(fallbackGp);
+  };
+
+  const handleSaveGatePass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gatePassDialog) return;
+    setSubmitting(true);
+    try {
+      const payload = {
+        grnId: gatePassDialog.grn?.id,
+        quoteId: gatePassDialog.quoteId,
+        quoNo: gatePassDialog.quoNo,
+        leadId: gatePassDialog.grn?.leadId,
+        customerId: gatePassDialog.grn?.customerId,
+        customerName: gatePassDialog.customerName,
+        customerCompany: gatePassDialog.customerCompany,
+        address: gatePassDialog.address,
+        phone: gatePassDialog.phone,
+        email: gatePassDialog.email,
+        attention: gatePassDialog.attention,
+        carrier: gatePassDialog.carrier,
+        vehicleNo: gatePassDialog.vehicleNo,
+        reason: gatePassDialog.reason,
+        items: JSON.stringify(gatePassDialog.items),
+        issuedBy: gatePassDialog.issuedBy,
+        issuedDate: gatePassDialog.issuedDate,
+        status: 'Dispatched',
+        notes: gatePassDialog.notes
+      };
+
+      const res = await createGatePass(payload);
+      showToast('success', `Gate Pass ${res.item?.id || ''} created successfully`);
+      await loadGrnData();
+      setGatePassDialog(null);
+
+      if (res.item) {
+        setPrintGatePassData(res.item);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to create gate pass');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteGatePass = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this Gate Pass? This will revert the sample status back to In Hand.')) return;
+    try {
+      await deleteGatePass(id);
+      showToast('success', 'Gate Pass deleted');
+      await loadGrnData();
+    } catch (e) {
+      console.error(e);
+      showToast('error', 'Failed to delete gate pass');
+    }
+  };
+
+  const handleCreateSampleGRN = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await createCustomerGRN({
+        quoteId: newSampleData.quoteId || null,
+        quoNo: newSampleData.quoNo || '',
+        leadId: newSampleData.leadId || null,
+        customerCompany: newSampleData.customerCompany,
+        customerName: newSampleData.customerName,
+        items: JSON.stringify(newSampleData.items),
+        receivedAt: newSampleData.receivedAt,
+        receivedBy: newSampleData.receivedBy || user?.name || 'System Admin',
+        notes: newSampleData.notes,
+        status: 'In Stock'
+      });
+      showToast('success', 'Customer sample received successfully');
+      await loadGrnData();
+      setReceiveSampleOpen(false);
+      setNewSampleData({
+        quoteId: '',
+        quoNo: '',
+        leadId: '',
+        customerCompany: '',
+        customerName: '',
+        items: [{ description: '', qty: 1, unit: 'Nos' }],
+        receivedAt: new Date().toISOString().slice(0, 10),
+        receivedBy: user?.name || 'System Admin',
+        notes: ''
+      });
+      if (res.item) {
+        setPrintGrnData(res.item);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to receive sample');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredGrns = grns.filter(item => {
+    const q = search.toLowerCase();
+    const matchesSearch = !search || (
+      (item.id && item.id.toLowerCase().includes(q)) ||
+      (item.customerCompany && item.customerCompany.toLowerCase().includes(q)) ||
+      (item.leadCompany && item.leadCompany.toLowerCase().includes(q)) ||
+      (item.companyName && item.companyName.toLowerCase().includes(q)) ||
+      (item.customerName && item.customerName.toLowerCase().includes(q)) ||
+      (item.leadName && item.leadName.toLowerCase().includes(q)) ||
+      (item.displayQuoNo && item.displayQuoNo.toLowerCase().includes(q)) ||
+      (item.quoNo && item.quoNo.toLowerCase().includes(q)) ||
+      (item.quotationDocNo && item.quotationDocNo.toLowerCase().includes(q)) ||
+      (item.items && item.items.toLowerCase().includes(q)) ||
+      (item.gatePassId && item.gatePassId.toLowerCase().includes(q)) ||
+      (item.notes && item.notes.toLowerCase().includes(q))
+    );
+
+    if (!matchesSearch) return false;
+
+    if (sampleFilterStatus === 'in_stock') {
+      return item.status !== 'Dispatched' && !item.gatePassId;
+    }
+    if (sampleFilterStatus === 'dispatched') {
+      return item.status === 'Dispatched' || !!item.gatePassId;
+    }
+    return true;
+  });
+
+  const filteredGatePasses = gatePasses.filter(item => {
+    const q = search.toLowerCase();
+    return !search || (
+      (item.id && item.id.toLowerCase().includes(q)) ||
+      (item.customerCompany && item.customerCompany.toLowerCase().includes(q)) ||
+      (item.customerName && item.customerName.toLowerCase().includes(q)) ||
+      (item.quoNo && item.quoNo.toLowerCase().includes(q)) ||
+      (item.displayQuoNo && item.displayQuoNo.toLowerCase().includes(q)) ||
+      (item.grnId && item.grnId.toLowerCase().includes(q)) ||
+      (item.carrier && item.carrier.toLowerCase().includes(q)) ||
+      (item.vehicleNo && item.vehicleNo.toLowerCase().includes(q)) ||
+      (item.items && item.items.toLowerCase().includes(q))
+    );
+  });
+
+  const customerSampleColumns: Column<any>[] = [
+    {
+      header: 'Sample GRN',
+      key: 'id',
+      render: (val: any, row: any) => (
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
+            <Package size={15} />
+          </div>
+          <div>
+            <span className="font-mono font-bold text-primary text-xs">{val}</span>
+            <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+              <Calendar size={10} />
+              {formatDate(row.receivedAt || row.createdAt)}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Customer & Company',
+      key: 'companyName',
+      render: (_: any, row: any) => {
+        const comp = row.customerCompany || row.leadCompany || row.companyName;
+        const person = row.personName || row.customerName || row.leadName;
+        const phone = row.customerPhone || row.phone;
+        return (
+          <div className="space-y-0.5">
+            <div className="font-bold text-primary flex items-center gap-1.5 text-xs">
+              <Building2 size={13} className="text-blue-500 flex-shrink-0" />
+              <span>{comp || 'Individual / Direct'}</span>
+            </div>
+            {person && person !== comp && (
+              <div className="text-[11px] text-secondary flex items-center gap-1">
+                <User size={11} className="text-muted flex-shrink-0" />
+                <span>{person}</span>
+              </div>
+            )}
+            {phone && (
+              <div className="text-[10px] text-muted font-mono flex items-center gap-1">
+                <Phone size={10} className="flex-shrink-0" />
+                <span>{phone}</span>
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Linked Quotation',
+      key: 'quoNo',
+      render: (_: any, row: any) => {
+        const qNo = row.displayQuoNo || row.quoNo || row.quotationDocNo;
+        return (
+          <div className="space-y-1">
+            {qNo ? (
+              <Badge variant="info" className="font-mono text-xs">
+                <FileText size={11} className="mr-1 inline" />
+                {qNo}
+              </Badge>
+            ) : (
+              <span className="text-xs text-muted italic">No Quotation Linked</span>
+            )}
+            {row.quotationStatus && (
+              <div className="text-[10px] text-secondary">
+                Status: <span className="font-medium">{row.quotationStatus}</span>
+              </div>
+            )}
+            {row.quotationTotal ? (
+              <div className="text-[10px] text-muted font-mono">
+                {formatCurrency(row.quotationTotal)}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Items Received',
+      key: 'items',
+      render: (val: any) => {
+        let itemsList: any[] = [];
+        try {
+          if (typeof val === 'string' && val.startsWith('[')) itemsList = JSON.parse(val);
+          else if (Array.isArray(val)) itemsList = val;
+          else if (val) itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
+        } catch (e) {
+          itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
+        }
+        return (
+          <div className="space-y-1 max-w-xs">
+            {itemsList.map((it: any, idx: number) => (
+              <div key={idx} className="flex items-center gap-1.5 text-xs">
+                <span className="font-medium text-primary">{it.description || it.items}</span>
+                <span className="text-[10px] font-mono text-muted bg-surface2 px-1.5 py-0.5 rounded border border-theme-subtle">
+                  x{Number(it.qty || 1)} {it.unit || 'Nos'}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Sample Status',
+      key: 'status',
+      render: (_: any, row: any) => {
+        const isDispatched = row.status === 'Dispatched' || !!row.gatePassId;
+        return isDispatched ? (
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+              <Truck size={12} /> Returned
+            </span>
+            <div className="text-[10px] text-muted">
+              GP: <span className="font-mono font-bold text-primary">{row.gatePassId || row.gpId || 'Issued'}</span>
+            </div>
+          </div>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+            <CheckCircle size={12} /> In Hand (In Stock)
+          </span>
+        );
+      }
+    },
+    {
+      header: 'Received By',
+      key: 'receivedBy',
+      render: (val: any, row: any) => (
+        <div>
+          <span className="text-xs text-secondary">{val || 'System Admin'}</span>
+          {row.notes && <div className="text-[10px] text-muted italic max-w-[120px] truncate" title={row.notes}>{row.notes}</div>}
+        </div>
+      )
+    },
+    {
+      header: 'Actions',
+      key: 'actions',
+      render: (_: any, row: any) => {
+        const isDispatched = row.status === 'Dispatched' || !!row.gatePassId;
+        return (
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Printer}
+              onClick={() => setPrintGrnData(row)}
+              className="text-xs h-7 px-2 bg-surface hover:bg-surface2 border border-theme-subtle"
+              title="Print Sample Goods Receipt Note"
+            >
+              GRN
+            </Button>
+
+            {isDispatched ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={FileText}
+                onClick={() => handlePrintExistingGatePass(row)}
+                className="text-xs h-7 px-2.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/20"
+                title="Print Gate Pass in Sample Format"
+              >
+                Print GP
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Send}
+                onClick={() => handleOpenGatePassDialog(row)}
+                className="text-xs h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white"
+                title="Issue Outward Gate Pass to Return Sample"
+              >
+                Issue Gate Pass
+              </Button>
+            )}
+          </div>
+        );
+      }
+    }
+  ];
+
+  const gatePassColumns: Column<any>[] = [
+    {
+      header: 'Gate Pass No',
+      key: 'id',
+      render: (val: any, row: any) => (
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
+            <Truck size={15} />
+          </div>
+          <div>
+            <span className="font-mono font-bold text-primary text-xs">{val}</span>
+            <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+              <Calendar size={10} />
+              {formatDate(row.issuedDate || row.createdAt)}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Customer / Consignee',
+      key: 'customerCompany',
+      render: (val: any, row: any) => (
+        <div className="space-y-0.5">
+          <div className="font-bold text-primary flex items-center gap-1.5 text-xs">
+            <Building2 size={13} className="text-blue-500 flex-shrink-0" />
+            <span>{val || row.customerName || 'N/A'}</span>
+          </div>
+          {row.attention && (
+            <div className="text-[11px] text-secondary flex items-center gap-1">
+              <User size={11} className="text-muted flex-shrink-0" />
+              <span>Attn: {row.attention}</span>
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      header: 'Reference',
+      key: 'quoNo',
+      render: (_: any, row: any) => (
+        <div className="space-y-1">
+          {row.quoNo || row.displayQuoNo ? (
+            <Badge variant="info" className="font-mono text-xs">
+              {row.quoNo || row.displayQuoNo}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted">-</span>
+          )}
+          {row.grnId && (
+            <div className="text-[10px] text-muted font-mono">
+              GRN: {row.grnId}
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      header: 'Carrier / Transport',
+      key: 'carrier',
+      render: (val: any, row: any) => (
+        <div className="text-xs">
+          <span className="font-medium text-primary">{val || 'Hand Delivery'}</span>
+          {row.vehicleNo && <div className="text-[10px] text-muted font-mono">{row.vehicleNo}</div>}
+          <div className="text-[10px] text-gray-500">{row.reason || 'Sample Return'}</div>
+        </div>
+      )
+    },
+    {
+      header: 'Items Dispatched',
+      key: 'items',
+      render: (val: any) => {
+        let itemsList: any[] = [];
+        try {
+          if (typeof val === 'string' && val.startsWith('[')) itemsList = JSON.parse(val);
+          else if (Array.isArray(val)) itemsList = val;
+          else if (val) itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
+        } catch (e) {
+          itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
+        }
+        return (
+          <div className="space-y-1 max-w-xs">
+            {itemsList.map((it: any, idx: number) => (
+              <div key={idx} className="flex items-center gap-1.5 text-xs">
+                <span className="font-medium text-primary">{it.description}</span>
+                <span className="text-[10px] font-mono text-muted bg-surface2 px-1.5 py-0.5 rounded border border-theme-subtle">
+                  x{Number(it.qty || 1)} {it.unit || 'Nos'}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Issued By',
+      key: 'issuedBy',
+      render: (val: any) => <span className="text-xs text-secondary">{val || 'System'}</span>
+    },
+    {
+      header: 'Status',
+      key: 'status',
+      render: (val: any) => <Badge variant="success" size="sm">{val || 'Dispatched'}</Badge>
+    },
+    {
+      header: 'Actions',
+      key: 'actions',
+      render: (_: any, row: any) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Printer}
+            onClick={() => setPrintGatePassData(row)}
+            className="text-xs h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            Print Gate Pass
+          </Button>
+          <button
+            onClick={() => handleDeleteGatePass(row.id)}
+            className="p-1.5 hover:bg-red-500/20 text-muted hover:text-red-500 rounded transition-colors"
+            title="Delete Gate Pass"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      )
+    }
+  ];
+
   if (showForm) {
     return (
       <div className="space-y-6 animate-fade-in pb-12 max-w-7xl mx-auto">
@@ -552,59 +1148,125 @@ export const Inventory: React.FC = () => {
     )
   }
 
+  const inHandCount = grns.filter(g => g.status !== 'Dispatched' && !g.gatePassId).length;
+  const dispatchedCount = grns.filter(g => g.status === 'Dispatched' || !!g.gatePassId).length;
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">Inventory & Services</h1>
-          <p className="text-sm text-secondary mt-1">Manage products, raw materials, and service offerings.</p>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">
+            {activeTab === 'customer_sample' ? 'Customer Samples & Gate Passes' : 'Inventory & Services'}
+          </h1>
+          <p className="text-sm text-secondary mt-1">
+            {activeTab === 'customer_sample' 
+              ? 'Track customer sample parts, linked quotation details, and manage outward return gate passes.' 
+              : 'Manage products, raw materials, and service offerings.'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-            <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
-            <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>Add New Item</Button>
-          </div>
+          {activeTab === 'customer_sample' ? (
+            <Button variant="primary" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
+              Receive Customer Sample
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
+              <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>Add New Item</Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Tabs & Controls */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle overflow-x-auto max-w-full">
-          {[
-            { id: 'all', label: 'All Items' },
-            { id: 'raw_material', label: 'Raw Materials' },
-            { id: 'finished_product', label: 'Finished Products' },
-            { id: 'company_asset', label: 'Company Assets' },
-            { id: 'service', label: 'Services' },
-            { id: 'customer_sample', label: 'Customer Samples' }
-          ].map(t => (
-            <button 
-              key={t.id}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-              onClick={() => setActiveTab(t.id as TabType)}
-            >{t.label}</button>
-          ))}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle overflow-x-auto max-w-full">
+            {[
+              { id: 'all', label: 'All Items' },
+              { id: 'raw_material', label: 'Raw Materials' },
+              { id: 'finished_product', label: 'Finished Products' },
+              { id: 'company_asset', label: 'Company Assets' },
+              { id: 'service', label: 'Services' },
+              { id: 'customer_sample', label: `Customer Samples (${grns.length})` }
+            ].map(t => (
+              <button 
+                key={t.id}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
+                onClick={() => setActiveTab(t.id as TabType)}
+              >{t.label}</button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 flex-1 justify-end">
+            <SearchBar 
+              value={search} 
+              onChange={setSearch} 
+              placeholder={activeTab === 'customer_sample' ? "Search quotation, company, sample #..." : "Search inventory..."} 
+              className="w-72" 
+            />
+            <Button variant="ghost" icon={Filter}>Filters</Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 justify-end">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search inventory..." className="w-64" />
-          <Button variant="ghost" icon={Filter}>Filters</Button>
-        </div>
+        {/* Customer Samples Sub-navigation & Status Filters */}
+        {activeTab === 'customer_sample' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2.5 rounded-lg border border-theme-subtle">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSampleSubTab('samples')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${sampleSubTab === 'samples' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+              >
+                <Package size={14} /> Customer Samples ({grns.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSampleSubTab('gate_passes')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${sampleSubTab === 'gate_passes' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+              >
+                <Truck size={14} /> Outward Gate Passes ({gatePasses.length})
+              </button>
+            </div>
+
+            {sampleSubTab === 'samples' && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted font-medium">Status Filter:</span>
+                {(['all', 'in_stock', 'dispatched'] as const).map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setSampleFilterStatus(st)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${sampleFilterStatus === st ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                  >
+                    {st === 'all' ? `All (${grns.length})` : st === 'in_stock' ? `In Hand (${inHandCount})` : `Dispatched (${dispatchedCount})`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <GlassCard className="p-0 overflow-hidden">
         {activeTab === 'customer_sample' ? (
-          <DataTable 
-            columns={[
-              { header: 'Date', key: 'createdAt', render: (val: any) => new Date(val).toLocaleString() },
-              { header: 'Customer/Lead', key: 'leadName', render: (_: any, row: any) => row.customerName || row.leadName || 'Unknown' },
-              { header: 'Items', key: 'items', render: (val: any) => { try { const p = JSON.parse(val); if(Array.isArray(p)) return p.map(i => `${i.description} (x${i.qty})`).join(', '); return val; } catch(e){ return val; } } },
-              { header: 'Received By', key: 'receivedBy', render: (val: any) => val },
-              { header: 'Notes', key: 'notes', render: (val: any) => val || '-' },
-            ]} 
-            data={grns} 
-            keyExtractor={(item: any) => item.id} 
-            pagination 
-            itemsPerPage={50} 
-          />
+          sampleSubTab === 'samples' ? (
+            <DataTable 
+              columns={customerSampleColumns} 
+              data={filteredGrns} 
+              keyExtractor={(item: any) => item.id} 
+              pagination 
+              itemsPerPage={50} 
+            />
+          ) : (
+            <DataTable 
+              columns={gatePassColumns} 
+              data={filteredGatePasses} 
+              keyExtractor={(item: any) => item.id} 
+              pagination 
+              itemsPerPage={50} 
+            />
+          )
         ) : (
           <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
         )}
@@ -654,6 +1316,655 @@ export const Inventory: React.FC = () => {
             {submitting && <p className="text-xs text-center text-blue-500 font-bold mt-3 animate-pulse">Importing items, please wait...</p>}
           </div>
         </div>
+      </Modal>
+
+      {/* Customer GRN Print Modal */}
+      <Modal isOpen={!!printGrnData} onClose={() => setPrintGrnData(null)} title="Print Customer Sample GRN" size="xl">
+        {printGrnData && (
+          <div className="bg-white text-black p-8 max-h-[85vh] overflow-y-auto w-[900px] max-w-full">
+            <CustomerGRNPrintView 
+              grn={printGrnData} 
+              group={{
+                leadCompany: printGrnData.customerCompany || printGrnData.leadCompany || printGrnData.companyName,
+                leadName: printGrnData.customerName || printGrnData.leadName,
+                quoNo: printGrnData.displayQuoNo || printGrnData.quoNo || printGrnData.quotationDocNo,
+                address: printGrnData.customerAddress,
+                phone: printGrnData.customerPhone || printGrnData.phone,
+                email: printGrnData.customerEmail || printGrnData.email
+              }}
+              settings={settings}
+            />
+            <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-gray-200 pt-6">
+              <Button variant="ghost" onClick={() => {
+                const element = document.getElementById('grn-print-section');
+                if (!element) return;
+                const opt: any = {
+                  margin: 0.5,
+                  filename: `GRN-${printGrnData.id}.pdf`,
+                  image: { type: 'jpeg', quality: 0.98 },
+                  html2canvas: { scale: 2, useCORS: true },
+                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                };
+                html2pdf().set(opt).from(element).save();
+              }} className="bg-gray-100 border border-gray-300 hover:bg-gray-200 text-gray-800">Export PDF</Button>
+              <Button variant="primary" onClick={() => window.print()}>Print GRN</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Gate Pass Print Modal (Rex Sample Format) */}
+      <Modal isOpen={!!printGatePassData} onClose={() => setPrintGatePassData(null)} title="Print Sample Gate Pass" size="xl">
+        {printGatePassData && (
+          <div className="bg-white text-black p-8 max-h-[85vh] overflow-y-auto w-[900px] max-w-full">
+            <GatePassPrintView 
+              gatePass={printGatePassData}
+              settings={settings}
+            />
+            <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-gray-200 pt-6">
+              <Button variant="ghost" onClick={() => {
+                const element = document.getElementById('gatepass-print-section');
+                if (!element) return;
+                const opt: any = {
+                  margin: 0.5,
+                  filename: `GatePass-${printGatePassData.id}.pdf`,
+                  image: { type: 'jpeg', quality: 0.98 },
+                  html2canvas: { scale: 2, useCORS: true },
+                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                };
+                html2pdf().set(opt).from(element).save();
+              }} className="bg-gray-100 border border-gray-300 hover:bg-gray-200 text-gray-800">Export PDF</Button>
+              <Button variant="primary" onClick={() => window.print()}>Print Gate Pass</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Issue Outward Gate Pass Modal */}
+      <Modal isOpen={!!gatePassDialog} onClose={() => setGatePassDialog(null)} title="Issue Outward Gate Pass (Return Customer Sample)" size="lg">
+        {gatePassDialog && (
+          <form onSubmit={handleSaveGatePass} className="p-6 space-y-4">
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-secondary flex items-start gap-2">
+              <Truck size={16} className="text-blue-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-primary">Creating Outward Gate Pass for Sample Return</p>
+                <p className="text-muted mt-0.5">This generates an official Rex Sample Gate Pass document and updates the sample status to Returned / Dispatched.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Customer / Company Name *</label>
+                <input 
+                  required 
+                  type="text" 
+                  className="w-full input-base font-semibold" 
+                  value={gatePassDialog.customerCompany} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, customerCompany: e.target.value})} 
+                  placeholder="e.g. Lanka Logistics (Pvt) Ltd"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Attention / Contact Person</label>
+                <input 
+                  type="text" 
+                  className="w-full input-base" 
+                  value={gatePassDialog.attention} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, attention: e.target.value})} 
+                  placeholder="e.g. Mr. Nimesh Silva"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Quotation Reference</label>
+                <input 
+                  type="text" 
+                  className="w-full input-base font-mono" 
+                  value={gatePassDialog.quoNo} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, quoNo: e.target.value})} 
+                  placeholder="e.g. QT-163174"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Sample GRN Ref</label>
+                <input 
+                  type="text" 
+                  readOnly 
+                  className="w-full input-base bg-surface2 font-mono text-muted" 
+                  value={gatePassDialog.grn?.id || ''} 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Dispatch Date *</label>
+                <input 
+                  required 
+                  type="date" 
+                  className="w-full input-base" 
+                  value={gatePassDialog.issuedDate} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, issuedDate: e.target.value})} 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Carrier / Dispatch Mode *</label>
+                <select 
+                  className="w-full input-base" 
+                  value={gatePassDialog.carrier} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, carrier: e.target.value})}
+                >
+                  <option value="Hand Delivery">Hand Delivery / Direct Handover</option>
+                  <option value="Customer Representative">Customer Representative / Pickup</option>
+                  <option value="Company Delivery Vehicle">Company Delivery Vehicle</option>
+                  <option value="Courier Service">Courier / Transport Service</option>
+                  <option value="Driver / Transport">Driver / Third-Party Transport</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Vehicle No / Tracking ID</label>
+                <input 
+                  type="text" 
+                  className="w-full input-base font-mono" 
+                  value={gatePassDialog.vehicleNo} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, vehicleNo: e.target.value})} 
+                  placeholder="e.g. WP CAB-1234 or Tracking #"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Delivery Address</label>
+                <input 
+                  type="text" 
+                  className="w-full input-base" 
+                  value={gatePassDialog.address} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, address: e.target.value})} 
+                  placeholder="Customer address"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Contact Phone</label>
+                <input 
+                  type="text" 
+                  className="w-full input-base" 
+                  value={gatePassDialog.phone} 
+                  onChange={e => setGatePassDialog({...gatePassDialog, phone: e.target.value})} 
+                  placeholder="Contact phone number"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Purpose / Reason</label>
+              <input 
+                type="text" 
+                className="w-full input-base" 
+                value={gatePassDialog.reason} 
+                onChange={e => setGatePassDialog({...gatePassDialog, reason: e.target.value})} 
+                placeholder="e.g. Customer sample returned after quotation / inspection"
+              />
+            </div>
+
+            {/* Items table */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-xs font-bold text-secondary">Items to Return / Dispatch</label>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  type="button"
+                  onClick={() => setGatePassDialog((p: any) => p ? { ...p, items: [...p.items, { description: '', qty: 1, unit: 'Nos', remarks: '' }] } : null)} 
+                  className="h-6 text-[11px]"
+                >
+                  <Plus size={12} className="mr-1" /> Add Item
+                </Button>
+              </div>
+
+              <div className="space-y-2 border border-theme-subtle rounded-lg p-3 bg-surface2/30">
+                {gatePassDialog.items.map((item: any, idx: number) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <input 
+                      required 
+                      className="flex-1 input-base text-xs py-1.5" 
+                      placeholder="Item description" 
+                      value={item.description} 
+                      onChange={e => {
+                        const newItems = [...gatePassDialog.items];
+                        newItems[idx].description = e.target.value;
+                        setGatePassDialog({...gatePassDialog, items: newItems});
+                      }} 
+                    />
+                    <input 
+                      required 
+                      type="number" 
+                      step="0.01" 
+                      className="w-20 input-base text-xs py-1.5 font-mono text-center" 
+                      placeholder="Qty" 
+                      value={item.qty} 
+                      onChange={e => {
+                        const newItems = [...gatePassDialog.items];
+                        newItems[idx].qty = Number(e.target.value);
+                        setGatePassDialog({...gatePassDialog, items: newItems});
+                      }} 
+                    />
+                    <input 
+                      className="w-20 input-base text-xs py-1.5 text-center" 
+                      placeholder="Unit" 
+                      value={item.unit} 
+                      onChange={e => {
+                        const newItems = [...gatePassDialog.items];
+                        newItems[idx].unit = e.target.value;
+                        setGatePassDialog({...gatePassDialog, items: newItems});
+                      }} 
+                    />
+                    <input 
+                      className="w-36 input-base text-xs py-1.5" 
+                      placeholder="Condition remarks" 
+                      value={item.remarks || ''} 
+                      onChange={e => {
+                        const newItems = [...gatePassDialog.items];
+                        newItems[idx].remarks = e.target.value;
+                        setGatePassDialog({...gatePassDialog, items: newItems});
+                      }} 
+                    />
+                    {gatePassDialog.items.length > 1 && (
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const newItems = [...gatePassDialog.items];
+                          newItems.splice(idx, 1);
+                          setGatePassDialog({...gatePassDialog, items: newItems});
+                        }} 
+                        className="text-red-400 hover:text-red-600 p-1"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Additional Instructions / Dispatch Notes</label>
+              <textarea 
+                className="w-full input-base h-16 resize-none text-xs" 
+                value={gatePassDialog.notes} 
+                onChange={e => setGatePassDialog({...gatePassDialog, notes: e.target.value})} 
+                placeholder="Gate pass instructions, security notes, or return condition..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
+              <Button variant="ghost" type="button" onClick={() => setGatePassDialog(null)}>Cancel</Button>
+              <Button variant="primary" type="submit" disabled={submitting} icon={Send}>
+                {submitting ? 'Generating...' : 'Confirm & Generate Gate Pass'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Receive Customer Sample Modal */}
+      <Modal isOpen={receiveSampleOpen} onClose={() => setReceiveSampleOpen(false)} title="Receive Customer Sample (GRN)" size="lg">
+        <form onSubmit={handleCreateSampleGRN} className="p-6 space-y-4">
+          {/* Quotation / Lead Search & Link Section */}
+          <div className="bg-surface2/40 p-3.5 rounded-lg border border-theme-subtle space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-primary flex items-center gap-1.5">
+                <Search size={14} className="text-rex-600 dark:text-rex-400" />
+                Link Quotation or Lead
+              </label>
+              {(newSampleData.quoteId || newSampleData.leadId) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewSampleData({
+                      ...newSampleData,
+                      quoteId: '',
+                      quoNo: '',
+                      leadId: '',
+                      customerCompany: '',
+                      customerName: ''
+                    });
+                    setSampleSearchQuery('');
+                  }}
+                  className="text-[11px] text-red-500 hover:underline flex items-center gap-1"
+                >
+                  <X size={12} /> Clear Link
+                </button>
+              )}
+            </div>
+
+            {newSampleData.quoteId || newSampleData.leadId ? (
+              <div className="p-3 bg-surface rounded border border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    {newSampleData.quoteId ? (
+                      <Badge variant="info" className="text-xs font-mono font-bold flex items-center gap-1">
+                        <FileText size={12} /> {newSampleData.quoNo || newSampleData.quoteId}
+                      </Badge>
+                    ) : (
+                      <Badge variant="warning" className="text-xs font-mono font-bold flex items-center gap-1">
+                        <User size={12} /> Direct Lead Sample
+                      </Badge>
+                    )}
+                    {newSampleData.leadId && (
+                      <span className="text-xs text-muted font-mono bg-surface2 px-1.5 py-0.5 rounded">
+                        Lead: {newSampleData.leadId}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold text-primary">
+                    {newSampleData.customerCompany || 'No Company'} {newSampleData.customerName ? `(${newSampleData.customerName})` : ''}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() => {
+                    setNewSampleData({
+                      ...newSampleData,
+                      quoteId: '',
+                      quoNo: '',
+                      leadId: ''
+                    });
+                    setSampleSearchQuery('');
+                  }}
+                  className="text-xs"
+                >
+                  Change Selection
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
+                  <input
+                    type="text"
+                    value={sampleSearchQuery}
+                    onChange={e => setSampleSearchQuery(e.target.value)}
+                    placeholder="Search by Quotation # (e.g. QUO-...), Lead # (e.g. LEAD-...), or Company name..."
+                    className="w-full input-base text-xs pl-9 pr-8 py-2 bg-surface"
+                  />
+                  {sampleSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSampleSearchQuery('')}
+                      className="absolute right-2.5 top-2.5 text-muted hover:text-primary"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Search Results Dropdown List */}
+                <div className="max-h-56 overflow-y-auto space-y-1.5 border border-theme-subtle rounded-md p-1.5 bg-surface custom-scrollbar">
+                  {/* Matching Quotations */}
+                  {quotationsList
+                    .filter(q => {
+                      if (!sampleSearchQuery.trim()) return true;
+                      const s = sampleSearchQuery.toLowerCase();
+                      return (
+                        (q.docNo && q.docNo.toLowerCase().includes(s)) ||
+                        (q.id && q.id.toLowerCase().includes(s)) ||
+                        (q.leadId && q.leadId.toLowerCase().includes(s)) ||
+                        (q.leadCompany && q.leadCompany.toLowerCase().includes(s)) ||
+                        (q.company && q.company.toLowerCase().includes(s)) ||
+                        (q.leadName && q.leadName.toLowerCase().includes(s)) ||
+                        (q.name && q.name.toLowerCase().includes(s))
+                      );
+                    })
+                    .slice(0, 10)
+                    .map(q => (
+                      <div
+                        key={q.id}
+                        onClick={() => {
+                          setNewSampleData({
+                            ...newSampleData,
+                            quoteId: q.id,
+                            quoNo: q.docNo || q.id,
+                            leadId: q.leadId || '',
+                            customerCompany: q.leadCompany || q.company || q.customerCompany || '',
+                            customerName: q.leadName || q.name || q.customerName || ''
+                          });
+                          setSampleSearchQuery('');
+                        }}
+                        className="p-2 hover:bg-surface2 rounded cursor-pointer transition-colors border border-transparent hover:border-theme-subtle flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-rex-600 dark:text-rex-400 bg-rex-50 dark:bg-rex-950/40 px-1.5 py-0.5 rounded border border-rex-200 dark:border-rex-900/50">
+                            {q.docNo || q.id}
+                          </span>
+                          <span className="font-medium text-primary">
+                            {q.leadCompany || q.company || 'Customer'}
+                          </span>
+                          {(q.leadName || q.name) && (
+                            <span className="text-muted">
+                              ({q.leadName || q.name})
+                            </span>
+                          )}
+                          {q.leadId && (
+                            <span className="text-[10px] text-muted font-mono bg-surface2 px-1 py-0.5 rounded">
+                              {q.leadId}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge size="sm" variant={q.status === 'Won' || q.status === 'Approved' ? 'success' : 'default'}>
+                            {q.status || 'Draft'}
+                          </Badge>
+                          {q.totalAmount ? (
+                            <span className="text-[11px] font-mono text-muted">
+                              {formatCurrency(Number(q.totalAmount))}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+
+                  {/* Matching Leads (Direct Samples before quotation) */}
+                  {(leadsList || [])
+                    .filter((l: any) => {
+                      if (!sampleSearchQuery.trim()) return false;
+                      const s = sampleSearchQuery.toLowerCase();
+                      return (
+                        (l.id && l.id.toLowerCase().includes(s)) ||
+                        (l.company && l.company.toLowerCase().includes(s)) ||
+                        (l.name && l.name.toLowerCase().includes(s)) ||
+                        (l.phone && l.phone.toLowerCase().includes(s))
+                      );
+                    })
+                    .slice(0, 6)
+                    .map((l: any) => (
+                      <div
+                        key={l.id}
+                        onClick={() => {
+                          setNewSampleData({
+                            ...newSampleData,
+                            quoteId: '',
+                            quoNo: '',
+                            leadId: l.id,
+                            customerCompany: l.company || '',
+                            customerName: l.name || ''
+                          });
+                          setSampleSearchQuery('');
+                        }}
+                        className="p-2 hover:bg-surface2 rounded cursor-pointer transition-colors border border-dashed border-amber-500/30 flex items-center justify-between gap-3 text-xs bg-amber-500/5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            {l.id}
+                          </span>
+                          <span className="font-medium text-primary">
+                            {l.company}
+                          </span>
+                          {l.name && <span className="text-muted">({l.name})</span>}
+                        </div>
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                          Direct Lead Sample
+                        </span>
+                      </div>
+                    ))}
+
+                  {/* Fallback option */}
+                  <div
+                    onClick={() => {
+                      setNewSampleData({
+                        ...newSampleData,
+                        quoteId: '',
+                        quoNo: '',
+                        leadId: ''
+                      });
+                      setSampleSearchQuery('');
+                    }}
+                    className="p-1.5 text-center text-[11px] text-muted hover:text-primary cursor-pointer hover:bg-surface2 rounded transition-colors"
+                  >
+                    -- Enter sample details directly without linking quote or lead --
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Customer / Company *</label>
+              <input
+                required
+                type="text"
+                className="w-full input-base text-xs"
+                value={newSampleData.customerCompany}
+                onChange={e => setNewSampleData({...newSampleData, customerCompany: e.target.value})}
+                placeholder="e.g. Lanka Logistics (Pvt) Ltd"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Contact Person</label>
+              <input
+                type="text"
+                className="w-full input-base text-xs"
+                value={newSampleData.customerName}
+                onChange={e => setNewSampleData({...newSampleData, customerName: e.target.value})}
+                placeholder="e.g. Mr. Nimesh Silva"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Receipt Date *</label>
+              <input
+                required
+                type="date"
+                className="w-full input-base text-xs"
+                value={newSampleData.receivedAt}
+                onChange={e => setNewSampleData({...newSampleData, receivedAt: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">Received By</label>
+              <input
+                type="text"
+                className="w-full input-base text-xs"
+                value={newSampleData.receivedBy}
+                onChange={e => setNewSampleData({...newSampleData, receivedBy: e.target.value})}
+                placeholder="Receiver name"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-bold text-secondary">Items Received</label>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => setNewSampleData({ ...newSampleData, items: [...newSampleData.items, { description: '', qty: 1, unit: 'Nos' }] })}
+                className="h-6 text-[10px]"
+              >
+                <Plus size={12} className="mr-1" /> Add Item
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {newSampleData.items.map((it: any, idx: number) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <input
+                    required
+                    className="flex-1 input-base text-xs py-1.5"
+                    placeholder="Item description"
+                    value={it.description}
+                    onChange={e => {
+                      const updated = [...newSampleData.items];
+                      updated[idx].description = e.target.value;
+                      setNewSampleData({...newSampleData, items: updated});
+                    }}
+                  />
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    className="w-20 input-base text-xs py-1.5 font-mono text-center"
+                    placeholder="Qty"
+                    value={it.qty}
+                    onChange={e => {
+                      const updated = [...newSampleData.items];
+                      updated[idx].qty = Number(e.target.value);
+                      setNewSampleData({...newSampleData, items: updated});
+                    }}
+                  />
+                  <input
+                    className="w-20 input-base text-xs py-1.5 text-center"
+                    placeholder="Unit"
+                    value={it.unit}
+                    onChange={e => {
+                      const updated = [...newSampleData.items];
+                      updated[idx].unit = e.target.value;
+                      setNewSampleData({...newSampleData, items: updated});
+                    }}
+                  />
+                  {newSampleData.items.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = [...newSampleData.items];
+                        updated.splice(idx, 1);
+                        setNewSampleData({...newSampleData, items: updated});
+                      }}
+                      className="text-red-400 hover:text-red-600 p-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-secondary mb-1">Notes / Condition</label>
+            <input
+              type="text"
+              className="w-full input-base text-xs"
+              value={newSampleData.notes}
+              onChange={e => setNewSampleData({...newSampleData, notes: e.target.value})}
+              placeholder="e.g. For quotation machining estimation, surface intact..."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
+            <Button variant="ghost" type="button" onClick={() => setReceiveSampleOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={submitting}>
+              {submitting ? 'Saving...' : 'Confirm Receipt'}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
-import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick } from 'lucide-react';
+import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick, Wrench } from 'lucide-react';
 import { CurrencyManager } from '@/components/CurrencyManager';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
@@ -11,6 +11,7 @@ export const Settings = () => {
   const { settings, updateSettings } = useSettings();
   const [logo, setLogo] = useState<string | null>(settings.company_logo || null);
   const [saving, setSaving] = useState(false);
+  const [fixingDb, setFixingDb] = useState(false);
 
   const [sysStats, setSysStats] = useState<any>(null);
 
@@ -57,7 +58,8 @@ export const Settings = () => {
 
   
   const handleFixDb = async () => {
-    if (await showConfirm('This will safely scan and fix missing database tables and columns. No data will be deleted. Proceed?', 'Fix Database Structure', { confirmLabel: 'Proceed' })) {
+    if (await showConfirm('This will safely scan and fix missing database tables and columns (including Customer Samples and Gate Passes). No data will be deleted. Proceed?', 'Fix Database Structure', { confirmLabel: 'Proceed' })) {
+      setFixingDb(true);
       try {
         const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/fix-db`, { 
           method: 'POST', 
@@ -65,12 +67,14 @@ export const Settings = () => {
         });
         const data = await res.json();
         if (data.success) {
-          toast('Database structure fixed successfully!', 'success');
+          toast(data.message || 'Database structure fixed successfully!', 'success');
         } else {
           toast('Failed to fix DB: ' + data.error, 'error');
         }
       } catch (e: any) {
         toast('Error: ' + e.message, 'error');
+      } finally {
+        setFixingDb(false);
       }
     }
   };
@@ -216,13 +220,24 @@ export const Settings = () => {
 
         <GlassCard className="p-6 col-span-1 md:col-span-2 border-emerald-500/30">
 
-          <h2 className="text-sm font-bold text-emerald-500 uppercase tracking-widest mb-4">Database Maintenance</h2>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 mb-4">
+            <Wrench className="w-4 h-4 text-emerald-500" />
+            <h2 className="text-sm font-bold text-emerald-500 uppercase tracking-widest">Database Maintenance</h2>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-primary">Fix Database Structure</p>
-              <p className="text-xs text-muted mt-1">Safely restore missing tables or columns without losing any data. Use this if you encounter database errors.</p>
+              <p className="text-sm font-semibold text-primary">Fix & Synchronize Database Structure</p>
+              <p className="text-xs text-muted mt-1">Safely restore and patch missing tables or columns (such as Gate Passes, Customer Samples GRN, Accounting fields) without losing any existing data. Use this if you encounter database schema errors.</p>
             </div>
-            <Button variant="ghost" onClick={handleFixDb} className="text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20">Fix DB</Button>
+            <Button 
+              variant="ghost" 
+              onClick={handleFixDb} 
+              disabled={fixingDb}
+              className="text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 whitespace-nowrap min-w-[120px] flex items-center justify-center gap-2 font-medium"
+            >
+              <Wrench className={`w-4 h-4 ${fixingDb ? 'animate-spin' : ''}`} />
+              {fixingDb ? 'Fixing DB...' : 'Fix DB'}
+            </Button>
           </div>
         </GlassCard>
       </div>

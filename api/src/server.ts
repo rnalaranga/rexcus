@@ -231,6 +231,58 @@ app.post('/api/settings/fix-db', async (req, res) => {
       }
     }
 
+    // Ensure required tables exist
+    const createTables = [
+      `CREATE TABLE IF NOT EXISTS customer_grns (
+        id VARCHAR(50) PRIMARY KEY,
+        quoteId VARCHAR(50) NULL,
+        quoNo VARCHAR(100) NULL,
+        leadId VARCHAR(50) NULL,
+        items TEXT NULL,
+        receivedAt DATETIME NULL,
+        receivedBy VARCHAR(100) NULL,
+        notes TEXT NULL,
+        createdAt DATETIME NULL,
+        status VARCHAR(50) DEFAULT 'In Stock',
+        gatePassId VARCHAR(50) NULL,
+        dispatchedAt DATETIME NULL,
+        customerName VARCHAR(255) NULL,
+        customerCompany VARCHAR(255) NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS gate_passes (
+        id VARCHAR(50) PRIMARY KEY,
+        type VARCHAR(50) DEFAULT 'customer_sample',
+        grnId VARCHAR(50) NULL,
+        quoteId VARCHAR(50) NULL,
+        quoNo VARCHAR(100) NULL,
+        leadId VARCHAR(50) NULL,
+        customerId VARCHAR(50) NULL,
+        customerName VARCHAR(255) NULL,
+        customerCompany VARCHAR(255) NULL,
+        address TEXT NULL,
+        phone VARCHAR(100) NULL,
+        email VARCHAR(100) NULL,
+        attention VARCHAR(255) NULL,
+        carrier VARCHAR(255) NULL,
+        vehicleNo VARCHAR(100) NULL,
+        reason VARCHAR(255) NULL,
+        items TEXT NULL,
+        issuedBy VARCHAR(100) NULL,
+        issuedDate DATETIME NULL,
+        status VARCHAR(50) DEFAULT 'Dispatched',
+        notes TEXT NULL,
+        createdAt DATETIME NULL
+      )`
+    ];
+
+    for (const tbl of createTables) {
+      try {
+        await dbObj.query(tbl);
+      } catch (err) {
+        // Ignore
+      }
+    }
+
     // Safe schema patches
     const patches = [
       "ALTER TABLE chart_of_accounts ADD COLUMN balance DECIMAL(15,2) DEFAULT 0.00",
@@ -245,6 +297,15 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE tax_profiles ADD COLUMN tax1_hidden TINYINT(1) DEFAULT '0'",
       "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
       "ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock'",
+      "ALTER TABLE customer_grns ADD COLUMN gatePassId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE customer_grns ADD COLUMN dispatchedAt DATETIME DEFAULT NULL",
+      "ALTER TABLE customer_grns ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE customer_grns ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE gate_passes ADD COLUMN type VARCHAR(50) DEFAULT 'customer_sample'",
+      "ALTER TABLE gate_passes ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE gate_passes ADD COLUMN carrier VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE gate_passes ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE gate_passes ADD COLUMN reason VARCHAR(255) DEFAULT NULL",
       "ALTER TABLE journal_lines ADD COLUMN partyId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE journal_lines ADD COLUMN partyType VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE journal_lines ADD COLUMN costCenterId VARCHAR(50) DEFAULT NULL"
@@ -681,10 +742,34 @@ app.delete('/api/quotations/:id', async (req, res) => {
 app.get('/api/crm/grns', async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT g.*, l.name as leadName, c.name as customerName 
+      SELECT 
+        g.*, 
+        COALESCE(g.customerCompany, c.company, l.company, '') as companyName,
+        COALESCE(g.customerName, c.name, l.name, '') as personName,
+        COALESCE(g.customerName, c.name, l.name, '') as customerName,
+        COALESCE(g.customerCompany, c.company, l.company, '') as customerCompany,
+        COALESCE(c.phone, l.phone, '') as customerPhone,
+        COALESCE(c.email, l.email, '') as customerEmail,
+        COALESCE(c.address, '') as customerAddress,
+        l.name as leadName, 
+        l.company as leadCompany, 
+        q.docNo as quotationDocNo,
+        q.totalAmount as quotationTotal,
+        q.status as quotationStatus,
+        q.date as quotationDate,
+        COALESCE(g.quoNo, q.docNo, q.id) as displayQuoNo,
+        gp.id as gpId,
+        gp.issuedDate as gpDate,
+        gp.carrier as gpCarrier,
+        gp.vehicleNo as gpVehicleNo,
+        gp.attention as gpAttention,
+        gp.reason as gpReason,
+        gp.status as gpStatus
       FROM customer_grns g 
       LEFT JOIN leads l ON g.leadId = l.id 
       LEFT JOIN customers c ON l.customerId = c.id 
+      LEFT JOIN quotations q ON g.quoteId = q.id
+      LEFT JOIN gate_passes gp ON (g.gatePassId = gp.id OR gp.grnId = g.id)
       ORDER BY g.createdAt DESC
     `);
     res.json(rows);
@@ -713,14 +798,15 @@ app.post('/api/crm/grns', async (req, res) => {
     // Auto-generate GRN ID (S-XXXX)
     let grnId = data.id;
     if (!grnId) {
-      const [countResult] = await db.query('SELECT COUNT(*) as c FROM customer_grns');
-      const nextNum = (countResult[0].c || 0) + 1;
+      const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM customer_grns');
+      const nextNum = (countResult[0]?.c || 0) + 1;
       grnId = 'S-' + nextNum.toString().padStart(4, '0');
     }
 
     const item = {
       ...data,
       id: grnId,
+      status: data.status || 'In Stock',
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     };
     await db.query('INSERT INTO customer_grns SET ?', item);
@@ -734,8 +820,111 @@ app.post('/api/crm/grns', async (req, res) => {
 app.put('/api/crm/grns/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    await db.query('UPDATE customer_grns SET status = ? WHERE id = ?', [status, id]);
+    const data = { ...req.body };
+    delete data.id;
+    await db.query('UPDATE customer_grns SET ? WHERE id = ?', [data, id]);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// -- GATE PASSES --
+app.get('/api/gate-passes', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT gp.*, 
+             g.receivedAt as grnReceivedAt, 
+             g.receivedBy as grnReceivedBy,
+             q.docNo as quotationDocNo,
+             COALESCE(gp.quoNo, q.docNo, q.id) as displayQuoNo
+      FROM gate_passes gp
+      LEFT JOIN customer_grns g ON gp.grnId = g.id
+      LEFT JOIN quotations q ON gp.quoteId = q.id
+      ORDER BY gp.createdAt DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/gate-passes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT * FROM gate_passes WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Gate pass not found' });
+    res.json(rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/gate-passes', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (data.items && typeof data.items === 'object') {
+      data.items = JSON.stringify(data.items);
+    }
+    
+    // Auto-generate Gate Pass ID (GP-XXXX)
+    let gpId = data.id;
+    if (!gpId) {
+      const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM gate_passes');
+      const nextNum = (countResult[0]?.c || 0) + 1;
+      gpId = 'GP-' + nextNum.toString().padStart(4, '0');
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const item = {
+      ...data,
+      id: gpId,
+      issuedDate: data.issuedDate || now,
+      status: data.status || 'Dispatched',
+      createdAt: now
+    };
+
+    await db.query('INSERT INTO gate_passes SET ?', item);
+
+    // If linked to a customer GRN, update GRN status to Dispatched and store gatePassId
+    if (item.grnId) {
+      await db.query(
+        'UPDATE customer_grns SET gatePassId = ?, status = ?, dispatchedAt = ? WHERE id = ?',
+        [gpId, 'Dispatched', item.issuedDate, item.grnId]
+      );
+    }
+
+    res.json({ success: true, item });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/gate-passes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = { ...req.body };
+    delete data.id;
+    if (data.items && typeof data.items === 'object') {
+      data.items = JSON.stringify(data.items);
+    }
+    await db.query('UPDATE gate_passes SET ? WHERE id = ?', [data, id]);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/gate-passes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query("UPDATE customer_grns SET gatePassId = NULL, status = 'In Stock', dispatchedAt = NULL WHERE gatePassId = ?", [id]);
+    await db.query('DELETE FROM gate_passes WHERE id = ?', [id]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
