@@ -43,6 +43,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   
   const custItems = data.custItems || []
   const custDiscount = data.custDiscount || 0
+  const custDiscountType = data.custDiscountType || 'percent'
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
   
   const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 };
@@ -181,7 +182,11 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             {quotationType !== 'job' && custTotals.discount > 0 && (
                <div className="flex border-b border-black items-center h-8">
                  <div className="w-[65%] text-right pr-6">Discount</div>
-                 <div className="w-[15%] text-center">{data.custDiscount} %</div>
+                 <div className="w-[15%] text-center">
+                   {custDiscountType === 'amount'
+                     ? `${(custTotals.subtotal > 0 ? (custTotals.discount / custTotals.subtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
+                     : `${Number(custDiscount || 0)} %`}
+                 </div>
                  <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
                    {Number((custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                  </div>
