@@ -38,6 +38,13 @@ const variantStyles: Record<string, string> = {
   blue:        'bg-blue-500/12 text-blue-700 dark:text-blue-400 border border-blue-500/25',
   gray:        'bg-surface2 text-muted border border-theme',
   
+  // Purchasing & Workflow
+  partially_ordered: 'bg-amber-500/12 text-amber-700 dark:text-amber-400 border border-amber-500/25',
+  ordered:           'bg-emerald-500/12 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25',
+  approved:          'bg-blue-500/12 text-blue-700 dark:text-blue-400 border border-blue-500/25',
+  pending:           'bg-amber-500/12 text-amber-700 dark:text-amber-400 border border-amber-500/25',
+  rejected:          'bg-rex-500/12 text-rex-700 dark:text-rex-300 border border-rex-500/30',
+
   // Semantic
   success:     'bg-emerald-500/12 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25',
   info:        'bg-blue-500/12 text-blue-700 dark:text-blue-400 border border-blue-500/25',
@@ -53,6 +60,7 @@ const labelMap: Record<string, string> = {
   won: 'Won ✓', lost: 'Lost', closed_won: 'Won ✓', closed_lost: 'Lost', prospecting: 'Prospecting',
   critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low',
   enterprise: 'Enterprise', sme: 'SME', retail: 'Retail',
+  partially_ordered: 'Partially Ordered', ordered: 'Ordered', approved: 'Approved', pending: 'Pending', rejected: 'Rejected',
 }
 
 interface BadgeProps {

@@ -17,7 +17,7 @@ import { fetchAllCustomerGRNs } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
-type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'ordered' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
+type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
 
 export const PurchasingHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('po');
@@ -124,52 +124,72 @@ export const PurchasingHub: React.FC = () => {
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="text-[10px] text-muted">{row.department} Dept</span>
-                  {row.poId && (
-                    <span 
-                      onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
-                      className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
-                      title="View Generated Purchase Order"
-                    >
-                      PO: {row.poId}
-                    </span>
-                  )}
+                  {(() => {
+                    const linkedPoList: string[] = Array.isArray(row.poIds) 
+                      ? row.poIds 
+                      : (typeof row.poIds === 'string'
+                          ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                          : (row.poId ? [row.poId] : []));
+                    return (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {linkedPoList.map((poNum: string) => (
+                          <span 
+                            key={poNum}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${poNum}`); }}
+                            className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                            title={`View Purchase Order ${poNum}`}
+                          >
+                            PO: {poNum}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
           )
         },
         { key: 'requestedBy', header: 'Requester', width: '150px', render: v => <span className="text-xs text-secondary">{String(v)}</span> },
-        { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
+        { key: 'status', header: 'Status', width: '120px', render: v => <Badge value={String(v)} size="sm" /> },
         { key: 'priority', header: 'Priority', width: '90px', render: v => <span className={`text-[10px] font-bold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
         { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
-        { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          <div className="flex items-center justify-end gap-1.5">
-            <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/mr-builder/${row.id}`)} className="text-[10px] uppercase h-6">
-              View MR
-            </Button>
-            {row.status?.toLowerCase() !== 'ordered' ? (
-              <Button 
-                variant="primary" 
-                size="sm" 
-                onClick={() => navigate(`/purchasing/po-builder?mr=${row.id}`)} 
-                className="text-[10px] uppercase h-6 bg-blue-600 hover:bg-blue-500"
-              >
-                Create PO
+        { key: 'actions', header: '', align: 'right', render: (_, row) => {
+          const linkedPoList: string[] = Array.isArray(row.poIds) 
+            ? row.poIds 
+            : (typeof row.poIds === 'string'
+                ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                : (row.poId ? [row.poId] : []));
+
+          return (
+            <div className="flex items-center justify-end gap-1.5">
+              <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/mr-builder/${row.id}`)} className="text-[10px] uppercase h-6">
+                View MR
               </Button>
-            ) : (
-              row.poId && (
+              {row.status?.toLowerCase() !== 'ordered' ? (
                 <Button 
-                  variant="ghost" 
+                  variant="primary" 
                   size="sm" 
-                  onClick={() => navigate(`/purchasing/po-builder/${row.poId}`)} 
-                  className="text-[10px] uppercase h-6 text-emerald-500 hover:text-emerald-400 font-semibold"
+                  onClick={() => navigate(`/purchasing/po-builder?mr=${row.id}`)} 
+                  className={`text-[10px] uppercase h-6 ${row.status === 'partially_ordered' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}
                 >
-                  View PO
+                  {row.status === 'partially_ordered' ? 'Order Balance' : 'Create PO'}
                 </Button>
-              )
-            )}
-          </div>
-        )}
+              ) : (
+                linkedPoList.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => navigate(`/purchasing/po-builder/${linkedPoList[linkedPoList.length - 1]}`)} 
+                    className="text-[10px] uppercase h-6 text-emerald-500 hover:text-emerald-400 font-semibold"
+                  >
+                    {linkedPoList.length > 1 ? `View POs (${linkedPoList.length})` : 'View PO'}
+                  </Button>
+                )
+              )}
+            </div>
+          );
+        }}
       ];
     }
     if (activeTab === 'grn') {

@@ -7,8 +7,9 @@ import {
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useSuppliers, useInventory } from '@/hooks/useData';
-import { createPO, updatePO, fetchPOs, updateMR } from '@/lib/api';
-import { useMaterialRequests } from '@/hooks/usePurchasing';
+import { createPO, updatePO, fetchPOs } from '@/lib/api';
+import { useMaterialRequests, usePurchaseOrders } from '@/hooks/usePurchasing';
+import { useTaxProfiles } from '@/hooks/useFinance';
 import { formatCurrency } from '@/lib/utils';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -18,6 +19,8 @@ export const POBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { data: suppliers } = useSuppliers();
   const { data: mrs } = useMaterialRequests();
+  const { data: pos } = usePurchaseOrders();
+  const { data: taxProfiles = [] } = useTaxProfiles();
   const [searchParams] = useSearchParams();
   const mrParam = searchParams.get('mr');
   const { data: inventory } = useInventory();
@@ -30,11 +33,20 @@ export const POBuilder: React.FC = () => {
   const [supplierDetails, setSupplierDetails] = useState({ contact: '', email: '', phone: '', address: '', vat: '', svat: '', brNumber: '' });
   
   const [selectedMrId, setSelectedMrId] = useState<string>(mrParam || '');
+  const [mrFulfillmentSummary, setMrFulfillmentSummary] = useState<{
+    totalRequested: number;
+    totalOrderedBefore: number;
+    totalBalance: number;
+    items: { desc: string; requested: number; alreadyOrdered: number; balance: number }[];
+  } | null>(null);
 
   const [expectedDate, setExpectedDate] = useState('');
   const [shippingMethod, setShippingMethod] = useState('Standard Delivery');
   const [paymentTerms, setPaymentTerms] = useState('Net 30');
   
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxProfileId, setTaxProfileId] = useState('');
+
   const [items, setItems] = useState<{ id: string, inventoryId: string, desc: string, qty: number, unitPrice: number, taxRate: number, discount: number, total: number }[]>([]);
   const [shippingCost, setShippingCost] = useState(0);
   const [notes, setNotes] = useState('');
@@ -73,6 +85,10 @@ export const POBuilder: React.FC = () => {
           setExpectedDate(existing.expectedDate ? existing.expectedDate.split('T')[0] : '');
           setSupplierId(existing.supplierId || '');
           if (existing.mrId) setSelectedMrId(existing.mrId);
+          if (existing.taxProfileId) {
+            setTaxProfileId(existing.taxProfileId);
+            setTaxEnabled(true);
+          }
           const existingItems = typeof existing.items === 'string' ? JSON.parse(existing.items) : existing.items || [];
           setItems(existingItems.map((i: any) => ({ taxRate: 0, discount: 0, ...i })));
           setNotes(existing.notes || '');
@@ -87,14 +103,15 @@ export const POBuilder: React.FC = () => {
 
   // Handle MR loading (from query param or initial state)
   useEffect(() => {
-    if (!id && mrParam && mrs.length > 0 && inventory.length > 0) {
+    if (!id && mrParam && mrs.length > 0 && inventory.length > 0 && pos.length >= 0) {
       loadFromMR(mrParam);
     }
-  }, [id, mrParam, mrs, inventory]);
+  }, [id, mrParam, mrs, inventory, pos]);
 
   const loadFromMR = (targetMrId: string) => {
     if (!targetMrId) {
       setSelectedMrId('');
+      setMrFulfillmentSummary(null);
       return;
     }
     const mr = mrs.find((m: any) => m.id === targetMrId);
@@ -105,26 +122,72 @@ export const POBuilder: React.FC = () => {
       setExpectedDate(mr.requiredDate.split('T')[0]);
     }
     const mrItems = typeof mr.items === 'string' ? JSON.parse(mr.items) : (mr.items || []);
-    const populated = mrItems.map((i: any) => {
+
+    // Tally previously ordered quantities across all existing POs linked to this MR (excluding current PO if editing)
+    const linkedPOs = pos.filter((p: any) => p.mrId === targetMrId && (!id || p.id !== id));
+    const orderedMap: Record<string, number> = {};
+    for (const p of linkedPOs) {
+      const pItems = typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []);
+      for (const it of pItems) {
+        const key = it.inventoryId || it.desc || it.id;
+        if (key) {
+          orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+        }
+      }
+    }
+
+    let sumReq = 0;
+    let sumOrd = 0;
+    let sumBal = 0;
+    const summaryItems: { desc: string; requested: number; alreadyOrdered: number; balance: number }[] = [];
+
+    const populated: any[] = [];
+    for (const i of mrItems) {
       const inv = inventory.find((x: any) => x.id === i.inventoryId);
       const unitPrice = Number(inv?.unitCost) || 0;
-      const qty = Number(i.qty) || 1;
-      const discount = 0;
-      const taxRate = 0;
-      const total = qty * unitPrice;
-      return {
-        id: i.id || Date.now().toString() + Math.random().toString().slice(2, 6),
-        inventoryId: i.inventoryId || '',
-        desc: i.desc || inv?.name || '',
-        qty,
-        unitPrice,
-        taxRate,
-        discount,
-        total
-      };
+      const requestedQty = Number(i.qty) || 0;
+      const key = i.inventoryId || i.desc || i.id;
+      const alreadyOrdered = orderedMap[key] || 0;
+      const balanceQty = Math.max(0, requestedQty - alreadyOrdered);
+
+      sumReq += requestedQty;
+      sumOrd += alreadyOrdered;
+      sumBal += balanceQty;
+
+      summaryItems.push({
+        desc: i.desc || inv?.name || i.inventoryId || 'Item',
+        requested: requestedQty,
+        alreadyOrdered,
+        balance: balanceQty
+      });
+
+      // If there is still a balance to order (or if this is the first order), populate the line item
+      if (balanceQty > 0 || mrItems.length === 1) {
+        const itemQty = balanceQty > 0 ? balanceQty : requestedQty;
+        populated.push({
+          id: i.id || Date.now().toString() + Math.random().toString().slice(2, 6),
+          inventoryId: i.inventoryId || '',
+          desc: i.desc || inv?.name || '',
+          qty: itemQty,
+          unitPrice,
+          taxRate: 0,
+          discount: 0,
+          total: itemQty * unitPrice
+        });
+      }
+    }
+
+    setMrFulfillmentSummary({
+      totalRequested: sumReq,
+      totalOrderedBefore: sumOrd,
+      totalBalance: sumBal,
+      items: summaryItems
     });
-    setItems(populated);
-    
+
+    if (populated.length > 0) {
+      setItems(populated);
+    }
+
     const mrNote = `Generated from Material Request: ${mr.id} (${mr.department} Dept - Requested by: ${mr.requestedBy})`;
     if (!notes.includes(mr.id)) {
       setNotes(prev => prev ? `${prev}\n${mrNote}` : mrNote);
@@ -158,8 +221,36 @@ export const POBuilder: React.FC = () => {
 
   const subtotal = items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitPrice) || 0)), 0);
   const totalDiscount = items.reduce((sum, item) => sum + (Number(item.discount) || 0), 0);
-  const totalTax = items.reduce((sum, item) => sum + ((((Number(item.qty) || 0) * (Number(item.unitPrice) || 0) - (Number(item.discount) || 0))) * ((Number(item.taxRate) || 0) / 100)), 0);
-  const grandTotal = subtotal - totalDiscount + totalTax + shippingCost;
+  const netTaxableAmount = Math.max(0, subtotal - totalDiscount);
+
+  // Tax Profile Calculation
+  const selectedTaxProfile = taxProfiles.find((p: any) => p.id === taxProfileId);
+  let totalTax = 0;
+  let taxBreakdown: any = null;
+
+  if (taxEnabled && selectedTaxProfile) {
+    const t1Rate = Number(selectedTaxProfile.tax1_rate) || 0;
+    const t2Rate = Number(selectedTaxProfile.tax2_rate) || 0;
+    const t1Amount = netTaxableAmount * (t1Rate / 100);
+    const baseForT2 = selectedTaxProfile.tax2_compound ? (netTaxableAmount + t1Amount) : netTaxableAmount;
+    const t2Amount = baseForT2 * (t2Rate / 100);
+    totalTax = t1Amount + t2Amount;
+    taxBreakdown = {
+      profileId: selectedTaxProfile.id,
+      profileName: selectedTaxProfile.name,
+      tax1Name: selectedTaxProfile.tax1_name,
+      tax1Rate: t1Rate,
+      tax1Amount: t1Amount,
+      tax2Name: selectedTaxProfile.tax2_name,
+      tax2Rate: t2Rate,
+      tax2Amount: t2Amount,
+      totalTax
+    };
+  } else {
+    totalTax = items.reduce((sum, item) => sum + ((((Number(item.qty) || 0) * (Number(item.unitPrice) || 0) - (Number(item.discount) || 0))) * ((Number(item.taxRate) || 0) / 100)), 0);
+  }
+
+  const grandTotal = netTaxableAmount + totalTax + shippingCost;
 
   const handleSave = async () => {
     if (!supplierId) {
@@ -171,6 +262,8 @@ export const POBuilder: React.FC = () => {
       const payload = { 
         id: docNo, 
         mrId: selectedMrId || null,
+        taxProfileId: (taxEnabled && selectedTaxProfile) ? taxProfileId : null,
+        taxBreakdown: (taxEnabled && selectedTaxProfile) ? JSON.stringify(taxBreakdown) : null,
         supplierId, 
         date, 
         expectedDate, 
@@ -190,9 +283,6 @@ export const POBuilder: React.FC = () => {
         await updatePO(id, payload);
       } else {
         await createPO(payload);
-        if (selectedMrId) {
-          await updateMR(selectedMrId, { status: 'ordered', poId: docNo });
-        }
       }
       navigate('/purchasing');
     } catch (e) {
@@ -299,11 +389,11 @@ export const POBuilder: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <GitPullRequest size={16} className="text-blue-500 shrink-0" />
                     <div>
-                      <h3 className="text-xs font-bold text-primary">Import from Approved Material Request</h3>
-                      <p className="text-[11px] text-muted">Select an approved request to auto-populate materials, quantities and reference specs.</p>
+                      <h3 className="text-xs font-bold text-primary">Import from Material Request</h3>
+                      <p className="text-[11px] text-muted">Auto-populates remaining item balances from approved or partially ordered requests.</p>
                     </div>
                   </div>
-                  <div className="w-full sm:w-72">
+                  <div className="w-full sm:w-80">
                     <select 
                       value={selectedMrId} 
                       onChange={e => loadFromMR(e.target.value)}
@@ -311,16 +401,37 @@ export const POBuilder: React.FC = () => {
                     >
                       <option value="">-- Standalone PO (No MR) --</option>
                       {mrs
-                        .filter((m: any) => m.status === 'approved' || m.status === 'pending' || m.id === selectedMrId)
+                        .filter((m: any) => m.status === 'approved' || m.status === 'pending' || m.status === 'partially_ordered' || m.id === selectedMrId)
                         .map((m: any) => (
                           <option key={m.id} value={m.id}>
-                            {m.id} - {m.department} Dept ({m.priority} Priority)
+                            {m.id} - {m.department} Dept ({m.status === 'partially_ordered' ? 'Partially Ordered' : m.status})
                           </option>
                         ))
                       }
                     </select>
                   </div>
                 </div>
+
+                {mrFulfillmentSummary && (
+                  <div className="mt-3 pt-3 border-t border-theme-subtle/70 text-xs">
+                    <div className="flex items-center justify-between font-semibold mb-1.5 text-blue-500">
+                      <span>MR Item Fulfillment & Remaining Balance:</span>
+                      <span className="text-[11px] font-mono">
+                        Requested: {mrFulfillmentSummary.totalRequested} | Previously Ordered: {mrFulfillmentSummary.totalOrderedBefore} | Remaining: {mrFulfillmentSummary.totalBalance}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                      {mrFulfillmentSummary.items.map((it, idx) => (
+                        <div key={idx} className="bg-surface/70 border border-theme-subtle px-2.5 py-1.5 rounded flex items-center justify-between">
+                          <span className="truncate max-w-[140px] text-primary" title={it.desc}>{it.desc}</span>
+                          <span className={`font-mono text-[11px] font-bold ${it.balance > 0 ? 'text-emerald-500' : 'text-muted'}`}>
+                            {it.balance > 0 ? `${it.balance} remaining` : 'Fulfilled (0)'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </GlassCard>
             )}
 
@@ -499,9 +610,58 @@ export const POBuilder: React.FC = () => {
                     <span className="font-mono">-{formatCurrency(totalDiscount)}</span>
                   </div>
                 )}
+
+                {/* TAX PROFILES SELECTOR */}
+                <div className="py-2.5 border-t border-theme-subtle space-y-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Tax Profile</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input 
+                        type="checkbox" 
+                        checked={taxEnabled} 
+                        onChange={e => {
+                          setTaxEnabled(e.target.checked);
+                          if (!e.target.checked) setTaxProfileId('');
+                          else if (!taxProfileId && taxProfiles.length > 0) setTaxProfileId(taxProfiles[0].id);
+                        }} 
+                        className="rounded border-theme-subtle text-emerald-500 bg-surface" 
+                      />
+                      <span className="text-muted font-medium text-[11px]">Apply Tax</span>
+                    </label>
+                  </div>
+                  {taxEnabled && (
+                    <select 
+                      value={taxProfileId} 
+                      onChange={e => setTaxProfileId(e.target.value)} 
+                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 font-medium"
+                    >
+                      <option value="">-- Select Configured Tax Profile --</option>
+                      {taxProfiles.map((t: any) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {taxEnabled && selectedTaxProfile && taxBreakdown && (
+                    <div className="bg-surface/50 p-2 rounded border border-theme-subtle space-y-1 text-[11px]">
+                      {taxBreakdown.tax1Rate > 0 && (
+                        <div className="flex justify-between text-muted">
+                          <span>{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%)</span>
+                          <span className="font-mono text-foreground font-semibold">{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                        </div>
+                      )}
+                      {taxBreakdown.tax2Rate > 0 && (
+                        <div className="flex justify-between text-muted">
+                          <span>{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%)</span>
+                          <span className="font-mono text-foreground font-semibold">{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex justify-between items-center">
-                  <span>Tax Amount</span>
-                  <span className="text-foreground font-mono">{formatCurrency(totalTax)}</span>
+                  <span>Total Tax</span>
+                  <span className="text-foreground font-mono font-bold text-amber-500">{formatCurrency(totalTax)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="flex items-center gap-1.5">Shipping <Truck size={10}/></span>
@@ -637,10 +797,27 @@ export const POBuilder: React.FC = () => {
                  <span>-{formatCurrency(totalDiscount)}</span>
                </div>
              )}
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-               <span>Tax Amount:</span>
-               <span>{formatCurrency(totalTax)}</span>
-             </div>
+             {taxEnabled && selectedTaxProfile && taxBreakdown ? (
+               <>
+                 {taxBreakdown.tax1Rate > 0 && (
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                     <span>{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%):</span>
+                     <span style={{ fontWeight: 'bold' }}>{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                   </div>
+                 )}
+                 {taxBreakdown.tax2Rate > 0 && (
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                     <span>{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%):</span>
+                     <span style={{ fontWeight: 'bold' }}>{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                   </div>
+                 )}
+               </>
+             ) : (
+               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                 <span>Tax Amount:</span>
+                 <span>{formatCurrency(totalTax)}</span>
+               </div>
+             )}
              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                <span>Shipping:</span>
                <span>{formatCurrency(shippingCost)}</span>

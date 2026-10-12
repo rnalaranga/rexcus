@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useInventory } from '@/hooks/useData';
 import { createMR, updateMR, fetchMRs } from '@/lib/api';
+import { usePurchaseOrders } from '@/hooks/usePurchasing';
 import { formatCurrency } from '@/lib/utils';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -27,6 +28,7 @@ export const MRBuilder: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: inventory } = useInventory();
+  const { data: pos } = usePurchaseOrders();
 
   const [docNo, setDocNo] = useState('MR-' + Date.now().toString().slice(-4));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -34,8 +36,9 @@ export const MRBuilder: React.FC = () => {
   const [requestedBy, setRequestedBy] = useState('Production Supervisor');
   const [department, setDepartment] = useState('Production');
   const [priority, setPriority] = useState('Normal');
-  const [status, setStatus] = useState<'pending' | 'approved' | 'ordered' | 'rejected'>('approved');
+  const [status, setStatus] = useState<'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'rejected'>('approved');
   const [poId, setPoId] = useState<string | null>(null);
+  const [poIds, setPoIds] = useState<string[]>([]);
   const [items, setItems] = useState<MRItem[]>([]);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -55,6 +58,12 @@ export const MRBuilder: React.FC = () => {
           setPriority(existing.priority || 'Normal');
           setStatus((existing.status as any) || 'approved');
           setPoId(existing.poId || null);
+          const parsedPoIds = Array.isArray(existing.poIds)
+            ? existing.poIds
+            : (typeof existing.poIds === 'string'
+                ? (() => { try { const p = JSON.parse(existing.poIds); return Array.isArray(p) ? p : [existing.poIds]; } catch { return [existing.poIds]; } })()
+                : (existing.poId ? [existing.poId] : []));
+          setPoIds(parsedPoIds);
           setNotes(existing.notes || '');
           const loadedItems = typeof existing.items === 'string' ? JSON.parse(existing.items) : (existing.items || []);
           setItems(loadedItems.map((item: any) => {
@@ -99,8 +108,33 @@ export const MRBuilder: React.FC = () => {
     setItems(items.filter(i => i.id !== itemId));
   };
 
+  // Compute fulfillment status across all linked Purchase Orders
+  const linkedPOs = pos.filter((p: any) => p.mrId === docNo || (id && p.mrId === id));
+  const orderedTotals: Record<string, number> = {};
+  for (const p of linkedPOs) {
+    const pItems = typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []);
+    for (const it of pItems) {
+      const key = it.inventoryId || it.desc || it.id;
+      if (key) {
+        orderedTotals[key] = (orderedTotals[key] || 0) + (Number(it.qty) || 0);
+      }
+    }
+  }
+
+  const allPoIds = Array.from(new Set([
+    ...poIds,
+    ...(poId ? [poId] : []),
+    ...linkedPOs.map((p: any) => p.id)
+  ]));
+
   const totalEstimatedCost = items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
   const totalUnits = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const totalOrderedUnits = items.reduce((sum, item) => sum + (orderedTotals[item.inventoryId || item.desc || item.id] || 0), 0);
+  const totalBalanceUnits = items.reduce((sum, item) => {
+    const req = Number(item.qty) || 0;
+    const ord = orderedTotals[item.inventoryId || item.desc || item.id] || 0;
+    return sum + Math.max(0, req - ord);
+  }, 0);
 
   const handleSave = async () => {
     setSaving(true);
@@ -114,6 +148,7 @@ export const MRBuilder: React.FC = () => {
         priority,
         status,
         poId,
+        poIds: JSON.stringify(allPoIds),
         items,
         notes
       };
@@ -178,18 +213,24 @@ export const MRBuilder: React.FC = () => {
               <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
                 status === 'ordered' 
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500' 
+                  : status === 'partially_ordered'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
                   : status === 'approved' 
                   ? 'bg-blue-500/10 border-blue-500/30 text-blue-500' 
                   : status === 'rejected'
                   ? 'bg-red-500/10 border-red-500/30 text-red-500'
-                  : 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                  : 'bg-zinc-500/10 border-zinc-500/30 text-muted'
               }`}>
-                {status}
+                {status === 'partially_ordered' ? 'Partially Ordered' : status}
               </span>
             </div>
             <p className="text-[11px] text-muted mt-0.5">
               {docNo} • {department} Department
-              {poId && <span className="ml-2 text-emerald-500 font-mono font-bold">Ordered via PO: {poId}</span>}
+              {allPoIds.length > 0 && (
+                <span className="ml-2 text-emerald-500 font-mono font-bold">
+                  POs: {allPoIds.join(', ')}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -200,7 +241,7 @@ export const MRBuilder: React.FC = () => {
           </Button>
 
           {/* Quick Convert to PO button */}
-          {status !== 'ordered' ? (
+          {totalBalanceUnits > 0 || status !== 'ordered' ? (
             <Button 
               variant="outline" 
               size="sm" 
@@ -208,20 +249,31 @@ export const MRBuilder: React.FC = () => {
               onClick={handleConvertToPO}
               className="border-rex-500/30 text-rex-600 dark:text-rex-300 hover:bg-rex-500/10"
             >
-              Convert to PO
+              {totalOrderedUnits > 0 ? `Create PO (Bal: ${totalBalanceUnits})` : 'Convert to PO'}
             </Button>
           ) : (
-            poId && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                icon={ArrowRight} 
-                onClick={() => navigate(`/purchasing/po-builder/${poId}`)}
-                className="border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 font-medium"
-              >
-                View PO ({poId})
-              </Button>
-            )
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              icon={ShoppingCart} 
+              onClick={handleConvertToPO}
+              className="text-xs text-muted hover:text-primary"
+              title="Issue another Purchase Order against this Material Request"
+            >
+              + Additional PO
+            </Button>
+          )}
+
+          {allPoIds.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={ArrowRight} 
+              onClick={() => navigate(`/purchasing/po-builder/${allPoIds[allPoIds.length - 1]}`)}
+              className="border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 font-medium"
+            >
+              View PO ({allPoIds[allPoIds.length - 1]})
+            </Button>
           )}
 
           <Button 
@@ -236,18 +288,37 @@ export const MRBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* ALERT BANNER IF ORDERED */}
-      {status === 'ordered' && poId && (
+      {/* ALERT BANNER IF PARTIALLY ORDERED */}
+      {(status === 'partially_ordered' || (totalOrderedUnits > 0 && totalBalanceUnits > 0)) && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-5 py-2.5 flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
+          <div className="flex items-center gap-2">
+            <Clock size={16} />
+            <span>
+              This Material Request is <strong>Partially Ordered</strong> ({totalOrderedUnits} ordered, <strong>{totalBalanceUnits} units remaining</strong>).
+              Linked POs: {allPoIds.join(', ')}.
+            </span>
+          </div>
+          <button 
+            onClick={handleConvertToPO} 
+            className="font-bold underline hover:text-amber-300 flex items-center gap-1"
+          >
+            Create PO for Balance ({totalBalanceUnits} units) <ArrowRight size={12} />
+          </button>
+        </div>
+      )}
+
+      {/* ALERT BANNER IF FULLY ORDERED */}
+      {status === 'ordered' && totalBalanceUnits <= 0 && allPoIds.length > 0 && (
         <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-5 py-2.5 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400">
           <div className="flex items-center gap-2">
             <CheckCircle2 size={16} />
-            <span>This Material Request has been approved and converted to <strong>Purchase Order {poId}</strong>.</span>
+            <span>This Material Request is <strong>100% Fulfilled</strong> across Purchase Orders: {allPoIds.join(', ')}.</span>
           </div>
           <button 
-            onClick={() => navigate(`/purchasing/po-builder/${poId}`)} 
+            onClick={() => navigate(`/purchasing/po-builder/${allPoIds[allPoIds.length - 1]}`)} 
             className="font-bold underline hover:text-emerald-300 flex items-center gap-1"
           >
-            Open Purchase Order <ArrowRight size={12} />
+            Open Latest Purchase Order <ArrowRight size={12} />
           </button>
         </div>
       )}
@@ -282,7 +353,8 @@ export const MRBuilder: React.FC = () => {
                     >
                       <option value="pending">Pending Approval</option>
                       <option value="approved">Approved for Purchasing</option>
-                      <option value="ordered">Ordered (PO Issued)</option>
+                      <option value="partially_ordered">Partially Ordered</option>
+                      <option value="ordered">Ordered (100% Fulfilled)</option>
                       <option value="rejected">Rejected / Cancelled</option>
                     </select>
                   </div>
@@ -360,17 +432,23 @@ export const MRBuilder: React.FC = () => {
                     </select>
                   </div>
 
-                  {poId && (
+                  {allPoIds.length > 0 && (
                     <div className="pt-2 border-t border-theme-subtle">
-                      <label className="block text-[11px] font-bold text-muted uppercase mb-1">Linked Purchase Order</label>
-                      <div className="p-2.5 bg-surface2 rounded-lg border border-theme-subtle flex items-center justify-between">
-                        <span className="font-mono text-xs font-bold text-primary">{poId}</span>
-                        <button 
-                          onClick={() => navigate(`/purchasing/po-builder/${poId}`)}
-                          className="text-[11px] text-blue-500 hover:underline flex items-center gap-1"
-                        >
-                          View <ArrowRight size={10} />
-                        </button>
+                      <label className="block text-[11px] font-bold text-muted uppercase mb-1">
+                        Linked Purchase Orders ({allPoIds.length})
+                      </label>
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                        {allPoIds.map((pid: string) => (
+                          <div key={pid} className="p-2 bg-surface2 rounded-lg border border-theme-subtle flex items-center justify-between">
+                            <span className="font-mono text-xs font-bold text-primary">{pid}</span>
+                            <button 
+                              onClick={() => navigate(`/purchasing/po-builder/${pid}`)}
+                              className="text-[11px] text-blue-500 hover:underline flex items-center gap-1"
+                            >
+                              View <ArrowRight size={10} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -379,14 +457,24 @@ export const MRBuilder: React.FC = () => {
 
              {/* ESTIMATED TOTALS CARD */}
              <GlassCard className="p-4 border-theme-subtle bg-surface/40 space-y-2">
-               <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted">Estimation Summary</h3>
+               <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted">Estimation & Balance Summary</h3>
                <div className="flex justify-between text-xs">
                  <span className="text-secondary">Line Items:</span>
                  <span className="font-bold text-primary">{items.length}</span>
                </div>
                <div className="flex justify-between text-xs">
-                 <span className="text-secondary">Total Units:</span>
-                 <span className="font-bold text-primary">{totalUnits}</span>
+                 <span className="text-secondary">Total Requested Units:</span>
+                 <span className="font-bold text-primary font-mono">{totalUnits}</span>
+               </div>
+               <div className="flex justify-between text-xs">
+                 <span className="text-secondary">Total Ordered Units:</span>
+                 <span className="font-bold text-emerald-500 font-mono">{totalOrderedUnits}</span>
+               </div>
+               <div className="flex justify-between text-xs">
+                 <span className="text-secondary font-bold">Remaining Balance:</span>
+                 <span className={`font-mono font-bold ${totalBalanceUnits > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                   {totalBalanceUnits} units
+                 </span>
                </div>
                <div className="flex justify-between text-xs pt-2 border-t border-theme-subtle">
                  <span className="text-secondary font-bold">Est. Total Cost:</span>
@@ -483,6 +571,20 @@ export const MRBuilder: React.FC = () => {
                               />
                               <span className="text-[10px] text-muted font-mono w-8">{item.uom || 'units'}</span>
                             </div>
+                            {(() => {
+                              const itemKey = item.inventoryId || item.desc || item.id;
+                              const ord = orderedTotals[itemKey] || 0;
+                              const bal = Math.max(0, (Number(item.qty) || 0) - ord);
+                              if (ord === 0 && allPoIds.length === 0) return null;
+                              return (
+                                <div className="mt-1 text-[10px] font-mono">
+                                  <span className="text-muted">Ordered: {ord} | </span>
+                                  <span className={bal > 0 ? "text-amber-500 font-bold" : "text-emerald-500 font-bold"}>
+                                    Bal: {bal}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="p-3 text-right align-top pt-3">
                             <input 

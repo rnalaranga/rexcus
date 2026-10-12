@@ -1099,7 +1099,14 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
 // -- PURCHASING --
 app.get('/api/purchasing/mrs', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM material_requests ORDER BY date DESC, createdAt DESC');
+    const [rows]: any = await db.query('SELECT * FROM material_requests ORDER BY date DESC, createdAt DESC');
+    for (const r of rows) {
+      if (typeof r.poIds === 'string') {
+        try { r.poIds = JSON.parse(r.poIds); } catch(e) { r.poIds = [r.poId].filter(Boolean); }
+      } else if (!r.poIds) {
+        r.poIds = r.poId ? [r.poId] : [];
+      }
+    }
     res.json(rows);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -1107,13 +1114,20 @@ app.get('/api/purchasing/mrs/:id', async (req, res) => {
   try {
     const [rows]: any = await db.query('SELECT * FROM material_requests WHERE id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Material request not found' });
-    res.json(rows[0]);
+    const r = rows[0];
+    if (typeof r.poIds === 'string') {
+      try { r.poIds = JSON.parse(r.poIds); } catch(e) { r.poIds = [r.poId].filter(Boolean); }
+    } else if (!r.poIds) {
+      r.poIds = r.poId ? [r.poId] : [];
+    }
+    res.json(r);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.post('/api/purchasing/mrs', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    if (data.poIds && typeof data.poIds === 'object') data.poIds = JSON.stringify(data.poIds);
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO material_requests SET ?', data);
@@ -1125,6 +1139,7 @@ app.put('/api/purchasing/mrs/:id', async (req, res) => {
     const data = { ...req.body };
     delete data.id;
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    if (data.poIds && typeof data.poIds === 'object') data.poIds = JSON.stringify(data.poIds);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE material_requests SET ? WHERE id = ?', [data, req.params.id]);
     res.json({ success: true, id: req.params.id });
@@ -1154,13 +1169,53 @@ app.post('/api/purchasing/pos', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    if (data.taxBreakdown && typeof data.taxBreakdown === 'object') data.taxBreakdown = JSON.stringify(data.taxBreakdown);
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO purchase_orders SET ?', data);
 
-    // If generated from a Material Request, automatically update the MR to 'ordered' with reference to this PO
+    // If generated from a Material Request, dynamically check fulfillment balance across all linked POs
     if (data.mrId) {
-      await db.query('UPDATE material_requests SET status = ?, poId = ?, updatedAt = NOW() WHERE id = ?', ['ordered', data.id, data.mrId]);
+      try {
+        const [linkedPOs]: any = await db.query(
+          'SELECT id, items FROM purchase_orders WHERE mrId = ?',
+          [data.mrId]
+        );
+        const [mrRows]: any = await db.query('SELECT items FROM material_requests WHERE id = ?', [data.mrId]);
+        
+        let allFulfilled = false;
+        if (mrRows.length > 0) {
+          const mrItems = typeof mrRows[0].items === 'string' ? JSON.parse(mrRows[0].items) : (mrRows[0].items || []);
+          const orderedMap: Record<string, number> = {};
+          for (const po of linkedPOs) {
+            const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+            for (const it of pItems) {
+              const key = it.inventoryId || it.desc || it.id;
+              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+            }
+          }
+
+          let remainingTotal = 0;
+          for (const mrIt of mrItems) {
+            const key = mrIt.inventoryId || mrIt.desc || mrIt.id;
+            const reqQty = Number(mrIt.qty) || 0;
+            const ordQty = orderedMap[key] || 0;
+            if (reqQty > ordQty) {
+              remainingTotal += (reqQty - ordQty);
+            }
+          }
+          allFulfilled = remainingTotal <= 0;
+        }
+
+        const newStatus = allFulfilled ? 'ordered' : 'partially_ordered';
+        const allPoIds = Array.from(new Set(linkedPOs.map((p: any) => p.id)));
+        await db.query(
+          'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
+          [newStatus, data.id, JSON.stringify(allPoIds), data.mrId]
+        );
+      } catch (err) {
+        console.error('Error updating MR fulfillment status:', err);
+      }
     }
 
     res.json({ success: true, id: data.id });
@@ -1171,12 +1226,52 @@ app.put('/api/purchasing/pos/:id', async (req, res) => {
     const data = { ...req.body };
     delete data.id;
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    if (data.taxBreakdown && typeof data.taxBreakdown === 'object') data.taxBreakdown = JSON.stringify(data.taxBreakdown);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE purchase_orders SET ? WHERE id = ?', [data, req.params.id]);
 
     // Keep linked MR in sync if mrId is supplied
     if (data.mrId) {
-      await db.query('UPDATE material_requests SET status = ?, poId = ?, updatedAt = NOW() WHERE id = ?', ['ordered', req.params.id, data.mrId]);
+      try {
+        const [linkedPOs]: any = await db.query(
+          'SELECT id, items FROM purchase_orders WHERE mrId = ?',
+          [data.mrId]
+        );
+        const [mrRows]: any = await db.query('SELECT items FROM material_requests WHERE id = ?', [data.mrId]);
+        
+        let allFulfilled = false;
+        if (mrRows.length > 0) {
+          const mrItems = typeof mrRows[0].items === 'string' ? JSON.parse(mrRows[0].items) : (mrRows[0].items || []);
+          const orderedMap: Record<string, number> = {};
+          for (const po of linkedPOs) {
+            const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+            for (const it of pItems) {
+              const key = it.inventoryId || it.desc || it.id;
+              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+            }
+          }
+
+          let remainingTotal = 0;
+          for (const mrIt of mrItems) {
+            const key = mrIt.inventoryId || mrIt.desc || mrIt.id;
+            const reqQty = Number(mrIt.qty) || 0;
+            const ordQty = orderedMap[key] || 0;
+            if (reqQty > ordQty) {
+              remainingTotal += (reqQty - ordQty);
+            }
+          }
+          allFulfilled = remainingTotal <= 0;
+        }
+
+        const newStatus = allFulfilled ? 'ordered' : 'partially_ordered';
+        const allPoIds = Array.from(new Set(linkedPOs.map((p: any) => p.id)));
+        await db.query(
+          'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
+          [newStatus, req.params.id, JSON.stringify(allPoIds), data.mrId]
+        );
+      } catch (err) {
+        console.error('Error updating MR fulfillment status:', err);
+      }
     }
 
     res.json({ success: true, id: req.params.id });
@@ -1184,9 +1279,50 @@ app.put('/api/purchasing/pos/:id', async (req, res) => {
 });
 app.delete('/api/purchasing/pos/:id', async (req, res) => {
   try {
-    // Unlink any MR referencing this PO before deleting
-    await db.query('UPDATE material_requests SET status = "approved", poId = NULL WHERE poId = ?', [req.params.id]);
+    const [poRows]: any = await db.query('SELECT mrId FROM purchase_orders WHERE id = ?', [req.params.id]);
+    const mrId = poRows.length > 0 ? poRows[0].mrId : null;
+    
     await db.query('DELETE FROM purchase_orders WHERE id = ?', [req.params.id]);
+
+    if (mrId) {
+      const [remainingPOs]: any = await db.query('SELECT id, items FROM purchase_orders WHERE mrId = ?', [mrId]);
+      if (remainingPOs.length === 0) {
+        await db.query('UPDATE material_requests SET status = "approved", poId = NULL, poIds = "[]", updatedAt = NOW() WHERE id = ?', [mrId]);
+      } else {
+        const [mrRows]: any = await db.query('SELECT items FROM material_requests WHERE id = ?', [mrId]);
+        let allFulfilled = false;
+        if (mrRows.length > 0) {
+          const mrItems = typeof mrRows[0].items === 'string' ? JSON.parse(mrRows[0].items) : (mrRows[0].items || []);
+          const orderedMap: Record<string, number> = {};
+          for (const po of remainingPOs) {
+            const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+            for (const it of pItems) {
+              const key = it.inventoryId || it.desc || it.id;
+              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+            }
+          }
+
+          let remainingTotal = 0;
+          for (const mrIt of mrItems) {
+            const key = mrIt.inventoryId || mrIt.desc || mrIt.id;
+            const reqQty = Number(mrIt.qty) || 0;
+            const ordQty = orderedMap[key] || 0;
+            if (reqQty > ordQty) {
+              remainingTotal += (reqQty - ordQty);
+            }
+          }
+          allFulfilled = remainingTotal <= 0;
+        }
+
+        const newStatus = allFulfilled ? 'ordered' : 'partially_ordered';
+        const allPoIds = Array.from(new Set(remainingPOs.map((p: any) => p.id)));
+        await db.query(
+          'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
+          [newStatus, allPoIds[allPoIds.length - 1], JSON.stringify(allPoIds), mrId]
+        );
+      }
+    }
+
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -1259,7 +1395,7 @@ app.get('/api/suppliers', async (req, res) => {
       SELECT s.*,
         COALESCE(SUM(l.debit), 0) as totalPurchases,
         COALESCE(SUM(l.credit), 0) as totalPaid,
-        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, 0) + COALESCE(s.balance, 0)) as outstandingBalance
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, s.balance, 0)) as outstandingBalance
       FROM suppliers s
       LEFT JOIN supplier_ledger l ON s.id = l.supplierId
       GROUP BY s.id
@@ -1275,8 +1411,8 @@ app.get('/api/suppliers', async (req, res) => {
       r.contactPerson = r.contactPerson || r.contactName || '';
       r.totalPurchases = Number(r.totalPurchases) || 0;
       r.totalPaid = Number(r.totalPaid) || 0;
+      r.openingBalance = Number(r.openingBalance !== undefined ? r.openingBalance : r.balance) || 0;
       r.outstandingBalance = Number(r.outstandingBalance) || 0;
-      r.openingBalance = Number(r.openingBalance) || 0;
     }
     res.json(rows);
   } catch (error) {
@@ -1291,7 +1427,7 @@ app.get('/api/suppliers/:id', async (req, res) => {
       SELECT s.*,
         COALESCE(SUM(l.debit), 0) as totalPurchases,
         COALESCE(SUM(l.credit), 0) as totalPaid,
-        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, 0) + COALESCE(s.balance, 0)) as outstandingBalance
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, s.balance, 0)) as outstandingBalance
       FROM suppliers s
       LEFT JOIN supplier_ledger l ON s.id = l.supplierId
       WHERE s.id = ?
@@ -1308,8 +1444,8 @@ app.get('/api/suppliers/:id', async (req, res) => {
     r.contactPerson = r.contactPerson || r.contactName || '';
     r.totalPurchases = Number(r.totalPurchases) || 0;
     r.totalPaid = Number(r.totalPaid) || 0;
+    r.openingBalance = Number(r.openingBalance !== undefined ? r.openingBalance : r.balance) || 0;
     r.outstandingBalance = Number(r.outstandingBalance) || 0;
-    r.openingBalance = Number(r.openingBalance) || 0;
     res.json(r);
   } catch (error) {
     console.error(error);
@@ -1764,6 +1900,25 @@ app.post('/api/supplier-ledger', async (req, res) => {
     }
 
     await db.query('INSERT INTO supplier_ledger SET ?', item);
+
+    // If payment, settle open unpaid supplier bills
+    if ((item.type === 'payment' || item.credit > 0) && item.supplierId) {
+      try {
+        const [openBills]: any = await db.query(
+          'SELECT id, amount FROM supplier_bills WHERE supplierId = ? AND status = "unpaid" ORDER BY date ASC',
+          [item.supplierId]
+        );
+        let remCredit = item.credit;
+        for (const bill of openBills) {
+          if (remCredit <= 0) break;
+          await db.query('UPDATE supplier_bills SET status = "paid", updatedAt = NOW() WHERE id = ?', [bill.id]);
+          remCredit -= Number(bill.amount);
+        }
+      } catch (e) {
+        console.error('Error settling supplier bills on payment:', e);
+      }
+    }
+
     res.json({ success: true, item });
   } catch (error) {
     console.error(error);
@@ -2297,19 +2452,16 @@ app.get('/api/finance/reports/aging', async (req, res) => {
     } else {
       query = `
       SELECT 
-        jl.partyId,
-        p.name as partyName,
-        SUM(jl.credit - jl.debit) as balance,
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) <= 30 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket30',
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 31 AND 60 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket60',
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) BETWEEN 61 AND 90 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket90',
-        SUM(CASE WHEN DATEDIFF(NOW(), je.date) > 90 THEN (jl.credit - jl.debit) ELSE 0 END) as 'bucket90plus'
-      FROM journal_lines jl
-      JOIN journal_entries je ON jl.entryId = je.id
-      JOIN chart_of_accounts ca ON jl.accountId = ca.id
-      JOIN suppliers p ON jl.partyId = p.id 
-      WHERE jl.partyType = 'Supplier' AND ca.name LIKE '%Payable%' 
-      GROUP BY jl.partyId, p.name 
+        s.id as partyId,
+        s.name as partyName,
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, s.balance, 0)) as balance,
+        SUM(CASE WHEN DATEDIFF(NOW(), COALESCE(l.date, s.createdAt)) <= 30 THEN (COALESCE(l.debit, 0) - COALESCE(l.credit, 0)) ELSE 0 END) as 'bucket30',
+        SUM(CASE WHEN DATEDIFF(NOW(), COALESCE(l.date, s.createdAt)) BETWEEN 31 AND 60 THEN (COALESCE(l.debit, 0) - COALESCE(l.credit, 0)) ELSE 0 END) as 'bucket60',
+        SUM(CASE WHEN DATEDIFF(NOW(), COALESCE(l.date, s.createdAt)) BETWEEN 61 AND 90 THEN (COALESCE(l.debit, 0) - COALESCE(l.credit, 0)) ELSE 0 END) as 'bucket90',
+        (SUM(CASE WHEN DATEDIFF(NOW(), COALESCE(l.date, s.createdAt)) > 90 THEN (COALESCE(l.debit, 0) - COALESCE(l.credit, 0)) ELSE 0 END) + COALESCE(s.openingBalance, s.balance, 0)) as 'bucket90plus'
+      FROM suppliers s
+      LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+      GROUP BY s.id, s.name, s.openingBalance, s.balance, s.createdAt
       HAVING balance > 0
       `;
     }
@@ -2930,8 +3082,54 @@ app.post('/api/production/operations/:id/qc', async (req, res) => {
     });
   });
 
-app.listen(PORT, () => {
+async function runStartupMigrations() {
+  const patches = [
+    "ALTER TABLE suppliers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN category VARCHAR(100) DEFAULT 'Raw Materials'",
+    "ALTER TABLE suppliers ADD COLUMN brNumber VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN vat VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN svat VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN phone2 VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN website VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN designation VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN contactName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN contacts TEXT DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN paymentTerms VARCHAR(100) DEFAULT 'Net 30 Days'",
+    "ALTER TABLE suppliers ADD COLUMN creditDays INT DEFAULT 30",
+    "ALTER TABLE suppliers ADD COLUMN creditLimit DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE suppliers ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0",
+    "ALTER TABLE suppliers ADD COLUMN bankName VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN bankBranch VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN bankAccountNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN bankAccountName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE suppliers ADD COLUMN status VARCHAR(20) DEFAULT 'active'",
+    "ALTER TABLE suppliers ADD COLUMN notes TEXT DEFAULT NULL",
+    "ALTER TABLE suppliers ADD COLUMN openingBalance DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_ledger ADD COLUMN referenceNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN description TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN debit DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_ledger ADD COLUMN credit DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_ledger ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Bank Transfer'",
+    "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
+    "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL"
+  ];
+  for (const p of patches) {
+    try { await db.query(p); } catch (e) {}
+  }
+}
+
+app.listen(PORT, async () => {
   console.log(`API Server running on http://localhost:${PORT}`);
+  try {
+    await runStartupMigrations();
+  } catch (e) {
+    console.error('Startup migration error:', e);
+  }
 });
 
 
