@@ -218,7 +218,7 @@ export const PurchasingHub: React.FC = () => {
                   <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-[10px] uppercase h-6 text-blue-500">Print Sample GRN</Button>
                ) : (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder?id=${row.id}`)} className="text-[10px] uppercase h-6 text-primary">View</Button>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder/${row.id}`)} className="text-[10px] uppercase h-6 text-primary">View</Button>
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">Create Bill</Button>
                   </>
                )}
@@ -329,7 +329,26 @@ export const PurchasingHub: React.FC = () => {
       </GlassCard>
 
       <GlassCard className="overflow-hidden">
-        <DataTable columns={generateColumns()} data={filtered} keyExtractor={row => row.id} />
+        <DataTable 
+          columns={generateColumns()} 
+          data={filtered} 
+          keyExtractor={row => row.id} 
+          onRowClick={row => {
+            if (activeTab === 'grn') {
+              if (row.isCustomerSample) {
+                setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } });
+              } else {
+                navigate(`/purchasing/grn-builder/${row.id}`);
+              }
+            } else if (activeTab === 'po') {
+              navigate(`/purchasing/po-builder/${row.id}`);
+            } else if (activeTab === 'mr') {
+              navigate(`/purchasing/mr-builder/${row.id}`);
+            } else if (activeTab === 'bill') {
+              navigate(`/purchasing/bill-builder?grn=${row.grnId || row.id}`);
+            }
+          }}
+        />
       </GlassCard>
 
       <Modal isOpen={!!printGrnData} onClose={() => setPrintGrnData(null)} title="Print Customer GRN" size="xl">

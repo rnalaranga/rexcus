@@ -373,7 +373,9 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE supplier_ledger ADD COLUMN debitAccountName VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE supplier_ledger ADD COLUMN creditAccountName VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
-      "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL"
+      "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL"
     ];
 
     for (const patch of patches) {
@@ -1144,21 +1146,23 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     
+    const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [id]);
+    const currentQty = invRows.length ? Number(invRows[0].quantity || 0) : 0;
+    const qtyVal = Number(data.qty) || 0;
+    const newBalance = data.type === 'OUT' ? currentQty - qtyVal : currentQty + qtyVal;
+
     const entry = {
-        id: 'LGR-' + Date.now().toString().slice(-5),
-        inventoryId: id,
-        date: data.date || new Date().toISOString().slice(0, 19).replace('T', ' '),
-        type: data.type,
-        qty: data.qty,
-        reference: data.reference || '',
-        notes: data.notes || ''
-      };
+      id: 'LGR-' + Date.now().toString().slice(-5),
+      inventoryId: id,
+      date: data.date || new Date().toISOString().slice(0, 19).replace('T', ' '),
+      type: data.type,
+      qty: qtyVal,
+      reference: data.reference || '',
+      notes: data.notes || ''
+    };
     
     await db.query('INSERT INTO stock_ledger SET ?', entry);
-    
-    // Also update inventory quantity
     await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newBalance, id]);
     
     res.json({ success: true, entry });
@@ -1401,21 +1405,105 @@ app.delete('/api/purchasing/pos/:id', async (req, res) => {
 
 app.get('/api/purchasing/grns', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM grns ORDER BY date DESC, createdAt DESC');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const [rows]: any = await db.query('SELECT * FROM grns ORDER BY date DESC, createdAt DESC');
+    for (const r of rows) {
+      if (typeof r.items === 'string') {
+        try { r.items = JSON.parse(r.items); } catch(e) { r.items = []; }
+      } else if (!Array.isArray(r.items)) {
+        r.items = [];
+      }
+    }
     res.json(rows);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
+
+app.get('/api/purchasing/grns/:id', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const [rows]: any = await db.query('SELECT * FROM grns WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'GRN not found' });
+    const r = rows[0];
+    if (typeof r.items === 'string') {
+      try { r.items = JSON.parse(r.items); } catch(e) { r.items = []; }
+    } else if (!Array.isArray(r.items)) {
+      r.items = [];
+    }
+    res.json(r);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 app.post('/api/purchasing/grns', async (req, res) => {
   try {
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    let itemsArray: any[] = [];
+    if (Array.isArray(data.items)) {
+      itemsArray = data.items;
+      data.items = JSON.stringify(data.items);
+    } else if (typeof data.items === 'object' && data.items !== null) {
+      itemsArray = [data.items];
+      data.items = JSON.stringify(data.items);
+    } else if (typeof data.items === 'string') {
+      try {
+        itemsArray = JSON.parse(data.items);
+      } catch(e) {
+        itemsArray = [];
+      }
+    }
+
+    if (!data.createdAt) {
+      data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+    if (!data.updatedAt) {
+      data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+
     await db.query('INSERT INTO grns SET ?', data);
+
+    // Update inventory quantity and stock ledger for each item received
+    for (const item of itemsArray) {
+      const invId = item.inventoryId || item.id;
+      const qtyRecv = Number(item.qtyReceived || item.qty || 0);
+      if (invId && qtyRecv > 0) {
+        try {
+          const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [invId]);
+          if (invRows.length > 0) {
+            const currentQty = Number(invRows[0].quantity || 0);
+            const newQty = currentQty + qtyRecv;
+            await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, invId]);
+
+            const ledgerEntry = {
+              id: 'LGR-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 1000),
+              inventoryId: invId,
+              date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
+              type: 'IN',
+              qty: qtyRecv,
+              reference: data.id,
+              notes: `GRN Received (PO: ${data.poId || 'N/A'})${item.condition ? ` - Condition: ${item.condition}` : ''}`
+            };
+            await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+          }
+        } catch (e) {
+          console.error('Error updating inventory stock from GRN:', e);
+        }
+      }
+    }
+
     res.json({ success: true, id: data.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) {
+    console.error('Failed to create GRN:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
+
 app.put('/api/purchasing/grns/:id', async (req, res) => {
   try {
-    await db.query('UPDATE grns SET ? WHERE id = ?', [req.body, req.params.id]);
+    const data = { ...req.body };
+    delete data.id;
+    if (data.items !== undefined && typeof data.items === 'object') {
+      data.items = JSON.stringify(data.items);
+    }
+    await db.query('UPDATE grns SET ? WHERE id = ?', [data, req.params.id]);
     res.json({ success: true, id: req.params.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });

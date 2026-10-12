@@ -97,6 +97,26 @@ export const CustomerDetail: React.FC = () => {
     }
   }, [activeTab, id]);
 
+  // Safely parse additional contacts from customer record
+  const additionalContacts: any[] = React.useMemo(() => {
+    if (!customer?.contacts) return []
+    let parsed: any[] = []
+    if (Array.isArray(customer.contacts)) {
+      parsed = customer.contacts
+    } else if (typeof customer.contacts === 'string') {
+      try {
+        let p = JSON.parse(customer.contacts)
+        if (typeof p === 'string') {
+          try { p = JSON.parse(p) } catch (e) {}
+        }
+        parsed = Array.isArray(p) ? p : []
+      } catch (e) {
+        parsed = []
+      }
+    }
+    return parsed.filter((c: any) => c && typeof c === 'object' && (c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()))
+  }, [customer?.contacts]);
+
   if ((loadingCustomer && !customer) || (cl && !customer) || dl) {
     return <div className="p-8 text-center text-muted animate-pulse">Loading profile...</div>
   }
@@ -105,7 +125,7 @@ export const CustomerDetail: React.FC = () => {
     <div className="flex items-center justify-center h-64">
       <div className="text-center">
         <p className="text-muted text-sm">Customer not found</p>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/crm/customers')} className="mt-3">â† Back</Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/crm/customers')} className="mt-3">← Back</Button>
       </div>
     </div>
   )
@@ -140,26 +160,6 @@ export const CustomerDetail: React.FC = () => {
       showError(e.message);
     }
   };
-
-  // Safely parse additional contacts from customer record
-  const additionalContacts: any[] = React.useMemo(() => {
-    if (!customer?.contacts) return []
-    let parsed: any[] = []
-    if (Array.isArray(customer.contacts)) {
-      parsed = customer.contacts
-    } else if (typeof customer.contacts === 'string') {
-      try {
-        let p = JSON.parse(customer.contacts)
-        if (typeof p === 'string') {
-          try { p = JSON.parse(p) } catch (e) {}
-        }
-        parsed = Array.isArray(p) ? p : []
-      } catch (e) {
-        parsed = []
-      }
-    }
-    return parsed.filter((c: any) => c && typeof c === 'object' && (c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()))
-  }, [customer?.contacts])
 
   const handleEditOpen = (autoAddNewContact: boolean | React.MouseEvent = false) => {
     if (!customer) return

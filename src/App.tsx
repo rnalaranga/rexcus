@@ -95,6 +95,7 @@ function AppRoutes() {
             <Route path="/purchasing/mr-builder/:id" element={<MRBuilder />} />
             <Route path="/purchasing/po-builder/:id" element={<POBuilder />} />
             <Route path="/purchasing/grn-builder" element={<GRNBuilder />} />
+            <Route path="/purchasing/grn-builder/:id" element={<GRNBuilder />} />
             <Route path="/purchasing/bill-builder" element={<BillBuilder />} />
           <Route path="/inventory/suppliers" element={<Suppliers />} />
           <Route path="/inventory/suppliers/:id" element={<SupplierDetail />} />
