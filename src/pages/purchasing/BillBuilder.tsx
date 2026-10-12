@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, CreditCard, Building2, Calendar, FileText } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -34,7 +34,26 @@ export const BillBuilder: React.FC = () => {
         setSupplierId(grn.supplierId);
         setPoId(grn.poId);
         const refPo = pos.find((p: any) => p.id === grn.poId);
-        if (refPo) setAmount(Number(refPo.totalAmount) || 0);
+        
+        // Calculate amount specifically for the received items in this GRN
+        const grnItems = typeof grn.items === 'string' ? JSON.parse(grn.items) : (grn.items || []);
+        const poItems = refPo ? (typeof refPo.items === 'string' ? JSON.parse(refPo.items) : (refPo.items || [])) : [];
+        
+        let calculatedAmt = 0;
+        if (Array.isArray(grnItems) && grnItems.length > 0) {
+          for (const gi of grnItems) {
+            const qty = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
+            const matchingPoItem = poItems.find((pi: any) => (pi.inventoryId && pi.inventoryId === gi.inventoryId) || (pi.id && pi.id === gi.id) || (pi.desc && pi.desc === gi.desc));
+            const unitCost = Number(gi.unitCost || gi.unitPrice || matchingPoItem?.unitPrice || matchingPoItem?.unitCost || 0);
+            calculatedAmt += (qty * unitCost);
+          }
+        }
+
+        if (calculatedAmt > 0) {
+          setAmount(Number(calculatedAmt.toFixed(2)));
+        } else if (refPo) {
+          setAmount(Number(refPo.totalAmount) || 0);
+        }
       }
     }
   }, [grnId, grns, pos]);

@@ -3,16 +3,16 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Truck, PackageCheck, FileSignature, MapPin, 
   ShieldCheck, Printer, FileText, Calendar, Building2, UserCheck, 
-  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw
+  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { usePurchaseOrders } from '@/hooks/usePurchasing';
+import { usePurchaseOrders, useGRNs } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
-import { createGRN, updatePO, fetchGRNById, fetchGRNs } from '@/lib/api';
+import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 export const GRNBuilder: React.FC = () => {
@@ -26,6 +26,7 @@ export const GRNBuilder: React.FC = () => {
   const isViewMode = Boolean(targetId);
 
   const { data: pos, loading: loadingPOs } = usePurchaseOrders();
+  const { data: allGRNs } = useGRNs();
   const { data: suppliers } = useSuppliers();
   const { settings } = useSettings();
 
@@ -150,6 +151,27 @@ export const GRNBuilder: React.FC = () => {
     };
   }, [targetId]);
 
+  // Prior GRNs for selected PO to calculate previously received quantities
+  const priorGRNs = useMemo(() => {
+    if (!allGRNs || !selectedPoId || isViewMode) return [];
+    return allGRNs.filter((g: any) => g.poId === selectedPoId);
+  }, [allGRNs, selectedPoId, isViewMode]);
+
+  const previousReceivedMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const g of priorGRNs) {
+      const gItems = typeof g.items === 'string' ? JSON.parse(g.items) : (g.items || []);
+      if (Array.isArray(gItems)) {
+        for (const gi of gItems) {
+          const key = String(gi.inventoryId || gi.id || gi.desc || '');
+          const q = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
+          map[key] = (map[key] || 0) + q;
+        }
+      }
+    }
+    return map;
+  }, [priorGRNs]);
+
   // Load from PO if in Create Mode with po param or PO selected
   useEffect(() => {
     if (isViewMode) return;
@@ -159,19 +181,27 @@ export const GRNBuilder: React.FC = () => {
       if (po) {
         setSupplierId(po.supplierId || '');
         const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-        setItems(poItems.map((i: any, idx: number) => ({
-          ...i,
-          id: i.inventoryId || i.id || `ITEM-${idx + 1}`,
-          inventoryId: i.inventoryId || i.id || '',
-          desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
-          qty: Number(i.qty || 0),
-          qtyReceived: Number(i.qty || 0),
-          condition: 'Good',
-          unit: i.unit || 'Nos'
-        })));
+        setItems(poItems.map((i: any, idx: number) => {
+          const key = String(i.inventoryId || i.id || i.desc || `ITEM-${idx + 1}`);
+          const ordered = Number(i.qty || 0);
+          const prev = previousReceivedMap[key] || 0;
+          const rem = Math.max(0, ordered - prev);
+          return {
+            ...i,
+            id: i.inventoryId || i.id || `ITEM-${idx + 1}`,
+            inventoryId: i.inventoryId || i.id || '',
+            desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
+            qty: ordered,
+            prevReceived: prev,
+            remainingQty: rem,
+            qtyReceived: rem,
+            condition: 'Good',
+            unit: i.unit || 'Nos'
+          };
+        }));
       }
     }
-  }, [selectedPoId, pos, isViewMode]);
+  }, [selectedPoId, pos, previousReceivedMap, isViewMode]);
 
   const handleSelectPo = (poId: string) => {
     setSelectedPoId(poId);
@@ -184,16 +214,38 @@ export const GRNBuilder: React.FC = () => {
     if (po) {
       setSupplierId(po.supplierId || '');
       const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-      setItems(poItems.map((i: any, idx: number) => ({
-        ...i,
-        id: i.inventoryId || i.id || `ITEM-${idx + 1}`,
-        inventoryId: i.inventoryId || i.id || '',
-        desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
-        qty: Number(i.qty || 0),
-        qtyReceived: Number(i.qty || 0),
-        condition: 'Good',
-        unit: i.unit || 'Nos'
-      })));
+      setItems(poItems.map((i: any, idx: number) => {
+        const key = String(i.inventoryId || i.id || i.desc || `ITEM-${idx + 1}`);
+        const ordered = Number(i.qty || 0);
+        const prev = previousReceivedMap[key] || 0;
+        const rem = Math.max(0, ordered - prev);
+        return {
+          ...i,
+          id: i.inventoryId || i.id || `ITEM-${idx + 1}`,
+          inventoryId: i.inventoryId || i.id || '',
+          desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
+          qty: ordered,
+          prevReceived: prev,
+          remainingQty: rem,
+          qtyReceived: rem,
+          condition: 'Good',
+          unit: i.unit || 'Nos'
+        };
+      }));
+    }
+  };
+
+  const handleDeleteGRN = async () => {
+    if (!window.confirm(`Are you sure you want to delete GRN ${docNo}?\n\nThis will revert all received stock quantities in inventory and recalculate the Purchase Order fulfillment status.`)) {
+      return;
+    }
+    try {
+      await deleteGRN(docNo);
+      alert(`GRN ${docNo} has been deleted successfully and inventory stock reverted.`);
+      navigate('/purchasing');
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Failed to delete GRN');
     }
   };
 
@@ -227,10 +279,6 @@ export const GRNBuilder: React.FC = () => {
     };
 
     await createGRN(payload);
-    
-    const fullyReceived = items.every(i => Number(i.qtyReceived) >= Number(i.qty));
-    await updatePO(selectedPoId, { status: fullyReceived ? 'received' : 'partially_received' });
-
     navigate('/purchasing');
   };
 
@@ -286,6 +334,15 @@ export const GRNBuilder: React.FC = () => {
                 onClick={() => setIsPrintModalOpen(true)}
               >
                 Print GRN
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                icon={Trash2} 
+                onClick={handleDeleteGRN}
+                className="text-red-500 border-red-500/30 hover:bg-red-500/10"
+              >
+                Delete GRN
               </Button>
               <Button 
                 variant="primary" 
@@ -479,14 +536,24 @@ export const GRNBuilder: React.FC = () => {
                   <PackageCheck size={16} /> Incoming Freight Breakdown ({items.length} items)
                 </h2>
                 {!isViewMode && items.length > 0 && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.qty })))}
-                    className="text-[10px] uppercase h-6 text-emerald-500"
-                  >
-                    Receive All Ordered
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.remainingQty !== undefined ? it.remainingQty : it.qty })))}
+                      className="text-[10px] uppercase h-6 text-blue-500 hover:text-blue-400 font-bold"
+                    >
+                      Receive Remaining Balance
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.qty })))}
+                      className="text-[10px] uppercase h-6 text-emerald-500 font-medium"
+                    >
+                      Receive Full PO
+                    </Button>
+                  </div>
                 )}
               </div>
               
@@ -494,16 +561,21 @@ export const GRNBuilder: React.FC = () => {
                 <table className="w-full text-left whitespace-nowrap">
                   <thead className="bg-surface/50 border-b border-theme-subtle">
                     <tr className="text-[10px] uppercase tracking-widest text-muted">
-                      <th className="px-5 py-3 w-1/2">Material Description</th>
+                      <th className="px-5 py-3 w-1/3">Material Description</th>
                       <th className="px-3 py-3 text-center">Ordered Qty</th>
-                      <th className="px-3 py-3 text-center text-primary">Receiving Qty</th>
-                      <th className="px-3 py-3 text-center">Variance</th>
+                      {!isViewMode && <th className="px-3 py-3 text-center">Prev. Received</th>}
+                      {!isViewMode && <th className="px-3 py-3 text-center text-amber-500">Remaining Balance</th>}
+                      <th className="px-3 py-3 text-center text-primary">
+                        {isViewMode ? 'Received in this GRN' : 'Receiving This GRN'}
+                      </th>
                       <th className="px-5 py-3 text-right">Condition</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-theme-subtle/50">
                     {items.map((item, idx) => {
-                      const variance = (Number(item.qtyReceived) || 0) - (Number(item.qty) || 0);
+                      const ordered = Number(item.qty || 0);
+                      const prevRecv = Number(item.prevReceived || 0);
+                      const remaining = item.remainingQty !== undefined ? Number(item.remainingQty) : Math.max(0, ordered - prevRecv);
                       return (
                         <tr key={idx} className="hover:bg-surface/30 transition-colors">
                           <td className="p-3 pl-5">
@@ -514,8 +586,28 @@ export const GRNBuilder: React.FC = () => {
                           </td>
                           
                           <td className="p-3 text-center font-medium text-xs text-muted font-mono">
-                            {item.qty} {item.unit || ''}
+                            {ordered} {item.unit || ''}
                           </td>
+
+                          {!isViewMode && (
+                            <td className="p-3 text-center font-medium text-xs font-mono">
+                              <span className={prevRecv > 0 ? "text-blue-500 font-bold" : "text-muted"}>
+                                {prevRecv} {item.unit || ''}
+                              </span>
+                            </td>
+                          )}
+
+                          {!isViewMode && (
+                            <td className="p-3 text-center font-medium text-xs font-mono">
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                remaining === 0 
+                                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                                  : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                              }`}>
+                                {remaining} {item.unit || ''}
+                              </span>
+                            </td>
+                          )}
 
                           <td className="p-3 text-center">
                             {isViewMode ? (
@@ -526,6 +618,7 @@ export const GRNBuilder: React.FC = () => {
                               <div className="inline-block relative">
                                 <input 
                                   type="number" 
+                                  min="0"
                                   value={item.qtyReceived} 
                                   onChange={e => {
                                     const newItems = [...items];
@@ -535,22 +628,6 @@ export const GRNBuilder: React.FC = () => {
                                   className="w-24 bg-surface border-2 border-primary/50 px-2 py-1.5 rounded text-xs text-center font-bold text-primary focus:border-primary outline-none font-mono" 
                                 />
                               </div>
-                            )}
-                          </td>
-
-                          <td className="p-3 text-center font-mono">
-                            {variance === 0 ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-500">
-                                <CheckCircle2 size={11} /> Matched
-                              </span>
-                            ) : variance > 0 ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-500">
-                                +{variance}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-500">
-                                {variance}
-                              </span>
                             )}
                           </td>
 

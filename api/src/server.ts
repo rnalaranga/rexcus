@@ -963,6 +963,17 @@ app.put('/api/crm/grns/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/crm/grns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM customer_grns WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Customer sample GRN deleted' });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // -- GATE PASSES --
 app.get('/api/gate-passes', async (req, res) => {
   try {
@@ -1433,6 +1444,61 @@ app.get('/api/purchasing/grns/:id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+async function syncPOReceiptStatus(poId: string) {
+  if (!poId) return;
+  try {
+    const [poRows]: any = await db.query('SELECT id, items, status, mrId FROM purchase_orders WHERE id = ?', [poId]);
+    if (!poRows || poRows.length === 0) return;
+    const po = poRows[0];
+    const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+    if (!Array.isArray(poItems) || poItems.length === 0) return;
+
+    // Fetch all GRNs for this PO
+    const [grnRows]: any = await db.query('SELECT items FROM grns WHERE poId = ?', [poId]);
+    
+    // Aggregate received qty per item across all GRNs
+    const receivedMap: Record<string, number> = {};
+    for (const g of grnRows) {
+      const gItems = typeof g.items === 'string' ? JSON.parse(g.items) : (g.items || []);
+      if (Array.isArray(gItems)) {
+        for (const gi of gItems) {
+          const key = String(gi.inventoryId || gi.id || gi.desc || '');
+          const q = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
+          receivedMap[key] = (receivedMap[key] || 0) + q;
+        }
+      }
+    }
+
+    let totalOrdered = 0;
+    let totalReceived = 0;
+    let allItemsFulfilled = true;
+
+    for (const pi of poItems) {
+      const key = String(pi.inventoryId || pi.id || pi.desc || '');
+      const ord = Number(pi.qty || 0);
+      const rec = receivedMap[key] || 0;
+      totalOrdered += ord;
+      totalReceived += rec;
+      if (rec < ord) {
+        allItemsFulfilled = false;
+      }
+    }
+
+    let newStatus = po.status;
+    if (grnRows.length === 0 || totalReceived === 0) {
+      newStatus = 'ordered';
+    } else if (allItemsFulfilled || (totalOrdered > 0 && totalReceived >= totalOrdered)) {
+      newStatus = 'received';
+    } else {
+      newStatus = 'partially_received';
+    }
+
+    await db.query('UPDATE purchase_orders SET status = ?, updatedAt = NOW() WHERE id = ?', [newStatus, poId]);
+  } catch (err) {
+    console.error('Error syncing PO receipt status:', err);
+  }
+}
+
 app.post('/api/purchasing/grns', async (req, res) => {
   try {
     const data = { ...req.body };
@@ -1489,6 +1555,10 @@ app.post('/api/purchasing/grns', async (req, res) => {
       }
     }
 
+    if (data.poId) {
+      await syncPOReceiptStatus(data.poId);
+    }
+
     res.json({ success: true, id: data.id });
   } catch (error) {
     console.error('Failed to create GRN:', error);
@@ -1504,8 +1574,63 @@ app.put('/api/purchasing/grns/:id', async (req, res) => {
       data.items = JSON.stringify(data.items);
     }
     await db.query('UPDATE grns SET ? WHERE id = ?', [data, req.params.id]);
+
+    const poId = data.poId || (await (async () => {
+      const [r]: any = await db.query('SELECT poId FROM grns WHERE id = ?', [req.params.id]);
+      return r?.[0]?.poId;
+    })());
+    if (poId) {
+      await syncPOReceiptStatus(poId);
+    }
+
     res.json({ success: true, id: req.params.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/purchasing/grns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [grnRows]: any = await db.query('SELECT * FROM grns WHERE id = ?', [id]);
+    if (!grnRows.length) {
+      return res.status(404).json({ error: 'GRN not found' });
+    }
+    const grn = grnRows[0];
+    let itemsArray: any[] = [];
+    if (typeof grn.items === 'string') {
+      try { itemsArray = JSON.parse(grn.items); } catch(e) { itemsArray = []; }
+    } else if (Array.isArray(grn.items)) {
+      itemsArray = grn.items;
+    }
+
+    // Revert inventory quantity
+    for (const item of itemsArray) {
+      const invId = item.inventoryId || item.id;
+      const qtyRecv = Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.qty || 0));
+      if (invId && qtyRecv > 0) {
+        try {
+          await db.query('UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE id = ?', [qtyRecv, invId]);
+        } catch (e) {
+          console.error('Error reverting inventory stock on GRN delete:', e);
+        }
+      }
+    }
+
+    // Delete stock ledger entries linked to this GRN
+    await db.query('DELETE FROM stock_ledger WHERE reference = ?', [id]);
+
+    // Delete GRN
+    await db.query('DELETE FROM grns WHERE id = ?', [id]);
+
+    // Recalculate PO status
+    if (grn.poId) {
+      await syncPOReceiptStatus(grn.poId);
+    }
+
+    res.json({ success: true, message: 'GRN deleted and inventory reverted successfully' });
+  } catch (error: any) {
+    console.error('Failed to delete GRN:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/purchasing/bills', async (req, res) => {
@@ -1755,19 +1880,44 @@ app.delete('/api/followups/:id', async (req, res) => {
 // -- INVOICES --
 app.get('/api/invoices/next-number', async (req, res) => {
   try {
-    const year = new Date().getFullYear();
-    const prefix = `INV/${year}/`;
-    const rows = await db.query('SELECT invoiceNo FROM invoices WHERE invoiceNo LIKE ? ORDER BY invoiceNo DESC LIMIT 1', [`${prefix}%`]) as any;
-    if (rows && rows.length > 0 && rows[0].invoiceNo) {
-      const lastNo = rows[0].invoiceNo;
-      const numMatch = lastNo.match(/\d+$/);
-      if (numMatch) {
-        const nextNum = parseInt(numMatch[0]) + 1;
-        return res.json({ invoiceNo: `${prefix}${nextNum.toString().padStart(4, '0')}` });
+    const rawDate = (req.query.date as string) || new Date().toISOString();
+    const dateObj = new Date(rawDate);
+    const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+    
+    const yy = validDate.getFullYear().toString().slice(-2);
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const mmm = months[validDate.getMonth()];
+    
+    // Entity / Branch code (1-15 alphanumeric characters, default REX)
+    let entity = ((req.query.entity as string) || 'REX').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!entity) entity = 'REX';
+    if (entity.length > 15) entity = entity.slice(0, 15);
+
+    const [rows]: any = await db.query(
+      `SELECT invoiceNo FROM invoices 
+       WHERE invoiceNo LIKE ? OR invoiceNo LIKE ? 
+       ORDER BY id DESC`,
+      [`${yy}${mmm}_${entity}_%`, `%_${entity}_%`]
+    );
+
+    let maxNum = 0;
+    if (rows && rows.length > 0) {
+      for (const row of rows) {
+        if (!row.invoiceNo) continue;
+        const parts = row.invoiceNo.trim().split('_');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d+$/.test(lastPart)) {
+          const num = parseInt(lastPart, 10);
+          if (num > maxNum) maxNum = num;
+        }
       }
     }
-    res.json({ invoiceNo: `${prefix}0001` });
-  } catch (error) {
+
+    const nextSeq = (maxNum + 1).toString().padStart(5, '0');
+    const invoiceNo = `${yy}${mmm}_${entity}_${nextSeq}`;
+
+    res.json({ invoiceNo, yy, mmm, entity, seq: nextSeq });
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
@@ -1786,6 +1936,35 @@ app.get('/api/invoices', async (req, res) => {
 app.post('/api/invoices', async (req, res) => {
   try {
     const data = { ...req.body };
+    if (data.invoiceNo) {
+      data.invoiceNo = data.invoiceNo.trim().replace(/\s+/g, '');
+    } else {
+      const rawDate = data.date || new Date().toISOString();
+      const dObj = new Date(rawDate);
+      const validD = isNaN(dObj.getTime()) ? new Date() : dObj;
+      const yy = validD.getFullYear().toString().slice(-2);
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const mmm = months[validD.getMonth()];
+      const entity = 'REX';
+      const [rows]: any = await db.query(
+        `SELECT invoiceNo FROM invoices WHERE invoiceNo LIKE ? ORDER BY id DESC`,
+        [`${yy}${mmm}_${entity}_%`]
+      );
+      let maxNum = 0;
+      if (rows && rows.length > 0) {
+        for (const row of rows) {
+          if (!row.invoiceNo) continue;
+          const parts = row.invoiceNo.trim().split('_');
+          const lastPart = parts[parts.length - 1];
+          if (/^\d+$/.test(lastPart)) {
+            const num = parseInt(lastPart, 10);
+            if (num > maxNum) maxNum = num;
+          }
+        }
+      }
+      data.invoiceNo = `${yy}${mmm}_${entity}_${(maxNum + 1).toString().padStart(5, '0')}`;
+    }
+    if (!data.id) data.id = data.invoiceNo;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO invoices SET ?', data);
     

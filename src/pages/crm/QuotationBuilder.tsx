@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -93,18 +93,29 @@ const MatSearchInput: React.FC<MatSearchProps> = ({ value, onChange, onSelect, i
 interface LeadSearchProps {
   value: string
   onChange: (val: string) => void
-  onSelect: (leadId: string, name: string) => void
-  leads: any[]
+  onSelect: (item: any) => void
+  items: any[]
+  clientType: 'customer' | 'lead'
   className?: string
+  placeholder?: string
 }
 
-const LeadSearchInput: React.FC<LeadSearchProps> = ({ value, onChange, onSelect, leads, className = '' }) => {
+const LeadSearchInput: React.FC<LeadSearchProps> = ({ clientType, value, onChange, onSelect, items, className = '', placeholder }) => {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   
-  const filtered = value.length > 0
-    ? leads.filter(l => (l.name || '').toLowerCase().includes(value.toLowerCase()) || (l.company || '').toLowerCase().includes(value.toLowerCase())).slice(0, 8)
-    : []
+  const filtered = useMemo(() => {
+    if (!value || value.trim().length === 0) return items.slice(0, 8);
+    const q = value.toLowerCase();
+    return items.filter(l => {
+      const name = (l.name || '').toLowerCase();
+      const comp = (l.company || '').toLowerCase();
+      const desc = (l.description || '').toLowerCase();
+      const email = (l.email || '').toLowerCase();
+      const phone = (l.phone || '').toLowerCase();
+      return name.includes(q) || comp.includes(q) || desc.includes(q) || email.includes(q) || phone.includes(q);
+    }).slice(0, 10);
+  }, [value, items]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false) }
@@ -116,16 +127,40 @@ const LeadSearchInput: React.FC<LeadSearchProps> = ({ value, onChange, onSelect,
     <div ref={wrapRef} className="relative w-full">
       <input type="text" value={value} className={className}
         onChange={e => { onChange(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)} autoComplete="off" placeholder="Type to search customer..." />
+        onFocus={() => setOpen(true)} autoComplete="off" 
+        placeholder={placeholder || (clientType === 'customer' ? 'Type to search customer (name, company)...' : 'Type to search lead (company, contact, description)...')} 
+      />
       {open && filtered.length > 0 && createPortal(
-        <ul style={{ top: wrapRef.current?.getBoundingClientRect().bottom! + window.scrollY, left: wrapRef.current?.getBoundingClientRect().left! + window.scrollX, width: Math.max(wrapRef.current?.getBoundingClientRect().width || 0, 300) }} className="absolute z-[99999] mt-1 bg-surface border border-theme-subtle/40 shadow-glass rounded-xl py-1 max-h-48 overflow-y-auto">
-          {filtered.map((l, i) => (
-            <li key={i} className="px-3 py-1.5 text-xs hover:bg-surface2 cursor-pointer flex justify-between items-center"
-              onMouseDown={e => { e.preventDefault(); const disp = l.company || l.name; onSelect(l.id, disp); onChange(disp); setOpen(false) }}>
-              <span className="text-primary font-medium">{l.company || l.name}</span>
-              {l.company && l.name && <span className="text-[10px] text-muted ml-2">{l.name}</span>}
-            </li>
-          ))}
+        <ul style={{ top: (wrapRef.current?.getBoundingClientRect().bottom || 0) + window.scrollY, left: (wrapRef.current?.getBoundingClientRect().left || 0) + window.scrollX, width: Math.max(wrapRef.current?.getBoundingClientRect().width || 0, 360) }} className="absolute z-[99999] mt-1 bg-surface border border-theme-subtle/50 shadow-2xl rounded-xl py-1 max-h-60 overflow-y-auto">
+          {filtered.map((l, i) => {
+            const title = l.company || l.name;
+            const subtitle = l.company && l.name ? l.name : (l.email || l.phone || '');
+            const leadDesc = clientType === 'lead' ? (l.description || '') : '';
+            return (
+              <li key={i} className="px-3.5 py-2 text-xs hover:bg-surface2 cursor-pointer border-b border-theme-subtle/30 last:border-b-0 transition-colors"
+                onMouseDown={e => { 
+                  e.preventDefault(); 
+                  onSelect(l); 
+                  onChange(title); 
+                  setOpen(false); 
+                }}>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-primary font-bold text-xs truncate">{title}</span>
+                  {l.status && (
+                    <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-muted shrink-0">
+                      {l.status}
+                    </span>
+                  )}
+                </div>
+                {subtitle && <p className="text-[10px] text-muted truncate mt-0.5">{subtitle}</p>}
+                {leadDesc && (
+                  <p className="text-[10px] text-purple-600 dark:text-purple-300 italic truncate mt-1 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                    "{leadDesc}"
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>,
         document.body
       )}
@@ -237,6 +272,7 @@ export const QuotationBuilder: React.FC = () => {
   const [attention, setAttention] = useState('')
   const [subject, setSubject] = useState('To machining parts as per given sample')
   const [customerName, setCustomerName] = useState('')
+  const [clientType, setClientType] = useState<'customer' | 'lead'>(leadId ? 'lead' : 'customer')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [allGrns, setAllGrns] = useState<any[]>([]);
@@ -246,9 +282,78 @@ export const QuotationBuilder: React.FC = () => {
   }, []);
   
   const leadGrns = allGrns.filter(g => g.leadId === selectedLeadId || g.customerId === selectedLeadId);
-    const currentEntity = customers?.find((c: any) => c.id === selectedLeadId) || leads?.find((l: any) => l.id === selectedLeadId);
-    const currentContacts = (() => { try { return typeof currentEntity?.contacts === 'string' ? JSON.parse(currentEntity.contacts) : (currentEntity?.contacts || []); } catch { return []; } })();
 
+  const selectedLead = useMemo(() => {
+    return leads?.find((l: any) => l.id === selectedLeadId) || null;
+  }, [leads, selectedLeadId]);
+
+  const selectedCustomer = useMemo(() => {
+    if (clientType === 'customer') {
+      return customers?.find((c: any) => c.id === selectedLeadId) || null;
+    }
+    if (selectedLead?.customerId) {
+      return customers?.find((c: any) => c.id === selectedLead.customerId) || null;
+    }
+    return null;
+  }, [customers, selectedLeadId, clientType, selectedLead]);
+
+  const currentEntity = selectedCustomer || selectedLead;
+
+  // Aggregate all contacts from Customer (Primary, Finance, Additional contacts) and Lead
+  const availableContacts = useMemo(() => {
+    const list: Array<{ name: string; designation?: string; phone?: string; email?: string; roleTag: string }> = [];
+    const seenNames = new Set<string>();
+
+    const addContact = (name: string, designation?: string, phone?: string, email?: string, roleTag = '') => {
+      const trimmed = (name || '').trim();
+      if (!trimmed || seenNames.has(trimmed.toLowerCase())) return;
+      seenNames.add(trimmed.toLowerCase());
+      list.push({ name: trimmed, designation, phone, email, roleTag });
+    };
+
+    if (selectedCustomer) {
+      if (selectedCustomer.name) {
+        addContact(selectedCustomer.name, selectedCustomer.designation, selectedCustomer.phone, selectedCustomer.email, 'Primary');
+      }
+      if (selectedCustomer.financeContact) {
+        addContact(selectedCustomer.financeContact, 'Finance', selectedCustomer.financePhone, selectedCustomer.financeEmail, 'Finance');
+      }
+      let custContacts: any[] = [];
+      try {
+        custContacts = typeof selectedCustomer.contacts === 'string' 
+          ? JSON.parse(selectedCustomer.contacts) 
+          : (selectedCustomer.contacts || []);
+      } catch (e) { custContacts = []; }
+      if (Array.isArray(custContacts)) {
+        for (const c of custContacts) {
+          if (c && c.name) {
+            addContact(c.name, c.designation, c.phone, c.email, c.isPrimary ? 'Primary' : (c.designation || 'Additional'));
+          }
+        }
+      }
+    }
+
+    if (selectedLead) {
+      if (selectedLead.name) {
+        addContact(selectedLead.name, selectedLead.designation, selectedLead.phone, selectedLead.email, 'Lead Contact');
+      }
+      let leadContacts: any[] = [];
+      try {
+        leadContacts = typeof selectedLead.contacts === 'string'
+          ? JSON.parse(selectedLead.contacts)
+          : (selectedLead.contacts || []);
+      } catch (e) { leadContacts = []; }
+      if (Array.isArray(leadContacts)) {
+        for (const c of leadContacts) {
+          if (c && c.name) {
+            addContact(c.name, c.designation, c.phone, c.email, c.designation || 'Additional');
+          }
+        }
+      }
+    }
+
+    return list;
+  }, [selectedCustomer, selectedLead]);
 
   const handleCurrencyChange = (newCurrencyCode: string) => {
      if (!currencies || currencies.length === 0) return;
@@ -265,17 +370,44 @@ export const QuotationBuilder: React.FC = () => {
      setCurrency(newCurrencyCode);
   };
 
-  const handleSelectLeadOrCustomer = (id: string, name: string) => {
-    setSelectedLeadId(id);
-    const lead = leads.find((l: any) => l.id === id);
-    if (lead) {
-      if (lead.company) setAttention(lead.name);
-      
+  const handleSelectLeadOrCustomer = (item: any) => {
+    if (!item) return;
+    const itemId = item.id || item;
+    setSelectedLeadId(itemId);
+
+    if (clientType === 'customer') {
+      const cust = customers?.find((c: any) => c.id === itemId) || item;
+      setCustomerName(cust.company || cust.name || '');
+      if (cust.name) {
+        setAttention(cust.name);
+      }
+      setVatNo(cust.vat || cust.svat || '');
+      if (cust.paymentTerms) {
+        setCustTerms(cust.paymentTerms);
+      } else {
+        let terms = '';
+        if (cust.requiresAdvance) terms = 'Advance required. ';
+        if (cust.creditDays > 0) terms += `${cust.creditDays} days credit.`;
+        setCustTerms(terms.trim());
+      }
+      if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
+
+      const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+      const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
+      const seq = Date.now().toString().slice(-4);
+      setQuotationNo(`${userPrefix}${custPrefix}${seq}`);
+    } else {
+      const leadItem = leads?.find((l: any) => l.id === itemId) || item;
+      setCustomerName(leadItem.company || leadItem.name || '');
+      if (leadItem.name) {
+        setAttention(leadItem.name);
+      }
+
       let cust = null;
-      if (lead.customerId) cust = customers.find((c: any) => c.id === lead.customerId);
-      
+      if (leadItem.customerId) cust = customers?.find((c: any) => c.id === leadItem.customerId);
+
       if (cust) {
-        setVatNo(cust.vat || cust.svat || '');
+        setVatNo(cust.vat || cust.svat || leadItem.vat || leadItem.svat || '');
         if (cust.paymentTerms) {
           setCustTerms(cust.paymentTerms);
         } else {
@@ -285,13 +417,13 @@ export const QuotationBuilder: React.FC = () => {
           setCustTerms(terms.trim());
         }
         if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
-        
+
         const userPrefix = user?.prefix ? `${user.prefix}-` : '';
         const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
         const seq = Date.now().toString().slice(-4);
         setQuotationNo(`${userPrefix}${custPrefix}${seq}`);
       } else {
-        setVatNo(lead.vat || lead.svat || '');
+        setVatNo(leadItem.vat || leadItem.svat || '');
         const userPrefix = user?.prefix ? `${user.prefix}-` : '';
         const seq = Date.now().toString().slice(-4);
         setQuotationNo(`${userPrefix}${seq}`);
@@ -301,6 +433,7 @@ export const QuotationBuilder: React.FC = () => {
 
   useEffect(() => {
      if (leadId && lead) {
+        setClientType('lead')
         setCustomerName(lead.company || lead.name)
         setSelectedLeadId(lead.id)
         if (!attention) setAttention(lead.name || '')
@@ -861,19 +994,67 @@ export const QuotationBuilder: React.FC = () => {
               {/* Left Column */}
               <div className="space-y-4">
                 <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-[11px] text-muted">Customer / Lead <span className="text-red-400">*</span></label>
-                    <button type="button" onClick={() => setShowAddCustomer(true)} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
-                      <Plus size={10} /> Add New Customer
-                    </button>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <label className="block text-[11px] font-bold text-muted uppercase">Select Type:</label>
+                      <div className="inline-flex rounded-lg bg-surface2/60 p-0.5 border border-theme-subtle">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClientType('customer');
+                            setCustomerName('');
+                            setSelectedLeadId(null);
+                          }}
+                          className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                            clientType === 'customer' 
+                              ? 'bg-blue-600 text-white shadow-sm' 
+                              : 'text-muted hover:text-primary'
+                          }`}
+                        >
+                          <Building2 size={12} /> Customer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClientType('lead');
+                            setCustomerName('');
+                            setSelectedLeadId(null);
+                          }}
+                          className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                            clientType === 'lead' 
+                              ? 'bg-purple-600 text-white shadow-sm' 
+                              : 'text-muted hover:text-primary'
+                          }`}
+                        >
+                          <UserCheck size={12} /> Lead
+                        </button>
+                      </div>
+                    </div>
+
+                    {clientType === 'customer' && (
+                      <button type="button" onClick={() => setShowAddCustomer(true)} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
+                        <Plus size={10} /> Add New Customer
+                      </button>
+                    )}
                   </div>
+
                   <LeadSearchInput
+                    clientType={clientType}
                     value={customerName}
                     onChange={setCustomerName}
                     onSelect={handleSelectLeadOrCustomer}
-                    leads={[...(customers || []), ...(leads || [])]}
-                    className={docInputClass + " " + (selectedLeadId ? "border-emerald-500/30" : "")}
+                    items={clientType === 'customer' ? (customers || []) : (leads || [])}
+                    className={docInputClass + " " + (selectedLeadId ? (clientType === 'customer' ? "border-blue-500/40" : "border-purple-500/40") : "")}
                   />
+
+                  {clientType === 'lead' && selectedLead?.description && (
+                    <div className="mt-2 p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-lg text-xs">
+                      <p className="text-[10px] font-bold text-purple-600 dark:text-purple-300 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <FileText size={11} /> Lead Requirement / Description:
+                      </p>
+                      <p className="text-secondary leading-relaxed text-[11px]">{selectedLead.description}</p>
+                    </div>
+                  )}
                 </div>
                 
                 <div>
@@ -884,11 +1065,18 @@ export const QuotationBuilder: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] text-muted mb-1.5">Attention To</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[11px] text-muted">Attention To</label>
+                      {availableContacts.length > 0 && (
+                        <span className="text-[10px] text-muted">
+                          {availableContacts.length} contact{availableContacts.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <input type="text" value={attention} onChange={e => setAttention(e.target.value)}
                         placeholder="Mr. / Ms." className={`${docInputClass} pr-7`} />
-                      {currentEntity && (currentContacts.length > 0 || currentEntity.name) && (
+                      {availableContacts.length > 0 && (
                         <>
                           <select 
                             className="absolute right-0 top-0 bottom-0 w-8 opacity-0 cursor-pointer z-10"
@@ -897,17 +1085,47 @@ export const QuotationBuilder: React.FC = () => {
                             value=""
                           >
                             <option value="">(Select Contact)</option>
-                            {currentEntity.name && <option value={currentEntity.name}>{currentEntity.name} (Primary)</option>}
-                            {currentContacts.map((c: any, i: number) => (
-                               <option key={i} value={`${c.name}${c.designation ? ` - ${c.designation}` : ''}`}>{c.name}</option>
+                            {availableContacts.map((c, i) => (
+                              <option key={i} value={c.name}>
+                                {c.name} {c.designation ? `(${c.designation})` : (c.roleTag ? `(${c.roleTag})` : '')}
+                              </option>
                             ))}
                           </select>
                           <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted border-l border-theme-subtle pl-1.5 flex items-center justify-center">
-                             <ChevronDown size={14} />
+                            <ChevronDown size={14} />
                           </div>
                         </>
                       )}
                     </div>
+
+                    {/* Clickable Contact Chips */}
+                    {availableContacts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {availableContacts.map((c, i) => {
+                          const isSelected = attention.toLowerCase().includes(c.name.toLowerCase());
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setAttention(c.name)}
+                              className={`text-[10px] px-2 py-0.5 rounded-full border transition-all flex items-center gap-1 ${
+                                isSelected 
+                                  ? 'bg-blue-600/15 border-blue-500 text-blue-500 font-bold shadow-sm' 
+                                  : 'bg-surface border-theme-subtle/70 text-secondary hover:border-primary/50 hover:text-primary'
+                              }`}
+                              title={`Click to set Attn: ${c.name}${c.designation ? ` (${c.designation})` : ''}${c.phone ? ` • ${c.phone}` : ''}`}
+                            >
+                              <span>{c.name}</span>
+                              {c.designation ? (
+                                <span className="opacity-70 text-[9px]">({c.designation})</span>
+                              ) : c.roleTag ? (
+                                <span className="opacity-60 text-[9px]">({c.roleTag})</span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[11px] text-muted mb-1.5">Customer VAT</label>

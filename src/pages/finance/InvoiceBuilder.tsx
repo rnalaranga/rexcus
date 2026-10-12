@@ -516,17 +516,27 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
   const itemOptions = inventory.map(i => ({ value: i.id, label: `${i.sku} - ${i.name}`, group: i.category || 'Products', extra: `Stock: ${i.qtyOnHand}` }));
 
   useEffect(() => {
+    // Fetch company settings
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
       .then(r => r.json())
       .then(s => setCompany({ name: s.companyName || 'Your Company', address: s.companyAddress || '', phone: s.companyPhone || '', email: s.companyEmail || '', vat: s.companyVat || '', brNumber: s.companyBr || '', bankName: s.companyBankName || '', accountNo: s.companyAccountNo || '', tagline: s.invoiceTagline || 'Thank you for your business!', logo: s.companyLogo || '' }))
       .catch(() => {});
-      
-    // Fetch next invoice number
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number`)
+  }, []);
+
+  // Fetch next invoice number whenever date changes to match IRD YYMMM format
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${date}`)
       .then(r => r.json())
       .then(d => { if (d.invoiceNo) setDocNo(d.invoiceNo); })
-      .catch(() => setDocNo('INV-' + Date.now().toString().slice(-4)));
-  }, []);
+      .catch(() => {
+        const dObj = new Date(date);
+        const validD = isNaN(dObj.getTime()) ? new Date() : dObj;
+        const yy = validD.getFullYear().toString().slice(-2);
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const mmm = months[validD.getMonth()];
+        setDocNo(`${yy}${mmm}_REX_${Date.now().toString().slice(-5)}`);
+      });
+  }, [date]);
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -574,8 +584,10 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
   const handleSave = async () => {
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
+    const cleanDocNo = (docNo || '').trim().replace(/\s+/g, '');
+    if (!cleanDocNo) return showError('Please provide a valid invoice number.');
     try {
-      const res = await createInvoice({ id: docNo, invoiceNo: docNo, customerId, attention, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType, taxProfileId, taxBreakdown: JSON.stringify(taxBreakdown) });
+      const res = await createInvoice({ id: cleanDocNo, invoiceNo: cleanDocNo, customerId, attention, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType, taxProfileId, taxBreakdown: JSON.stringify(taxBreakdown) });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
@@ -737,6 +749,25 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                 <Calendar size={16} className="text-blue-500" /> Details & References
               </h2>
               <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                <div className="bg-surface2/50 border border-theme-subtle rounded-lg p-2.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-bold text-muted uppercase">Invoice Serial No.</label>
+                    <span className="text-[9px] font-mono font-semibold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                      IRD Format: YYMMM_QQQQ_XXXXX
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={docNo}
+                    onChange={e => setDocNo(e.target.value.replace(/\s+/g, ''))}
+                    placeholder="26OCT_REX_00001"
+                    className={`${docInputClass} font-mono font-bold text-blue-500 tracking-wide`}
+                  />
+                  <p className="text-[9px] text-muted leading-tight">
+                    Complies with IRD Sri Lanka standards (No spaces, max 40 chars).
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Invoice Date</label>

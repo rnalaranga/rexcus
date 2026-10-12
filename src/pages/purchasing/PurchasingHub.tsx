@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package } from 'lucide-react';
+import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -13,11 +13,11 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
-import { fetchAllCustomerGRNs } from '@/lib/api';
+import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
-type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
+type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
 
 export const PurchasingHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('po');
@@ -38,6 +38,25 @@ export const PurchasingHub: React.FC = () => {
     fetchAllCustomerGRNs().then(setCustGrns).catch(console.error);
   }, []);
 
+  const handleDeleteSupplierGRN = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to delete GRN ${id}?\n\nThis will revert received stock in inventory and update the PO status.`)) return;
+    try {
+      await deleteGRN(id);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete GRN');
+    }
+  };
+
+  const handleDeleteCustomerGRN = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to delete customer sample GRN ${id}?`)) return;
+    try {
+      await deleteCustomerGRN(id);
+      setCustGrns(prev => prev.filter(g => g.id !== id));
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete customer sample GRN');
+    }
+  };
 
   const getSupplierName = (id: string) => suppliers.find((s: any) => s.id === id)?.name || id;
   const getSupplierContact = (id: string) => suppliers.find((s: any) => s.id === id)?.email || 'N/A';
@@ -104,8 +123,15 @@ export const PurchasingHub: React.FC = () => {
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
           <div className="flex items-center justify-end gap-1.5">
             <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-[10px] uppercase h-6">View</Button>
-            {row.status?.toLowerCase() !== 'draft' && (
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder?po=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">GRN</Button>
+            {row.status?.toLowerCase() !== 'draft' && row.status?.toLowerCase() !== 'received' && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => navigate(`/purchasing/grn-builder?po=${row.id}`)} 
+                className={`text-[10px] uppercase h-6 ${row.status?.toLowerCase() === 'partially_received' ? 'text-amber-500 font-bold hover:text-amber-400' : 'text-emerald-500'}`}
+              >
+                {row.status?.toLowerCase() === 'partially_received' ? 'Receive Balance' : 'GRN'}
+              </Button>
             )}
           </div>
         )}
@@ -213,13 +239,17 @@ export const PurchasingHub: React.FC = () => {
         { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-[10px] text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
         { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{(row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '')).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-1.5 items-center">
                {row.isCustomerSample ? (
-                  <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-[10px] uppercase h-6 text-blue-500">Print Sample GRN</Button>
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-[10px] uppercase h-6 text-blue-500">Print Sample GRN</Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomerGRN(row.id)} className="text-[10px] uppercase h-6 text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                  </>
                ) : (
                   <>
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder/${row.id}`)} className="text-[10px] uppercase h-6 text-primary">View</Button>
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">Create Bill</Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplierGRN(row.id)} className="text-[10px] uppercase h-6 text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
                   </>
                )}
             </div>
@@ -277,7 +307,7 @@ export const PurchasingHub: React.FC = () => {
   const getStatusOptions = (): StatusFilter[] => {
     switch (activeTab) {
       case 'mr': return ['all', 'pending', 'approved', 'ordered', 'rejected'];
-      case 'po': return ['all', 'draft', 'sent', 'received'];
+      case 'po': return ['all', 'draft', 'sent', 'ordered', 'partially_received', 'received'];
       case 'grn': return ['all', 'received'];
       case 'bill': return ['all', 'unpaid', 'paid'];
       default: return ['all'];

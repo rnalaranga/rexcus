@@ -352,6 +352,7 @@ export const fetchGRNs = async () => (await (await fetch(`${API_URL}/purchasing/
 export const fetchGRNById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`)).json());
 export const createGRN = async (data: any) => (await (await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const updateGRN = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deleteGRN = async (id: string) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'DELETE' })).json());
 
 export const fetchBills = async () => (await (await fetch(`${API_URL}/purchasing/bills`)).json());
 export const createBill = async (data: any) => (await (await fetch(`${API_URL}/purchasing/bills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
@@ -430,6 +431,7 @@ export const updateTaxProfile = async (id: string, data: any) => {
 };
 
 export const updateCustomerGRN = async (id: string, data: any) => (await (await fetch(`${API_URL}/crm/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deleteCustomerGRN = async (id: string) => (await (await fetch(`${API_URL}/crm/grns/${id}`, { method: 'DELETE' })).json());
 
 // -- GATE PASSES --
 export const fetchGatePasses = async () => {
