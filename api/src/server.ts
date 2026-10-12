@@ -365,7 +365,9 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE supplier_ledger ADD COLUMN debit DECIMAL(15,2) DEFAULT 0.00",
       "ALTER TABLE supplier_ledger ADD COLUMN credit DECIMAL(15,2) DEFAULT 0.00",
       "ALTER TABLE supplier_ledger ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Bank Transfer'",
-      "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL"
+      "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL"
     ];
 
     for (const patch of patches) {
@@ -1101,18 +1103,37 @@ app.get('/api/purchasing/mrs', async (req, res) => {
     res.json(rows);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
+app.get('/api/purchasing/mrs/:id', async (req, res) => {
+  try {
+    const [rows]: any = await db.query('SELECT * FROM material_requests WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Material request not found' });
+    res.json(rows[0]);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
 app.post('/api/purchasing/mrs', async (req, res) => {
   try {
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO material_requests SET ?', data);
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.put('/api/purchasing/mrs/:id', async (req, res) => {
   try {
-    await db.query('UPDATE material_requests SET ? WHERE id = ?', [req.body, req.params.id]);
+    const data = { ...req.body };
+    delete data.id;
+    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('UPDATE material_requests SET ? WHERE id = ?', [data, req.params.id]);
     res.json({ success: true, id: req.params.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.delete('/api/purchasing/mrs/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM material_requests WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1122,18 +1143,51 @@ app.get('/api/purchasing/pos', async (req, res) => {
     res.json(rows);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
+app.get('/api/purchasing/pos/:id', async (req, res) => {
+  try {
+    const [rows]: any = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Purchase order not found' });
+    res.json(rows[0]);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
 app.post('/api/purchasing/pos', async (req, res) => {
   try {
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO purchase_orders SET ?', data);
+
+    // If generated from a Material Request, automatically update the MR to 'ordered' with reference to this PO
+    if (data.mrId) {
+      await db.query('UPDATE material_requests SET status = ?, poId = ?, updatedAt = NOW() WHERE id = ?', ['ordered', data.id, data.mrId]);
+    }
+
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.put('/api/purchasing/pos/:id', async (req, res) => {
   try {
-    await db.query('UPDATE purchase_orders SET ? WHERE id = ?', [req.body, req.params.id]);
+    const data = { ...req.body };
+    delete data.id;
+    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('UPDATE purchase_orders SET ? WHERE id = ?', [data, req.params.id]);
+
+    // Keep linked MR in sync if mrId is supplied
+    if (data.mrId) {
+      await db.query('UPDATE material_requests SET status = ?, poId = ?, updatedAt = NOW() WHERE id = ?', ['ordered', req.params.id, data.mrId]);
+    }
+
     res.json({ success: true, id: req.params.id });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+app.delete('/api/purchasing/pos/:id', async (req, res) => {
+  try {
+    // Unlink any MR referencing this PO before deleting
+    await db.query('UPDATE material_requests SET status = "approved", poId = NULL WHERE poId = ?', [req.params.id]);
+    await db.query('DELETE FROM purchase_orders WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 

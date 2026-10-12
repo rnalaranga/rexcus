@@ -317,12 +317,16 @@ export const addInvoicePayment = async (id: string, data: any) => {
 
 // --- PURCHASING ---
 export const fetchMRs = async () => (await (await fetch(`${API_URL}/purchasing/mrs`)).json());
+export const fetchMRById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`)).json());
 export const createMR = async (data: any) => (await (await fetch(`${API_URL}/purchasing/mrs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const updateMR = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deleteMR = async (id: string) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'DELETE' })).json());
 
 export const fetchPOs = async () => (await (await fetch(`${API_URL}/purchasing/pos`)).json());
+export const fetchPOById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`)).json());
 export const createPO = async (data: any) => (await (await fetch(`${API_URL}/purchasing/pos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const updatePO = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deletePO = async (id: string) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'DELETE' })).json());
 
 export const fetchGRNs = async () => (await (await fetch(`${API_URL}/purchasing/grns`)).json());
 export const createGRN = async (data: any) => (await (await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());

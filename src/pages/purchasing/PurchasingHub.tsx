@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
@@ -17,7 +17,7 @@ import { fetchAllCustomerGRNs } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
-type StatusFilter = 'all' | 'draft' | 'pending' | 'sent' | 'received' | 'unpaid' | 'paid';
+type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'ordered' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
 
 export const PurchasingHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('po');
@@ -81,17 +81,33 @@ export const PurchasingHub: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{getSupplierName(row.supplierId)}</p>
-                <p className="text-[10px] text-muted truncate mt-0.5 font-mono">{row.id}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[10px] text-muted font-mono">{row.id}</span>
+                  {row.mrId && (
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/mr-builder/${row.mrId}`); }}
+                      className="text-[9px] bg-blue-500/10 text-blue-500 hover:text-blue-400 px-1.5 py-0.2 rounded font-mono border border-blue-500/20 cursor-pointer font-bold"
+                      title="View Originating Material Request"
+                    >
+                      MR: {row.mrId}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )
         },
         { key: 'contact', header: 'Contact', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
         { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
-        { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v), true)}</span> },
+        { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
         { key: 'date', header: 'Order Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-[10px] uppercase h-6">View</Button>
+          <div className="flex items-center justify-end gap-1.5">
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-[10px] uppercase h-6">View</Button>
+            {row.status?.toLowerCase() !== 'draft' && (
+              <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder?po=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">GRN</Button>
+            )}
+          </div>
         )}
       ];
     }
@@ -106,7 +122,18 @@ export const PurchasingHub: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
-                <p className="text-[10px] text-muted truncate mt-0.5">{row.department} Dept</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[10px] text-muted">{row.department} Dept</span>
+                  {row.poId && (
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
+                      className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                      title="View Generated Purchase Order"
+                    >
+                      PO: {row.poId}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -116,7 +143,32 @@ export const PurchasingHub: React.FC = () => {
         { key: 'priority', header: 'Priority', width: '90px', render: v => <span className={`text-[10px] font-bold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
         { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder?mr=${row.id}`)} className="text-[10px] uppercase h-6">Create PO</Button>
+          <div className="flex items-center justify-end gap-1.5">
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/mr-builder/${row.id}`)} className="text-[10px] uppercase h-6">
+              View MR
+            </Button>
+            {row.status?.toLowerCase() !== 'ordered' ? (
+              <Button 
+                variant="primary" 
+                size="sm" 
+                onClick={() => navigate(`/purchasing/po-builder?mr=${row.id}`)} 
+                className="text-[10px] uppercase h-6 bg-blue-600 hover:bg-blue-500"
+              >
+                Create PO
+              </Button>
+            ) : (
+              row.poId && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => navigate(`/purchasing/po-builder/${row.poId}`)} 
+                  className="text-[10px] uppercase h-6 text-emerald-500 hover:text-emerald-400 font-semibold"
+                >
+                  View PO
+                </Button>
+              )
+            )}
+          </div>
         )}
       ];
     }
@@ -187,12 +239,24 @@ export const PurchasingHub: React.FC = () => {
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading purchasing data...</div>;
 
 
+  const getStatusOptions = (): StatusFilter[] => {
+    switch (activeTab) {
+      case 'mr': return ['all', 'pending', 'approved', 'ordered', 'rejected'];
+      case 'po': return ['all', 'draft', 'sent', 'received'];
+      case 'grn': return ['all', 'received'];
+      case 'bill': return ['all', 'unpaid', 'paid'];
+      default: return ['all'];
+    }
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-primary">Purchasing Hub</h1>
-          <p className="text-xs text-muted mt-0.5">{pos.length} total orders · {grns.length} receipts · {mrs.length} requests</p>
+          <p className="text-xs text-muted mt-0.5">
+            {pos.length} purchase orders · {mrs.length} material requests ({mrs.filter((m: any) => m.status === 'approved' || m.status === 'pending').length} pending PO) · {grns.length} receipts
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" icon={Download}>Export</Button>
@@ -206,14 +270,26 @@ export const PurchasingHub: React.FC = () => {
         
         <span className="text-xs text-muted flex items-center gap-1.5"><Filter size={12} /> Type:</span>
         {(['po', 'mr', 'grn', 'bill'] as Tab[]).map(t => (
-          <button key={t} onClick={() => setActiveTab(t)} className={`px-2.5 py-1 text-xs border transition-colors ${activeTab === t ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}>{t.toUpperCase()}</button>
+          <button 
+            key={t} 
+            onClick={() => { setActiveTab(t); setStatusFilter('all'); }} 
+            className={`px-2.5 py-1 text-xs border transition-colors ${activeTab === t ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}
+          >
+            {t.toUpperCase()}
+          </button>
         ))}
 
         <div className="w-px h-6 bg-theme-subtle mx-2" />
         
         <span className="text-xs text-muted flex items-center gap-1.5"><Filter size={12} /> Status:</span>
-        {(['all', 'draft', 'sent', 'received', 'unpaid', 'paid'] as StatusFilter[]).map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)} className={`px-2.5 py-1 text-xs border transition-colors ${statusFilter === s ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
+        {getStatusOptions().map(s => (
+          <button 
+            key={s} 
+            onClick={() => setStatusFilter(s)} 
+            className={`px-2.5 py-1 text-xs border transition-colors ${statusFilter === s ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}
+          >
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
         ))}
       </GlassCard>
 
