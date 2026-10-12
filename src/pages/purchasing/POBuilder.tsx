@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, Trash2, Printer, Building2, Truck, FileText, Calculator, ShieldCheck } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -24,7 +24,7 @@ export const POBuilder: React.FC = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [supplierId, setSupplierId] = useState('');
-  const [supplierDetails, setSupplierDetails] = useState({ contact: '', email: '', phone: '', address: '' });
+  const [supplierDetails, setSupplierDetails] = useState({ contact: '', email: '', phone: '', address: '', vat: '', svat: '', brNumber: '' });
   
   const [expectedDate, setExpectedDate] = useState('');
   const [shippingMethod, setShippingMethod] = useState('Standard Delivery');
@@ -39,7 +39,18 @@ export const POBuilder: React.FC = () => {
     if (supplierId) {
       const sup = suppliers.find((s: any) => s.id === supplierId);
       if (sup) {
-        setSupplierDetails({ contact: sup.contactPerson || '', email: sup.email || '', phone: sup.phone || '', address: sup.address || '' });
+        setSupplierDetails({
+          contact: sup.contactName || sup.contactPerson || '',
+          email: sup.email || '',
+          phone: sup.phone || '',
+          address: sup.address || '',
+          vat: sup.vat || '',
+          svat: sup.svat || '',
+          brNumber: sup.brNumber || ''
+        });
+        if (sup.paymentTerms) {
+          setPaymentTerms(sup.paymentTerms);
+        }
       }
     }
   }, [supplierId, suppliers]);
@@ -168,6 +179,25 @@ export const POBuilder: React.FC = () => {
                       <p><span className="text-muted inline-block w-16">Email</span> {supplierDetails.email || 'N/A'}</p>
                       <p><span className="text-muted inline-block w-16">Phone</span> {supplierDetails.phone || 'N/A'}</p>
                       <p><span className="text-muted inline-block w-16">Address</span> {supplierDetails.address || 'N/A'}</p>
+                      {(supplierDetails.vat || supplierDetails.svat || supplierDetails.brNumber) && (
+                        <div className="pt-2 border-t border-theme-subtle flex items-center gap-2 flex-wrap">
+                          {supplierDetails.vat && (
+                            <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-mono font-bold border border-blue-500/20">
+                              VAT: {supplierDetails.vat}
+                            </span>
+                          )}
+                          {supplierDetails.svat && (
+                            <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded font-mono font-bold border border-purple-500/20">
+                              SVAT: {supplierDetails.svat}
+                            </span>
+                          )}
+                          {supplierDetails.brNumber && (
+                            <span className="text-[10px] bg-surface2 text-muted px-1.5 py-0.5 rounded font-mono">
+                              BR: {supplierDetails.brNumber}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

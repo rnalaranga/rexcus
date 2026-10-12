@@ -272,6 +272,22 @@ app.post('/api/settings/fix-db', async (req, res) => {
         status VARCHAR(50) DEFAULT 'Dispatched',
         notes TEXT NULL,
         createdAt DATETIME NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS supplier_ledger (
+        id VARCHAR(50) PRIMARY KEY,
+        supplierId VARCHAR(50) NOT NULL,
+        date DATETIME NULL,
+        type VARCHAR(50) NOT NULL,
+        referenceNo VARCHAR(100) NULL,
+        description TEXT NULL,
+        debit DECIMAL(15,2) DEFAULT 0.00,
+        credit DECIMAL(15,2) DEFAULT 0.00,
+        paymentMethod VARCHAR(50) DEFAULT 'Bank Transfer',
+        bankAccountId VARCHAR(100) NULL,
+        amount DECIMAL(15,2) DEFAULT 0.00,
+        reference VARCHAR(255) NULL,
+        notes TEXT NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`
     ];
 
@@ -290,11 +306,24 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE tax_rates ADD COLUMN accountId VARCHAR(50)",
       "ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted'",
       "ALTER TABLE quotations ADD COLUMN status VARCHAR(50) DEFAULT 'Draft'",
+      "ALTER TABLE quotations ADD COLUMN docNo VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE quotations ADD COLUMN issueNo VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE quotations ADD COLUMN issueDate VARCHAR(255) DEFAULT NULL",
       "ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
       "ALTER TABLE customers ADD COLUMN paymentTerms TEXT",
       "ALTER TABLE customers ADD COLUMN deliveryTerms TEXT",
       "ALTER TABLE customers ADD COLUMN contacts TEXT",
       "ALTER TABLE tax_profiles ADD COLUMN tax1_hidden TINYINT(1) DEFAULT '0'",
+      "ALTER TABLE tax_profiles ADD COLUMN tax1_show_separately TINYINT(1) DEFAULT 0",
+      "ALTER TABLE tax_profiles ADD COLUMN tax2_show_separately TINYINT(1) DEFAULT 1",
+      "ALTER TABLE tax_profiles ADD COLUMN tax1_accountId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE tax_profiles ADD COLUMN tax2_accountId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN invoiceNo VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
       "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
       "ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock'",
       "ALTER TABLE customer_grns ADD COLUMN gatePassId VARCHAR(50) DEFAULT NULL",
@@ -308,7 +337,35 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE gate_passes ADD COLUMN reason VARCHAR(255) DEFAULT NULL",
       "ALTER TABLE journal_lines ADD COLUMN partyId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE journal_lines ADD COLUMN partyType VARCHAR(50) DEFAULT NULL",
-      "ALTER TABLE journal_lines ADD COLUMN costCenterId VARCHAR(50) DEFAULT NULL"
+      "ALTER TABLE journal_lines ADD COLUMN costCenterId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN category VARCHAR(100) DEFAULT 'Raw Materials'",
+      "ALTER TABLE suppliers ADD COLUMN brNumber VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN vat VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN svat VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN phone2 VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN website VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN designation VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN contactName VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN contacts TEXT DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN paymentTerms VARCHAR(100) DEFAULT 'Net 30 Days'",
+      "ALTER TABLE suppliers ADD COLUMN creditDays INT DEFAULT 30",
+      "ALTER TABLE suppliers ADD COLUMN creditLimit DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE suppliers ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0",
+      "ALTER TABLE suppliers ADD COLUMN bankName VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN bankBranch VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN bankAccountNo VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN bankAccountName VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+      "ALTER TABLE suppliers ADD COLUMN status VARCHAR(20) DEFAULT 'active'",
+      "ALTER TABLE suppliers ADD COLUMN notes TEXT DEFAULT NULL",
+      "ALTER TABLE suppliers ADD COLUMN openingBalance DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE supplier_ledger ADD COLUMN referenceNo VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE supplier_ledger ADD COLUMN description TEXT DEFAULT NULL",
+      "ALTER TABLE supplier_ledger ADD COLUMN debit DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE supplier_ledger ADD COLUMN credit DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE supplier_ledger ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Bank Transfer'",
+      "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL"
     ];
 
     for (const patch of patches) {
@@ -1112,6 +1169,25 @@ app.post('/api/purchasing/bills', async (req, res) => {
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     await db.query('INSERT INTO supplier_bills SET ?', data);
+
+    // Also automatically create corresponding ledger entry in supplier_ledger
+    if (data.supplierId && data.amount) {
+      const ledgerEntry = {
+        id: `SL-BILL-${Date.now().toString().slice(-6)}`,
+        supplierId: data.supplierId,
+        date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
+        type: 'purchase',
+        referenceNo: data.invoiceNo || data.id,
+        description: `Supplier Bill ${data.id}${data.poId ? ` (PO: ${data.poId})` : ''} - ${data.notes || 'Vendor Bill'}`,
+        debit: Number(data.amount) || 0,
+        credit: 0,
+        amount: Number(data.amount) || 0,
+        reference: data.invoiceNo || data.id,
+        notes: data.notes || ''
+      };
+      await db.query('INSERT INTO supplier_ledger SET ?', ledgerEntry);
+    }
+
     res.json({ success: true, id: data.id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -1125,8 +1201,62 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
 // -- SUPPLIERS --
 app.get('/api/suppliers', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM suppliers ORDER BY createdAt DESC');
+    const [rows]: any = await db.query(`
+      SELECT s.*,
+        COALESCE(SUM(l.debit), 0) as totalPurchases,
+        COALESCE(SUM(l.credit), 0) as totalPaid,
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, 0) + COALESCE(s.balance, 0)) as outstandingBalance
+      FROM suppliers s
+      LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+      GROUP BY s.id
+      ORDER BY s.createdAt DESC
+    `);
+    for (const r of rows) {
+      if (typeof r.contacts === 'string') {
+        try { r.contacts = JSON.parse(r.contacts); } catch(e) { r.contacts = []; }
+      } else if (!r.contacts) {
+        r.contacts = [];
+      }
+      r.contactName = r.contactName || r.contactPerson || '';
+      r.contactPerson = r.contactPerson || r.contactName || '';
+      r.totalPurchases = Number(r.totalPurchases) || 0;
+      r.totalPaid = Number(r.totalPaid) || 0;
+      r.outstandingBalance = Number(r.outstandingBalance) || 0;
+      r.openingBalance = Number(r.openingBalance) || 0;
+    }
     res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.get('/api/suppliers/:id', async (req, res) => {
+  try {
+    const [rows]: any = await db.query(`
+      SELECT s.*,
+        COALESCE(SUM(l.debit), 0) as totalPurchases,
+        COALESCE(SUM(l.credit), 0) as totalPaid,
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, 0) + COALESCE(s.balance, 0)) as outstandingBalance
+      FROM suppliers s
+      LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+      WHERE s.id = ?
+      GROUP BY s.id
+    `, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Supplier not found' });
+    const r = rows[0];
+    if (typeof r.contacts === 'string') {
+      try { r.contacts = JSON.parse(r.contacts); } catch(e) { r.contacts = []; }
+    } else if (!r.contacts) {
+      r.contacts = [];
+    }
+    r.contactName = r.contactName || r.contactPerson || '';
+    r.contactPerson = r.contactPerson || r.contactName || '';
+    r.totalPurchases = Number(r.totalPurchases) || 0;
+    r.totalPaid = Number(r.totalPaid) || 0;
+    r.outstandingBalance = Number(r.outstandingBalance) || 0;
+    r.openingBalance = Number(r.openingBalance) || 0;
+    res.json(r);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -1136,7 +1266,17 @@ app.get('/api/suppliers', async (req, res) => {
 app.post('/api/suppliers', async (req, res) => {
   try {
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.contacts && typeof data.contacts === 'object') {
+      data.contacts = JSON.stringify(data.contacts);
+    }
+    if (!data.id) {
+      const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM suppliers');
+      const nextNum = (countResult[0]?.c || 0) + 1;
+      data.id = 'SUP-' + nextNum.toString().padStart(4, '0');
+    }
+    if (data.contactName && !data.contactPerson) data.contactPerson = data.contactName;
+    if (data.contactPerson && !data.contactName) data.contactName = data.contactPerson;
+
     const item = {
       ...data,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -1154,7 +1294,13 @@ app.put('/api/suppliers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    delete data.id;
+    if (data.contacts && typeof data.contacts === 'object') {
+      data.contacts = JSON.stringify(data.contacts);
+    }
+    if (data.contactName && !data.contactPerson) data.contactPerson = data.contactName;
+    if (data.contactPerson && !data.contactName) data.contactName = data.contactPerson;
+
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE suppliers SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
@@ -1502,24 +1648,31 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
   }
 });
 
-// -- SUPPLIER DETAIL (single) --
-app.get('/api/suppliers/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [rows] = await db.query('SELECT * FROM suppliers WHERE id = ?', [id]) as any[];
-    if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(rows[0]);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
-  }
-});
-
 // -- SUPPLIER LEDGER --
 app.get('/api/supplier-ledger/:supplierId', async (req, res) => {
   try {
     const { supplierId } = req.params;
-    const [rows] = await db.query('SELECT * FROM supplier_ledger WHERE supplierId = ? ORDER BY date DESC', [supplierId]);
+    const [rows]: any = await db.query(
+      'SELECT * FROM supplier_ledger WHERE supplierId = ? ORDER BY date DESC, createdAt DESC',
+      [supplierId]
+    );
+    for (const r of rows) {
+      r.referenceNo = r.referenceNo || r.reference || '';
+      r.reference = r.reference || r.referenceNo || '';
+      r.description = r.description || r.notes || '';
+      r.notes = r.notes || r.description || '';
+      if (r.debit === undefined || r.debit === null) {
+        r.debit = (r.type === 'purchase' || r.type === 'bill') ? Number(r.amount) || 0 : 0;
+      } else {
+        r.debit = Number(r.debit) || 0;
+      }
+      if (r.credit === undefined || r.credit === null) {
+        r.credit = (r.type === 'payment' || r.type === 'return' || r.type === 'advance') ? Number(r.amount) || 0 : 0;
+      } else {
+        r.credit = Number(r.credit) || 0;
+      }
+      r.amount = Number(r.amount) || (r.debit > 0 ? r.debit : r.credit);
+    }
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -1531,12 +1684,31 @@ app.post('/api/supplier-ledger', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    const item = {
-      ...data,
-      id: `SL-${Date.now().toString().slice(-8)}`,
-      date: data.date || new Date().toISOString().slice(0, 19).replace('T', ' '),
-      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    
+    const debit = Number(data.debit) || (data.type === 'purchase' || data.type === 'bill' ? Number(data.amount) || 0 : 0);
+    const credit = Number(data.credit) || (data.type === 'payment' || data.type === 'return' || data.type === 'advance' ? Number(data.amount) || 0 : 0);
+    const amount = Number(data.amount) || (debit > 0 ? debit : credit);
+    const ref = data.referenceNo || data.reference || '';
+    const desc = data.description || data.notes || '';
+
+    const item: any = {
+      id: data.id || `SL-${Date.now().toString().slice(-8)}`,
+      supplierId: data.supplierId,
+      date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
+      type: data.type || 'purchase',
+      referenceNo: ref,
+      description: desc,
+      debit,
+      credit,
+      amount,
+      reference: ref,
+      notes: desc,
+      paymentMethod: data.paymentMethod || (credit > 0 ? 'Bank Transfer' : 'Invoice')
     };
+    if (data.bankAccountId) {
+      item.bankAccountId = data.bankAccountId;
+    }
+
     await db.query('INSERT INTO supplier_ledger SET ?', item);
     res.json({ success: true, item });
   } catch (error) {
@@ -1549,7 +1721,7 @@ app.delete('/api/supplier-ledger/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await db.query('DELETE FROM supplier_ledger WHERE id = ?', [id]);
-    res.json({ success: true });
+    res.json({ success: true, id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });

@@ -58,7 +58,7 @@ export const Settings = () => {
 
   
   const handleFixDb = async () => {
-    if (await showConfirm('This will safely scan and fix missing database tables and columns (including Customer Samples and Gate Passes). No data will be deleted. Proceed?', 'Fix Database Structure', { confirmLabel: 'Proceed' })) {
+    if (await showConfirm('This will safely scan and synchronize missing database tables and columns (including Customer Samples, Gate Passes, Supplier Registration & VAT, Supplier Ledger & Payables, and Accounting fields). No data will be deleted. Proceed?', 'Fix Database Structure', { confirmLabel: 'Proceed' })) {
       setFixingDb(true);
       try {
         const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/fix-db`, { 
@@ -227,7 +227,7 @@ export const Settings = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-primary">Fix & Synchronize Database Structure</p>
-              <p className="text-xs text-muted mt-1">Safely restore and patch missing tables or columns (such as Gate Passes, Customer Samples GRN, Accounting fields) without losing any existing data. Use this if you encounter database schema errors.</p>
+              <p className="text-xs text-muted mt-1">Safely restore and synchronize missing tables or columns (Gate Passes, Customer Samples, Supplier VAT & Multi-Contacts, Supplier Ledger & Payables, and Accounting fields) without losing any existing data. Use this if you encounter database schema errors.</p>
             </div>
             <Button 
               variant="ghost" 
