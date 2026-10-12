@@ -20,9 +20,14 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
+    const cleanedContacts = (formData.contacts || []).filter((c: any) => 
+      c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()
+    )
+
     const newCustomer = {
       id: 'CUST-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
       ...formData,
+      contacts: cleanedContacts,
       status: 'active',
       lifetimeValue: 0,
       totalRevenue: 0,
@@ -177,7 +182,21 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
                 <Users size={14} className="text-purple-500" />
                 Additional Contacts
               </h3>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setFormData(f => ({...f, contacts: [...(f.contacts || []), { id: Date.now(), name: '', designation: '', phone: '', email: '' }] }))} icon={Plus}>Add Contact</Button>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setFormData(f => ({
+                  ...f, 
+                  contacts: [
+                    ...(f.contacts || []), 
+                    { id: `contact-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: '', designation: '', phone: '', email: '' }
+                  ] 
+                }))} 
+                icon={Plus}
+              >
+                Add Contact
+              </Button>
             </div>
             
             <div className="space-y-3">
@@ -186,42 +205,76 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
                   <div className="grid grid-cols-4 gap-3 flex-1">
                     <div className="space-y-1">
                       <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Name</label>
-                      <input value={c.name} onChange={e => {
-                        const newContacts = [...formData.contacts];
-                        newContacts[i].name = e.target.value;
-                        setFormData({...formData, contacts: newContacts});
-                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="John Doe" />
+                      <input 
+                        value={c.name || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item, idx) => idx === i ? { ...item, name: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="John Doe" 
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Designation</label>
-                      <input value={c.designation} onChange={e => {
-                        const newContacts = [...formData.contacts];
-                        newContacts[i].designation = e.target.value;
-                        setFormData({...formData, contacts: newContacts});
-                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="Manager" />
+                      <input 
+                        value={c.designation || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item, idx) => idx === i ? { ...item, designation: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="Manager / Director" 
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Phone</label>
-                      <input value={c.phone} onChange={e => {
-                        const newContacts = [...formData.contacts];
-                        newContacts[i].phone = e.target.value;
-                        setFormData({...formData, contacts: newContacts});
-                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="+94 7X..." />
+                      <input 
+                        value={c.phone || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item, idx) => idx === i ? { ...item, phone: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="+94 7X XXX XXXX" 
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Email</label>
-                      <input value={c.email} onChange={e => {
-                        const newContacts = [...formData.contacts];
-                        newContacts[i].email = e.target.value;
-                        setFormData({...formData, contacts: newContacts});
-                      }} className="w-full text-xs input-base py-1.5 px-2" placeholder="john@..." />
+                      <input 
+                        value={c.email || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item, idx) => idx === i ? { ...item, email: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="john@example.com" 
+                      />
                     </div>
                   </div>
-                  <button type="button" onClick={() => {
-                    const newContacts = [...formData.contacts];
-                    newContacts.splice(i, 1);
-                    setFormData({...formData, contacts: newContacts});
-                  }} className="text-red-500 hover:bg-red-500/10 p-1.5 rounded mt-5">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        contacts: (prev.contacts || []).filter((_, idx) => idx !== i)
+                      }));
+                    }} 
+                    className="text-red-500 hover:bg-red-500/10 p-1.5 rounded mt-5"
+                    title="Remove Contact"
+                  >
                     <Trash2 size={14} />
                   </button>
                 </div>

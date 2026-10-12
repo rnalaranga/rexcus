@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useDeals, useFollowups, useLeads, useQuotations } from '@/hooks/useData'
-import { updateCustomer, fetchAllCustomerGRNs } from '@/lib/api'
+import { updateCustomer, fetchCustomer, fetchAllCustomerGRNs } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 import { useAccounts } from '@/hooks/useFinance'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -27,11 +27,33 @@ export const CustomerDetail: React.FC = () => {
   const { data: accounts } = useAccounts()
   const { showError, toast } = useDialog()
 
+  const [currentCustomer, setCurrentCustomer] = useState<any>(null)
+  const [loadingCustomer, setLoadingCustomer] = useState(true)
+
+  const loadCustomerData = React.useCallback(async () => {
+    if (!id) return null
+    try {
+      const d = await fetchCustomer(id)
+      setCurrentCustomer(d)
+      return d
+    } catch (e) {
+      console.error('Failed to load customer:', e)
+      return null
+    } finally {
+      setLoadingCustomer(false)
+    }
+  }, [id])
+
+  React.useEffect(() => {
+    loadCustomerData()
+  }, [loadCustomerData])
+
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState<any>(null)
-  const [users, setUsers] = useState<any[]>([]);
-  const [currencies, setCurrencies] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([])
+  const [currencies, setCurrencies] = useState<any[]>([])
+
   React.useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
       .then(res => res.json())
@@ -44,17 +66,18 @@ export const CustomerDetail: React.FC = () => {
   // Ledger View State
   const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations' | 'samples'>('overview')
   const [grns, setGrns] = useState<any[]>([])
+
+  const customer = currentCustomer || customers?.find((c: any) => c.id === id)
   
   React.useEffect(() => {
-    const cust = customers?.find(c => c.id === id);
     fetchAllCustomerGRNs().then(data => {
       setGrns(data.filter((g: any) => {
         // filter logic: grn leadId might belong to this customer
         const lead = leads?.find((l: any) => l.id === g.leadId);
-        return lead?.customerId === id || g.customerId === id || g.customerName === cust?.name;
+        return lead?.customerId === id || g.customerId === id || g.customerName === customer?.company || g.customerName === customer?.name;
       }))
     }).catch(console.error)
-  }, [id, leads, customers])
+  }, [id, leads, customer?.company, customer?.name])
   
   const [ledgerData, setLedgerData] = useState<{ lines: any[], balance: number }>({ lines: [], balance: 0 })
   const [ledgerLoading, setLedgerLoading] = useState(false)
@@ -74,9 +97,9 @@ export const CustomerDetail: React.FC = () => {
     }
   }, [activeTab, id]);
 
-  if (cl || dl) return <div className="p-8 text-center text-muted animate-pulse">Loading profile...</div>
-
-  const customer = customers.find(c => c.id === id)
+  if ((loadingCustomer && !customer) || (cl && !customer) || dl) {
+    return <div className="p-8 text-center text-muted animate-pulse">Loading profile...</div>
+  }
 
   if (!customer) return (
     <div className="flex items-center justify-center h-64">
@@ -88,12 +111,13 @@ export const CustomerDetail: React.FC = () => {
   )
   const handleUpdateRating = async (rating: number) => {
     try {
-      await fetch(`http://localhost:3000/api/customers/${id}`, {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rating })
       });
-      refetch();
+      setCurrentCustomer((prev: any) => prev ? { ...prev, rating } : null);
+      await Promise.all([loadCustomerData(), refetch()]);
     } catch (e) {
       console.error(e);
     }
@@ -108,7 +132,7 @@ export const CustomerDetail: React.FC = () => {
       });
       if (res.ok) {
         toast(`Customer changes ${status} successfully`, 'success');
-        refetch();
+        await Promise.all([loadCustomerData(), refetch()]);
       } else {
         showError(`Failed to ${status} changes`);
       }
@@ -117,24 +141,73 @@ export const CustomerDetail: React.FC = () => {
     }
   };
 
-  const handleEditOpen = () => {
+  // Safely parse additional contacts from customer record
+  const additionalContacts: any[] = React.useMemo(() => {
+    if (!customer?.contacts) return []
+    let parsed: any[] = []
+    if (Array.isArray(customer.contacts)) {
+      parsed = customer.contacts
+    } else if (typeof customer.contacts === 'string') {
+      try {
+        let p = JSON.parse(customer.contacts)
+        if (typeof p === 'string') {
+          try { p = JSON.parse(p) } catch (e) {}
+        }
+        parsed = Array.isArray(p) ? p : []
+      } catch (e) {
+        parsed = []
+      }
+    }
+    return parsed.filter((c: any) => c && typeof c === 'object' && (c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()))
+  }, [customer?.contacts])
+
+  const handleEditOpen = (autoAddNewContact: boolean | React.MouseEvent = false) => {
+    if (!customer) return
+    const rawContacts = Array.isArray(customer.contacts) && customer.contacts.length > 0
+      ? customer.contacts
+      : additionalContacts
+
+    const existingContacts = rawContacts
+      .filter((c: any) => c && typeof c === 'object' && (c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()))
+      .map((c: any, idx: number) => ({
+        id: c.id || `contact-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        name: c.name || '',
+        designation: c.designation || '',
+        phone: c.phone || '',
+        email: c.email || ''
+      }))
+
+    const shouldAutoAdd = autoAddNewContact === true
+    if (shouldAutoAdd || existingContacts.length === 0) {
+      existingContacts.push({
+        id: `contact-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: '',
+        designation: '',
+        phone: '',
+        email: ''
+      })
+    }
+
     setFormData({
       prefix: customer.prefix || '',
-        name: customer.name,
-      company: customer.company,
-      email: customer.email,
-      phone: customer.phone,
+      name: customer.name || '',
+      company: customer.company || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
       phone2: customer.phone2 || '',
-      industry: customer.industry,
-      segment: customer.segment,
-      address: customer.address,
-      status: customer.status,
+      industry: customer.industry || '',
+      segment: customer.segment || 'sme',
+      address: customer.address || '',
+      status: customer.status || 'active',
       vat: customer.vat || '',
       svat: customer.svat || '',
       brNumber: customer.brNumber || '',
       rating: customer.rating || 0,
       creditLimit: customer.creditLimit || 0,
       creditDays: customer.creditDays || 30,
+      paymentTerms: customer.paymentTerms || '',
+      deliveryTerms: customer.deliveryTerms || '',
+      currency: customer.currency || 'LKR',
       financeContactName: customer.financeContactName || '',
       financeContactEmail: customer.financeContactEmail || '',
       financeContactPhone: customer.financeContactPhone || '',
@@ -143,18 +216,42 @@ export const CustomerDetail: React.FC = () => {
       bankAccountNo: customer.bankAccountNo || '',
       requiresAdvance: !!customer.requiresAdvance,
       isForeign: !!customer.isForeign,
-      accountManager: customer.accountManager || 'System Admin'
+      accountManager: customer.accountManager || 'System Admin',
+      contacts: existingContacts
     })
     setIsEditOpen(true)
   }
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!customer) return
     setSubmitting(true)
-    await updateCustomer(customer.id, { ...formData, contacts: JSON.stringify(formData.contacts) })
-    await refetch()
-    setSubmitting(false)
-    setIsEditOpen(false)
+    const cleanedContacts = (formData.contacts || []).filter((c: any) => 
+      c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()
+    )
+    try {
+      const payload = { 
+        ...formData, 
+        contacts: cleanedContacts 
+      }
+      await updateCustomer(customer.id, payload)
+
+      // Optimistically update currentCustomer immediately
+      setCurrentCustomer((prev: any) => prev ? { ...prev, ...payload } : { ...customer, ...payload })
+
+      // Concurrently reload single customer and refetch global customer list
+      await Promise.all([
+        loadCustomerData(),
+        refetch()
+      ])
+
+      toast('Customer profile updated successfully', 'success')
+      setIsEditOpen(false)
+    } catch (err: any) {
+      showError(err.message || 'Failed to update customer')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const customerDeals = deals.filter(d => d.customerId === customer.id)
@@ -215,7 +312,7 @@ export const CustomerDetail: React.FC = () => {
                Customer Samples
              </button>
         </div>
-        <Button variant="ghost" size="sm" icon={Edit2} onClick={handleEditOpen}>Edit</Button>
+        <Button variant="ghost" size="sm" icon={Edit2} onClick={() => handleEditOpen(false)}>Edit</Button>
         <Button variant="primary" size="sm" icon={Briefcase} onClick={() => navigate('/crm/deals')}>New Deal</Button>
       </div>
 
@@ -321,17 +418,44 @@ export const CustomerDetail: React.FC = () => {
 
             </div>
 
-            {customer.contacts && customer.contacts.length > 0 && (
+            {additionalContacts.length > 0 && (
               <div className="mt-6 pt-4 border-t border-theme-subtle">
-                <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest mb-3">Additional Contacts</h2>
-                <div className="space-y-3">
-                  {customer.contacts.map((c: any, i: number) => (
-                    <div key={i} className="bg-surface2 p-2.5 rounded border border-theme-subtle/50">
-                      <p className="text-xs font-semibold text-primary">{c.name} {c.designation ? <span className="text-[10px] font-normal text-muted">- {c.designation}</span> : ''}</p>
-                      {c.phone && <p className="text-[10px] text-secondary mt-1 flex items-center gap-1.5"><Phone size={10} /> {c.phone}</p>}
-                      {c.email && <p className="text-[10px] text-secondary mt-0.5 flex items-center gap-1.5"><Mail size={10} /> {c.email}</p>}
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                    <Users size={12} className="text-purple-500" />
+                    Additional Contacts ({additionalContacts.length})
+                  </h2>
+                  <Button variant="ghost" size="sm" onClick={() => handleEditOpen(false)} icon={Plus} className="text-[10px] h-6 px-2">
+                    Add / Edit
+                  </Button>
+                </div>
+                <div className="space-y-2.5">
+                  {additionalContacts.map((c: any, i: number) => (
+                    <div key={c.id || i} className="bg-surface2 p-2.5 rounded border border-theme-subtle/50">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-primary">{c.name || 'Unnamed Contact'}</p>
+                        {c.designation && <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-secondary font-medium">{c.designation}</span>}
+                      </div>
+                      {c.phone && <p className="text-[10px] text-secondary mt-1 flex items-center gap-1.5"><Phone size={10} className="text-muted" /> {c.phone}</p>}
+                      {c.email && <p className="text-[10px] text-secondary mt-0.5 flex items-center gap-1.5"><Mail size={10} className="text-muted" /> {c.email}</p>}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+            {additionalContacts.length === 0 && (
+              <div className="mt-6 pt-4 border-t border-theme-subtle">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                    <Users size={12} className="text-purple-500" />
+                    Additional Contacts
+                  </h2>
+                </div>
+                <div className="text-center py-3 border border-dashed border-theme-subtle rounded-lg text-xs text-muted">
+                  <p className="mb-2 text-[11px]">No additional contacts added yet.</p>
+                  <Button variant="ghost" size="sm" onClick={() => handleEditOpen(true)} icon={Plus} className="text-xs">
+                    Add Contact
+                  </Button>
                 </div>
               </div>
             )}
@@ -452,15 +576,26 @@ export const CustomerDetail: React.FC = () => {
 
             </div>
 
-            {customer.contacts && customer.contacts.length > 0 && (
+            {additionalContacts.length > 0 && (
               <div className="mt-6 pt-4 border-t border-theme-subtle">
-                <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest mb-3">Additional Contacts</h2>
-                <div className="space-y-3">
-                  {customer.contacts.map((c: any, i: number) => (
-                    <div key={i} className="bg-surface2 p-2.5 rounded border border-theme-subtle/50">
-                      <p className="text-xs font-semibold text-primary">{c.name} {c.designation ? <span className="text-[10px] font-normal text-muted">- {c.designation}</span> : ''}</p>
-                      {c.phone && <p className="text-[10px] text-secondary mt-1 flex items-center gap-1.5"><Phone size={10} /> {c.phone}</p>}
-                      {c.email && <p className="text-[10px] text-secondary mt-0.5 flex items-center gap-1.5"><Mail size={10} /> {c.email}</p>}
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                    <Users size={12} className="text-purple-500" />
+                    Additional Contacts ({additionalContacts.length})
+                  </h2>
+                  <Button variant="ghost" size="sm" onClick={() => handleEditOpen(false)} icon={Plus} className="text-[10px] h-6 px-2">
+                    Edit
+                  </Button>
+                </div>
+                <div className="space-y-2.5">
+                  {additionalContacts.map((c: any, i: number) => (
+                    <div key={c.id || i} className="bg-surface2 p-2.5 rounded border border-theme-subtle/50">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-primary">{c.name || 'Unnamed Contact'}</p>
+                        {c.designation && <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-secondary font-medium">{c.designation}</span>}
+                      </div>
+                      {c.phone && <p className="text-[10px] text-secondary mt-1 flex items-center gap-1.5"><Phone size={10} className="text-muted" /> {c.phone}</p>}
+                      {c.email && <p className="text-[10px] text-secondary mt-0.5 flex items-center gap-1.5"><Mail size={10} className="text-muted" /> {c.email}</p>}
                     </div>
                   ))}
                 </div>
@@ -827,61 +962,109 @@ export const CustomerDetail: React.FC = () => {
                   <Users size={14} className="text-purple-500" />
                   Additional Contacts
                 </h3>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setFormData((f: any) => ({...f, contacts: [...(f.contacts || []), { id: Date.now(), name: '', designation: '', phone: '', email: '' }] }))} icon={Plus}>Add Contact</Button>
-              </div>
-              
-              <div className="space-y-3">
-                {(formData.contacts || []).map((c: any, i: number) => (
-                  <div key={c.id || i} className="flex items-start gap-2 bg-surface2 p-3 rounded-lg border border-theme-subtle/50 relative">
-                    <div className="grid grid-cols-4 gap-3 flex-1">
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Name</label>
-                        <input value={c.name} onChange={e => {
-                          const newContacts = [...formData.contacts];
-                          newContacts[i].name = e.target.value;
-                          setFormData({...formData, contacts: newContacts});
-                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="John Doe" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Designation</label>
-                        <input value={c.designation} onChange={e => {
-                          const newContacts = [...formData.contacts];
-                          newContacts[i].designation = e.target.value;
-                          setFormData({...formData, contacts: newContacts});
-                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="Manager" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Phone</label>
-                        <input value={c.phone} onChange={e => {
-                          const newContacts = [...formData.contacts];
-                          newContacts[i].phone = e.target.value;
-                          setFormData({...formData, contacts: newContacts});
-                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="+94 7X..." />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Email</label>
-                        <input value={c.email} onChange={e => {
-                          const newContacts = [...formData.contacts];
-                          newContacts[i].email = e.target.value;
-                          setFormData({...formData, contacts: newContacts});
-                        }} className="w-full text-xs input-base py-1.5 px-2" placeholder="john@..." />
-                      </div>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setFormData((f: any) => ({
+                  ...f, 
+                  contacts: [
+                    ...(f.contacts || []), 
+                    { id: `contact-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: '', designation: '', phone: '', email: '' }
+                  ] 
+                }))} 
+                icon={Plus}
+              >
+                Add Contact
+              </Button>
+            </div>
+            
+            <div className="space-y-3">
+              {(formData.contacts || []).map((c: any, i: number) => (
+                <div key={c.id || i} className="flex items-start gap-2 bg-surface2 p-3 rounded-lg border border-theme-subtle/50 relative">
+                  <div className="grid grid-cols-4 gap-3 flex-1">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Name</label>
+                      <input 
+                        value={c.name || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item: any, idx: number) => idx === i ? { ...item, name: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="John Doe" 
+                      />
                     </div>
-                    <button type="button" onClick={() => {
-                      const newContacts = [...formData.contacts];
-                      newContacts.splice(i, 1);
-                      setFormData({...formData, contacts: newContacts});
-                    }} className="text-red-500 hover:bg-red-500/10 p-1.5 rounded mt-5">
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Designation</label>
+                      <input 
+                        value={c.designation || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item: any, idx: number) => idx === i ? { ...item, designation: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="Manager / Director" 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Phone</label>
+                      <input 
+                        value={c.phone || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item: any, idx: number) => idx === i ? { ...item, phone: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="+94 7X XXX XXXX" 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-semibold text-secondary uppercase tracking-wider">Email</label>
+                      <input 
+                        value={c.email || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            contacts: (prev.contacts || []).map((item: any, idx: number) => idx === i ? { ...item, email: val } : item)
+                          }));
+                        }} 
+                        className="w-full text-xs input-base py-1.5 px-2" 
+                        placeholder="john@example.com" 
+                      />
+                    </div>
                   </div>
-                ))}
-                {(!formData.contacts || formData.contacts.length === 0) && (
-                  <div className="text-center py-4 border border-dashed border-theme-subtle rounded-lg text-xs text-muted">
-                    No additional contacts added yet.
-                  </div>
-                )}
-              </div>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setFormData((prev: any) => ({
+                        ...prev,
+                        contacts: (prev.contacts || []).filter((_: any, idx: number) => idx !== i)
+                      }));
+                    }} 
+                    className="text-red-500 hover:bg-red-500/10 p-1.5 rounded mt-5"
+                    title="Remove Contact"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              {(!formData.contacts || formData.contacts.length === 0) && (
+                <div className="text-center py-4 border border-dashed border-theme-subtle rounded-lg text-xs text-muted">
+                  No additional contacts added yet.
+                </div>
+              )}
+            </div>
             </div>
 
             <div>

@@ -7,15 +7,22 @@ export function useCustomers() {
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(() => {
-    api.fetchCustomers().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchCustomers().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      setData(arr);
       setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch customers:', err);
+      setData([]);
+      setLoading(false);
+      return [];
     });
   }, []);
 
   useEffect(() => { refetch(); }, [refetch]);
 
-  return { data, loading, refetch };
+  return { data, setData, loading, refetch };
 }
 
 export function useLeads() {

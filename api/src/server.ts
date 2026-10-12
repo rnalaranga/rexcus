@@ -368,6 +368,10 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE supplier_ledger ADD COLUMN createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
       "ALTER TABLE supplier_ledger ADD COLUMN updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+      "ALTER TABLE supplier_ledger ADD COLUMN debitAccountId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE supplier_ledger ADD COLUMN creditAccountId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE supplier_ledger ADD COLUMN debitAccountName VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE supplier_ledger ADD COLUMN creditAccountName VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL"
     ];
@@ -464,10 +468,21 @@ app.delete('/api/users/:id', async (req, res) => {
 // -- CUSTOMERS --
 app.get('/api/customers', async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     const [rows] = await db.query('SELECT * FROM customers ORDER BY joinDate DESC') as any[];
     for (const r of rows) {
       if (typeof r.contacts === 'string') {
-        try { r.contacts = JSON.parse(r.contacts); } catch(e) { r.contacts = []; }
+        try {
+          let parsed = JSON.parse(r.contacts);
+          if (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch(e) {}
+          }
+          r.contacts = Array.isArray(parsed) ? parsed : [];
+        } catch(e) {
+          r.contacts = [];
+        }
+      } else if (!Array.isArray(r.contacts)) {
+        r.contacts = [];
       }
     }
     res.json(rows);
@@ -477,11 +492,50 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
+app.get('/api/customers/:id', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const [rows]: any = await db.query('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Customer not found' });
+    const r = rows[0];
+    if (typeof r.contacts === 'string') {
+      try {
+        let parsed = JSON.parse(r.contacts);
+        if (typeof parsed === 'string') {
+          try { parsed = JSON.parse(parsed); } catch(e) {}
+        }
+        r.contacts = Array.isArray(parsed) ? parsed : [];
+      } catch(e) {
+        r.contacts = [];
+      }
+    } else if (!Array.isArray(r.contacts)) {
+      r.contacts = [];
+    }
+    res.json(r);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.post('/api/customers', async (req, res) => {
   try {
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.contacts !== undefined) {
+      if (Array.isArray(data.contacts)) {
+        data.contacts = JSON.stringify(data.contacts);
+      } else if (typeof data.contacts === 'object' && data.contacts !== null) {
+        data.contacts = JSON.stringify(data.contacts);
+      } else if (typeof data.contacts === 'string') {
+        try {
+          const parsed = JSON.parse(data.contacts);
+          data.contacts = JSON.stringify(parsed);
+        } catch(e) {
+          data.contacts = '[]';
+        }
+      } else {
+        data.contacts = '[]';
+      }
+    }
     let isPending = false;
     
     if (data.creditLimit && Number(data.creditLimit) > 0) {
@@ -525,7 +579,23 @@ app.put('/api/customers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    delete data.id;
+    if (data.contacts !== undefined) {
+      if (Array.isArray(data.contacts)) {
+        data.contacts = JSON.stringify(data.contacts);
+      } else if (typeof data.contacts === 'object' && data.contacts !== null) {
+        data.contacts = JSON.stringify(data.contacts);
+      } else if (typeof data.contacts === 'string') {
+        try {
+          const parsed = JSON.parse(data.contacts);
+          data.contacts = JSON.stringify(parsed);
+        } catch(e) {
+          data.contacts = '[]';
+        }
+      } else {
+        data.contacts = '[]';
+      }
+    }
     
     const [existingRows] = await db.query('SELECT creditLimit, requiresAdvance, creditDays FROM customers WHERE id = ?', [id]);
     if (existingRows.length > 0) {
@@ -1919,8 +1989,108 @@ app.post('/api/supplier-ledger', async (req, res) => {
     if (data.bankAccountId) {
       item.bankAccountId = data.bankAccountId;
     }
+    if (data.debitAccountId) item.debitAccountId = data.debitAccountId;
+    if (data.creditAccountId) item.creditAccountId = data.creditAccountId;
+    if (data.debitAccountName) item.debitAccountName = data.debitAccountName;
+    if (data.creditAccountName) item.creditAccountName = data.creditAccountName;
+
+    // Smart fallbacks if not chosen
+    if (!item.debitAccountId) {
+      if (item.type === 'payment' || item.credit > 0) {
+        try {
+          const [ap]: any = await db.query('SELECT id, code, name FROM chart_of_accounts WHERE code = "2000" OR name LIKE "%Payable%" LIMIT 1');
+          if (ap.length) {
+            item.debitAccountId = ap[0].id;
+            if (!item.debitAccountName) item.debitAccountName = `${ap[0].code} - ${ap[0].name}`;
+          }
+        } catch (e) {}
+      } else {
+        try {
+          const [exp]: any = await db.query('SELECT id, code, name FROM chart_of_accounts WHERE code = "5000" OR type = "Expense" LIMIT 1');
+          if (exp.length) {
+            item.debitAccountId = exp[0].id;
+            if (!item.debitAccountName) item.debitAccountName = `${exp[0].code} - ${exp[0].name}`;
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (!item.creditAccountId) {
+      if (item.type === 'payment' || item.credit > 0) {
+        try {
+          const [cb]: any = await db.query('SELECT id, code, name FROM chart_of_accounts WHERE code = "1000" OR subtype IN ("Bank", "Cash") OR type = "Asset" LIMIT 1');
+          if (cb.length) {
+            item.creditAccountId = cb[0].id;
+            if (!item.creditAccountName) item.creditAccountName = `${cb[0].code} - ${cb[0].name}`;
+          }
+        } catch (e) {}
+      } else {
+        try {
+          const [ap]: any = await db.query('SELECT id, code, name FROM chart_of_accounts WHERE code = "2000" OR name LIKE "%Payable%" LIMIT 1');
+          if (ap.length) {
+            item.creditAccountId = ap[0].id;
+            if (!item.creditAccountName) item.creditAccountName = `${ap[0].code} - ${ap[0].name}`;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Auto-resolve account names if not provided
+    if (item.debitAccountId && !item.debitAccountName) {
+      try {
+        const [acc]: any = await db.query('SELECT code, name FROM chart_of_accounts WHERE id = ?', [item.debitAccountId]);
+        if (acc.length) item.debitAccountName = `${acc[0].code} - ${acc[0].name}`;
+      } catch (eAcc) {}
+    }
+    if (item.creditAccountId && !item.creditAccountName) {
+      try {
+        const [acc]: any = await db.query('SELECT code, name FROM chart_of_accounts WHERE id = ?', [item.creditAccountId]);
+        if (acc.length) item.creditAccountName = `${acc[0].code} - ${acc[0].name}`;
+      } catch (eAcc) {}
+    }
 
     await db.query('INSERT INTO supplier_ledger SET ?', item);
+
+    // Auto GL Integration: Create Journal Entry & Lines
+    try {
+      let debitAccId = item.debitAccountId;
+      let creditAccId = item.creditAccountId;
+
+      if (debitAccId && creditAccId && amount > 0) {
+        const jeId = `JE-SL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
+        const jeDesc = (item.type === 'payment' || item.credit > 0)
+          ? `Supplier Payment: ${item.description || item.referenceNo || item.id}`
+          : `Supplier Transaction: ${item.description || item.referenceNo || item.id}`;
+
+        await db.query('INSERT INTO journal_entries SET ?', {
+          id: jeId,
+          date: item.date,
+          reference: item.id,
+          description: jeDesc,
+          totalAmount: amount
+        });
+
+        const lines = [
+          [`JL-${Date.now().toString().slice(-6)}1`, jeId, debitAccId, amount, 0, item.supplierId || null, 'Supplier'],
+          [`JL-${Date.now().toString().slice(-6)}2`, jeId, creditAccId, 0, amount, item.supplierId || null, 'Supplier']
+        ];
+        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+
+        // Update balances in chart_of_accounts
+        const [accTypes]: any = await db.query('SELECT id, type FROM chart_of_accounts WHERE id IN (?, ?)', [debitAccId, creditAccId]);
+        for (const acc of accTypes) {
+          if (acc.id === debitAccId) {
+            const delta = (acc.type === 'Asset' || acc.type === 'Expense') ? amount : -amount;
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [delta, acc.id]);
+          } else if (acc.id === creditAccId) {
+            const delta = (acc.type === 'Asset' || acc.type === 'Expense') ? -amount : amount;
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [delta, acc.id]);
+          }
+        }
+      }
+    } catch (eGl) {
+      console.error('Error posting GL for supplier ledger:', eGl);
+    }
 
     // If payment, settle open unpaid supplier bills
     if ((item.type === 'payment' || item.credit > 0) && item.supplierId) {
@@ -1971,6 +2141,31 @@ app.delete('/api/supplier-ledger/:id', async (req, res) => {
     const { id } = req.params;
     const [existing]: any = await db.query('SELECT supplierId FROM supplier_ledger WHERE id = ?', [id]);
     const supplierId = existing[0]?.supplierId;
+
+    // Reverse GL entries
+    try {
+      const [jes]: any = await db.query('SELECT id FROM journal_entries WHERE reference = ?', [id]);
+      if (jes.length > 0) {
+        const jeIds = jes.map((je: any) => je.id);
+        const [lines]: any = await db.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId IN (?)', [jeIds]);
+        for (const line of lines) {
+          const [accounts]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+          if (!accounts.length) continue;
+          const accType = accounts[0].type;
+          const isDebitNormal = accType === 'Asset' || accType === 'Expense';
+          const balanceChange = Number(line.debit) - Number(line.credit);
+          if (isDebitNormal) {
+            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [balanceChange, line.accountId]);
+          } else {
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [balanceChange, line.accountId]);
+          }
+        }
+        await db.query('DELETE FROM journal_lines WHERE entryId IN (?)', [jeIds]);
+        await db.query('DELETE FROM journal_entries WHERE id IN (?)', [jeIds]);
+      }
+    } catch (eGl) {
+      console.error('Error reversing GL on ledger delete:', eGl);
+    }
 
     await db.query('DELETE FROM supplier_ledger WHERE id = ?', [id]);
 
@@ -3176,6 +3371,10 @@ async function runStartupMigrations() {
     "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     "ALTER TABLE supplier_ledger ADD COLUMN updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+    "ALTER TABLE supplier_ledger ADD COLUMN debitAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN creditAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN debitAccountName VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN creditAccountName VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",

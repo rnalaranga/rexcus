@@ -15,23 +15,81 @@ export const Contacts: React.FC = () => {
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading contacts...</div>
 
-  // Map customers to contacts using correct DB field names
-  const contacts = customers.map(c => ({
-    id: c.id,
-    name: c.name || '—',
-    company: c.company || c.companyName || '—',
-    email: c.email || '—',
-    phone: c.phone || '—',
-    avatar: c.avatar || (c.name || '?').substring(0, 2).toUpperCase(),
-    status: c.status || 'active',
-    role: 'Primary Contact',
-    accountManager: c.accountManager || '—',
-    industry: c.industry || '—',
-    segment: c.segment || '—',
-  }))
+  // Map customers and all contacts (Primary, Finance, Additional Contacts)
+  const contacts = customers.flatMap(c => {
+    const list: any[] = []
+
+    // 1. Primary Contact
+    list.push({
+      id: `${c.id}-primary`,
+      customerId: c.id,
+      name: c.name || '—',
+      company: c.company || c.companyName || '—',
+      email: c.email || '—',
+      phone: c.phone || '—',
+      avatar: c.avatar || (c.name || '?').substring(0, 2).toUpperCase(),
+      status: c.status || 'active',
+      role: 'Primary Contact',
+      accountManager: c.accountManager || '—',
+      industry: c.industry || '—',
+      segment: c.segment || '—',
+    })
+
+    // 2. Finance Contact (if present)
+    if (c.financeContactName) {
+      list.push({
+        id: `${c.id}-finance`,
+        customerId: c.id,
+        name: c.financeContactName,
+        company: c.company || c.companyName || '—',
+        email: c.financeContactEmail || '—',
+        phone: c.financeContactPhone || '—',
+        avatar: c.financeContactName.substring(0, 2).toUpperCase(),
+        status: c.status || 'active',
+        role: 'Finance / Billing Contact',
+        accountManager: c.accountManager || '—',
+        industry: c.industry || '—',
+        segment: c.segment || '—',
+      })
+    }
+
+    // 3. Additional Contacts
+    let extraContacts: any[] = []
+    if (Array.isArray(c.contacts)) {
+      extraContacts = c.contacts
+    } else if (typeof c.contacts === 'string') {
+      try {
+        const p = JSON.parse(c.contacts)
+        extraContacts = Array.isArray(p) ? p : []
+      } catch (e) {
+        extraContacts = []
+      }
+    }
+
+    extraContacts.forEach((ac: any, idx: number) => {
+      if (ac.name || ac.phone || ac.email) {
+        list.push({
+          id: `${c.id}-extra-${ac.id || idx}`,
+          customerId: c.id,
+          name: ac.name || 'Unnamed Contact',
+          company: c.company || c.companyName || '—',
+          email: ac.email || '—',
+          phone: ac.phone || '—',
+          avatar: (ac.name || 'AC').substring(0, 2).toUpperCase(),
+          status: c.status || 'active',
+          role: ac.designation || 'Additional Contact',
+          accountManager: c.accountManager || '—',
+          industry: c.industry || '—',
+          segment: c.segment || '—',
+        })
+      }
+    })
+
+    return list
+  })
 
   const filtered = contacts.filter(c =>
-    [c.name, c.company, c.email, c.phone].some(v =>
+    [c.name, c.company, c.email, c.phone, c.role].some(v =>
       v && v.toLowerCase().includes(search.toLowerCase())
     )
   )
@@ -50,7 +108,7 @@ export const Contacts: React.FC = () => {
             <button onClick={() => setView('list')} className={`px-3 py-1.5 text-xs transition-colors ${view === 'list' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>List</button>
           </div>
           <SearchBar placeholder="Search contacts..." value={search} onChange={setSearch} className="w-52" />
-          <Button variant="primary" size="sm" icon={UserPlus} onClick={() => navigate('/crm/customers')}>Add Contact</Button>
+          <Button variant="primary" size="sm" icon={UserPlus} onClick={() => navigate('/crm/customers')}>Add Customer</Button>
         </div>
       </div>
 
@@ -63,7 +121,7 @@ export const Contacts: React.FC = () => {
       {view === 'grid' ? (
         <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           {filtered.map(contact => (
-            <GlassCard key={contact.id} className="p-4 cursor-pointer hover:shadow-card transition-shadow" onClick={() => navigate(`/crm/customers/${contact.id}`)}>
+            <GlassCard key={contact.id} className="p-4 cursor-pointer hover:shadow-card transition-shadow" onClick={() => navigate(`/crm/customers/${contact.customerId}`)}>
               <div className="flex items-start justify-between mb-3">
                 <div className="w-10 h-10 bg-rex-700 border border-rex-600/40 flex items-center justify-center flex-shrink-0">
                   <span className="text-sm font-bold text-white">{contact.avatar}</span>
@@ -118,7 +176,7 @@ export const Contacts: React.FC = () => {
           {filtered.map((contact, i) => (
             <div
               key={contact.id}
-              onClick={() => navigate(`/crm/customers/${contact.id}`)}
+              onClick={() => navigate(`/crm/customers/${contact.customerId}`)}
               className={`grid grid-cols-12 items-center gap-4 px-5 py-3.5 cursor-pointer table-row-hover transition-colors ${i < filtered.length - 1 ? 'border-b border-theme-subtle' : ''}`}
             >
               <div className="col-span-3 flex items-center gap-3 min-w-0">

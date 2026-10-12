@@ -2,6 +2,13 @@ const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL 
 
 export const fetchCustomers = async () => {
   const res = await fetch(`${API_URL}/customers`);
+  const json = await res.json();
+  return Array.isArray(json) ? json : [];
+};
+
+export const fetchCustomer = async (id: string) => {
+  const res = await fetch(`${API_URL}/customers/${id}`);
+  if (!res.ok) throw new Error('Customer not found');
   return res.json();
 };
 
@@ -11,7 +18,9 @@ export const createCustomer = async (data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create customer');
+  return json;
 };
 
 export const updateCustomer = async (id: string, data: any) => {
@@ -20,7 +29,9 @@ export const updateCustomer = async (id: string, data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to update customer');
+  return json;
 };
 
 export const deleteCustomer = async (id: string) => {

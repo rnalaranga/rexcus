@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useSupplierLedger } from '@/hooks/useData'
+import { useAccounts } from '@/hooks/useFinance'
 import { fetchSupplierById, updateSupplier, createSupplierLedgerEntry, deleteSupplierLedgerEntry } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
@@ -29,6 +30,7 @@ export const SupplierDetail: React.FC = () => {
   const [supplier, setSupplier] = useState<any>(null)
   const [loadingSupplier, setLoadingSupplier] = useState(true)
   const { data: ledger, loading: loadingLedger, refetch, setData } = useSupplierLedger(id || '')
+  const { data: accounts } = useAccounts()
   
   // Modals state
   const [showAddEntry, setShowAddEntry] = useState(false)
@@ -59,7 +61,9 @@ export const SupplierDetail: React.FC = () => {
     referenceNo: '',
     description: '',
     amount: '',
-    paymentMethod: 'Bank Transfer'
+    paymentMethod: 'Bank Transfer',
+    debitAccountId: '',
+    creditAccountId: ''
   })
 
   // Quick Payment Modal form state
@@ -69,7 +73,9 @@ export const SupplierDetail: React.FC = () => {
     paymentMethod: 'Bank Transfer',
     referenceNo: '',
     description: '',
-    bankAccount: ''
+    bankAccount: '',
+    debitAccountId: '',
+    creditAccountId: ''
   })
 
   // Edit Supplier Form state
@@ -191,17 +197,76 @@ export const SupplierDetail: React.FC = () => {
   const totalCredit = ledger.reduce((s: number, r: any) => s + Number(r.credit || 0), 0)
   const outstandingBalance = (totalDebit - totalCredit) + openingBalance
 
+  // Account groupings
+  const liabilityAccounts = useMemo(() => accounts.filter((a: any) => a.type === 'Liability'), [accounts])
+  const bankAndCashAccounts = useMemo(() => accounts.filter((a: any) => 
+    a.type === 'Asset' && (a.subtype === 'Bank' || a.subtype === 'Cash' || a.code?.startsWith('10') || a.name?.toLowerCase().includes('cash') || a.name?.toLowerCase().includes('bank'))
+  ), [accounts])
+  const expenseAccounts = useMemo(() => accounts.filter((a: any) => a.type === 'Expense'), [accounts])
+
   // Open Payment Modal
   const handleOpenPayment = () => {
+    const defaultDebit = accounts.find((a: any) => a.code === '2000' || a.name?.toLowerCase().includes('payable'))?.id || liabilityAccounts[0]?.id || ''
+    const defaultCredit = bankAndCashAccounts[0]?.id || accounts.find((a: any) => a.code === '1000' || a.type === 'Asset')?.id || ''
     setPaymentForm({
       date: new Date().toISOString().slice(0, 10),
       amount: outstandingBalance > 0 ? String(outstandingBalance) : '',
       paymentMethod: 'Bank Transfer',
       referenceNo: '',
       description: `Payment to ${supplier?.name || 'Supplier'}`,
-      bankAccount: supplier?.bankName ? `${supplier.bankName} - ${supplier.bankAccountNo}` : ''
+      bankAccount: supplier?.bankName ? `${supplier.bankName} - ${supplier.bankAccountNo}` : '',
+      debitAccountId: defaultDebit,
+      creditAccountId: defaultCredit
     })
     setShowPaymentModal(true)
+  }
+
+  // Open Add Transaction Entry Modal
+  const handleOpenAddEntry = () => {
+    const defDebit = accounts.find((a: any) => a.code === '5000' || a.type === 'Expense')?.id || expenseAccounts[0]?.id || ''
+    const defCredit = accounts.find((a: any) => a.code === '2000' || a.name?.toLowerCase().includes('payable'))?.id || liabilityAccounts[0]?.id || ''
+    setEntryForm({
+      type: 'purchase',
+      date: new Date().toISOString().slice(0, 10),
+      referenceNo: '',
+      description: '',
+      amount: '',
+      paymentMethod: 'Invoice',
+      debitAccountId: defDebit,
+      creditAccountId: defCredit
+    })
+    setShowAddEntry(true)
+  }
+
+  // Handle transaction type switch
+  const handleEntryTypeChange = (typeVal: string) => {
+    let defDebit = ''
+    let defCredit = ''
+    const apId = accounts.find((a: any) => a.code === '2000' || a.name?.toLowerCase().includes('payable'))?.id || liabilityAccounts[0]?.id || ''
+    const cashBankId = bankAndCashAccounts[0]?.id || accounts.find((a: any) => a.code === '1000' || a.type === 'Asset')?.id || ''
+    const expId = accounts.find((a: any) => a.code === '5000' || a.type === 'Expense')?.id || expenseAccounts[0]?.id || ''
+
+    if (typeVal === 'purchase') {
+      defDebit = expId
+      defCredit = apId
+    } else if (typeVal === 'payment' || typeVal === 'advance') {
+      defDebit = apId
+      defCredit = cashBankId
+    } else if (typeVal === 'return') {
+      defDebit = apId
+      defCredit = expId
+    } else {
+      defDebit = apId
+      defCredit = cashBankId
+    }
+
+    setEntryForm(prev => ({
+      ...prev,
+      type: typeVal,
+      debitAccountId: defDebit,
+      creditAccountId: defCredit,
+      paymentMethod: typeVal === 'purchase' ? 'Invoice' : (typeVal === 'return' ? 'Credit Note' : 'Bank Transfer')
+    }))
   }
 
   // Submit quick payment
@@ -210,6 +275,9 @@ export const SupplierDetail: React.FC = () => {
     if (!id || !paymentForm.amount) return
     setSubmittingLedger(true)
     const amount = Number(paymentForm.amount)
+    const debitAcc = accounts.find((a: any) => a.id === paymentForm.debitAccountId)
+    const creditAcc = accounts.find((a: any) => a.id === paymentForm.creditAccountId)
+
     const payload = {
       supplierId: id,
       type: 'payment',
@@ -219,7 +287,11 @@ export const SupplierDetail: React.FC = () => {
       debit: 0,
       credit: amount,
       amount: amount,
-      paymentMethod: paymentForm.paymentMethod
+      paymentMethod: paymentForm.paymentMethod,
+      debitAccountId: paymentForm.debitAccountId || undefined,
+      creditAccountId: paymentForm.creditAccountId || undefined,
+      debitAccountName: debitAcc ? `${debitAcc.code} - ${debitAcc.name}` : undefined,
+      creditAccountName: creditAcc ? `${creditAcc.code} - ${creditAcc.name}` : undefined
     }
     try {
       const res = await createSupplierLedgerEntry(payload)
@@ -243,6 +315,9 @@ export const SupplierDetail: React.FC = () => {
     setSubmittingLedger(true)
     const txType = TRANSACTION_TYPES.find(t => t.value === entryForm.type)!
     const amount = Number(entryForm.amount)
+    const debitAcc = accounts.find((a: any) => a.id === entryForm.debitAccountId)
+    const creditAcc = accounts.find((a: any) => a.id === entryForm.creditAccountId)
+
     const payload: any = {
       supplierId: id,
       type: entryForm.type,
@@ -252,7 +327,11 @@ export const SupplierDetail: React.FC = () => {
       debit: txType.debitSide === 'debit' ? amount : 0,
       credit: txType.debitSide === 'credit' ? amount : 0,
       amount: amount,
-      paymentMethod: entryForm.paymentMethod
+      paymentMethod: entryForm.paymentMethod,
+      debitAccountId: entryForm.debitAccountId || undefined,
+      creditAccountId: entryForm.creditAccountId || undefined,
+      debitAccountName: debitAcc ? `${debitAcc.code} - ${debitAcc.name}` : undefined,
+      creditAccountName: creditAcc ? `${creditAcc.code} - ${creditAcc.name}` : undefined
     }
     try {
       const res = await createSupplierLedgerEntry(payload)
@@ -267,7 +346,9 @@ export const SupplierDetail: React.FC = () => {
         referenceNo: '',
         description: '',
         amount: '',
-        paymentMethod: 'Bank Transfer'
+        paymentMethod: 'Bank Transfer',
+        debitAccountId: '',
+        creditAccountId: ''
       })
       await Promise.all([refetch(), loadSupplierData()])
     } catch (err: any) {
@@ -462,7 +543,7 @@ export const SupplierDetail: React.FC = () => {
             Record Payment
           </Button>
 
-          <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowAddEntry(true)}>
+          <Button variant="primary" size="sm" icon={Plus} onClick={handleOpenAddEntry}>
             Add Transaction
           </Button>
         </div>
@@ -943,8 +1024,22 @@ export const SupplierDetail: React.FC = () => {
                       <td className="px-4 py-3 text-xs font-mono font-semibold text-primary">
                         {row.referenceNo || row.reference || '—'}
                       </td>
-                      <td className="px-4 py-3 text-xs text-secondary max-w-xs truncate">
-                        {row.description || row.notes || '—'}
+                      <td className="px-4 py-3 text-xs text-secondary max-w-xs">
+                        <div className="truncate font-medium">{row.description || row.notes || '—'}</div>
+                        {(row.debitAccountName || row.creditAccountName) && (
+                          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted font-mono flex-wrap">
+                            {row.debitAccountName && (
+                              <span className="bg-surface2/80 px-1.5 py-0.5 rounded border border-theme-subtle">
+                                DR: <span className="text-secondary font-medium">{row.debitAccountName}</span>
+                              </span>
+                            )}
+                            {row.creditAccountName && (
+                              <span className="bg-surface2/80 px-1.5 py-0.5 rounded border border-theme-subtle">
+                                CR: <span className="text-secondary font-medium">{row.creditAccountName}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted">
                         {row.paymentMethod || '—'}
@@ -1069,7 +1164,18 @@ export const SupplierDetail: React.FC = () => {
               <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">Payment Method</label>
               <select 
                 value={paymentForm.paymentMethod} 
-                onChange={e => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })} 
+                onChange={e => {
+                  const m = e.target.value
+                  let creditId = paymentForm.creditAccountId
+                  if (m === 'Cash') {
+                    const cash = accounts.find((a: any) => a.code === '1000' || a.name?.toLowerCase().includes('cash'))
+                    if (cash) creditId = cash.id
+                  } else {
+                    const bank = accounts.find((a: any) => a.subtype === 'Bank' || a.name?.toLowerCase().includes('bank')) || bankAndCashAccounts[0]
+                    if (bank) creditId = bank.id
+                  }
+                  setPaymentForm({ ...paymentForm, paymentMethod: m, creditAccountId: creditId })
+                }} 
                 className="w-full input-base text-xs"
               >
                 <option value="Bank Transfer">Bank Transfer (SLIPS / CEFT)</option>
@@ -1091,14 +1197,72 @@ export const SupplierDetail: React.FC = () => {
               />
             </div>
 
+            {/* Debit Account: Liability (Accounts Payable) */}
+            <div>
+              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center justify-between mb-1">
+                <span>Debit Account (Liability) *</span>
+                <span className="text-[9px] font-mono text-rex-500 font-bold bg-surface2 px-1 rounded">DR</span>
+              </label>
+              <select
+                required
+                value={paymentForm.debitAccountId}
+                onChange={e => setPaymentForm({ ...paymentForm, debitAccountId: e.target.value })}
+                className="w-full input-base text-xs font-medium"
+              >
+                <option value="">-- Select Debit Account --</option>
+                {liabilityAccounts.length > 0 && (
+                  <optgroup label="Liabilities & Payables">
+                    {liabilityAccounts.map((a: any) => (
+                      <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="All Other Accounts">
+                  {accounts.filter((a: any) => a.type !== 'Liability').map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
+                  ))}
+                </optgroup>
+              </select>
+              <p className="text-[9px] text-muted mt-0.5">Supplier liability account being settled</p>
+            </div>
+
+            {/* Credit Account: Asset (Paid From / Bank / Cash) */}
+            <div>
+              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center justify-between mb-1">
+                <span>Credit Account (Paid From) *</span>
+                <span className="text-[9px] font-mono text-emerald-500 font-bold bg-surface2 px-1 rounded">CR</span>
+              </label>
+              <select
+                required
+                value={paymentForm.creditAccountId}
+                onChange={e => setPaymentForm({ ...paymentForm, creditAccountId: e.target.value })}
+                className="w-full input-base text-xs font-medium"
+              >
+                <option value="">-- Select Credit Account --</option>
+                {bankAndCashAccounts.length > 0 && (
+                  <optgroup label="Bank & Cash Accounts">
+                    {bankAndCashAccounts.map((a: any) => (
+                      <option key={a.id} value={a.id}>{a.code} - {a.name} {a.balance !== undefined ? `(Bal: ${formatCurrency(a.balance)})` : ''}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Other Accounts">
+                  {accounts.filter((a: any) => !bankAndCashAccounts.some((b: any) => b.id === a.id)).map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
+                  ))}
+                </optgroup>
+              </select>
+              <p className="text-[9px] text-muted mt-0.5">Asset account payment is drawn from</p>
+            </div>
+
             <div className="col-span-2">
-              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">Paid From / Bank Details</label>
+              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">Paid From / Bank Account Details</label>
               <input 
                 type="text" 
                 value={paymentForm.bankAccount} 
                 onChange={e => setPaymentForm({ ...paymentForm, bankAccount: e.target.value })} 
                 className="w-full input-base text-xs" 
-                placeholder="Our bank account / source" 
+                placeholder="Our bank account / source details (optional)" 
               />
             </div>
 
@@ -1141,7 +1305,7 @@ export const SupplierDetail: React.FC = () => {
                 <button
                   key={t.value}
                   type="button"
-                  onClick={() => setEntryForm({ ...entryForm, type: t.value })}
+                  onClick={() => handleEntryTypeChange(t.value)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
                     entryForm.type === t.value 
                       ? 'bg-primary text-white border-primary shadow-sm' 
@@ -1203,6 +1367,68 @@ export const SupplierDetail: React.FC = () => {
                 <option value="Cheque">Cheque</option>
                 <option value="Cash">Cash</option>
                 <option value="Credit Note">Credit Note</option>
+              </select>
+            </div>
+
+            {/* Debit Account */}
+            <div>
+              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center justify-between mb-1">
+                <span>Debit Account *</span>
+                <span className="text-[9px] font-mono text-rex-500 font-bold bg-surface2 px-1 rounded">DR</span>
+              </label>
+              <select
+                required
+                value={entryForm.debitAccountId}
+                onChange={e => setEntryForm({ ...entryForm, debitAccountId: e.target.value })}
+                className="w-full input-base text-xs font-medium"
+              >
+                <option value="">-- Select Debit Account --</option>
+                <optgroup label="Expenses & Purchases">
+                  {expenseAccounts.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Liabilities & Payables">
+                  {liabilityAccounts.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Other Accounts">
+                  {accounts.filter((a: any) => a.type !== 'Expense' && a.type !== 'Liability').map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Credit Account */}
+            <div>
+              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center justify-between mb-1">
+                <span>Credit Account *</span>
+                <span className="text-[9px] font-mono text-emerald-500 font-bold bg-surface2 px-1 rounded">CR</span>
+              </label>
+              <select
+                required
+                value={entryForm.creditAccountId}
+                onChange={e => setEntryForm({ ...entryForm, creditAccountId: e.target.value })}
+                className="w-full input-base text-xs font-medium"
+              >
+                <option value="">-- Select Credit Account --</option>
+                <optgroup label="Liabilities & Payables">
+                  {liabilityAccounts.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Bank & Cash Accounts">
+                  {bankAndCashAccounts.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Expenses & Others">
+                  {accounts.filter((a: any) => a.type !== 'Liability' && !bankAndCashAccounts.some((b: any) => b.id === a.id)).map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 
