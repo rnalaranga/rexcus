@@ -28,7 +28,7 @@ export const SupplierDetail: React.FC = () => {
   const navigate = useNavigate()
   const [supplier, setSupplier] = useState<any>(null)
   const [loadingSupplier, setLoadingSupplier] = useState(true)
-  const { data: ledger, loading: loadingLedger, refetch } = useSupplierLedger(id || '')
+  const { data: ledger, loading: loadingLedger, refetch, setData } = useSupplierLedger(id || '')
   
   // Modals state
   const [showAddEntry, setShowAddEntry] = useState(false)
@@ -105,14 +105,18 @@ export const SupplierDetail: React.FC = () => {
   const [formData, setFormData] = useState(initialSupplierForm)
 
   const loadSupplierData = () => {
-    if (!id) return
+    if (!id) return Promise.resolve(null)
     setLoadingSupplier(true)
-    fetchSupplierById(id)
+    return fetchSupplierById(id)
       .then(d => {
         setSupplier(d)
         setLoadingSupplier(false)
+        return d
       })
-      .catch(() => setLoadingSupplier(false))
+      .catch(() => {
+        setLoadingSupplier(false)
+        return null
+      })
   }
 
   useEffect(() => {
@@ -209,7 +213,7 @@ export const SupplierDetail: React.FC = () => {
     const payload = {
       supplierId: id,
       type: 'payment',
-      date: paymentForm.date.replace('T', ' ') + (paymentForm.date.length === 10 ? ' 00:00:00' : ''),
+      date: paymentForm.date ? (paymentForm.date.length === 10 ? paymentForm.date + ' 00:00:00' : paymentForm.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
       referenceNo: paymentForm.referenceNo || `PMT-${Date.now().toString().slice(-6)}`,
       description: paymentForm.description || `Payment made via ${paymentForm.paymentMethod}`,
       debit: 0,
@@ -218,11 +222,13 @@ export const SupplierDetail: React.FC = () => {
       paymentMethod: paymentForm.paymentMethod
     }
     try {
-      await createSupplierLedgerEntry(payload)
+      const res = await createSupplierLedgerEntry(payload)
+      if (res?.item) {
+        setData((prev: any[]) => [res.item, ...prev.filter((x: any) => x.id !== res.item.id)])
+      }
       showToast('success', 'Payment recorded successfully')
       setShowPaymentModal(false)
-      refetch()
-      loadSupplierData()
+      await Promise.all([refetch(), loadSupplierData()])
     } catch (err: any) {
       showToast('error', 'Failed to record payment: ' + err.message)
     } finally {
@@ -240,7 +246,7 @@ export const SupplierDetail: React.FC = () => {
     const payload: any = {
       supplierId: id,
       type: entryForm.type,
-      date: entryForm.date.replace('T', ' ') + (entryForm.date.length === 10 ? ' 00:00:00' : ''),
+      date: entryForm.date ? (entryForm.date.length === 10 ? entryForm.date + ' 00:00:00' : entryForm.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
       referenceNo: entryForm.referenceNo || `REF-${Date.now().toString().slice(-6)}`,
       description: entryForm.description,
       debit: txType.debitSide === 'debit' ? amount : 0,
@@ -249,7 +255,10 @@ export const SupplierDetail: React.FC = () => {
       paymentMethod: entryForm.paymentMethod
     }
     try {
-      await createSupplierLedgerEntry(payload)
+      const res = await createSupplierLedgerEntry(payload)
+      if (res?.item) {
+        setData((prev: any[]) => [res.item, ...prev.filter((x: any) => x.id !== res.item.id)])
+      }
       showToast('success', 'Transaction entry saved')
       setShowAddEntry(false)
       setEntryForm({
@@ -260,8 +269,7 @@ export const SupplierDetail: React.FC = () => {
         amount: '',
         paymentMethod: 'Bank Transfer'
       })
-      refetch()
-      loadSupplierData()
+      await Promise.all([refetch(), loadSupplierData()])
     } catch (err: any) {
       showToast('error', 'Failed to save entry: ' + err.message)
     } finally {
@@ -274,8 +282,8 @@ export const SupplierDetail: React.FC = () => {
     try {
       await deleteSupplierLedgerEntry(deleteTarget)
       showToast('success', 'Ledger entry deleted')
-      refetch()
-      loadSupplierData()
+      setData((prev: any[]) => prev.filter((x: any) => x.id !== deleteTarget))
+      await Promise.all([refetch(), loadSupplierData()])
     } catch (err: any) {
       showToast('error', 'Failed to delete entry: ' + err.message)
     } finally {

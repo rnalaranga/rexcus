@@ -1,4 +1,4 @@
-﻿import {
+import {
   useState, useEffect, useCallback } from 'react';
 import * as api from '@/lib/api';
 
@@ -104,16 +104,22 @@ export function useSupplierLedger(supplierId: string) {
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(() => {
-    if (!supplierId) return;
-    api.fetchSupplierLedger(supplierId).then(d => {
-      setData(Array.isArray(d) ? d : []);
+    if (!supplierId) return Promise.resolve([]);
+    return api.fetchSupplierLedger(supplierId).then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      setData(arr);
       setLoading(false);
-    }).catch(() => { setData([]); setLoading(false); });
+      return arr;
+    }).catch(() => {
+      setData([]);
+      setLoading(false);
+      return [];
+    });
   }, [supplierId]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
-  return { data, loading, refetch };
+  return { data, loading, refetch, setData };
 }
 
 export function useFollowups() {

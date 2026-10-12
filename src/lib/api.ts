@@ -224,7 +224,8 @@ export const fetchSupplierById = async (id: string) => {
 
 export const fetchSupplierLedger = async (supplierId: string) => {
   const res = await fetch(`${API_URL}/supplier-ledger/${supplierId}`);
-  return res.json();
+  const json = await res.json();
+  return Array.isArray(json) ? json : [];
 };
 
 export const createSupplierLedgerEntry = async (data: any) => {
@@ -233,12 +234,20 @@ export const createSupplierLedgerEntry = async (data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(json.error || json.details || 'Failed to record supplier ledger entry');
+  }
+  return json;
 };
 
 export const deleteSupplierLedgerEntry = async (id: string) => {
   const res = await fetch(`${API_URL}/supplier-ledger/${id}`, { method: 'DELETE' });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(json.error || json.details || 'Failed to delete supplier ledger entry');
+  }
+  return json;
 };
 
 // -- FOLLOWUPS --

@@ -366,6 +366,8 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE supplier_ledger ADD COLUMN credit DECIMAL(15,2) DEFAULT 0.00",
       "ALTER TABLE supplier_ledger ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Bank Transfer'",
       "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE supplier_ledger ADD COLUMN createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE supplier_ledger ADD COLUMN updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
       "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL"
     ];
@@ -1376,6 +1378,23 @@ app.post('/api/purchasing/bills', async (req, res) => {
         notes: data.notes || ''
       };
       await db.query('INSERT INTO supplier_ledger SET ?', ledgerEntry);
+
+      // Sync supplier balance
+      try {
+        const [balRes]: any = await db.query(
+          `SELECT (COALESCE(s.openingBalance, 0) + COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)) as bal
+           FROM suppliers s
+           LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+           WHERE s.id = ?
+           GROUP BY s.id`,
+          [data.supplierId]
+        );
+        if (balRes.length) {
+          await db.query('UPDATE suppliers SET balance = ?, updatedAt = NOW() WHERE id = ?', [balRes[0].bal, data.supplierId]);
+        }
+      } catch (errBal) {
+        console.error('Error syncing supplier balance on bill:', errBal);
+      }
     }
 
     res.json({ success: true, id: data.id });
@@ -1395,7 +1414,7 @@ app.get('/api/suppliers', async (req, res) => {
       SELECT s.*,
         COALESCE(SUM(l.debit), 0) as totalPurchases,
         COALESCE(SUM(l.credit), 0) as totalPaid,
-        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, s.balance, 0)) as outstandingBalance
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, 0)) as outstandingBalance
       FROM suppliers s
       LEFT JOIN supplier_ledger l ON s.id = l.supplierId
       GROUP BY s.id
@@ -1411,8 +1430,9 @@ app.get('/api/suppliers', async (req, res) => {
       r.contactPerson = r.contactPerson || r.contactName || '';
       r.totalPurchases = Number(r.totalPurchases) || 0;
       r.totalPaid = Number(r.totalPaid) || 0;
-      r.openingBalance = Number(r.openingBalance !== undefined ? r.openingBalance : r.balance) || 0;
+      r.openingBalance = Number(r.openingBalance !== undefined ? r.openingBalance : 0) || 0;
       r.outstandingBalance = Number(r.outstandingBalance) || 0;
+      r.balance = r.outstandingBalance;
     }
     res.json(rows);
   } catch (error) {
@@ -1427,7 +1447,7 @@ app.get('/api/suppliers/:id', async (req, res) => {
       SELECT s.*,
         COALESCE(SUM(l.debit), 0) as totalPurchases,
         COALESCE(SUM(l.credit), 0) as totalPaid,
-        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, s.balance, 0)) as outstandingBalance
+        (COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0) + COALESCE(s.openingBalance, 0)) as outstandingBalance
       FROM suppliers s
       LEFT JOIN supplier_ledger l ON s.id = l.supplierId
       WHERE s.id = ?
@@ -1444,8 +1464,9 @@ app.get('/api/suppliers/:id', async (req, res) => {
     r.contactPerson = r.contactPerson || r.contactName || '';
     r.totalPurchases = Number(r.totalPurchases) || 0;
     r.totalPaid = Number(r.totalPaid) || 0;
-    r.openingBalance = Number(r.openingBalance !== undefined ? r.openingBalance : r.balance) || 0;
+    r.openingBalance = Number(r.openingBalance !== undefined ? r.openingBalance : 0) || 0;
     r.outstandingBalance = Number(r.outstandingBalance) || 0;
+    r.balance = r.outstandingBalance;
     res.json(r);
   } catch (error) {
     console.error(error);
@@ -1843,7 +1864,7 @@ app.get('/api/supplier-ledger/:supplierId', async (req, res) => {
   try {
     const { supplierId } = req.params;
     const [rows]: any = await db.query(
-      'SELECT * FROM supplier_ledger WHERE supplierId = ? ORDER BY date DESC, createdAt DESC',
+      'SELECT * FROM supplier_ledger WHERE supplierId = ? ORDER BY date DESC, id DESC',
       [supplierId]
     );
     for (const r of rows) {
@@ -1882,10 +1903,10 @@ app.post('/api/supplier-ledger', async (req, res) => {
     const desc = data.description || data.notes || '';
 
     const item: any = {
-      id: data.id || `SL-${Date.now().toString().slice(-8)}`,
+      id: data.id || `SL-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       supplierId: data.supplierId,
-      date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
-      type: data.type || 'purchase',
+      date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ').slice(0, 19)) : new Date().toISOString().slice(0, 19).replace('T', ' '),
+      type: data.type || (credit > 0 ? 'payment' : 'purchase'),
       referenceNo: ref,
       description: desc,
       debit,
@@ -1919,6 +1940,25 @@ app.post('/api/supplier-ledger', async (req, res) => {
       }
     }
 
+    // Recalculate and sync suppliers balance
+    if (item.supplierId) {
+      try {
+        const [balRes]: any = await db.query(
+          `SELECT (COALESCE(s.openingBalance, 0) + COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)) as bal
+           FROM suppliers s
+           LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+           WHERE s.id = ?
+           GROUP BY s.id`,
+          [item.supplierId]
+        );
+        if (balRes.length) {
+          await db.query('UPDATE suppliers SET balance = ?, updatedAt = NOW() WHERE id = ?', [balRes[0].bal, item.supplierId]);
+        }
+      } catch (errBal) {
+        console.error('Error syncing supplier balance on ledger insert:', errBal);
+      }
+    }
+
     res.json({ success: true, item });
   } catch (error) {
     console.error(error);
@@ -1929,7 +1969,29 @@ app.post('/api/supplier-ledger', async (req, res) => {
 app.delete('/api/supplier-ledger/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const [existing]: any = await db.query('SELECT supplierId FROM supplier_ledger WHERE id = ?', [id]);
+    const supplierId = existing[0]?.supplierId;
+
     await db.query('DELETE FROM supplier_ledger WHERE id = ?', [id]);
+
+    if (supplierId) {
+      try {
+        const [balRes]: any = await db.query(
+          `SELECT (COALESCE(s.openingBalance, 0) + COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)) as bal
+           FROM suppliers s
+           LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+           WHERE s.id = ?
+           GROUP BY s.id`,
+          [supplierId]
+        );
+        if (balRes.length) {
+          await db.query('UPDATE suppliers SET balance = ?, updatedAt = NOW() WHERE id = ?', [balRes[0].bal, supplierId]);
+        }
+      } catch (errBal) {
+        console.error('Error syncing supplier balance on ledger delete:', errBal);
+      }
+    }
+
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
@@ -3112,6 +3174,8 @@ async function runStartupMigrations() {
     "ALTER TABLE supplier_ledger ADD COLUMN credit DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_ledger ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Bank Transfer'",
     "ALTER TABLE supplier_ledger ADD COLUMN bankAccountId VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    "ALTER TABLE supplier_ledger ADD COLUMN updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
     "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",

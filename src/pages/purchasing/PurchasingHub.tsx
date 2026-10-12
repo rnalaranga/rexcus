@@ -245,6 +245,21 @@ export const PurchasingHub: React.FC = () => {
       { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
       { key: 'amount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v), true)}</span> },
       { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
+      {
+        key: 'actions', header: '', align: 'right',
+        render: (_, row) => (
+          <div className="flex justify-end gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate(`/inventory/suppliers/${row.supplierId}`)} 
+              className="text-[10px] uppercase h-6 text-amber-500 font-semibold hover:text-amber-400"
+            >
+              Pay / Ledger
+            </Button>
+          </div>
+        )
+      }
     ];
   };
 
