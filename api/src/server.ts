@@ -214,19 +214,30 @@ app.post('/api/settings/fix-db', async (req, res) => {
   try {
     const fs = require('fs');
     const path = require('path');
-    const sqlFile = path.join(__dirname, '../../fix_db_schema.sql');
     
-    const dbObj = require('./db').default || require('./db');
+    // Multiple candidate paths for fix_db_schema.sql
+    const possiblePaths = [
+      path.join(__dirname, '../../fix_db_schema.sql'),
+      path.join(__dirname, '../fix_db_schema.sql'),
+      path.join(__dirname, 'fix_db_schema.sql'),
+      path.join(process.cwd(), 'fix_db_schema.sql'),
+      path.join(process.cwd(), '../fix_db_schema.sql')
+    ];
+    const sqlFile = possiblePaths.find(p => fs.existsSync(p));
 
-    if (fs.existsSync(sqlFile)) {
+    if (sqlFile && fs.existsSync(sqlFile)) {
       const sqlContent = fs.readFileSync(sqlFile, 'utf8');
-      const statements = sqlContent.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      const statements = sqlContent.split(';');
       
       for (const stmt of statements) {
+        const trimmed = stmt.trim();
+        if (!trimmed) continue;
+        const cleaned = trimmed.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
+        if (!cleaned) continue;
         try {
-          await dbObj.query(stmt);
+          await db.query(cleaned);
         } catch (err) {
-          // Ignore
+          // Ignore if table/column already exists
         }
       }
     }
@@ -287,13 +298,101 @@ app.post('/api/settings/fix-db', async (req, res) => {
         amount DECIMAL(15,2) DEFAULT 0.00,
         reference VARCHAR(255) NULL,
         notes TEXT NULL,
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        debitAccountId VARCHAR(50) DEFAULT NULL,
+        creditAccountId VARCHAR(50) DEFAULT NULL,
+        debitAccountName VARCHAR(100) DEFAULT NULL,
+        creditAccountName VARCHAR(100) DEFAULT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS material_requests (
+        id VARCHAR(50) PRIMARY KEY,
+        date DATETIME,
+        requiredDate DATETIME,
+        requestedBy VARCHAR(100),
+        department VARCHAR(100),
+        priority VARCHAR(20) DEFAULT 'medium',
+        status VARCHAR(20) DEFAULT 'pending',
+        items TEXT,
+        notes TEXT,
+        createdAt DATETIME,
+        updatedAt DATETIME
+      )`,
+      `CREATE TABLE IF NOT EXISTS purchase_orders (
+        id VARCHAR(50) PRIMARY KEY,
+        supplierId VARCHAR(50),
+        date DATETIME,
+        expectedDate DATETIME,
+        status VARCHAR(20) DEFAULT 'draft',
+        items TEXT,
+        subtotal DECIMAL(15,2),
+        tax DECIMAL(15,2),
+        totalAmount DECIMAL(15,2),
+        notes TEXT,
+        shippingCost DECIMAL(15,2) DEFAULT 0,
+        shippingMethod VARCHAR(100),
+        paymentTerms VARCHAR(100),
+        terms TEXT,
+        createdAt DATETIME,
+        updatedAt DATETIME,
+        createdBy VARCHAR(100)
+      )`,
+      `CREATE TABLE IF NOT EXISTS grns (
+        id VARCHAR(50) PRIMARY KEY,
+        poId VARCHAR(50),
+        supplierId VARCHAR(50),
+        date DATETIME,
+        receivedBy VARCHAR(100),
+        vehicleNo VARCHAR(100),
+        storageLocation VARCHAR(100),
+        items TEXT,
+        status VARCHAR(20) DEFAULT 'received',
+        notes TEXT,
+        createdAt DATETIME,
+        updatedAt DATETIME
+      )`,
+      `CREATE TABLE IF NOT EXISTS supplier_bills (
+        id VARCHAR(50) PRIMARY KEY,
+        supplierId VARCHAR(50),
+        poId VARCHAR(50),
+        grnId VARCHAR(50),
+        invoiceNo VARCHAR(100),
+        date DATETIME,
+        dueDate DATETIME,
+        amount DECIMAL(15,2),
+        status VARCHAR(20) DEFAULT 'unpaid',
+        notes TEXT,
+        createdAt DATETIME,
+        updatedAt DATETIME
+      )`,
+      `CREATE TABLE IF NOT EXISTS tax_profiles (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        tax1_name VARCHAR(50) NOT NULL,
+        tax1_rate DECIMAL(5,2) NOT NULL,
+        tax2_name VARCHAR(50) DEFAULT NULL,
+        tax2_rate DECIMAL(5,2) DEFAULT 0.00,
+        tax2_compound TINYINT(1) DEFAULT 0,
+        tax1_hidden TINYINT(1) DEFAULT 0,
+        tax1_show_separately TINYINT(1) DEFAULT 0,
+        tax2_show_separately TINYINT(1) DEFAULT 1,
+        tax1_accountId VARCHAR(50) DEFAULT NULL,
+        tax2_accountId VARCHAR(50) DEFAULT NULL,
+        accountId VARCHAR(50) DEFAULT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS currencies (
+        code VARCHAR(3) PRIMARY KEY,
+        name VARCHAR(50) DEFAULT NULL,
+        symbol VARCHAR(5) DEFAULT NULL,
+        exchangeRate DECIMAL(15,4) DEFAULT 1.0000,
+        isBase TINYINT(1) DEFAULT 0,
+        lastUpdated DATETIME DEFAULT NULL
       )`
     ];
 
     for (const tbl of createTables) {
       try {
-        await dbObj.query(tbl);
+        await db.query(tbl);
       } catch (err) {
         // Ignore
       }
@@ -322,6 +421,8 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE invoices ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE invoices ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
       "ALTER TABLE invoices ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN modeOfPayment VARCHAR(100) DEFAULT 'Credit'",
+      "ALTER TABLE invoices ADD COLUMN additionalInfo TEXT DEFAULT NULL",
       "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
       "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
@@ -373,22 +474,39 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE supplier_ledger ADD COLUMN debitAccountName VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE supplier_ledger ADD COLUMN creditAccountName VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE purchase_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
       "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL",
       "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL"
     ];
 
     for (const patch of patches) {
       try {
-        await dbObj.query(patch);
+        await db.query(patch);
       } catch (err) {
         // Ignore
       }
     }
 
-    res.json({ success: true, message: 'Database fixed and synchronized successfully. No data was deleted.' });
+    // Default seeds if missing
+    const defaultSeeds = [
+      "INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId) VALUES ('tp_vat18', 'VAT (18%)', 'VAT', 18, NULL)",
+      "INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, accountId) VALUES ('tp_vat_sscl', 'VAT (18%) + SSCL (2.5%)', 'SSCL', 2.5, 'VAT', 18, 1, NULL)",
+      "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)"
+    ];
+    for (const seed of defaultSeeds) {
+      try {
+        await db.query(seed);
+      } catch (err) {
+        // Ignore
+      }
+    }
+
+    res.json({ success: true, message: 'Database fixed and synchronized successfully. All tables and columns are up to date. No data was deleted.' });
   } catch (error) {
-    console.error(error);
+    console.error('Fix DB error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

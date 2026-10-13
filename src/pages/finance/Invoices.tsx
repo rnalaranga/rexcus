@@ -263,13 +263,21 @@ export const Invoices: React.FC = () => {
                 dueDate={viewInvoice.dueDate}
                 deliveryDate={viewInvoice.deliveryDate || viewInvoice.date}
                 placeOfSupply={viewInvoice.placeOfSupply || ''}
+                modeOfPayment={viewInvoice.modeOfPayment || 'Credit'}
+                additionalInfo={viewInvoice.additionalInfo || ''}
+                attention={viewInvoice.attention || ''}
                 quotationNo={viewInvoice.quotationNo || viewInvoice.quotationId || ''}
                 dispatchNo={viewInvoice.dispatchNo || ''}
                 orderNo={viewInvoice.orderNo || ''}
                 poNo={viewInvoice.poNo || ''}
                 customer={customers?.find((c: any) => c.id === viewInvoice.customerId) || leads?.find((l: any) => l.id === viewInvoice.customerId || l.id === viewInvoice.leadId) || { name: 'Unknown Customer', company: 'Unknown Company' }}
                 customerVat={viewInvoice.customerVat || ''}
-                items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ description: i.desc || i.description, qty: Number(i.qty), unitPrice: Number(i.price || i.unitPrice) })) : []}
+                items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ 
+                  reference: i.reference || '',
+                  description: i.desc || i.description, 
+                  qty: Number(i.qty), 
+                  unitPrice: Number(i.price || i.unitPrice) 
+                })) : []}
                 subtotal={Number(viewInvoice.subtotal)}
                 taxAmount={Number(viewInvoice.taxAmount || viewInvoice.tax || 0)}
                 total={Number(viewInvoice.total)}

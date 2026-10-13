@@ -14,467 +14,11 @@ import { createInvoice } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 
-// ─── Template Definitions ────────────────────────────────────────────────────
-
-export function toWords(num: number): string {
-  if (num === 0) return 'Zero';
-  const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  const g = ['','Thousand','Million','Billion'];
-  const makeGroup = (n: number) => {
-    let str = '';
-    if (n > 99) { str += a[Math.floor(n / 100)] + ' Hundred '; n %= 100; }
-    if (n > 19) { str += b[Math.floor(n / 10)] + ' '; n %= 10; }
-    if (n > 0) { str += a[n] + ' '; }
-    return str.trim();
-  };
-  let result = '';
-  let i = 0;
-  let val = Math.floor(Math.abs(num));
-  while (val > 0) {
-    const chunk = val % 1000;
-    if (chunk !== 0) {
-      result = makeGroup(chunk) + ' ' + g[i] + ' ' + result;
-    }
-    val = Math.floor(val / 1000);
-    i++;
-  }
-  return result.trim() + ' Only';
-}
-
-export const TEMPLATES = [
-  { id: 'government', name: 'VAT Separate', description: 'Standard Tax Invoice (VAT added to total)', color: '#000000', accent: '#000000' },
-  { id: 'government_inclusive', name: 'VAT Included', description: 'Tax Invoice (Prices inclusive of VAT)', color: '#000000', accent: '#000000' }
-];
+export { toWords, formatGazetteDate, TEMPLATES, InvoicePreview } from '@/components/finance/InvoicePreview';
+import { InvoicePreview, toWords, formatGazetteDate, TEMPLATES } from '@/components/finance/InvoicePreview';
 
 const docInputClass = "w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs outline-none focus:border-blue-500/50 transition-colors";
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-black/10 dark:hover:border-white/10 focus:border-blue-500 focus:bg-surface px-2 py-1 text-xs outline-none transition-all";
-
-// ─── Print Preview ────────────────────────────────────────────────────────────
-export const InvoicePreview: React.FC<any> = ({ template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, selectedTaxes, taxProfile, taxBreakdown, attention }) => {
-  const isHidden = taxProfile && taxProfile.tax1_show_separately === 0;
-  const multiplier = isHidden ? (1 + (Number(taxProfile.tax1_rate) || 0) / 100) : 1;
-
-  if (template.startsWith('government')) {
-    const isInclusive = template === 'government_inclusive';
-    const borderColor = '#64748b'; // Not too dark
-    const isTaxInvoice = taxProfile && (taxProfile.tax1_show_separately === 1 || taxProfile.tax2_show_separately === 1);
-    const invoiceTitle = isTaxInvoice ? 'Tax Invoice' : 'Invoice';
-    
-    return (
-      <div id="invoice-preview" style={{ fontFamily: "'Inter', system-ui, sans-serif", background: '#fff', color: '#1a1a1a', fontSize: 11, lineHeight: 1.5, padding: '10mm', width: '210mm', minHeight: '297mm', margin: '0 auto', boxSizing: 'border-box' }}>
-        
-        {/* MAIN OUTER BORDER */}
-        <div style={{ border: `1.2px solid ${borderColor}` }}>
-          
-          {/* TITLE */}
-          <div style={{ textAlign: 'center', padding: '10px', borderBottom: `1.2px solid ${borderColor}`, fontSize: 24, fontWeight: '800' }}>
-            {invoiceTitle}
-          </div>
-
-          {/* DATE & INVOICE NO */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: `1.2px solid ${borderColor}` }}>
-            <div style={{ padding: '6px 12px', borderRight: `1.2px solid ${borderColor}`, display: 'flex', gap: '8px' }}>
-              <span style={{ fontWeight: '700' }}>Date of Invoice</span>
-              <span>:</span>
-              <span>{date.split('-').reverse().join('-')}</span>
-            </div>
-            <div style={{ padding: '6px 12px', display: 'flex', gap: '8px' }}>
-              <span style={{ fontWeight: '700' }}>{invoiceTitle} No.</span>
-              <span>:</span>
-              <span>{docNo}</span>
-            </div>
-          </div>
-
-          {/* SUPPLIER & PURCHASER */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: `1.2px solid ${borderColor}`, minHeight: '140px' }}>
-            {/* Supplier */}
-            <div style={{ padding: '8px 12px', borderRight: `1.2px solid ${borderColor}` }}>
-              <table style={{ border: 'none', width: '100%', fontSize: 11 }}>
-                <tbody>
-                  {company.vat && (
-                    <tr>
-                      <td style={{ fontWeight: '700', width: '100px', verticalAlign: 'top' }}>Supplier's TIN</td>
-                      <td style={{ width: '15px', verticalAlign: 'top' }}>:</td>
-                      <td style={{ fontWeight: '700', verticalAlign: 'top' }}>{company.vat}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top' }}>Supplier's Name</td>
-                    <td style={{ verticalAlign: 'top' }}>:</td>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top' }}>{company.name || 'Your Company'}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top', paddingTop: 8 }}>Address</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8 }}>:</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8, whiteSpace: 'pre-wrap' }}>{company.address}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top', paddingTop: 8 }}>Telephone No</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8 }}>:</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8 }}>{company.phone || '-'}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Purchaser */}
-            <div style={{ padding: '8px 12px' }}>
-              <table style={{ border: 'none', width: '100%', fontSize: 11 }}>
-                <tbody>
-                  {customerVat && (
-                    <tr>
-                      <td style={{ fontWeight: '700', width: '100px', verticalAlign: 'top' }}>Purchaser's TIN</td>
-                      <td style={{ width: '15px', verticalAlign: 'top' }}>:</td>
-                      <td style={{ fontWeight: '700', verticalAlign: 'top' }}>{customerVat}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top' }}>Purchaser's Name</td>
-                    <td style={{ verticalAlign: 'top' }}>:</td>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top' }}>
-                      {customer?.company || customer?.name || '-'}
-                      {customer?.name && customer?.company && <><br/>{customer.name}</>}
-                      {attention && <><br/>Attn: {attention}</>}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top', paddingTop: 8 }}>Address</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8 }}>:</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8, whiteSpace: 'pre-wrap' }}>{customer?.address || '-'}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ fontWeight: '700', verticalAlign: 'top', paddingTop: 8 }}>Telephone No</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8 }}>:</td>
-                    <td style={{ verticalAlign: 'top', paddingTop: 8 }}>{customer?.phone || '-'}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* DELIVERY & PLACE OF SUPPLY */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: `1.2px solid ${borderColor}` }}>
-            <div style={{ padding: '6px 12px', borderRight: `1.2px solid ${borderColor}`, display: 'flex', gap: '8px' }}>
-              <span style={{ fontWeight: '700' }}>Date of Deliver</span>
-              <span>:</span>
-              <span>{deliveryDate ? deliveryDate.split('-').reverse().join('-') : '-'}</span>
-            </div>
-            <div style={{ padding: '6px 12px', display: 'flex', gap: '8px' }}>
-              <span style={{ fontWeight: '700' }}>Place Of Supply</span>
-              <span>:</span>
-              <span>{placeOfSupply || '-'}</span>
-            </div>
-          </div>
-
-          {/* ADDITIONAL INFO */}
-          <div style={{ padding: '8px 12px', borderBottom: `1.2px solid ${borderColor}` }}>
-            <div style={{ fontWeight: '700', marginBottom: '4px' }}>Additional Information if any</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <table style={{ border: 'none', width: '100%', fontSize: 11 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ width: '90px' }}>Quotation no</td>
-                    <td style={{ width: '15px' }}>:</td>
-                    <td>{quotationNo || '-'}</td>
-                  </tr>
-                  <tr>
-                    <td>ORDER NO</td>
-                    <td>:</td>
-                    <td>{orderNo || '-'}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <table style={{ border: 'none', width: '100%', fontSize: 11 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ width: '90px' }}>Dispatch no</td>
-                    <td style={{ width: '15px' }}>:</td>
-                    <td>{dispatchNo || '-'}</td>
-                  </tr>
-                  <tr>
-                    <td>Po no</td>
-                    <td>:</td>
-                    <td>{poNo || '-'}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* ITEMS TABLE */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ borderBottom: `1.2px solid ${borderColor}` }}>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, width: '40px' }}>Reference</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}` }}>Description of Goods Or Services</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, width: '70px' }}>Quantity</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, width: '90px' }}>Unit Price</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: '700', width: '100px' }}>
-                  {isInclusive ? <>Amount<br/>Inclusive VAT</> : <>Amount<br/>Excluding VAT</>}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item: any, idx: number) => {
-                const lineVal = item.qty * item.unitPrice;
-                const lineTax = lineVal * (getTaxRate(item.taxRateId) / 100);
-                const displayVal = isInclusive ? lineVal + lineTax : lineVal;
-                return (
-                  <tr key={idx}>
-                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{idx + 1}.</td>
-                    <td style={{ padding: '8px', borderRight: `1.2px solid ${borderColor}`, whiteSpace: 'pre-wrap', verticalAlign: 'top', fontWeight: '700' }}>{item.description}</td>
-                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{Number(item.qty).toFixed(2)}</td>
-                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', borderRight: `1.2px solid ${borderColor}`, verticalAlign: 'top' }}>{Number(item.unitPrice * multiplier).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', verticalAlign: 'top' }}>{(displayVal * multiplier).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                );
-              })}
-              {/* Extra spacing row to push totals down slightly */}
-              <tr>
-                <td style={{ padding: '15px 8px', borderRight: `1.2px solid ${borderColor}` }}></td>
-                <td style={{ padding: '15px 8px', borderRight: `1.2px solid ${borderColor}` }}></td>
-                <td style={{ padding: '15px 8px', borderRight: `1.2px solid ${borderColor}` }}></td>
-                <td style={{ padding: '15px 8px', borderRight: `1.2px solid ${borderColor}` }}></td>
-                <td style={{ padding: '15px 8px' }}></td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* TOTALS */}
-          <div style={{ borderTop: `1.2px solid ${borderColor}` }}>
-            {!isInclusive && (
-              <>
-                <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-                  <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', fontWeight: '700', borderRight: `1.2px solid ${borderColor}` }}>
-                    Sub Total <span style={{ marginLeft: '10px', fontSize: 9 }}>LKR</span>
-                  </div>
-                  <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right', fontWeight: '700' }}>
-                    {(subtotal * multiplier).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </div>
-                </div>
-                {taxProfile && taxBreakdown && (
-                  <>
-                    {taxProfile.tax1_show_separately === 1 && Number(taxBreakdown.tax1Amount) > 0 && (
-                      <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-                        <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                          {taxProfile.tax1_name} <span style={{ marginLeft: '20px' }}>{taxProfile.tax1_rate} %</span>
-                        </div>
-                        <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
-                          {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                    )}
-                    {taxProfile.tax2_show_separately === 1 && Number(taxBreakdown.tax2Amount) > 0 && (
-                      <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-                        <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', borderRight: `1.2px solid ${borderColor}` }}>
-                          {taxProfile.tax2_name} <span style={{ marginLeft: '20px' }}>{taxProfile.tax2_rate} %</span>
-                        </div>
-                        <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right' }}>
-                          {Number(taxBreakdown.tax2Amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-            <div style={{ display: 'flex', borderBottom: `1.2px solid ${borderColor}` }}>
-              <div style={{ flex: 1, padding: '6px 12px', textAlign: 'right', fontWeight: '700', borderRight: `1.2px solid ${borderColor}` }}>
-                Grand Total <span style={{ marginLeft: '10px', fontSize: 9 }}>LKR</span>
-              </div>
-              <div style={{ width: '100px', padding: '6px 8px', textAlign: 'right', fontWeight: '700' }}>
-                {total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </div>
-            </div>
-          </div>
-
-          {/* IN WORDS */}
-          <div style={{ padding: '6px 12px', borderBottom: `1.2px solid ${borderColor}`, fontWeight: '700', fontSize: 10 }}>
-            LKR {toWords(total)} Only
-          </div>
-
-          {/* PAYMENT MODE */}
-          <div style={{ padding: '6px 12px', borderBottom: `1.2px solid ${borderColor}`, display: 'flex', gap: '20px' }}>
-            <span style={{ fontWeight: '700' }}>Mode of payment :</span>
-            <span style={{ fontWeight: '700', textTransform: 'uppercase' }}>Credit</span>
-          </div>
-
-          {/* FOOTER AREA */}
-          <div style={{ padding: '12px' }}>
-            <div style={{ fontWeight: '700', marginBottom: '8px' }}>Cheque to be written in favor of {company.name}</div>
-            <div style={{ fontWeight: '700', marginBottom: '4px' }}>Bank details</div>
-            <table style={{ border: 'none', fontSize: 11, marginBottom: '10px' }}>
-              <tbody>
-                <tr><td style={{ width: '100px' }}>Account Name</td><td style={{ width: '15px' }}>:</td><td>{company.name}</td></tr>
-                {company.bankName && <tr><td>Bank</td><td>:</td><td>{company.bankName}</td></tr>}
-                {company.accountNo && <tr><td>Account No</td><td>:</td><td>{company.accountNo}</td></tr>}
-                {company.branch && <tr><td>Branch</td><td>:</td><td>{company.branch}</td></tr>}
-              </tbody>
-            </table>
-            
-            <div>Thanking You</div>
-            <div style={{ marginBottom: '40px' }}>Yours faithfully</div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px', marginTop: '50px' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ borderTop: '1.2px dotted #1a1a1a', paddingTop: '4px', paddingLeft: '20px', paddingRight: '20px' }}>Manager/Authorized Officer</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ borderTop: '1.2px dotted #1a1a1a', paddingTop: '4px', paddingLeft: '20px', paddingRight: '20px' }}>Signature of Recipient</div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    );
-  }
-  const tmpl = TEMPLATES.find(t => t.id === template) || TEMPLATES[0];
-  const headerBg = template === 'modern' ? `linear-gradient(135deg, ${tmpl.color} 0%, #1e3a5f 100%)` : template === 'elegant' ? '#f8fafc' : '#fff';
-  const headerText = template === 'elegant' ? tmpl.color : '#fff';
-  const borderColor = tmpl.accent + '33';
-
-  return (
-    <div id="invoice-preview" style={{ fontFamily: "'Inter', system-ui, sans-serif", background: '#fff', color: '#1a1a2e', fontSize: 11, lineHeight: 1.5 }}>
-      <div style={{ background: headerBg, padding: '28px 32px', borderBottom: `3px solid ${tmpl.accent}` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            {company.logo && <img src={company.logo} alt="Logo" style={{ height: 40, marginBottom: 8 }} />}
-            <div style={{ color: headerText, fontWeight: 800, fontSize: 18 }}>{company.name || 'Your Company'}</div>
-            <div style={{ color: headerText + 'cc', fontSize: 10 }}>{company.address}</div>
-            <div style={{ color: headerText + 'cc', fontSize: 10 }}>{company.phone ? `Tel: ${company.phone}` : ''}</div>
-            <div style={{ color: headerText + 'cc', fontSize: 10 }}>{company.email ? `Email: ${company.email}` : ''}</div>
-            {company.vat && <div style={{ color: headerText + 'cc', fontSize: 10 }}>VAT: {company.vat}</div>}
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: tmpl.accent, fontWeight: 900, fontSize: 28, letterSpacing: -1 }}>INVOICE</div>
-            <div style={{ color: headerText + 'cc', fontWeight: 700, fontSize: 13, marginTop: 4 }}>{docNo}</div>
-            <div style={{ color: headerText + 'aa', fontSize: 10, marginTop: 2 }}>Date: {date}</div>
-            <div style={{ color: headerText + 'aa', fontSize: 10 }}>Due: {dueDate}</div>
-          </div>
-        </div>
-      </div>
-      <div style={{ padding: '20px 32px', display: 'flex', gap: 32, borderBottom: `1px solid ${borderColor}` }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: tmpl.accent, textTransform: 'uppercase', marginBottom: 6 }}>Bill To</div>
-          {customer ? (
-            <>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{customer.name}</div>
-              {attention && <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>Attn: {attention}</div>}
-              <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.company}</div>
-              {customer.email && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.email}</div>}
-              {customer.phone && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.phone}</div>}
-              {customer.address && <div style={{ color: '#6b7280', fontSize: 10 }}>{customer.address}</div>}
-              {(customerVat || customer.vat) && <div style={{ color: '#6b7280', fontSize: 10 }}>VAT: {customerVat || customer.vat}</div>}
-            </>
-          ) : <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>No customer selected</div>}
-        </div>
-        <div style={{ textAlign: 'right', minWidth: 160 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: tmpl.accent, textTransform: 'uppercase', marginBottom: 6 }}>Payment Info</div>
-          {company.bankName && <div style={{ fontSize: 10, color: '#6b7280' }}>Bank: {company.bankName}</div>}
-          {company.accountNo && <div style={{ fontSize: 10, color: '#6b7280' }}>Acc: {company.accountNo}</div>}
-          {company.brNumber && <div style={{ fontSize: 10, color: '#6b7280' }}>BR: {company.brNumber}</div>}
-        </div>
-      </div>
-      <div style={{ padding: '16px 32px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
-          <thead>
-            <tr style={{ background: tmpl.accent + '15', borderBottom: `2px solid ${tmpl.accent}` }}>
-              {['#', 'Description', 'Qty', 'Unit Price', 'Tax', 'Amount'].map((h, i) => (
-                <th key={i} style={{ padding: '8px 6px', textAlign: (i >= 4 ? 'right' : i === 2 ? 'center' : 'left') as any, fontWeight: 700, color: tmpl.accent, textTransform: 'uppercase' as any, letterSpacing: 0.5 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item: any, idx: number) => {
-              const tax = taxRates.find((t: any) => t.id === item.taxRateId);
-              const line = item.qty * item.unitPrice;
-              const lineTax = line * (getTaxRate(item.taxRateId) / 100);
-              return (
-                <tr key={item.id} style={{ borderBottom: `1px solid ${borderColor}`, background: idx % 2 === 0 ? 'transparent' : '#f9fafb' }}>
-                  <td style={{ padding: '7px 6px', color: '#9ca3af' }}>{idx + 1}</td>
-                  <td style={{ padding: '7px 6px', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description || '—'}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'center' }}>{item.qty}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(item.unitPrice * multiplier)}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'center', color: '#6b7280' }}>{tax ? `${tax.name} (${tax.rate}%)` : '—'}</td>
-                  <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{formatCurrency((line + lineTax) * multiplier)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ padding: '0 32px 20px', display: 'flex', justifyContent: 'flex-end' }}>
-        <div style={{ minWidth: 240 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
-            <span style={{ color: '#6b7280' }}>Subtotal</span>
-            <span style={{ fontFamily: 'monospace' }}>{formatCurrency(subtotal * multiplier)}</span>
-          </div>
-          {taxProfile && taxBreakdown && (
-            <>
-              {taxProfile.tax1_show_separately === 1 && Number(taxBreakdown.tax1Amount) > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
-                  <span style={{ color: '#6b7280' }}>{taxProfile.tax1_name} ({taxProfile.tax1_rate}%)</span>
-                  <span style={{ fontFamily: 'monospace' }}>{formatCurrency(Number(taxBreakdown.tax1Amount))}</span>
-                </div>
-              )}
-              {taxProfile.tax2_show_separately === 1 && Number(taxBreakdown.tax2Amount) > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
-                  <span style={{ color: '#6b7280' }}>{taxProfile.tax2_name} ({taxProfile.tax2_rate}%)</span>
-                  <span style={{ fontFamily: 'monospace' }}>{formatCurrency(Number(taxBreakdown.tax2Amount))}</span>
-                </div>
-              )}
-            </>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: tmpl.accent, borderRadius: 6, marginTop: 6 }}>
-            <span style={{ color: '#fff', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</span>
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 14, fontFamily: 'monospace' }}>{formatCurrency(total)}</span>
-          </div>
-        </div>
-      </div>
-      {notes && (
-        <div style={{ padding: '0 32px 20px' }}>
-          <div style={{ padding: '12px 16px', background: tmpl.accent + '0d', borderLeft: `3px solid ${tmpl.accent}`, borderRadius: '0 4px 4px 0' }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: tmpl.accent, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Notes & Terms</div>
-            <div style={{ fontSize: 10, color: '#6b7280', whiteSpace: 'pre-wrap' }}>{notes}</div>
-          </div>
-        </div>
-      )}
-      <div style={{ borderTop: `1px solid ${borderColor}`, padding: '12px 32px', textAlign: 'center', color: '#9ca3af', fontSize: 9 }}>
-        {company.tagline || 'Thank you for your business!'}
-      </div>
-    </div>
-  );
-};
-
-// ─── Template Picker Modal ────────────────────────────────────────────────────
-const TemplatePicker: React.FC<{ current: string; onChange: (id: string) => void; onClose: () => void }> = ({ current, onChange, onClose }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-    <div className="bg-surface border border-theme rounded-2xl shadow-glass p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Palette size={16} className="text-rex-500" /> Print Template</h2>
-        <button onClick={onClose} className="p-1.5 hover:bg-surface2 rounded-lg text-muted"><X size={14} /></button>
-      </div>
-      <div className="space-y-2">
-        {TEMPLATES.map(t => (
-          <button key={t.id} onClick={() => { onChange(t.id); onClose(); }}
-            className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${current === t.id ? 'border-blue-500 bg-blue-500/10' : 'border-theme-subtle hover:border-theme hover:bg-surface2'}`}
-          >
-            <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center" style={{ background: t.color }}>
-              <div className="w-4 h-0.5 rounded-full" style={{ background: t.accent }} />
-            </div>
-            <div className="flex-1">
-              <div className="text-xs font-bold text-primary">{t.name}</div>
-              <div className="text-[10px] text-muted">{t.description}</div>
-            </div>
-            {current === t.id && <CheckCircle2 size={16} className="text-blue-500 flex-shrink-0" />}
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-);
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const InvoiceBuilder: React.FC = () => {
@@ -498,17 +42,18 @@ export const InvoiceBuilder: React.FC = () => {
   const taxType = 'profile';
   
   const [template, setTemplate] = useState('government');
-  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [company, setCompany] = useState<any>({});
-    const [deliveryDate, setDeliveryDate] = useState(date);
+  const [deliveryDate, setDeliveryDate] = useState(date);
   const [placeOfSupply, setPlaceOfSupply] = useState('');
+  const [modeOfPayment, setModeOfPayment] = useState('Credit');
+  const [additionalInfo, setAdditionalInfo] = useState('');
   const [quotationNo, setQuotationNo] = useState('');
   const [dispatchNo, setDispatchNo] = useState('');
   const [orderNo, setOrderNo] = useState('');
   const [poNo, setPoNo] = useState('');
   const [customerVat, setCustomerVat] = useState('');
-const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
+  const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
 
   const selectedCustomer = customers.find(c => c.id === customerId);
 
@@ -587,7 +132,33 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     const cleanDocNo = (docNo || '').trim().replace(/\s+/g, '');
     if (!cleanDocNo) return showError('Please provide a valid invoice number.');
     try {
-      const res = await createInvoice({ id: cleanDocNo, invoiceNo: cleanDocNo, customerId, attention, date, dueDate: dueDate || null, items: JSON.stringify(items), subtotal, taxAmount, total, amount: total, notes, status: 'Unpaid', deliveryDate: deliveryDate || null, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customerVat, taxType, taxProfileId, taxBreakdown: JSON.stringify(taxBreakdown) });
+      const res = await createInvoice({ 
+        id: cleanDocNo, 
+        invoiceNo: cleanDocNo, 
+        customerId, 
+        attention, 
+        date, 
+        dueDate: dueDate || null, 
+        items: JSON.stringify(items), 
+        subtotal, 
+        taxAmount, 
+        total, 
+        amount: total, 
+        notes, 
+        status: 'Unpaid', 
+        deliveryDate: deliveryDate || null, 
+        placeOfSupply, 
+        modeOfPayment,
+        additionalInfo,
+        quotationNo, 
+        dispatchNo, 
+        orderNo, 
+        poNo, 
+        customerVat, 
+        taxType, 
+        taxProfileId, 
+        taxBreakdown: JSON.stringify(taxBreakdown) 
+      });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
@@ -603,7 +174,34 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
     win.document.close(); win.focus(); win.print();
   };
 
-  const previewProps = { template, docNo, date, dueDate, deliveryDate, placeOfSupply, quotationNo, dispatchNo, orderNo, poNo, customer: selectedCustomer, customerVat, items, subtotal, taxAmount, total, notes, company, getTaxRate, taxRates, taxType, taxProfile: selectedTaxProfile, taxBreakdown, attention };
+  const previewProps = { 
+    template, 
+    docNo, 
+    date, 
+    dueDate, 
+    deliveryDate, 
+    placeOfSupply, 
+    modeOfPayment,
+    additionalInfo,
+    quotationNo, 
+    dispatchNo, 
+    orderNo, 
+    poNo, 
+    customer: selectedCustomer, 
+    customerVat, 
+    items, 
+    subtotal, 
+    taxAmount, 
+    total, 
+    notes, 
+    company, 
+    getTaxRate, 
+    taxRates, 
+    taxType, 
+    taxProfile: selectedTaxProfile, 
+    taxBreakdown, 
+    attention 
+  };
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative animate-fade-in">
@@ -627,9 +225,9 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
 
         {/* Right — Actions */}
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowTemplatePicker(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors">
-            <Palette size={14} /> Template <ChevronDown size={11} />
-          </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-600">
+            <CheckCircle2 size={13} /> Gazette No. 2481/22
+          </div>
           <button onClick={() => setShowPreview(p => !p)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${showPreview ? 'bg-surface2 border-blue-500/50 text-blue-500' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2'}`}>
             <Eye size={14} /> Preview
           </button>
@@ -648,7 +246,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
         <div className="flex-1 overflow-y-auto bg-slate-200/60 dark:bg-zinc-800/60 p-8">
           <div className="flex items-center justify-between max-w-3xl mx-auto mb-4">
             <p className="text-xs text-muted uppercase tracking-widest font-semibold">
-              Preview — {TEMPLATES.find(t => t.id === template)?.name} Template
+              Preview — Statutory Tax Invoice (Gazette No. 2481/22)
             </p>
             <button onClick={() => setShowPreview(false)} className="flex items-center gap-1.5 text-xs text-muted hover:text-primary px-3 py-1.5 rounded-lg border border-theme-subtle hover:bg-surface transition-colors">
               <X size={12} /> Close Preview
@@ -751,9 +349,9 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
               <div className="flex-1 overflow-y-auto pr-2 space-y-3">
                 <div className="bg-surface2/50 border border-theme-subtle rounded-lg p-2.5 space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="block text-[10px] font-bold text-muted uppercase">Invoice Serial No.</label>
+                    <label className="block text-[10px] font-bold text-muted uppercase">Tax Invoice No.</label>
                     <span className="text-[9px] font-mono font-semibold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                      IRD Format: YYMMM_QQQQ_XXXXX
+                      YYMMM_QQQQ_XXXXX
                     </span>
                   </div>
                   <input
@@ -770,7 +368,7 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Invoice Date</label>
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Date of Invoice</label>
                     <input type="date" value={date} onChange={e => setDate(e.target.value)} className={docInputClass} />
                   </div>
                   <div>
@@ -781,12 +379,27 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Delivery Date</label>
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Date of Supply</label>
                     <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className={docInputClass} />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Place of Supply</label>
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Place of Supply *</label>
                     <input type="text" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)} placeholder="e.g. Negombo" className={docInputClass} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Mode of Payment *</label>
+                    <select value={modeOfPayment} onChange={e => setModeOfPayment(e.target.value)} className={docInputClass}>
+                      <option value="Credit">Credit</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Credit / Debit Card">Credit / Debit Card</option>
+                      <option value="Mobile Payment">Mobile Payment</option>
+                      <option value="Online Payment">Online Payment</option>
+                    </select>
                   </div>
 
                   <div>
@@ -815,7 +428,17 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
                       )}
                     </div>
                   </div>
+                </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Additional Information if any *</label>
+                  <textarea 
+                    value={additionalInfo} 
+                    onChange={e => setAdditionalInfo(e.target.value)} 
+                    rows={2} 
+                    className={`${docInputClass} resize-none`} 
+                    placeholder="Custom statutory notes (optional — auto-generates from PO/Order/Quotation/Notes if left empty)" 
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 border-t border-theme-subtle pt-2 mt-1">
@@ -962,9 +585,6 @@ const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', 
 
         </div>
       )}
-
-      {/* Template Picker Modal */}
-      {showTemplatePicker && <TemplatePicker current={template} onChange={setTemplate} onClose={() => setShowTemplatePicker(false)} />}
     </div>
   );
 };
