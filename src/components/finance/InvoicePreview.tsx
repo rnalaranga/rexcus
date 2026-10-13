@@ -126,14 +126,49 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
 
-  // Compute Additional Information string
-  const computedAdditionalInfo = additionalInfo || [
-    poNo ? `PO No: ${poNo}` : '',
-    orderNo ? `Order No: ${orderNo}` : '',
-    quotationNo ? `Quotation No: ${quotationNo}` : '',
-    dispatchNo ? `Dispatch No: ${dispatchNo}` : '',
-    notes ? notes : ''
-  ].filter(Boolean).join(' | ');
+  // Parse reference and additional info items into structured boxes
+  const infoItems: { label: string; value: string }[] = [];
+
+  if (poNo) infoItems.push({ label: 'PO No.', value: String(poNo) });
+  if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
+  if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
+  if (dispatchNo) infoItems.push({ label: 'Dispatch No.', value: String(dispatchNo) });
+  if (notes && String(notes).trim()) {
+    const trimmedNotes = String(notes).trim();
+    const isPaymentWord = /^(credit|cash|cheque|bank\s*transfer|advance)$/i.test(trimmedNotes);
+    infoItems.push({ 
+      label: isPaymentWord ? 'Payment Terms' : 'Notes / Remarks', 
+      value: trimmedNotes 
+    });
+  }
+
+  // Also parse any string in additionalInfo (e.g. from DB or user input)
+  if (additionalInfo && String(additionalInfo).trim()) {
+    const rawParts = String(additionalInfo).split('|').map(p => p.trim()).filter(Boolean);
+    for (const part of rawParts) {
+      const colonIdx = part.indexOf(':');
+      if (colonIdx > -1) {
+        const rawLbl = part.slice(0, colonIdx).trim();
+        const rawVal = part.slice(colonIdx + 1).trim();
+        const exists = infoItems.some(it => 
+          it.label.toLowerCase() === rawLbl.toLowerCase() || 
+          it.value.toLowerCase() === rawVal.toLowerCase()
+        );
+        if (!exists) {
+          infoItems.push({ label: rawLbl, value: rawVal });
+        }
+      } else {
+        const exists = infoItems.some(it => it.value.toLowerCase() === part.toLowerCase());
+        if (!exists) {
+          const isPaymentWord = /^(credit|cash|cheque|bank\s*transfer|advance)$/i.test(part);
+          infoItems.push({ 
+            label: isPaymentWord ? 'Payment Terms' : 'Remarks', 
+            value: part 
+          });
+        }
+      }
+    }
+  }
 
   const paymentModeDisplay = modeOfPayment || 'Credit';
   const amountInWords = toWords(total);
@@ -262,8 +297,50 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
         {/* ROW 4: Additional Information if any */}
         <div style={{ padding: '6px 10px', borderBottom: tableBorder }}>
-          <span style={{ fontWeight: '700' }}>Additional Information if any:*</span>{' '}
-          <span>{computedAdditionalInfo || '-'}</span>
+          <div style={{ fontWeight: '700', marginBottom: infoItems.length > 0 ? '6px' : '0' }}>
+            Additional Information if any:*
+          </div>
+          {infoItems.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {infoItems.map((item, idx) => (
+                <div 
+                  key={idx} 
+                  style={{ 
+                    flex: '1 1 calc(25% - 6px)',
+                    minWidth: '120px',
+                    border: '1px solid #000000', 
+                    padding: '4px 8px', 
+                    background: '#ffffff',
+                    borderRadius: '2px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div style={{ 
+                    fontSize: '8.5px', 
+                    fontWeight: '700', 
+                    textTransform: 'uppercase', 
+                    color: '#444444',
+                    letterSpacing: '0.4px',
+                    lineHeight: 1.1 
+                  }}>
+                    {item.label}
+                  </div>
+                  <div style={{ 
+                    fontWeight: '700', 
+                    fontSize: '11px', 
+                    color: '#000000',
+                    marginTop: '2px',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.2
+                  }}>
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span>-</span>
+          )}
         </div>
       </div>
 

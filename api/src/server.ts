@@ -417,6 +417,23 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE tax_profiles ADD COLUMN tax2_show_separately TINYINT(1) DEFAULT 1",
       "ALTER TABLE tax_profiles ADD COLUMN tax1_accountId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE tax_profiles ADD COLUMN tax2_accountId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN payments TEXT DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE invoices ADD COLUMN total DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE invoices ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE invoices ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+      "ALTER TABLE invoices ADD COLUMN date DATETIME DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN items TEXT DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN notes TEXT DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN deliveryDate DATE DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN placeOfSupply VARCHAR(100) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN quotationNo VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN dispatchNo VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN orderNo VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN poNo VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN customerVat VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN taxType VARCHAR(50) DEFAULT 'none'",
       "ALTER TABLE invoices ADD COLUMN invoiceNo VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE invoices ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE invoices ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
@@ -2173,9 +2190,9 @@ app.put('/api/invoices/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    await db.query('UPDATE invoices SET ? WHERE id = ?', [data, id]);
+    await db.query('UPDATE invoices SET ? WHERE id = ? OR invoiceNo = ?', [data, id, id]);
     res.json({ success: true, id });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
@@ -2186,15 +2203,28 @@ app.delete('/api/invoices/:id', async (req, res) => {
     const { id } = req.params;
     
     // Fetch the invoice before deleting to get its payments and amounts
-    const [rows]: any = await db.query('SELECT * FROM invoices WHERE id = ?', [id]);
+    const [rows]: any = await db.query('SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1', [id, id]);
     if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
     
     const invoice = rows[0];
-    const existingPayments = invoice.payments ? JSON.parse(invoice.payments) : [];
+    let existingPayments: any[] = [];
+    if (invoice.payments) {
+      if (Array.isArray(invoice.payments)) {
+        existingPayments = invoice.payments;
+      } else if (typeof invoice.payments === 'string' && invoice.payments.trim()) {
+        try {
+          const parsed = JSON.parse(invoice.payments);
+          if (Array.isArray(parsed)) existingPayments = parsed;
+        } catch (e) {}
+      }
+    }
     
     // References to reverse from GL
-    const references = [id];
-    existingPayments.forEach((p: any) => references.push(p.id));
+    const references = [invoice.id];
+    if (invoice.invoiceNo && invoice.invoiceNo !== invoice.id) {
+      references.push(invoice.invoiceNo);
+    }
+    existingPayments.forEach((p: any) => { if (p && p.id) references.push(p.id); });
     
     // Find Journal Entries to delete
     if (references.length > 0) {
@@ -2233,9 +2263,9 @@ app.delete('/api/invoices/:id', async (req, res) => {
     }
     
     // Finally delete the invoice
-    await db.query('DELETE FROM invoices WHERE id = ?', [id]);
+    await db.query('DELETE FROM invoices WHERE id = ?', [invoice.id]);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
@@ -2246,70 +2276,133 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     const { id } = req.params;
     const payment = req.body;
     
-    // Get existing invoice
-    const [rows]: any = await db.query('SELECT payments, paidAmount, subtotal, taxAmount, total, customerId FROM invoices WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
+    // Ensure invoice payment columns exist safely
+    try {
+      await db.query('ALTER TABLE invoices ADD COLUMN payments TEXT');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE invoices ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE invoices ADD COLUMN total DECIMAL(15,2) DEFAULT 0.00');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL');
+    } catch (e) {}
+
+    // Resilient lookup: match by id or invoiceNo
+    const [rows]: any = await db.query('SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1', [id, id]);
+    if (!rows || !rows.length) return res.status(404).json({ error: 'Invoice not found' });
     
     const invoice = rows[0];
-    const existingPayments = invoice.payments ? JSON.parse(invoice.payments) : [];
     
-    // Add new payment
+    // Safely parse existing payments
+    let existingPayments: any[] = [];
+    if (invoice.payments) {
+      if (Array.isArray(invoice.payments)) {
+        existingPayments = invoice.payments;
+      } else if (typeof invoice.payments === 'string' && invoice.payments.trim()) {
+        try {
+          const parsed = JSON.parse(invoice.payments);
+          if (Array.isArray(parsed)) existingPayments = parsed;
+        } catch (e) {
+          existingPayments = [];
+        }
+      }
+    }
+    
+    const paymentAmount = Number(payment.amount) || 0;
+    if (paymentAmount <= 0) {
+      return res.status(400).json({ error: 'Please enter a valid payment amount greater than zero' });
+    }
+
+    // Format payment date for MySQL DATETIME
+    const nowIso = new Date().toISOString();
+    const defaultMysqlDate = nowIso.slice(0, 19).replace('T', ' ');
+    let pDate = defaultMysqlDate;
+    if (payment.date) {
+      try {
+        const d = new Date(payment.date);
+        pDate = isNaN(d.getTime()) ? defaultMysqlDate : d.toISOString().slice(0, 19).replace('T', ' ');
+      } catch (e) {
+        pDate = defaultMysqlDate;
+      }
+    }
+    
+    // Add new payment record
     const newPayment = {
-      id: `PAY-${Date.now()}`,
-      date: payment.date || new Date().toISOString(),
-      amount: Number(payment.amount),
-      method: payment.method,
-      reference: payment.reference
+      id: `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      date: pDate,
+      amount: paymentAmount,
+      method: payment.method || 'Cash',
+      reference: payment.reference || ''
     };
     
     existingPayments.push(newPayment);
-    const newPaidAmount = Number(invoice.paidAmount || 0) + Number(payment.amount);
-    const newStatus = newPaidAmount >= Number(invoice.total) ? 'paid' : 'sent';
+    const prevPaidAmount = Number(invoice.paidAmount || 0);
+    const newPaidAmount = prevPaidAmount + paymentAmount;
+    
+    const invoiceTotal = Number(invoice.total !== undefined && invoice.total !== null ? invoice.total : (invoice.amount || 0));
+    const newStatus = (invoiceTotal > 0 && newPaidAmount >= invoiceTotal) ? 'paid' : (invoice.status === 'draft' ? 'sent' : (invoice.status || 'sent'));
     
     await db.query('UPDATE invoices SET payments = ?, paidAmount = ?, status = ? WHERE id = ?', [
-        JSON.stringify(existingPayments),
-        newPaidAmount,
-        newStatus,
-        id
-      ]);
+      JSON.stringify(existingPayments),
+      newPaidAmount,
+      newStatus,
+      invoice.id
+    ]);
 
-      // Auto GL: Accrual Basis - Record Payment (Debit Cash, Credit AR)
-      try {
-        let [cashAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
-        let [arAcc] = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" OR name LIKE "%Accounts Receivable%" LIMIT 1');
+    // Auto GL: Accrual Basis - Record Payment (Debit Cash, Credit AR)
+    try {
+      let [cashAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1000" OR subtype LIKE "%bank%" OR subtype LIKE "%cash%" OR name LIKE "%cash%" LIMIT 1');
+      let [arAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1100" OR name LIKE "%Accounts Receivable%" LIMIT 1');
+      
+      if (!cashAcc || cashAcc.length === 0) {
+        const cashId = 'ACC-' + Date.now().toString().slice(-6);
+        await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1000", "Cash and Equivalents", "Asset", "Cash", 0, NOW())', [cashId]);
+        cashAcc = [{ id: cashId }];
+      }
+      if (!arAcc || arAcc.length === 0) {
+        const arId = 'ACC-' + Date.now().toString().slice(-6);
+        await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1100", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', [arId]);
+        arAcc = [{ id: arId }];
+      }
+      
+      if (cashAcc && cashAcc.length > 0 && arAcc && arAcc.length > 0) {
+        const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 100);
         
-        if (cashAcc.length === 0) {
-          const cashId = 'ACC-' + Date.now().toString().slice(-6);
-          await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1000", "Cash and Equivalents", "Asset", "Cash", 0, NOW())', [cashId]);
-          cashAcc = [{ id: cashId }];
-        }
-        if (arAcc.length === 0) {
-          const arId = 'ACC-' + Date.now().toString().slice(-6);
-          await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1100", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', [arId]);
-          arAcc = [{ id: arId }];
-        }
+        await db.query('INSERT INTO journal_entries SET ?', {
+          id: jeId,
+          date: pDate,
+          reference: newPayment.id,
+          description: `Auto GL: Invoice Payment Received (${invoice.invoiceNo || invoice.id})`,
+          totalAmount: paymentAmount
+        });
         
-        if (cashAcc.length > 0 && arAcc.length > 0) {
-          const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
-          const pmtAmount = Number(payment.amount);
-          
-          await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: newPayment.date, reference: newPayment.id, description: 'Auto GL: Invoice Payment Received', totalAmount: pmtAmount });
-          
-          const lines = [
-            ['JL-' + Date.now().toString().slice(-5) + '1', jeId, cashAcc[0].id, pmtAmount, 0, null, null],
-            ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, pmtAmount, invoice.customerId || null, 'Customer']
-          ];
-          
-          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
-          
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [pmtAmount, cashAcc[0].id]);
-          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [pmtAmount, arAcc[0].id]); // Credit AR reduces asset balance
-        }
-      } catch (e) { console.error('Auto GL Payment Error:', e); }
+        const customerPartyId = invoice.customerId || invoice.leadId || null;
+        const lines = [
+          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, cashAcc[0].id, paymentAmount, 0, null, null],
+          ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, paymentAmount, customerPartyId, 'Customer']
+        ];
+        
+        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+        
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [paymentAmount, cashAcc[0].id]);
+        await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [paymentAmount, arAcc[0].id]); // Credit AR reduces asset balance
+      }
+    } catch (e) {
+      console.error('Auto GL Payment Error:', e);
+    }
     
-    res.json({ success: true, payment: newPayment, newStatus, newPaidAmount });
-  } catch (error) {
-    console.error(error);
+    res.json({
+      success: true,
+      payment: newPayment,
+      newStatus,
+      newPaidAmount,
+      payments: existingPayments
+    });
+  } catch (error: any) {
+    console.error('Invoice Payment Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
@@ -3764,7 +3857,30 @@ async function runStartupMigrations() {
     "ALTER TABLE purchase_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
     "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
-    "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL"
+    "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN payments TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN total DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN date DATETIME DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN items TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN notes TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN deliveryDate DATE DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN placeOfSupply VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN quotationNo VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN dispatchNo VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN orderNo VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN poNo VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerVat VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN taxType VARCHAR(50) DEFAULT 'none'",
+    "ALTER TABLE invoices ADD COLUMN invoiceNo VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN modeOfPayment VARCHAR(100) DEFAULT 'Credit'",
+    "ALTER TABLE invoices ADD COLUMN additionalInfo TEXT DEFAULT NULL"
   ];
   for (const p of patches) {
     try { await db.query(p); } catch (e) {}

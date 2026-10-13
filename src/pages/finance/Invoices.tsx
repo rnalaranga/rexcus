@@ -72,29 +72,61 @@ export const Invoices: React.FC = () => {
     setSubmitting(false)
   }
 
+  const parsePayments = (payments: any): any[] => {
+    if (!payments) return [];
+    if (Array.isArray(payments)) return payments;
+    if (typeof payments === 'string' && payments.trim()) {
+      try {
+        const parsed = JSON.parse(payments);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   const handleAddPayment = async () => {
-    if (!viewInvoice || !paymentData.amount) return
-    setSubmitting(true)
+    if (!viewInvoice || !paymentData.amount) return;
+    const pAmount = parseFloat(paymentData.amount);
+    if (isNaN(pAmount) || pAmount <= 0) {
+      showToast('error', 'Please enter a valid payment amount');
+      return;
+    }
+    setSubmitting(true);
     try {
       const { addInvoicePayment } = await import('@/lib/api');
-      const res = await addInvoicePayment(viewInvoice.id, paymentData);
+      const res = await addInvoicePayment(viewInvoice.id, {
+        ...paymentData,
+        amount: pAmount
+      });
       
+      if (res && res.error) {
+        throw new Error(res.error || res.details || 'Failed to record payment');
+      }
+      
+      const existing = parsePayments(viewInvoice.payments);
+      const updatedPayments = res.payments || (res.payment ? [...existing, res.payment] : existing);
+      const newPaid = res.newPaidAmount !== undefined ? res.newPaidAmount : (Number(viewInvoice.paidAmount || 0) + pAmount);
+
       const updatedInvoice = { 
         ...viewInvoice, 
-        status: res.newStatus, 
-        paidAmount: res.newPaidAmount,
-        payments: JSON.stringify([...(viewInvoice.payments ? JSON.parse(viewInvoice.payments) : []), res.payment])
+        status: res.newStatus || viewInvoice.status, 
+        paidAmount: newPaid,
+        payments: JSON.stringify(updatedPayments)
       };
-      setViewInvoice(updatedInvoice)
-      refetch()
-      showToast('success', 'Payment recorded successfully')
-      setShowPaymentModal(false)
-      setPaymentData({ amount: '', method: 'Cash', reference: '' })
-    } catch (e) {
-      showToast('error', 'Failed to record payment')
+      setViewInvoice(updatedInvoice);
+      refetch();
+      showToast('success', 'Payment recorded successfully');
+      setShowPaymentModal(false);
+      setPaymentData({ amount: '', method: 'Cash', reference: '' });
+    } catch (e: any) {
+      console.error('Record payment error:', e);
+      showToast('error', e.message || 'Failed to record payment');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false)
-  }
+  };
 
   const handleCreateManualInvoice = async () => {
     if (!newInvoiceData.leadId) {
@@ -304,23 +336,50 @@ export const Invoices: React.FC = () => {
                   )}
                 </div>
                 
-                {viewInvoice.payments && JSON.parse(viewInvoice.payments).length > 0 ? (
-                  <div className="space-y-2">
-                    {JSON.parse(viewInvoice.payments).map((p: any, i: number) => (
-                      <div key={i} className="bg-surface2 p-3 rounded-xl border border-theme-subtle">
-                        <div className="flex justify-between items-start mb-1">
-                          <p className="text-xs font-bold">{new Date(p.date).toLocaleDateString()}</p>
-                          <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(p.amount)}</span>
+                {(() => {
+                  const invTotal = Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0));
+                  const invPaid = Number(viewInvoice.paidAmount || 0);
+                  const invBalance = Math.max(0, invTotal - invPaid);
+                  const paymentList = parsePayments(viewInvoice.payments);
+                  return (
+                    <>
+                      <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-3 mb-4 space-y-1.5 text-xs">
+                        <div className="flex justify-between text-muted">
+                          <span>Total Amount:</span>
+                          <span className="font-mono font-bold text-primary">{formatCurrency(invTotal)}</span>
                         </div>
-                        <p className="text-[10px] text-muted uppercase">{p.method} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
+                        <div className="flex justify-between text-muted">
+                          <span>Paid to Date:</span>
+                          <span className="font-mono font-bold text-emerald-600">{formatCurrency(invPaid)}</span>
+                        </div>
+                        <div className="flex justify-between text-muted border-t border-theme-subtle/50 pt-1.5">
+                          <span className="font-semibold text-secondary">Balance Due:</span>
+                          <span className={`font-mono font-bold ${invBalance > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                            {formatCurrency(invBalance)}
+                          </span>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-4 bg-surface2/50 rounded-xl border border-dashed border-theme-subtle text-center">
-                    <p className="text-[11px] text-muted italic">No payments recorded</p>
-                  </div>
-                )}
+
+                      {paymentList.length > 0 ? (
+                        <div className="space-y-2">
+                          {paymentList.map((p: any, i: number) => (
+                            <div key={p.id || i} className="bg-surface2 p-3 rounded-xl border border-theme-subtle">
+                              <div className="flex justify-between items-start mb-1">
+                                <p className="text-xs font-bold">{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</p>
+                                <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0)}</span>
+                              </div>
+                              <p className="text-[10px] text-muted uppercase">{p.method || 'Cash'} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-surface2/50 rounded-xl border border-dashed border-theme-subtle text-center">
+                          <p className="text-[11px] text-muted italic">No payments recorded</p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Actions Footer */}
@@ -396,7 +455,7 @@ export const Invoices: React.FC = () => {
                 value={paymentData.amount}
                 onChange={e => setPaymentData({ ...paymentData, amount: e.target.value })}
                 className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
-                placeholder={`Balance: ${Number(viewInvoice.total) - Number(viewInvoice.paidAmount || 0)}`}
+                placeholder={`Balance: ${Math.max(0, (Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0)) - Number(viewInvoice.paidAmount || 0))).toFixed(2)}`}
               />
             </div>
             <div>
