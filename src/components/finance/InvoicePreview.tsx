@@ -52,24 +52,34 @@ export function toWords(num: number): string {
 export function formatGazetteDate(dStr?: string): string {
   if (!dStr) return '-';
   const clean = dStr.trim();
-  const parts = clean.split(/[-/]/);
-  if (parts.length === 3) {
-    if (parts[0].length === 4) {
-      // YYYY-MM-DD -> MM/DD/YYYY
-      const [y, m, d] = parts;
-      return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
-    }
-    if (parts[2].length === 4 && parts[0].length <= 2 && parts[1].length <= 2) {
-      // Already formatted with 4-digit year at end
-      return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
-    }
+  
+  // Extract date part in case dStr contains time (e.g., "2026-10-13 00:00:00" or "2026-10-13T00:00:00.000Z")
+  const datePart = clean.split(/[T\s]/)[0];
+  
+  // Check if datePart matches YYYY-MM-DD or YYYY/MM/DD
+  const ymdMatch = datePart.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (ymdMatch) {
+    const [, y, m, d] = ymdMatch;
+    return m.padStart(2, '0') + '-' + d.padStart(2, '0') + '-' + y;
   }
+
+  // Check if datePart matches MM-DD-YYYY or DD-MM-YYYY or with slash
+  const dmyMatch = datePart.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const [, p1, p2, y] = dmyMatch;
+    return p1.padStart(2, '0') + '-' + p2.padStart(2, '0') + '-' + y;
+  }
+
+  // Fallback to Date object parsing
   const dateObj = new Date(clean);
-  if (isNaN(dateObj.getTime())) return clean;
-  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(dateObj.getDate()).padStart(2, '0');
-  const yyyy = dateObj.getFullYear();
-  return `${mm}/${dd}/${yyyy}`;
+  if (!isNaN(dateObj.getTime())) {
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    const yyyy = dateObj.getFullYear();
+    return mm + '-' + dd + '-' + yyyy;
+  }
+
+  return clean;
 }
 
 export const TEMPLATES = [
@@ -121,7 +131,9 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   company = {}, 
   modeOfPayment,
   taxProfile, 
-  attention 
+  attention,
+  taxBreakdown,
+  taxType
 }) => {
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
@@ -173,11 +185,60 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const paymentModeDisplay = modeOfPayment || 'Credit';
   const amountInWords = toWords(total);
 
-  // VAT Rate label
-  const vatRate = taxProfile?.tax2_rate || taxProfile?.tax1_rate;
-  const vatRateLabel = vatRate 
-    ? `VAT Amount (Total Value of Supply @ ${vatRate}%):`
-    : `VAT Amount (Total Value of Supply @ VAT Rate):`;
+  // VAT Rate determination - ensures percentage is always displayed
+  let displayVatRate: number | string | null = null;
+
+  if (taxProfile) {
+    if (taxProfile.tax2_name === 'VAT' && taxProfile.tax2_rate) {
+      displayVatRate = taxProfile.tax2_rate;
+    } else if (taxProfile.tax1_name === 'VAT' && taxProfile.tax1_rate) {
+      displayVatRate = taxProfile.tax1_rate;
+    } else if (taxProfile.tax2_rate) {
+      displayVatRate = taxProfile.tax2_rate;
+    } else if (taxProfile.tax1_rate) {
+      displayVatRate = taxProfile.tax1_rate;
+    }
+  }
+
+  if (!displayVatRate && taxBreakdown) {
+    if (taxBreakdown.vatRate) displayVatRate = taxBreakdown.vatRate;
+    else if (taxBreakdown.tax2Rate) displayVatRate = taxBreakdown.tax2Rate;
+    else if (taxBreakdown.tax1Rate) displayVatRate = taxBreakdown.tax1Rate;
+  }
+
+  // Derive mathematically from taxAmount and subtotal if not provided
+  if (!displayVatRate && subtotal > 0 && taxAmount > 0) {
+    const rawRate = (taxAmount / subtotal) * 100;
+    const roundedRate = Math.round(rawRate * 10) / 10;
+    if (roundedRate > 0) {
+      displayVatRate = roundedRate;
+    }
+  }
+
+  // Fallback to settings or standard statutory rate (18% in Sri Lanka)
+  if (displayVatRate === null || displayVatRate === undefined) {
+    if (company?.vat_percentage) {
+      displayVatRate = company.vat_percentage;
+    } else if (taxAmount > 0) {
+      displayVatRate = 18;
+    } else if (taxAmount === 0 && (taxType === 'none' || !taxProfile)) {
+      displayVatRate = 0;
+    } else {
+      displayVatRate = 18;
+    }
+  }
+
+  const vatRateLabel = `VAT Amount (Total Value of Supply @ ${displayVatRate}%):`;
+
+  const isMultiTax = Boolean(
+    taxBreakdown && 
+    Number(taxBreakdown.tax1Amount) > 0 && 
+    Number(taxBreakdown.tax2Amount) > 0
+  );
+  const tax1Name = taxProfile?.tax1_name || 'SSCL';
+  const tax1Rate = taxProfile?.tax1_rate || 2.5;
+  const tax2Name = taxProfile?.tax2_name || 'VAT';
+  const tax2Rate = taxProfile?.tax2_rate || displayVatRate || 18;
 
   const borderColor = '#000000';
   const borderWidth = '1.2px';
@@ -410,15 +471,38 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </td>
           </tr>
 
-          {/* VAT AMOUNT */}
-          <tr style={{ borderBottom: tableBorder }}>
-            <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {vatRateLabel}
-            </td>
-            <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-              {taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-          </tr>
+          {/* VAT / TAX BREAKDOWN AMOUNT */}
+          {isMultiTax ? (
+            <>
+              {/* SSCL Amount */}
+              <tr style={{ borderBottom: tableBorder }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                  {`${tax1Name} Amount (Total Value of Supply @ ${tax1Rate}%):`}
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                  {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+              {/* VAT Amount */}
+              <tr style={{ borderBottom: tableBorder }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                  {`${tax2Name} Amount (Total Value of Supply @ ${tax2Rate}%):`}
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                  {Number(taxBreakdown.tax2Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </>
+          ) : (
+            <tr style={{ borderBottom: tableBorder }}>
+              <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                {vatRateLabel}
+              </td>
+              <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                {taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+            </tr>
+          )}
 
           {/* TOTAL CONSIDERATION INCLUDING VAT */}
           <tr style={{ borderBottom: tableBorder }}>
