@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
-import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick, Wrench } from 'lucide-react';
+import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick, Wrench, Building2 } from 'lucide-react';
 import { CurrencyManager } from '@/components/CurrencyManager';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
@@ -12,6 +12,33 @@ export const Settings = () => {
   const [logo, setLogo] = useState<string | null>(settings.company_logo || null);
   const [saving, setSaving] = useState(false);
   const [fixingDb, setFixingDb] = useState(false);
+
+  const [formData, setFormData] = useState({
+    company_name: 'Rex Industries (Pvt) Ltd',
+    company_tin: '114106470-7000',
+    company_address: 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka',
+    company_phone: '0094-31-2233117 / 2233315',
+    company_email: 'info@rexgroup.lk',
+    company_svat: 'SVAT003857',
+    company_web: 'www.rexgroup.lk'
+  });
+
+  useEffect(() => {
+    if (settings && Object.keys(settings).length > 0) {
+      if (settings.company_logo !== undefined) {
+        setLogo(settings.company_logo || null);
+      }
+      setFormData({
+        company_name: settings.company_name || settings.companyName || settings.name || 'Rex Industries (Pvt) Ltd',
+        company_tin: settings.company_tin || settings.tin || settings.company_vat || settings.companyVat || settings.vat || '114106470-7000',
+        company_address: settings.company_address || settings.companyAddress || settings.address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka',
+        company_phone: settings.company_phone || settings.companyPhone || settings.phone || '0094-31-2233117 / 2233315',
+        company_email: settings.company_email || settings.companyEmail || settings.email || 'info@rexgroup.lk',
+        company_svat: settings.company_svat || settings.svat || 'SVAT003857',
+        company_web: settings.company_web || settings.web || 'www.rexgroup.lk'
+      });
+    }
+  }, [settings]);
 
   const [sysStats, setSysStats] = useState<any>(null);
 
@@ -82,7 +109,33 @@ export const Settings = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ company_logo: logo || '' });
+      await updateSettings({ 
+        company_logo: logo || '',
+        company_name: formData.company_name,
+        companyName: formData.company_name,
+        name: formData.company_name,
+        company_tin: formData.company_tin,
+        tin: formData.company_tin,
+        company_vat: formData.company_tin,
+        companyVat: formData.company_tin,
+        vat: formData.company_tin,
+        company_address: formData.company_address,
+        companyAddress: formData.company_address,
+        address: formData.company_address,
+        company_phone: formData.company_phone,
+        companyPhone: formData.company_phone,
+        phone: formData.company_phone,
+        company_email: formData.company_email,
+        companyEmail: formData.company_email,
+        email: formData.company_email,
+        company_svat: formData.company_svat,
+        svat: formData.company_svat,
+        company_web: formData.company_web,
+        web: formData.company_web
+      });
+      toast('Settings saved successfully!', 'success');
+    } catch (e: any) {
+      toast('Failed to save settings: ' + (e.message || 'Error'), 'error');
     } finally {
       setSaving(false);
     }
@@ -93,7 +146,7 @@ export const Settings = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">System Settings</h1>
-          <p className="text-sm text-secondary mt-1">Configure global application preferences and branding.</p>
+          <p className="text-sm text-secondary mt-1">Configure global application preferences, company profile, and invoice branding.</p>
         </div>
         <Button variant="primary" icon={Save} onClick={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Save Settings'}
@@ -101,6 +154,105 @@ export const Settings = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Company Profile & Tax Details */}
+        <GlassCard className="p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Building2 className="w-4 h-4 text-rex-500" />
+            <h2 className="text-sm font-bold text-primary uppercase tracking-widest">Company & Tax Profile</h2>
+          </div>
+          <p className="text-xs text-muted mb-4">Official business address, TIN, and contact info displayed on Tax Invoices and Quotations.</p>
+
+          <div className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Company / Supplier Name</label>
+              <input 
+                type="text"
+                value={formData.company_name}
+                onChange={e => setFormData({ ...formData, company_name: e.target.value })}
+                placeholder="e.g. Rex Industries (Pvt) Ltd"
+                className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                  Supplier's TIN / VAT <span className="text-rex-500">*</span>
+                </label>
+                <input 
+                  type="text"
+                  value={formData.company_tin}
+                  onChange={e => setFormData({ ...formData, company_tin: e.target.value })}
+                  placeholder="e.g. 114106470-7000"
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all font-mono font-bold"
+                />
+                <p className="text-[10px] text-muted mt-0.5">Appears as Supplier's TIN on Tax Invoices</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">SVAT No. (Optional)</label>
+                <input 
+                  type="text"
+                  value={formData.company_svat}
+                  onChange={e => setFormData({ ...formData, company_svat: e.target.value })}
+                  placeholder="e.g. SVAT003857"
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                Company Address <span className="text-rex-500">*</span>
+              </label>
+              <textarea 
+                rows={3}
+                value={formData.company_address}
+                onChange={e => setFormData({ ...formData, company_address: e.target.value })}
+                placeholder="e.g. No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka"
+                className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all resize-y"
+              />
+              <p className="text-[10px] text-muted mt-0.5">Appears under Supplier's Address on Tax Invoices</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Telephone No.</label>
+                <input 
+                  type="text"
+                  value={formData.company_phone}
+                  onChange={e => setFormData({ ...formData, company_phone: e.target.value })}
+                  placeholder="e.g. 0094-31-2233117 / 2233315"
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Email Address</label>
+                <input 
+                  type="email"
+                  value={formData.company_email}
+                  onChange={e => setFormData({ ...formData, company_email: e.target.value })}
+                  placeholder="e.g. info@rexgroup.lk"
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Website</label>
+              <input 
+                type="text"
+                value={formData.company_web}
+                onChange={e => setFormData({ ...formData, company_web: e.target.value })}
+                placeholder="e.g. www.rexgroup.lk"
+                className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* Branding & Logo */}
         <GlassCard className="p-6">
           <h2 className="text-sm font-bold text-primary uppercase tracking-widest mb-4">Branding & Logo</h2>
           <div className="space-y-4">

@@ -74,14 +74,22 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 : <div className="text-5xl font-black text-red-600 tracking-tighter" style={{fontFamily: 'Impact, sans-serif'}}>REX</div>}
             </div>
             <div className="w-[65%] pl-4">
-              <h1 className="text-[22px] font-black mb-2" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>REX INDUSTRIES (PVT) LTD</h1>
+              <h1 className="text-[22px] font-black mb-2" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>
+                {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
+              </h1>
               <table className="text-[12px] leading-tight w-full" style={{fontFamily: 'Courier New, Courier, monospace'}}>
                 <tbody>
-                  <tr><td className="font-bold w-16 align-top">Office</td><td>: No.451/2,Chilaw Road, Kattuwa,<br/>  Negombo,11500,Sri Lanka</td></tr>
-                  <tr><td className="font-bold">Tel.</td><td>: 0094-31-2233117 / 2233315 / 2223136</td></tr>
-                  <tr><td className="font-bold">E-mail</td><td>: info@rexgroup.lk</td></tr>
-                  <tr><td className="font-bold">Web</td><td>: www.rexgroup.lk</td></tr>
-                  <tr><td className="font-bold">VAT</td><td className="font-bold">: No:114106470-7000  SVAT No:SVAT003857</td></tr>
+                  <tr>
+                    <td className="font-bold w-16 align-top">Office</td>
+                    <td style={{ whiteSpace: 'pre-wrap' }}>: {settings?.company_address || settings?.companyAddress || 'No.451/2,Chilaw Road, Kattuwa,\n  Negombo,11500,Sri Lanka'}</td>
+                  </tr>
+                  <tr><td className="font-bold">Tel.</td><td>: {settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}</td></tr>
+                  <tr><td className="font-bold">E-mail</td><td>: {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}</td></tr>
+                  <tr><td className="font-bold">Web</td><td>: {settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}</td></tr>
+                  <tr>
+                    <td className="font-bold">VAT</td>
+                    <td className="font-bold">: No:{settings?.company_tin || settings?.company_vat || settings?.tin || '114106470-7000'}  SVAT No:{settings?.company_svat || 'SVAT003857'}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

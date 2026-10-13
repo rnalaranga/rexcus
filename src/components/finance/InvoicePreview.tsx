@@ -239,20 +239,20 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             <div>
               <div style={{ marginBottom: '3px' }}>
                 <span style={{ fontWeight: '700' }}>Supplier's TIN :</span>{' '}
-                <span>{company.vat || company.tin || '-'}</span>
+                <span>{company.company_tin || company.tin || company.company_vat || company.vat || '114106470-7000'}</span>
               </div>
               <div style={{ marginBottom: '3px' }}>
                 <span style={{ fontWeight: '700' }}>Supplier's Name :</span>{' '}
-                <span>{company.name || 'Rex Industries (Pvt) Ltd'}</span>
+                <span>{company.company_name || company.companyName || company.name || 'Rex Industries (Pvt) Ltd'}</span>
               </div>
               <div style={{ marginBottom: '3px' }}>
                 <span style={{ fontWeight: '700' }}>Address :</span>{' '}
-                <span>{company.address || '-'}</span>
+                <span style={{ whiteSpace: 'pre-wrap' }}>{company.company_address || company.companyAddress || company.address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}</span>
               </div>
             </div>
             <div style={{ marginTop: '6px' }}>
               <span style={{ fontWeight: '700' }}>Telephone No.:*</span>{' '}
-              <span>{company.phone || '-'}</span>
+              <span>{company.company_phone || company.companyPhone || company.phone || '+94 31 2233117 / 2233315'}</span>
             </div>
           </div>
 

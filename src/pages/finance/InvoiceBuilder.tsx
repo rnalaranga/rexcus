@@ -64,7 +64,23 @@ export const InvoiceBuilder: React.FC = () => {
     // Fetch company settings
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
       .then(r => r.json())
-      .then(s => setCompany({ name: s.companyName || 'Your Company', address: s.companyAddress || '', phone: s.companyPhone || '', email: s.companyEmail || '', vat: s.companyVat || '', brNumber: s.companyBr || '', bankName: s.companyBankName || '', accountNo: s.companyAccountNo || '', tagline: s.invoiceTagline || 'Thank you for your business!', logo: s.companyLogo || '' }))
+      .then(s => setCompany({ 
+        name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd', 
+        address: s.company_address || s.companyAddress || s.address || '', 
+        phone: s.company_phone || s.companyPhone || s.phone || '', 
+        email: s.company_email || s.companyEmail || s.email || '', 
+        vat: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '', 
+        tin: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '', 
+        company_tin: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '',
+        company_address: s.company_address || s.companyAddress || s.address || '',
+        company_phone: s.company_phone || s.companyPhone || s.phone || '',
+        company_name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd',
+        brNumber: s.companyBr || s.brNumber || '', 
+        bankName: s.companyBankName || s.bankName || '', 
+        accountNo: s.companyAccountNo || s.accountNo || '', 
+        tagline: s.invoiceTagline || 'Thank you for your business!', 
+        logo: s.company_logo || s.companyLogo || '' 
+      }))
       .catch(() => {});
   }, []);
 
