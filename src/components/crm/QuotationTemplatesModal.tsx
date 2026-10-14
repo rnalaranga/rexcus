@@ -32,6 +32,7 @@ export interface QuotationTemplate {
   delivery?: string;
   taxProfileId?: string;
   boms?: any[];
+  data?: any;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -47,6 +48,7 @@ export interface QuotationTemplatesModalProps {
     custDelivery?: string;
     selectedProfileId?: string;
     boms?: any[];
+    fullSnapshot?: any;
   };
   onApplyTemplate?: (template: QuotationTemplate, mode: 'replace' | 'append') => void;
   onSelectForNewQuote?: (template: QuotationTemplate) => void;
@@ -284,6 +286,18 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={() => {
+                onClose();
+                window.location.href = '/crm/quotations/new?mode=template';
+              }}
+              className="text-xs bg-purple-600 hover:bg-purple-500 text-white border-none shadow-xs"
+            >
+              Build in Quotation Builder
+            </Button>
             {currentQuotationData && (
               <Button
                 variant="ghost"
@@ -387,9 +401,19 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
                             </div>
                             <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                               <button
+                                onClick={() => {
+                                  onClose();
+                                  window.location.href = `/crm/quotations/new?mode=template&editTemplateId=${tpl.id}`;
+                                }}
+                                className="p-1.5 hover:bg-purple-500/10 rounded-lg text-muted hover:text-purple-600 transition-colors"
+                                title="Edit in Full Quotation Builder"
+                              >
+                                <LayoutTemplate size={13} />
+                              </button>
+                              <button
                                 onClick={() => handleOpenEdit(tpl)}
                                 className="p-1.5 hover:bg-surface2 rounded-lg text-muted hover:text-primary transition-colors"
-                                title="Edit Template"
+                                title="Quick Edit Properties"
                               >
                                 <Edit3 size={13} />
                               </button>
@@ -421,6 +445,11 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
                             <span className="flex items-center gap-1 bg-surface2 px-2 py-0.5 rounded-md font-medium">
                               <Layers size={11} className="text-rex-500" /> {itemCount} Item{itemCount !== 1 ? 's' : ''}
                             </span>
+                            {Boolean((tpl.boms && tpl.boms.length > 0) || (tpl.data?.boms && tpl.data.boms.length > 0)) && (
+                              <span className="flex items-center gap-1 bg-purple-500/10 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded-md font-semibold">
+                                <Bookmark size={11} /> {(tpl.boms?.length || tpl.data?.boms?.length)} BOM(s)
+                              </span>
+                            )}
                             {tpl.validity && (
                               <span className="flex items-center gap-1 bg-surface2 px-2 py-0.5 rounded-md font-medium">
                                 <Clock size={11} className="text-amber-500" /> {tpl.validity}

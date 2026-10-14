@@ -719,6 +719,7 @@ CREATE TABLE IF NOT EXISTS `quotation_templates` (
   `delivery` varchar(100) DEFAULT NULL,
   `taxProfileId` varchar(50) DEFAULT NULL,
   `boms` longtext,
+  `data` longtext DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
@@ -729,4 +730,8 @@ INSERT INTO quotation_templates (id, name, description, subject, items, terms, v
 ('QTPL-0002', 'Sheet Metal & Enclosure Fabrication', 'Laser cutting, CNC bending, and industrial enclosure manufacturing', 'Quotation for Sheet Metal Laser Cutting & Powder Coated Enclosure', '[{"desc":"Custom Heavy-Duty Sheet Metal Enclosure with Hinged Door & Locking mechanism","qty":1,"unitPrice":48000,"unit":"sets","note":"1.5mm CRCA Sheet with 7-tank pretreatment"},{"desc":"Electrostatic Epoxy Polyester Powder Coating (RAL 7035 Grey)","qty":1,"unitPrice":6500,"unit":"lot","note":"Dry film thickness 60-80 microns"}]', '1. Advance: 50% with confirmed PO, balance 50% upon delivery.\n2. Raw material price escalation: Valid for 14 days due to steel price volatility.\n3. Loading / Unloading at site by client unless specified.', '14 Days', '10-15 Working Days', NOW(), NOW()),
 ('QTPL-0003', 'Industrial Machinery Repair & Maintenance', 'Routine overhauling, on-site service, bushing replacement, and mechanical maintenance', 'Quotation for Machinery Overhaul & Preventative Maintenance', '[{"desc":"Technical Labor: Dismantling, Shaft Alignment & Bearing Replacement","qty":1,"unitPrice":35000,"unit":"service","note":"REX senior mechanical maintenance crew"},{"desc":"Machining of Custom Bronze Bushings & Pin Fabrication","qty":2,"unitPrice":8500,"unit":"pcs","note":"Phosphor Bronze SAE 660"}]', '1. Payment: 100% on submission of service sign-off report.\n2. Any unforeseen extra replacement parts will be quoted separately before execution.\n3. Work carried out under REX warranty of 90 days.', '30 Days', '3-5 Working Days', NOW(), NOW())
 ON DUPLICATE KEY UPDATE name=VALUES(name);
+
+ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL;
+
+INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]');
 

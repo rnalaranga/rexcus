@@ -185,9 +185,17 @@ export interface BOM {
 
 export const QuotationBuilder: React.FC = () => {
   const { leadId } = useParams<{ leadId: string }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const quoteIdParam = searchParams.get('quoteId')
   const previewParam = searchParams.get('preview') === 'true'
+  const isTemplateMode = searchParams.get('mode') === 'template'
+  const editTemplateId = searchParams.get('editTemplateId')
+  const templateIdParam = searchParams.get('templateId')
+
+  const [showSaveAsTemplateModal, setShowSaveAsTemplateModal] = useState(false)
+  const [templateSaveName, setTemplateSaveName] = useState('')
+  const [templateSaveDesc, setTemplateSaveDesc] = useState('')
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const navigate = useNavigate()
   
   const { data: leads, loading } = useLeads()
@@ -956,14 +964,36 @@ export const QuotationBuilder: React.FC = () => {
   const [showTemplatesModal, setShowTemplatesModal] = useState(false)
 
   const handleApplyTemplate = (tpl: QuotationTemplate, mode: 'replace' | 'append') => {
-    if (tpl.subject) setSubject(tpl.subject)
-    if (tpl.terms) setCustTerms(tpl.terms)
-    if (tpl.validity) setCustValidity(tpl.validity)
-    if (tpl.delivery) setCustDelivery(tpl.delivery)
-    if (tpl.taxProfileId) setSelectedProfileId(tpl.taxProfileId)
+    const snap = tpl.data || {}
 
-    if (tpl.items && tpl.items.length > 0) {
-      const formattedItems = tpl.items.map((it: any, idx: number) => ({
+    if (tpl.subject || snap.subject) setSubject(tpl.subject || snap.subject)
+    if (tpl.terms || snap.custTerms) setCustTerms(tpl.terms || snap.custTerms)
+    if (tpl.validity || snap.custValidity) setCustValidity(tpl.validity || snap.custValidity)
+    if (tpl.delivery || snap.custDelivery) setCustDelivery(tpl.delivery || snap.custDelivery)
+    if (tpl.taxProfileId || snap.selectedProfileId) setSelectedProfileId(tpl.taxProfileId || snap.selectedProfileId)
+    if (snap.taxEnabled !== undefined) setTaxEnabled(snap.taxEnabled)
+    if (snap.jobQty) setJobQty(snap.jobQty)
+    if (snap.custDiscount !== undefined) setCustDiscount(snap.custDiscount)
+    if (snap.custDiscountType) setCustDiscountType(snap.custDiscountType)
+    if (snap.custDiscountAmount !== undefined) setCustDiscountAmount(snap.custDiscountAmount)
+
+    // Restore full BOMs if available
+    const bomsToRestore = (snap.boms && snap.boms.length > 0) ? snap.boms : (tpl.boms && tpl.boms.length > 0 ? tpl.boms : null)
+    if (bomsToRestore) {
+      if (mode === 'replace') {
+        setBoms(bomsToRestore)
+      } else {
+        setBoms(prev => [
+          ...prev, 
+          ...bomsToRestore.map((b: any, idx: number) => ({ ...b, id: Date.now() + idx, title: `${b.title || 'BOM'} (Template)` }))
+        ])
+      }
+    }
+
+    // Restore customer items
+    const rawItems = (snap.custItems && snap.custItems.length > 0) ? snap.custItems : (tpl.items || [])
+    if (rawItems && rawItems.length > 0) {
+      const formattedItems = rawItems.map((it: any, idx: number) => ({
         id: Date.now() + idx,
         desc: it.desc || '',
         qty: Number(it.qty) || 1,
@@ -981,26 +1011,94 @@ export const QuotationBuilder: React.FC = () => {
       }
     }
 
+    // If we're creating a quotation from this template, clear quoteId and quotationNo so it's a fresh quote!
+    if (!isTemplateMode) {
+      setCurrentId(null)
+      setDraftId(null)
+      setQuotationNo('')
+    }
+
     showToast('success', `Applied template: ${tpl.name}`)
   }
 
-  const templateIdParam = searchParams.get('templateId')
+  const handleSaveAsTemplate = async () => {
+    if (!templateSaveName.trim()) {
+      showToast('error', 'Please enter a template name.')
+      return
+    }
+
+    setIsSavingTemplate(true)
+    try {
+      const snapshot: any = {
+        docNo, issueNo, issueDate, quoDate, jobQty, subject,
+        taxEnabled, selectedProfileId,
+        boms,
+        custItems, custTerms, custValidity, custDelivery, custDiscount,
+        custDiscountType, custDiscountAmount,
+        custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+        jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+        selectedProfile, custSscl, custVat, jobSscl, jobVat
+      }
+
+      const payload = {
+        name: templateSaveName.trim(),
+        description: templateSaveDesc.trim(),
+        subject: subject.trim(),
+        validity: custValidity.trim(),
+        delivery: custDelivery.trim(),
+        terms: custTerms.trim(),
+        taxProfileId: selectedProfileId || null,
+        items: custItems.filter(i => i.desc.trim() !== ''),
+        boms,
+        data: snapshot
+      }
+
+      if (editTemplateId) {
+        const res = await fetch(`http://localhost:3000/api/quotation-templates/${editTemplateId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (!res.ok) throw new Error('Failed to update template')
+        showToast('success', `Template "${templateSaveName}" updated successfully!`)
+      } else {
+        const res = await fetch('http://localhost:3000/api/quotation-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (!res.ok) throw new Error('Failed to create template')
+        showToast('success', `Quotation saved as template: "${templateSaveName}"! You can now use it for any customer.`)
+      }
+
+      setShowSaveAsTemplateModal(false)
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to save template')
+    } finally {
+      setIsSavingTemplate(false)
+    }
+  }
+
   const templateLoadedRef = useRef(false)
 
   useEffect(() => {
-    if (templateIdParam && !templateLoadedRef.current) {
+    const tplId = editTemplateId || templateIdParam
+    if (tplId && !templateLoadedRef.current) {
       templateLoadedRef.current = true
-      fetch('http://localhost:3000/api/quotation-templates')
+      fetch(`http://localhost:3000/api/quotation-templates/${tplId}`)
         .then(r => r.json())
-        .then((tpls: QuotationTemplate[]) => {
-          const found = tpls.find(t => t.id === templateIdParam)
-          if (found) {
-            handleApplyTemplate(found, 'replace')
+        .then((tpl: QuotationTemplate) => {
+          if (tpl) {
+            handleApplyTemplate(tpl, 'replace')
+            if (editTemplateId) {
+              setTemplateSaveName(tpl.name || '')
+              setTemplateSaveDesc(tpl.description || '')
+            }
           }
         })
         .catch(console.error)
     }
-  }, [templateIdParam])
+  }, [editTemplateId, templateIdParam])
 
   if (loading) return <div className="p-8 text-center animate-pulse text-muted">Loading...</div>
   if (leadId && !lead) return <div className="p-8 text-center text-red-500">Lead not found.</div>
@@ -1018,14 +1116,25 @@ export const QuotationBuilder: React.FC = () => {
           </button>
           <div>
             <div className="flex items-center gap-3">
-               <h1 className="text-lg font-black text-primary tracking-tight">Quotation Builder</h1>
-               {saveStatus !== 'idle' && (
+               <h1 className="text-lg font-black text-primary tracking-tight">
+                 {isTemplateMode ? 'Quotation Template Builder' : 'Quotation Builder'}
+               </h1>
+               {isTemplateMode && (
+                 <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30">
+                   {editTemplateId ? 'Edit Template' : 'Template Mode'}
+                 </span>
+               )}
+               {!isTemplateMode && saveStatus !== 'idle' && (
                  <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${saveStatus === 'saving' ? 'bg-orange-500/10 text-orange-500 animate-pulse' : 'bg-emerald-500/10 text-emerald-500'}`}>
                    {saveStatus === 'saving' ? 'Auto-saving...' : 'Saved to Drafts'}
                  </span>
                )}
             </div>
-            <p className="text-[11px] text-muted mt-0.5">{lead?.name || customerName || 'Walk-in Customer'}{lead?.company ? ' · ' + lead.company : ''}</p>
+            <p className="text-[11px] text-muted mt-0.5">
+              {isTemplateMode 
+                ? (templateSaveName ? `Template: ${templateSaveName}` : 'Reusable Template (BOMs, operations, materials & pricing)')
+                : ((lead?.name || customerName || 'Walk-in Customer') + (lead?.company ? ' · ' + lead.company : ''))}
+            </p>
           </div>
         </div>
 
@@ -1033,10 +1142,21 @@ export const QuotationBuilder: React.FC = () => {
         <div className="flex gap-2">
           <button onClick={() => setShowTemplatesModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors"
-            title="Load or Save Quotation Templates"
+            title="Browse Quotation Templates"
           >
             <Bookmark size={14} className="text-rex-500" /> Templates
           </button>
+          
+          <button onClick={() => {
+              setTemplateSaveName(templateSaveName || subject || '');
+              setShowSaveAsTemplateModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-purple-500/40 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 transition-colors"
+            title="Save this entire quotation (BOMs, machining, materials, pricing) as a reusable template"
+          >
+            <Bookmark size={14} /> {isTemplateMode && editTemplateId ? 'Update Template' : 'Save as Template'}
+          </button>
+
           <button onClick={() => setShowHistory(p => !p)}
             className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ' + 
             (showHistory ? 'bg-surface2 border-rex-500/50 text-primary' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2')}
@@ -1054,9 +1174,19 @@ export const QuotationBuilder: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
             <Download size={14} /> Preview
           </button>
-          <Button variant="primary" icon={Save} onClick={() => handleSave()} disabled={isSaving} className="text-xs">
-            {isSaving ? 'Saving...' : 'Save Quotation'}
-          </Button>
+
+          {!isTemplateMode ? (
+            <Button variant="primary" icon={Save} onClick={() => handleSave()} disabled={isSaving} className="text-xs">
+              {isSaving ? 'Saving...' : 'Save Quotation'}
+            </Button>
+          ) : (
+            <Button variant="primary" icon={Save} onClick={() => {
+              setTemplateSaveName(templateSaveName || subject || '');
+              setShowSaveAsTemplateModal(true);
+            }} className="text-xs bg-purple-600 hover:bg-purple-500 text-white border-none shadow-xs">
+              {editTemplateId ? 'Update Template' : 'Save Template'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1131,6 +1261,27 @@ export const QuotationBuilder: React.FC = () => {
           </div>
 
           <div className="p-5">
+            {isTemplateMode && (
+              <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/25 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Bookmark size={16} className="text-purple-500 shrink-0" />
+                  <div>
+                    <span className="text-xs font-bold text-purple-600 dark:text-purple-300">Template Blueprint Mode</span>
+                    <p className="text-[10px] text-muted">Customer details are omitted in templates. Configure default BOMs, operations, materials, and pricing below.</p>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setSearchParams({});
+                    showToast('success', 'Switched to Quotation mode! Select a customer below to create a quotation.');
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-bold text-rex-600 dark:text-rex-400 border border-rex-500/30 rounded-lg hover:bg-rex-500/10 shrink-0 transition-colors"
+                >
+                  Create Quote with This
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
               
               {/* Left Column */}
@@ -2146,10 +2297,95 @@ export const QuotationBuilder: React.FC = () => {
           custValidity,
           custDelivery,
           selectedProfileId,
-          boms
+          boms,
+          fullSnapshot: {
+            docNo, issueNo, issueDate, quoDate, jobQty, subject,
+            taxEnabled, selectedProfileId,
+            boms,
+            custItems, custTerms, custValidity, custDelivery, custDiscount,
+            custDiscountType, custDiscountAmount,
+            custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+            jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+            selectedProfile, custSscl, custVat, jobSscl, jobVat
+          }
         }}
         onApplyTemplate={handleApplyTemplate}
       />
+
+      {/* Save as Template Modal */}
+      <Modal 
+        isOpen={showSaveAsTemplateModal} 
+        onClose={() => setShowSaveAsTemplateModal(false)} 
+        title={isTemplateMode && editTemplateId ? 'Update Quotation Template' : 'Save Quotation as Template'} 
+        size="md"
+      >
+        <div className="p-5 space-y-4">
+          <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-600 dark:text-purple-300 leading-relaxed font-medium">
+            This will save the entire quotation structure (all BOMs, materials, machining operations, cycle times, custom items, and terms) as a reusable template.
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-secondary mb-1.5 uppercase tracking-wider">
+              Template Name <span className="text-red-500">*</span>
+            </label>
+            <input 
+              type="text" 
+              className="w-full input-base font-semibold"
+              value={templateSaveName} 
+              onChange={e => setTemplateSaveName(e.target.value)} 
+              placeholder="e.g. Standard Precision CNC Shaft Machining"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-secondary mb-1.5 uppercase tracking-wider">
+              Description / Notes
+            </label>
+            <textarea 
+              rows={2}
+              className="w-full input-base"
+              value={templateSaveDesc} 
+              onChange={e => setTemplateSaveDesc(e.target.value)} 
+              placeholder="Brief description of when this template should be used..."
+            />
+          </div>
+
+          <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-3 text-[11px] space-y-1.5 text-muted">
+            <div className="flex justify-between font-semibold text-primary">
+              <span>Subject:</span>
+              <span className="truncate max-w-[220px]">{subject || 'Untitled'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>BOMs Included:</span>
+              <span className="font-bold text-rex-500">{boms.length} BOM(s) with Process Costing</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Customer Items:</span>
+              <span className="font-bold text-rex-500">{custItems.filter(i => i.desc.trim() !== '').length} Line Item(s)</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Validity & Delivery:</span>
+              <span>{custValidity} | {custDelivery || 'Standard'}</span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button variant="ghost" onClick={() => setShowSaveAsTemplateModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="primary" 
+              icon={Bookmark} 
+              onClick={handleSaveAsTemplate} 
+              disabled={isSavingTemplate}
+              className="bg-purple-600 hover:bg-purple-500 text-white border-none shadow-xs"
+            >
+              {isSavingTemplate ? 'Saving...' : (isTemplateMode && editTemplateId ? 'Update Template' : 'Save Template')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   )

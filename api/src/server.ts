@@ -415,6 +415,7 @@ app.post('/api/settings/fix-db', async (req, res) => {
         delivery VARCHAR(100) DEFAULT NULL,
         taxProfileId VARCHAR(50) DEFAULT NULL,
         boms LONGTEXT DEFAULT NULL,
+        data LONGTEXT DEFAULT NULL,
         createdAt DATETIME DEFAULT NULL,
         updatedAt DATETIME DEFAULT NULL
       )`
@@ -604,6 +605,7 @@ app.post('/api/settings/fix-db', async (req, res) => {
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL",
     ];
 
     for (const patch of patches) {
@@ -1140,6 +1142,7 @@ app.get('/api/quotation-templates', async (req, res) => {
       ...r,
       items: typeof r.items === 'string' ? JSON.parse(r.items || '[]') : (r.items || []),
       boms: typeof r.boms === 'string' ? JSON.parse(r.boms || '[]') : (r.boms || []),
+      data: typeof r.data === 'string' ? JSON.parse(r.data || '{}') : (r.data || null),
     }));
     res.json(parsed);
   } catch (error: any) {
@@ -1148,15 +1151,36 @@ app.get('/api/quotation-templates', async (req, res) => {
   }
 });
 
+app.get('/api/quotation-templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT * FROM quotation_templates WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    const r = rows[0];
+    const parsed = {
+      ...r,
+      items: typeof r.items === 'string' ? JSON.parse(r.items || '[]') : (r.items || []),
+      boms: typeof r.boms === 'string' ? JSON.parse(r.boms || '[]') : (r.boms || []),
+      data: typeof r.data === 'string' ? JSON.parse(r.data || '{}') : (r.data || null),
+    };
+    res.json(parsed);
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to fetch quotation template' });
+  }
+});
+
 app.post('/api/quotation-templates', async (req, res) => {
   try {
-    const { name, description, subject, items, terms, validity, delivery, taxProfileId, boms } = req.body;
+    const { name, description, subject, items, terms, validity, delivery, taxProfileId, boms, data } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Template name is required' });
     }
     const id = `QTPL-${Date.now().toString().slice(-6)}`;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const newTemplate = {
+    const newTemplate: any = {
       id,
       name,
       description: description || null,
@@ -1167,11 +1191,12 @@ app.post('/api/quotation-templates', async (req, res) => {
       delivery: delivery || null,
       taxProfileId: taxProfileId || null,
       boms: JSON.stringify(boms || []),
+      data: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : null,
       createdAt: now,
       updatedAt: now
     };
     await db.query('INSERT INTO quotation_templates SET ?', newTemplate);
-    res.json({ success: true, template: { ...newTemplate, items: items || [], boms: boms || [] } });
+    res.json({ success: true, template: { ...newTemplate, items: items || [], boms: boms || [], data: data || null } });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Failed to create quotation template' });
@@ -1181,7 +1206,7 @@ app.post('/api/quotation-templates', async (req, res) => {
 app.put('/api/quotation-templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, subject, items, terms, validity, delivery, taxProfileId, boms } = req.body;
+    const { name, description, subject, items, terms, validity, delivery, taxProfileId, boms, data } = req.body;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const updateData: any = {
       updatedAt: now
@@ -1195,6 +1220,7 @@ app.put('/api/quotation-templates/:id', async (req, res) => {
     if (delivery !== undefined) updateData.delivery = delivery;
     if (taxProfileId !== undefined) updateData.taxProfileId = taxProfileId;
     if (boms !== undefined) updateData.boms = JSON.stringify(boms);
+    if (data !== undefined) updateData.data = typeof data === 'string' ? data : JSON.stringify(data);
 
     await db.query('UPDATE quotation_templates SET ? WHERE id = ?', [updateData, id]);
     res.json({ success: true, id });
