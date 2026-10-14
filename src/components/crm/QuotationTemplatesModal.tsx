@@ -373,12 +373,9 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
                 <div className="p-12 text-center border-2 border-dashed border-theme-subtle rounded-2xl">
                   <Bookmark size={32} className="mx-auto text-muted mb-3 opacity-40" />
                   <h4 className="text-sm font-bold text-primary mb-1">No Quotation Templates Found</h4>
-                  <p className="text-xs text-muted mb-4 max-w-sm mx-auto">
-                    Create reusable quotation templates with pre-configured line items, subjects, and terms to speed up quotation preparation.
+                  <p className="text-xs text-muted max-w-sm mx-auto">
+                    {search ? 'No templates match your search criteria.' : 'Create reusable quotation templates with pre-configured line items, BOMs, and terms.'}
                   </p>
-                  <Button variant="primary" size="sm" icon={Plus} onClick={handleOpenBlankCreate}>
-                    Create Your First Template
-                  </Button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
