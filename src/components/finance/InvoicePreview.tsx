@@ -107,6 +107,7 @@ export interface InvoicePreviewProps {
   modeOfPayment?: string;
   taxProfile?: any;
   attention?: string;
+  bankDetails?: any;
   [key: string]: any;
 }
 
@@ -133,7 +134,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   taxProfile, 
   attention,
   taxBreakdown,
-  taxType
+  taxType,
+  bankDetails
 }) => {
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
@@ -230,6 +232,22 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
   const vatRateLabel = `VAT Amount (Total Value of Supply @ ${displayVatRate}%):`;
 
+  let activeBank: any = null;
+  if (bankDetails && bankDetails !== 'none') {
+    if (typeof bankDetails === 'string') {
+      try { activeBank = JSON.parse(bankDetails); } catch (e) {}
+    } else if (typeof bankDetails === 'object') {
+      activeBank = bankDetails;
+    }
+  } else if (bankDetails !== 'none' && company?.company_bank_details) {
+    try {
+      const parsed = JSON.parse(company.company_bank_details);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        activeBank = parsed.find((b: any) => b.isDefault) || parsed[0];
+      }
+    } catch (e) {}
+  }
+
     // Check whether tax1 (SSCL) and tax2 (VAT) are hidden (absorbed) or shown separately
   const hasTax1 = Boolean(taxProfile && Number(taxProfile.tax1_rate) > 0);
   const hasTax2 = Boolean(taxProfile && Number(taxProfile.tax2_rate) > 0);
@@ -262,6 +280,15 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const minRows = 5;
   const emptyRowsCount = Math.max(0, minRows - items.length);
 
+  // Check whether tax is shown separately (if not shown separately, title should be "INVOICE" instead of "TAX INVOICE")
+  const isTaxShownSeparately = Boolean(
+    (isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0)) ||
+    (isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0)
+  );
+  const invoiceTitle = isTaxShownSeparately ? 'TAX INVOICE' : 'INVOICE';
+  const invoiceDocLabel = isTaxShownSeparately ? 'Tax Invoice No. :' : 'Invoice No. :';
+  const logoSrc = company?.company_logo || company?.logo || company?.companyLogo;
+
   return (
     <div 
       id="invoice-preview" 
@@ -278,32 +305,61 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         boxSizing: 'border-box' 
       }}
     >
-      {/* ── 1. TITLE: Prominently titled "TAX INVOICE" in a centered box ── */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
+      {/* ── 1. HEADER: Logo on the Left, Title on the Right ── */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '14px',
+        minHeight: '48px'
+      }}>
+        {/* Left: Company Logo */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {logoSrc ? (
+            <img 
+              src={logoSrc} 
+              alt="Company Logo" 
+              style={{ maxHeight: '50px', maxWidth: '190px', objectFit: 'contain' }} 
+            />
+          ) : (
+            <div style={{ 
+              fontSize: '32px', 
+              fontWeight: '900', 
+              color: '#dc2626', 
+              fontFamily: 'Impact, Arial Black, sans-serif',
+              letterSpacing: '-1px',
+              lineHeight: 1
+            }}>
+              REX
+            </div>
+          )}
+        </div>
+
+        {/* Right: INVOICE / TAX INVOICE title in boxed border */}
         <div style={{ 
           border: tableBorder, 
-          padding: '4px 32px', 
+          padding: '5px 28px', 
           fontSize: '15px', 
           fontWeight: '800', 
           letterSpacing: '0.8px', 
           textTransform: 'uppercase',
           textAlign: 'center'
         }}>
-          TAX INVOICE
+          {invoiceTitle}
         </div>
       </div>
 
       {/* ── 2. TOP SECTION TABLE GRID ── */}
       <div style={{ border: tableBorder, borderBottom: 'none' }}>
         
-        {/* ROW 1: Date of Invoice & Tax Invoice No. */}
+        {/* ROW 1: Date of Invoice & Tax Invoice No. / Invoice No. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: tableBorder }}>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Date of Invoice:</span>{' '}
             <span>{invoiceDateFormatted}</span>
           </div>
           <div style={{ padding: '6px 10px' }}>
-            <span style={{ fontWeight: '700' }}>Tax Invoice No. :</span>{' '}
+            <span style={{ fontWeight: '700' }}>{invoiceDocLabel}</span>{' '}
             <span style={{ fontWeight: '700' }}>{docNo}</span>
           </div>
         </div>
@@ -537,12 +593,45 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </tr>
 
           {/* MODE OF PAYMENT */}
-          <tr>
+          <tr style={{ borderBottom: activeBank ? tableBorder : 'none' }}>
             <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left' }}>
               <span style={{ fontWeight: '700' }}>Mode of Payment:*</span>{' '}
               <span>{paymentModeDisplay}</span>
             </td>
           </tr>
+
+          {/* BANK REMITTANCE DETAILS */}
+          {activeBank && (
+            <tr>
+              <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left', backgroundColor: '#fafafa' }}>
+                <div style={{ fontWeight: 700, fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px', color: '#111' }}>
+                  Bank Details for Remittance / Direct Deposit:
+                </div>
+                <table style={{ width: '100%', fontSize: '10.5px', borderCollapse: 'collapse', lineHeight: '1.4' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: '15%', fontWeight: 700, color: '#333', padding: '2px 0' }}>Bank:</td>
+                      <td style={{ width: '35%', fontWeight: 600, padding: '2px 0' }}>{activeBank.bankName}</td>
+                      <td style={{ width: '18%', fontWeight: 700, color: '#333', padding: '2px 0' }}>Branch:</td>
+                      <td style={{ width: '32%', fontWeight: 600, padding: '2px 0' }}>{activeBank.branchName || '-'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700, color: '#333', padding: '2px 0' }}>Account Name:</td>
+                      <td style={{ fontWeight: 600, padding: '2px 0' }}>{activeBank.accountName || company.name || 'Rex Industries (Pvt) Ltd'}</td>
+                      <td style={{ fontWeight: 700, color: '#333', padding: '2px 0' }}>Account No:</td>
+                      <td style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '11.5px', padding: '2px 0' }}>{activeBank.accountNumber}</td>
+                    </tr>
+                    {activeBank.swiftCode && (
+                      <tr>
+                        <td style={{ fontWeight: 700, color: '#333', padding: '2px 0' }}>SWIFT Code:</td>
+                        <td colSpan={3} style={{ fontFamily: 'monospace', fontWeight: 600, padding: '2px 0' }}>{activeBank.swiftCode}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

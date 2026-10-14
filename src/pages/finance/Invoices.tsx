@@ -320,6 +320,7 @@ export const Invoices: React.FC = () => {
                 taxType={viewInvoice.taxType}
                 taxProfile={taxProfiles?.find((p: any) => p.id === viewInvoice.taxProfileId)}
                 taxBreakdown={viewInvoice.taxBreakdown ? (typeof viewInvoice.taxBreakdown === 'string' ? JSON.parse(viewInvoice.taxBreakdown) : viewInvoice.taxBreakdown) : null}
+                bankDetails={viewInvoice.bankDetails ? (typeof viewInvoice.bankDetails === 'string' ? JSON.parse(viewInvoice.bankDetails) : viewInvoice.bankDetails) : (viewInvoice.bankDetailId === 'none' ? 'none' : null)}
               />
               </div>
             </div>

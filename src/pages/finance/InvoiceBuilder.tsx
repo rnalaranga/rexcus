@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
-  CheckCircle2, Phone, Mail, Hash, X
+  CheckCircle2, Phone, Mail, Hash, X, Landmark
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -53,9 +53,12 @@ export const InvoiceBuilder: React.FC = () => {
   const [orderNo, setOrderNo] = useState('');
   const [poNo, setPoNo] = useState('');
   const [customerVat, setCustomerVat] = useState('');
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [bankDetailId, setBankDetailId] = useState<string>('');
   const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
 
   const selectedCustomer = customers.find(c => c.id === customerId);
+  const selectedBank = bankDetailId === 'none' ? null : (bankAccounts.find(b => b.id === bankDetailId) || null);
 
   const customerOptions = customers.map(c => ({ value: c.id, label: c.company ? `${c.company} (${c.name})` : c.name, group: c.segment || 'Customers', extra: c.email || '' }));
   const itemOptions = inventory.map(i => ({ value: i.id, label: `${i.sku} - ${i.name}`, group: i.category || 'Products', extra: `Stock: ${i.qtyOnHand}` }));
@@ -64,23 +67,42 @@ export const InvoiceBuilder: React.FC = () => {
     // Fetch company settings
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
       .then(r => r.json())
-      .then(s => setCompany({ 
-        name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd', 
-        address: s.company_address || s.companyAddress || s.address || '', 
-        phone: s.company_phone || s.companyPhone || s.phone || '', 
-        email: s.company_email || s.companyEmail || s.email || '', 
-        vat: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '', 
-        tin: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '', 
-        company_tin: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '',
-        company_address: s.company_address || s.companyAddress || s.address || '',
-        company_phone: s.company_phone || s.companyPhone || s.phone || '',
-        company_name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd',
-        brNumber: s.companyBr || s.brNumber || '', 
-        bankName: s.companyBankName || s.bankName || '', 
-        accountNo: s.companyAccountNo || s.accountNo || '', 
-        tagline: s.invoiceTagline || 'Thank you for your business!', 
-        logo: s.company_logo || s.companyLogo || '' 
-      }))
+      .then(s => {
+        let banks: any[] = [];
+        if (s.company_bank_details) {
+          try {
+            const parsed = JSON.parse(s.company_bank_details);
+            if (Array.isArray(parsed) && parsed.length > 0) banks = parsed;
+          } catch(e) {}
+        }
+        if (banks.length === 0) {
+          banks = [
+            { id: 'bank_hnb', bankName: 'Hatton National Bank', branchName: 'Negombo', accountName: 'Rex Industries (Pvt) Ltd', accountNumber: '011010078028', swiftCode: 'HNBLLKLX', isDefault: true }
+          ];
+        }
+        setBankAccounts(banks);
+        const def = banks.find((b: any) => b.isDefault) || banks[0];
+        if (def) setBankDetailId(def.id);
+
+        setCompany({ 
+          name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd', 
+          address: s.company_address || s.companyAddress || s.address || '', 
+          phone: s.company_phone || s.companyPhone || s.phone || '', 
+          email: s.company_email || s.companyEmail || s.email || '', 
+          vat: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '', 
+          tin: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '', 
+          company_tin: s.company_tin || s.tin || s.company_vat || s.companyVat || s.vat || '',
+          company_address: s.company_address || s.companyAddress || s.address || '',
+          company_phone: s.company_phone || s.companyPhone || s.phone || '',
+          company_name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd',
+          brNumber: s.companyBr || s.brNumber || '', 
+          bankName: s.companyBankName || s.bankName || '', 
+          accountNo: s.companyAccountNo || s.accountNo || '', 
+          company_bank_details: s.company_bank_details || '',
+          tagline: s.invoiceTagline || 'Thank you for your business!', 
+          logo: s.company_logo || s.companyLogo || '' 
+        });
+      })
       .catch(() => {});
   }, []);
 
@@ -140,6 +162,14 @@ export const InvoiceBuilder: React.FC = () => {
   }
   
   const total = subtotal + taxAmount;
+  const isSsclSeparate = Boolean(selectedTaxProfile && selectedTaxProfile.tax1_show_separately === 1);
+  const isVatSeparate = Boolean(selectedTaxProfile ? selectedTaxProfile.tax2_show_separately === 1 : (taxAmount > 0));
+  const isTaxShownSeparately = Boolean(
+    taxEnabled && (
+      (isVatSeparate && (taxBreakdown.tax2Amount > 0 || taxAmount > 0)) ||
+      (isSsclSeparate && taxBreakdown.tax1Amount > 0)
+    )
+  );
   const creditWarning = selectedCustomer && Number(selectedCustomer.creditLimit) > 0 && (Number(selectedCustomer.totalRevenue || 0) + total > Number(selectedCustomer.creditLimit));
 
   const handleSave = async () => {
@@ -173,7 +203,9 @@ export const InvoiceBuilder: React.FC = () => {
         customerVat, 
         taxType, 
         taxProfileId, 
-        taxBreakdown: JSON.stringify(taxBreakdown) 
+        taxBreakdown: JSON.stringify(taxBreakdown),
+        bankDetailId: bankDetailId || null,
+        bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null)
       });
       if ((res as any).error) throw new Error((res as any).error);
       toast('Invoice posted successfully!', 'success');
@@ -216,7 +248,8 @@ export const InvoiceBuilder: React.FC = () => {
     taxType, 
     taxProfile: selectedTaxProfile, 
     taxBreakdown, 
-    attention 
+    attention,
+    bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
   };
 
   return (
@@ -262,7 +295,7 @@ export const InvoiceBuilder: React.FC = () => {
         <div className="flex-1 overflow-y-auto bg-slate-200/60 dark:bg-zinc-800/60 p-8">
           <div className="flex items-center justify-between max-w-3xl mx-auto mb-4">
             <p className="text-xs text-muted uppercase tracking-widest font-semibold">
-              Preview — Statutory Tax Invoice (Gazette No. 2481/22)
+              Preview — Statutory {isTaxShownSeparately ? 'Tax Invoice' : 'Invoice'} (Gazette No. 2481/22)
             </p>
             <button onClick={() => setShowPreview(false)} className="flex items-center gap-1.5 text-xs text-muted hover:text-primary px-3 py-1.5 rounded-lg border border-theme-subtle hover:bg-surface transition-colors">
               <X size={12} /> Close Preview
@@ -365,7 +398,7 @@ export const InvoiceBuilder: React.FC = () => {
               <div className="flex-1 overflow-y-auto pr-2 space-y-3">
                 <div className="bg-surface2/50 border border-theme-subtle rounded-lg p-2.5 space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="block text-[10px] font-bold text-muted uppercase">Tax Invoice No.</label>
+                    <label className="block text-[10px] font-bold text-muted uppercase">{isTaxShownSeparately ? 'Tax Invoice No.' : 'Invoice No.'}</label>
                     <span className="text-[9px] font-mono font-semibold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
                       YYMMM_QQQQ_XXXXX
                     </span>
@@ -444,6 +477,40 @@ export const InvoiceBuilder: React.FC = () => {
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* Bank Account for Remittance */}
+                <div className="bg-surface2/30 p-2.5 rounded-lg border border-theme-subtle space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-bold text-muted uppercase flex items-center gap-1.5">
+                      <Landmark size={12} className="text-rex-500" /> Remittance Bank Account
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/admin/settings')}
+                      className="text-[9px] text-blue-500 hover:underline font-semibold"
+                    >
+                      + Manage Banks in Settings
+                    </button>
+                  </div>
+                  <select
+                    value={bankDetailId}
+                    onChange={e => setBankDetailId(e.target.value)}
+                    className={`${docInputClass} font-medium`}
+                  >
+                    {bankAccounts.map((b: any) => (
+                      <option key={b.id} value={b.id}>
+                        {b.bankName} — A/C {b.accountNumber} ({b.branchName || 'Main'}{b.isDefault ? ' · Default' : ''})
+                      </option>
+                    ))}
+                    <option value="none">— Do Not Show Bank Details on Invoice —</option>
+                  </select>
+                  {selectedBank && (
+                    <div className="text-[10px] text-muted flex items-center justify-between px-1">
+                      <span><strong>A/C Name:</strong> {selectedBank.accountName}</span>
+                      {selectedBank.swiftCode && <span><strong>SWIFT:</strong> {selectedBank.swiftCode}</span>}
+                    </div>
+                  )}
                 </div>
 
                 <div>

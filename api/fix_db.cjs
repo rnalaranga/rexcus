@@ -259,6 +259,8 @@ async function run() {
     "ALTER TABLE invoices ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN modeOfPayment VARCHAR(100) DEFAULT 'Credit'",
     "ALTER TABLE invoices ADD COLUMN additionalInfo TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN bankDetailId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN bankDetails TEXT DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
@@ -344,7 +346,8 @@ async function run() {
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt3_both_separate', 'Option 3: Both SSCL & VAT Separate (2 Lines)', 'SSCL', 2.50, 'VAT', 18.00, 1, 1, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
-    "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)"
+    "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{\"id\":\"bank_hnb\",\"bankName\":\"Hatton National Bank\",\"branchName\":\"Negombo\",\"accountName\":\"Rex Industries (Pvt) Ltd\",\"accountNumber\":\"011010078028\",\"swiftCode\":\"HNBLLKLX\",\"isDefault\":true}]')"
   ];
 
   for (const seed of seeds) {
