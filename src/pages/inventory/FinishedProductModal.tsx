@@ -561,21 +561,175 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
         {/* Tab Content (Scrollable) */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 
-          {/* TAB 1: PRODUCT INFO & MEDIA */}
+          {/* TAB 1: PRODUCT INFO & MEDIA (REDESIGNED) */}
           {activeTab === 'info' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                {/* Left: General Product Specs */}
-                <div className="lg:col-span-2 space-y-5">
-                  <GlassCard className="p-5 space-y-4">
-                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <Package size={15} className="text-rex-600" /> General Specifications
-                    </h3>
+            <div className="space-y-6 animate-fade-in">
+              {/* Header Showcase Banner */}
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-rex-950 via-surface to-surface border border-theme-subtle p-5 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-rex-600/10 border border-rex-500/20 flex items-center justify-center flex-shrink-0 text-rex-500 shadow-inner">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt="" className="w-full h-full object-cover rounded-2xl" />
+                      ) : (
+                        <Package size={28} />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-rex-600 bg-rex-500/10 px-2 py-0.5 rounded-md border border-rex-500/20">
+                          {category}
+                        </span>
+                        <span className="text-[11px] font-mono text-muted bg-surface2 px-2 py-0.5 rounded border border-theme-subtle">
+                          {sku || 'PRD-NEW'}
+                        </span>
+                      </div>
+                      <h2 className="text-xl font-bold text-primary tracking-tight mt-1">
+                        {name || 'Untitled Ready-Made Product'}
+                      </h2>
+                      <p className="text-xs text-muted mt-0.5">
+                        {description ? description.slice(0, 100) + (description.length > 100 ? '...' : '') : 'Ready-made finished goods with automated quotation BOM calculations'}
+                      </p>
+                    </div>
+                  </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Summary Quick Stats Pill */}
+                  <div className="flex items-center gap-3 bg-surface2/60 backdrop-blur-md px-4 py-2.5 rounded-xl border border-theme-subtle/80 flex-shrink-0">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase font-semibold text-muted tracking-wider">Current Stock</div>
+                      <div className="text-base font-mono font-bold text-primary">{initialQty || 0} <span className="text-xs font-normal text-muted">{uom}</span></div>
+                    </div>
+                    <div className="h-8 w-px bg-theme-subtle" />
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase font-semibold text-muted tracking-wider">BOM Rollup</div>
+                      <div className="text-base font-mono font-bold text-rex-600">{formatCurrency(totalBOMCost)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Two Column Layout: Left Media & Drawings Hero, Right Specs Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Left 4 Cols: Media & CAD Showcase */}
+                <div className="lg:col-span-4 space-y-5">
+                  {/* Photo Card */}
+                  <GlassCard className="p-5 border border-theme-subtle/80 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <ImageIcon size={15} className="text-emerald-500" /> Product Photo
+                      </h3>
+                      {imageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setImageUrl('')}
+                          className="text-[11px] text-red-500 hover:underline flex items-center gap-1"
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="relative group rounded-2xl overflow-hidden border border-theme-subtle bg-surface2/40 aspect-square flex flex-col items-center justify-center p-3 text-center transition-all hover:border-rex-500/40">
+                      {imageUrl ? (
+                        <>
+                          <img 
+                            src={imageUrl} 
+                            alt={name || 'Product'} 
+                            className="w-full h-full object-cover rounded-xl shadow-sm" 
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-xl backdrop-blur-xs">
+                            <label className="cursor-pointer bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-sm transition-all flex items-center gap-1.5">
+                              <Upload size={13} /> Change Image
+                              <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
+                            </label>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-3 p-4">
+                          <div className="w-16 h-16 rounded-2xl bg-surface2 border border-theme-subtle flex items-center justify-center mx-auto text-muted/60 group-hover:text-rex-500 group-hover:scale-105 transition-all">
+                            <ImageIcon size={32} />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-primary">No Image Uploaded</p>
+                            <p className="text-[11px] text-muted mt-0.5">Showcase real finished product photos on catalog & orders</p>
+                          </div>
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer bg-rex-600 hover:bg-rex-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all">
+                            <Upload size={13} /> Select Image
+                            <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-[11px] font-semibold text-secondary">Direct Image URL</label>
+                      <input
+                        type="url"
+                        value={imageUrl}
+                        onChange={e => setImageUrl(e.target.value)}
+                        placeholder="https://... image link"
+                        className="w-full input-base text-xs font-mono py-1.5 bg-surface"
+                      />
+                    </div>
+                  </GlassCard>
+
+                  {/* Drawings / Drive Link Card */}
+                  <GlassCard className="p-5 border border-theme-subtle/80 shadow-sm space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <FileText size={15} className="text-blue-500" /> CAD & Drawings Link
+                      </h3>
+                      <span className="text-[10px] font-semibold font-mono bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full border border-blue-500/20">
+                        Google Drive
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-muted">
+                      Attach folder link containing engineering drawings, 3D STEP files, or CAD specifications.
+                    </p>
+
+                    <div className="space-y-1.5">
+                      <input
+                        type="url"
+                        value={drawingsUrl}
+                        onChange={e => setDrawingsUrl(e.target.value)}
+                        placeholder="https://drive.google.com/drive/folders/..."
+                        className="w-full input-base text-xs font-mono py-2 bg-surface"
+                      />
+                    </div>
+
+                    {drawingsUrl ? (
+                      <a
+                        href={drawingsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-2.5 px-3.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
+                      >
+                        <ExternalLink size={14} /> Open Drawings in Drive
+                      </a>
+                    ) : (
+                      <div className="p-2.5 bg-surface2/40 rounded-xl border border-dashed border-theme-subtle text-[11px] text-muted text-center">
+                        No Drive link specified
+                      </div>
+                    )}
+                  </GlassCard>
+                </div>
+
+                {/* Right 8 Cols: Comprehensive Specifications & Stock Parameters */}
+                <div className="lg:col-span-8 space-y-5">
+                  {/* General Specifications Card */}
+                  <GlassCard className="p-6 border border-theme-subtle/80 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
+                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-2">
+                        <Package size={16} className="text-rex-600" /> Product Specifications
+                      </h3>
+                      <span className="text-[11px] text-muted">Core identification & classification</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4.5 pt-1">
                       <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-secondary mb-1">
+                        <label className="block text-xs font-bold text-secondary mb-1.5">
                           Product Name <span className="text-red-500">*</span>
                         </label>
                         <input
@@ -584,27 +738,27 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                           value={name}
                           onChange={e => setName(e.target.value)}
                           placeholder="e.g. Industrial Hydraulic Cylinder 50x300mm"
-                          className="w-full input-base font-medium text-sm"
+                          className="w-full input-base font-semibold text-sm py-2"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Product SKU / Code</label>
+                        <label className="block text-xs font-bold text-secondary mb-1.5">Product SKU / Serial Code</label>
                         <input
                           type="text"
                           value={sku}
                           onChange={e => setSku(e.target.value)}
                           placeholder="e.g. REX-CYL-01"
-                          className="w-full input-base font-mono text-xs"
+                          className="w-full input-base font-mono text-xs py-2 bg-surface"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Category</label>
+                        <label className="block text-xs font-bold text-secondary mb-1.5">Category</label>
                         <select
                           value={category}
                           onChange={e => setCategory(e.target.value)}
-                          className="w-full input-base text-xs"
+                          className="w-full input-base text-xs py-2"
                         >
                           <option value="Standard Parts">Standard Parts</option>
                           <option value="Hydraulics">Hydraulic Components</option>
@@ -617,11 +771,11 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Unit of Measure (UOM)</label>
+                        <label className="block text-xs font-bold text-secondary mb-1.5">Unit of Measure (UOM)</label>
                         <select
                           value={uom}
                           onChange={e => setUom(e.target.value)}
-                          className="w-full input-base text-xs"
+                          className="w-full input-base text-xs py-2"
                         >
                           <option value="pcs">Pieces (pcs)</option>
                           <option value="sets">Sets (sets)</option>
@@ -633,160 +787,100 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Storage / Bin Location</label>
+                        <label className="block text-xs font-bold text-secondary mb-1.5">Storage / Warehouse Bin Location</label>
                         <input
                           type="text"
                           value={location}
                           onChange={e => setLocation(e.target.value)}
-                          placeholder="e.g. Rack B-04 / Finished Goods Bay"
-                          className="w-full input-base text-xs"
+                          placeholder="e.g. Bay 3 / Rack B-04"
+                          className="w-full input-base text-xs py-2"
                         />
                       </div>
 
                       <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-secondary mb-1">Detailed Description & Features</label>
+                        <label className="block text-xs font-bold text-secondary mb-1.5">Technical Description & Material Notes</label>
                         <textarea
                           rows={3}
                           value={description}
                           onChange={e => setDescription(e.target.value)}
-                          placeholder="Detailed specifications, material grades, surface finishes, or functional requirements..."
-                          className="w-full input-base text-xs resize-none"
+                          placeholder="Engineering tolerances, material grades, surface finishing, hardness specifications, or functional notes..."
+                          className="w-full input-base text-xs resize-none py-2"
                         />
                       </div>
                     </div>
                   </GlassCard>
 
-                  {/* Stock Tracking */}
-                  <GlassCard className="p-5 space-y-4">
-                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <BarChart3 size={15} className="text-blue-500" /> Inventory & Stock Levels
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Current Stock in Hand</label>
+                  {/* Inventory & Threshold Card */}
+                  <GlassCard className="p-6 border border-theme-subtle/80 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
+                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-2">
+                        <BarChart3 size={16} className="text-indigo-500" /> Stock Quantities & Reorder Triggers
+                      </h3>
+                      <span className="text-[11px] text-muted">Real-time availability monitoring</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
+                      <div className="bg-surface2/30 p-4 rounded-xl border border-theme-subtle space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-primary">Current In-Hand Stock</label>
+                          <span className="text-[10px] font-mono text-muted uppercase font-bold">Qty ({uom})</span>
+                        </div>
                         <input
                           type="number"
                           min="0"
                           step="1"
                           value={initialQty}
                           onChange={e => setInitialQty(e.target.value)}
-                          className="w-full input-base font-mono font-bold text-sm"
+                          className="w-full input-base font-mono font-bold text-lg py-2 bg-surface text-primary"
                         />
-                        <p className="text-[10px] text-muted mt-1">
-                          {product?.id ? 'Stock is updated via Stock Ledger entries or Order Dispatches.' : 'Initial quantity to put in stock upon creation.'}
+                        <p className="text-[11px] text-muted leading-tight">
+                          {product?.id ? 'Stock updates dynamically through Dispatches and Stock Ledger entries.' : 'Starting physical inventory on-hand in warehouse.'}
                         </p>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Low Stock Alert Level (Reorder Level)</label>
+                      <div className="bg-surface2/30 p-4 rounded-xl border border-theme-subtle space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-primary">Low Stock Alert Level</label>
+                          <span className="text-[10px] font-mono text-amber-500 uppercase font-bold">Reorder Point</span>
+                        </div>
                         <input
                           type="number"
                           min="0"
                           step="1"
                           value={reorderLevel}
                           onChange={e => setReorderLevel(e.target.value)}
-                          className="w-full input-base font-mono text-sm"
+                          className="w-full input-base font-mono font-bold text-lg py-2 bg-surface text-amber-500"
                         />
-                        <p className="text-[10px] text-muted mt-1">Triggers low stock badge if stock falls below this quantity.</p>
+                        <p className="text-[11px] text-muted leading-tight">
+                          Prompts automated low-stock warnings when inventory drops below this threshold.
+                        </p>
                       </div>
                     </div>
                   </GlassCard>
+
+                  {/* Flow guidance banner */}
+                  <div className="bg-rex-500/5 border border-rex-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-rex-600/10 text-rex-600 flex items-center justify-center flex-shrink-0">
+                        <Layers size={16} />
+                      </div>
+                      <div className="text-xs">
+                        <span className="font-bold text-primary">Next Step: Configure Bill of Materials</span>
+                        <p className="text-muted text-[11px]">Specify raw plate/shaft dimensions, fasteners, and machining operations in exact quotation format.</p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="primary" 
+                      size="sm" 
+                      type="button" 
+                      onClick={() => setActiveTab('boms')}
+                      className="text-xs font-bold flex-shrink-0 flex items-center gap-1.5"
+                    >
+                      Open BOMs <ArrowRight size={13} />
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Right: Product Image & Google Drive Drawings */}
-                <div className="space-y-5">
-                  {/* Product Photo */}
-                  <GlassCard className="p-5 space-y-4">
-                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <ImageIcon size={15} className="text-emerald-500" /> Product Image
-                    </h3>
-
-                    <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-theme-subtle rounded-xl bg-surface2/30">
-                      {imageUrl ? (
-                        <div className="relative w-full aspect-square max-h-48 rounded-lg overflow-hidden border border-theme-subtle group">
-                          <img 
-                            src={imageUrl} 
-                            alt={name || 'Product'} 
-                            className="w-full h-full object-cover" 
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setImageUrl('')}
-                            className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                            title="Remove image"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="py-6 text-center text-muted">
-                          <ImageIcon size={36} className="mx-auto mb-2 opacity-40" />
-                          <p className="text-xs">No product image uploaded</p>
-                          <p className="text-[10px] text-muted/70 mt-0.5">Upload a photo or paste an image URL below</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="block text-xs font-medium text-secondary">Upload Image File</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageFileChange}
-                        className="w-full text-xs file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-rex-600/10 file:text-rex-600 hover:file:bg-rex-600/20 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-secondary">Or Paste Image URL</label>
-                      <input
-                        type="url"
-                        value={imageUrl}
-                        onChange={e => setImageUrl(e.target.value)}
-                        placeholder="https://example.com/photo.jpg"
-                        className="w-full input-base text-xs font-mono"
-                      />
-                    </div>
-                  </GlassCard>
-
-                  {/* Google Drive Drawings Link */}
-                  <GlassCard className="p-5 space-y-4">
-                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <FileText size={15} className="text-amber-500" /> BOM / CAD Drawings URL
-                      </span>
-                      <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-mono">Google Drive</span>
-                    </h3>
-
-                    <div>
-                      <label className="block text-xs font-medium text-secondary mb-1">
-                        Google Drive Folder / Drawing URL
-                      </label>
-                      <input
-                        type="url"
-                        value={drawingsUrl}
-                        onChange={e => setDrawingsUrl(e.target.value)}
-                        placeholder="https://drive.google.com/drive/folders/..."
-                        className="w-full input-base text-xs font-mono"
-                      />
-                    </div>
-
-                    {drawingsUrl ? (
-                      <a
-                        href={drawingsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-2 px-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <ExternalLink size={14} /> Open Drawing on Google Drive
-                      </a>
-                    ) : (
-                      <p className="text-[11px] text-muted italic">
-                        Paste your shared Google Drive link for drawings, blueprints, or CAD files here.
-                      </p>
-                    )}
-                  </GlassCard>
-                </div>
               </div>
             </div>
           )}

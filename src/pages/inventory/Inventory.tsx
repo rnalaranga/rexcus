@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon } from 'lucide-react'
+import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -120,6 +120,7 @@ export const Inventory: React.FC = () => {
   const [sampleFilterStatus, setSampleFilterStatus] = useState<'all' | 'in_stock' | 'dispatched'>('all')
 
   const [finishedSubTab, setFinishedSubTab] = useState<'products' | 'orders'>('products')
+  const [fgViewMode, setFgViewMode] = useState<'grid' | 'table'>('grid')
   const [finishedProductModalOpen, setFinishedProductModalOpen] = useState(false)
   const [selectedFinishedProduct, setSelectedFinishedProduct] = useState<any | null>(null)
   const { data: fgOrders = [], refetch: refetchFgOrders } = useFinishedGoodsOrders()
