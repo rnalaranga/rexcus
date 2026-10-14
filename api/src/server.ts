@@ -307,6 +307,10 @@ app.post('/api/settings/fix-db', async (req, res) => {
       )`,
       `CREATE TABLE IF NOT EXISTS material_requests (
         id VARCHAR(50) PRIMARY KEY,
+        workOrderNo VARCHAR(100) DEFAULT NULL,
+        workOrderNos TEXT DEFAULT NULL,
+        poId VARCHAR(50) DEFAULT NULL,
+        poIds TEXT DEFAULT NULL,
         date DATETIME,
         requiredDate DATETIME,
         requestedBy VARCHAR(100),
@@ -321,9 +325,17 @@ app.post('/api/settings/fix-db', async (req, res) => {
       `CREATE TABLE IF NOT EXISTS purchase_orders (
         id VARCHAR(50) PRIMARY KEY,
         supplierId VARCHAR(50),
+        mrId VARCHAR(50) DEFAULT NULL,
+        mrIds TEXT DEFAULT NULL,
+        taxProfileId VARCHAR(50) DEFAULT NULL,
+        taxBreakdown TEXT DEFAULT NULL,
         date DATETIME,
         expectedDate DATETIME,
         status VARCHAR(20) DEFAULT 'draft',
+        billedAmount DECIMAL(15,2) DEFAULT 0.00,
+        billingStatus VARCHAR(30) DEFAULT 'unbilled',
+        billIds TEXT DEFAULT NULL,
+        invoiceNos TEXT DEFAULT NULL,
         items TEXT,
         subtotal DECIMAL(15,2),
         tax DECIMAL(15,2),
@@ -340,6 +352,7 @@ app.post('/api/settings/fix-db', async (req, res) => {
       `CREATE TABLE IF NOT EXISTS grns (
         id VARCHAR(50) PRIMARY KEY,
         poId VARCHAR(50),
+        poIds TEXT DEFAULT NULL,
         supplierId VARCHAR(50),
         date DATETIME,
         receivedBy VARCHAR(100),
@@ -360,6 +373,9 @@ app.post('/api/settings/fix-db', async (req, res) => {
         date DATETIME,
         dueDate DATETIME,
         amount DECIMAL(15,2),
+        subtotal DECIMAL(15,2) DEFAULT 0.00,
+        taxAmount DECIMAL(15,2) DEFAULT 0.00,
+        items TEXT DEFAULT NULL,
         status VARCHAR(20) DEFAULT 'unpaid',
         notes TEXT,
         createdAt DATETIME,
@@ -500,7 +516,14 @@ app.post('/api/settings/fix-db', async (req, res) => {
     "ALTER TABLE purchase_orders ADD COLUMN mrIds TEXT DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL",
       "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
-      "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL"
+      "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN billedAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE purchase_orders ADD COLUMN billingStatus VARCHAR(30) DEFAULT 'unbilled'",
+    "ALTER TABLE purchase_orders ADD COLUMN billIds TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
     ];
 
     for (const patch of patches) {
@@ -527,6 +550,14 @@ app.post('/api/settings/fix-db', async (req, res) => {
         // Ignore
       }
     }
+
+    // Auto-sync billing status on all POs
+    try {
+      const [allPos]: any = await db.query('SELECT id FROM purchase_orders');
+      if (allPos && allPos.length > 0) {
+        await syncPOBillingStatus(allPos.map((p: any) => p.id));
+      }
+    } catch (e) {}
 
     res.json({ success: true, message: 'Database fixed and synchronized successfully. All tables and columns are up to date. No data was deleted.' });
   } catch (error) {
@@ -1490,6 +1521,52 @@ async function syncPOReceiptStatus(targetPoIds: string[] | string) {
   }
 }
 
+// Helper to sync Purchase Order billing status across all linked Supplier Bills (supports multiple invoices per PO)
+async function syncPOBillingStatus(targetPoIds: string[] | string) {
+  const ids = Array.from(new Set((Array.isArray(targetPoIds) ? targetPoIds : [targetPoIds]).filter(Boolean)));
+  for (const poId of ids) {
+    try {
+      const [poRows]: any = await db.query('SELECT id, totalAmount FROM purchase_orders WHERE id = ?', [poId]);
+      if (!poRows || poRows.length === 0) continue;
+      const poTotal = Number(poRows[0].totalAmount || 0);
+
+      const [bills]: any = await db.query(
+        'SELECT id, invoiceNo, amount, status, date FROM supplier_bills WHERE poId = ? ORDER BY date ASC, createdAt ASC',
+        [poId]
+      );
+
+      let totalBilled = 0;
+      const billIds: string[] = [];
+      const invoiceNos: string[] = [];
+
+      for (const b of bills) {
+        totalBilled += Number(b.amount || 0);
+        billIds.push(b.id);
+        if (b.invoiceNo && !invoiceNos.includes(b.invoiceNo)) {
+          invoiceNos.push(b.invoiceNo);
+        }
+      }
+
+      let billingStatus = 'unbilled';
+      if (bills.length > 0 && totalBilled > 0) {
+        if (totalBilled >= (poTotal - 0.01)) {
+          billingStatus = 'billed';
+        } else {
+          billingStatus = 'partially_billed';
+        }
+      }
+
+      await db.query(
+        'UPDATE purchase_orders SET billedAmount = ?, billingStatus = ?, billIds = ?, invoiceNos = ?, updatedAt = NOW() WHERE id = ?',
+        [totalBilled, billingStatus, JSON.stringify(billIds), JSON.stringify(invoiceNos), poId]
+      );
+    } catch (err) {
+      console.error(`Failed to sync billing status for PO ${poId}:`, err);
+    }
+  }
+}
+
+
 // MR ROUTES
 app.get('/api/purchasing/mrs', async (req, res) => {
   try {
@@ -1581,6 +1658,16 @@ app.get('/api/purchasing/pos', async (req, res) => {
         try { r.mrIds = JSON.parse(r.mrIds); } catch(e) { r.mrIds = [r.mrId].filter(Boolean); }
       } else if (!r.mrIds) {
         r.mrIds = r.mrId ? [r.mrId] : [];
+      }
+      if (typeof r.billIds === 'string') {
+        try { r.billIds = JSON.parse(r.billIds); } catch(e) { r.billIds = []; }
+      } else if (!r.billIds) {
+        r.billIds = [];
+      }
+      if (typeof r.invoiceNos === 'string') {
+        try { r.invoiceNos = JSON.parse(r.invoiceNos); } catch(e) { r.invoiceNos = []; }
+      } else if (!r.invoiceNos) {
+        r.invoiceNos = [];
       }
     }
     res.json(rows);
@@ -1938,12 +2025,21 @@ app.get('/api/purchasing/bills', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM supplier_bills ORDER BY date DESC, createdAt DESC');
     res.json(rows);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
+app.get('/api/purchasing/pos/:id/bills', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM supplier_bills WHERE poId = ? ORDER BY date DESC, createdAt DESC', [req.params.id]);
+    res.json(rows);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
 app.post('/api/purchasing/bills', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
     await db.query('INSERT INTO supplier_bills SET ?', data);
 
     // Also automatically create corresponding ledger entry in supplier_ledger
@@ -1981,14 +2077,78 @@ app.post('/api/purchasing/bills', async (req, res) => {
       }
     }
 
+    // Sync PO billing status
+    if (data.poId) {
+      await syncPOBillingStatus(data.poId);
+    }
+
     res.json({ success: true, id: data.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.put('/api/purchasing/bills/:id', async (req, res) => {
   try {
-    await db.query('UPDATE supplier_bills SET ? WHERE id = ?', [req.body, req.params.id]);
+    const data = { ...req.body };
+    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    
+    // Find previous poId
+    const [prevRows]: any = await db.query('SELECT poId FROM supplier_bills WHERE id = ?', [req.params.id]);
+    const oldPoId = prevRows[0]?.poId;
+
+    await db.query('UPDATE supplier_bills SET ? WHERE id = ?', [data, req.params.id]);
+
+    const targetPoIds = new Set<string>();
+    if (oldPoId) targetPoIds.add(oldPoId);
+    if (data.poId) targetPoIds.add(data.poId);
+    if (targetPoIds.size > 0) {
+      await syncPOBillingStatus(Array.from(targetPoIds));
+    }
+
     res.json({ success: true, id: req.params.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/purchasing/bills/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT * FROM supplier_bills WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Bill not found' });
+    const bill = rows[0];
+
+    // Revert supplier ledger
+    await db.query('DELETE FROM supplier_ledger WHERE referenceNo = ? OR reference = ?', [bill.invoiceNo || bill.id, bill.id]);
+
+    // Delete bill
+    await db.query('DELETE FROM supplier_bills WHERE id = ?', [id]);
+
+    // Sync supplier balance
+    if (bill.supplierId) {
+      try {
+        const [balRes]: any = await db.query(
+          `SELECT (COALESCE(s.openingBalance, 0) + COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)) as bal
+           FROM suppliers s
+           LEFT JOIN supplier_ledger l ON s.id = l.supplierId
+           WHERE s.id = ?
+           GROUP BY s.id`,
+          [bill.supplierId]
+        );
+        if (balRes.length) {
+          await db.query('UPDATE suppliers SET balance = ?, updatedAt = NOW() WHERE id = ?', [balRes[0].bal, bill.supplierId]);
+        }
+      } catch (errBal) {
+        console.error('Error syncing supplier balance on delete bill:', errBal);
+      }
+    }
+
+    // Sync PO billing status
+    if (bill.poId) {
+      await syncPOBillingStatus(bill.poId);
+    }
+
+    res.json({ success: true, message: 'Bill deleted and supplier ledger reverted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // -- SUPPLIERS --
@@ -4030,6 +4190,13 @@ async function runStartupMigrations() {
     "ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN billedAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE purchase_orders ADD COLUMN billingStatus VARCHAR(30) DEFAULT 'unbilled'",
+    "ALTER TABLE purchase_orders ADD COLUMN billIds TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN payments TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
@@ -4070,6 +4237,13 @@ async function runStartupMigrations() {
     try { await db.query(s); } catch (e) {}
   }
 
+
+  try {
+    const [allPos]: any = await db.query('SELECT id FROM purchase_orders');
+    if (allPos && allPos.length > 0) {
+      await syncPOBillingStatus(allPos.map((p: any) => p.id));
+    }
+  } catch (e) {}
 }
 
 app.listen(PORT, async () => {

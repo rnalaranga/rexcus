@@ -283,6 +283,10 @@ CREATE TABLE IF NOT EXISTS `purchase_orders` (
   `date` datetime DEFAULT NULL,
   `expectedDate` datetime DEFAULT NULL,
   `status` varchar(20) DEFAULT 'draft',
+  `billedAmount` decimal(15,2) DEFAULT '0.00',
+  `billingStatus` varchar(30) DEFAULT 'unbilled',
+  `billIds` text,
+  `invoiceNos` text,
   `items` text,
   `subtotal` decimal(15,2) DEFAULT NULL,
   `tax` decimal(15,2) DEFAULT NULL,
@@ -368,6 +372,9 @@ CREATE TABLE IF NOT EXISTS `supplier_bills` (
   `date` datetime DEFAULT NULL,
   `dueDate` datetime DEFAULT NULL,
   `amount` decimal(15,2) DEFAULT NULL,
+  `subtotal` decimal(15,2) DEFAULT '0.00',
+  `taxAmount` decimal(15,2) DEFAULT '0.00',
+  `items` text,
   `status` varchar(20) DEFAULT 'unpaid',
   `notes` text,
   `createdAt` datetime DEFAULT NULL,
@@ -682,6 +689,14 @@ ALTER TABLE material_requests ADD COLUMN workOrderNo VARCHAR(100) DEFAULT NULL;
 ALTER TABLE material_requests ADD COLUMN workOrderNos TEXT DEFAULT NULL;
 ALTER TABLE purchase_orders ADD COLUMN mrIds TEXT DEFAULT NULL;
 ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL;
+
+ALTER TABLE purchase_orders ADD COLUMN billedAmount DECIMAL(15,2) DEFAULT 0.00;
+ALTER TABLE purchase_orders ADD COLUMN billingStatus VARCHAR(30) DEFAULT 'unbilled';
+ALTER TABLE purchase_orders ADD COLUMN billIds TEXT DEFAULT NULL;
+ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL;
+ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL;
+ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00;
+ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00;
 
 -- Default tax profile options (Sri Lanka VAT & SSCL options)
 INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt1_absorbed', 'Option 1: VAT & SSCL Absorbed (Total Value)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 0) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);

@@ -135,6 +135,10 @@ async function run() {
       date DATETIME,
       expectedDate DATETIME,
       status VARCHAR(20) DEFAULT 'draft',
+      billedAmount DECIMAL(15,2) DEFAULT 0.00,
+      billingStatus VARCHAR(30) DEFAULT 'unbilled',
+      billIds TEXT,
+      invoiceNos TEXT,
       items TEXT,
       subtotal DECIMAL(15,2),
       tax DECIMAL(15,2),
@@ -172,6 +176,9 @@ async function run() {
       date DATETIME,
       dueDate DATETIME,
       amount DECIMAL(15,2),
+      subtotal DECIMAL(15,2) DEFAULT 0.00,
+      taxAmount DECIMAL(15,2) DEFAULT 0.00,
+      items TEXT,
       status VARCHAR(20) DEFAULT 'unpaid',
       notes TEXT,
       createdAt DATETIME,
@@ -312,7 +319,14 @@ async function run() {
     "ALTER TABLE material_requests ADD COLUMN workOrderNos TEXT DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
-    "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL"
+    "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN billedAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE purchase_orders ADD COLUMN billingStatus VARCHAR(30) DEFAULT 'unbilled'",
+    "ALTER TABLE purchase_orders ADD COLUMN billIds TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00"
   ];
 
   for (const patch of patches) {

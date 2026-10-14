@@ -13,7 +13,7 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
-import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN } from '@/lib/api';
+import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
@@ -55,6 +55,16 @@ export const PurchasingHub: React.FC = () => {
       setCustGrns(prev => prev.filter(g => g.id !== id));
     } catch (e: any) {
       alert(e.message || 'Failed to delete customer sample GRN');
+    }
+  };
+
+  const handleDeleteBill = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to delete Bill ${id}?\n\nThis will revert the entry in the supplier ledger and recalculate the PO billing status.`)) return;
+    try {
+      await deleteBill(id);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete Bill');
     }
   };
 
@@ -119,13 +129,52 @@ export const PurchasingHub: React.FC = () => {
                       </span>
                     ));
                   })()}
+                  {(() => {
+                    const invList: string[] = Array.isArray(row.invoiceNos)
+                      ? row.invoiceNos
+                      : (typeof row.invoiceNos === 'string'
+                          ? (() => { try { const p = JSON.parse(row.invoiceNos); return Array.isArray(p) ? p : [row.invoiceNos]; } catch { return [row.invoiceNos]; } })()
+                          : []);
+                    if (invList.length === 0) return null;
+                    return invList.map((invNum: string) => (
+                      <span 
+                        key={invNum}
+                        onClick={(e) => { e.stopPropagation(); setActiveTab('bill'); setSearch(invNum); }}
+                        className="text-[9px] bg-amber-500/10 text-amber-500 hover:text-amber-400 px-1.5 py-0.2 rounded font-mono border border-amber-500/20 cursor-pointer font-bold"
+                        title={`Vendor Invoice ${invNum}`}
+                      >
+                        INV: {invNum}
+                      </span>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>
           )
         },
-        { key: 'contact', header: 'Contact', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
-        { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
+        { key: 'contact', header: 'Contact', width: '160px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
+        { key: 'status', header: 'Receipt Status', width: '110px', render: v => <Badge value={String(v)} size="sm" /> },
+        { 
+          key: 'billingStatus', header: 'Invoicing', width: '130px', 
+          render: (_, row) => {
+            const billed = Number(row.billedAmount || 0);
+            const total = Number(row.totalAmount || 0);
+            const bStatus = row.billingStatus || (billed >= total - 0.01 && total > 0 ? 'billed' : billed > 0 ? 'partially_billed' : 'unbilled');
+            return (
+              <div>
+                <Badge 
+                  value={bStatus === 'billed' ? 'Fully Billed' : bStatus === 'partially_billed' ? 'Partially Billed' : 'Unbilled'} 
+                  size="sm" 
+                />
+                {billed > 0 && (
+                  <div className="text-[10px] text-muted font-mono mt-0.5">
+                    {formatCurrency(billed, true)} / {formatCurrency(total, true)}
+                  </div>
+                )}
+              </div>
+            );
+          }
+        },
         { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
         { key: 'date', header: 'Order Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
@@ -141,6 +190,15 @@ export const PurchasingHub: React.FC = () => {
                 {row.status?.toLowerCase() === 'partially_received' ? 'Receive Balance' : 'GRN'}
               </Button>
             )}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate(`/purchasing/bill-builder?po=${row.id}`)} 
+              className="text-[10px] uppercase h-6 text-amber-500 hover:text-amber-400 font-semibold border border-amber-500/20"
+              title="Record Vendor Invoice for this PO"
+            >
+              + Bill
+            </Button>
           </div>
         )}
       ];
@@ -314,19 +372,30 @@ export const PurchasingHub: React.FC = () => {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
-              <p className="text-[10px] text-muted truncate mt-0.5 font-mono">INV: {row.invoiceNo}</p>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-muted font-mono font-bold">INV: {row.invoiceNo || '-'}</span>
+                {row.poId && (
+                  <span 
+                    onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
+                    className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                    title={`View Linked Purchase Order ${row.poId}`}
+                  >
+                    PO: {row.poId}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )
       },
       { key: 'supplier', header: 'Vendor', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierName(row.supplierId)}</span> },
       { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
-      { key: 'amount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v), true)}</span> },
+      { key: 'amount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
       { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
       {
         key: 'actions', header: '', align: 'right',
         render: (_, row) => (
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-1.5 items-center">
             <Button 
               variant="ghost" 
               size="sm" 
@@ -334,6 +403,15 @@ export const PurchasingHub: React.FC = () => {
               className="text-[10px] uppercase h-6 text-amber-500 font-semibold hover:text-amber-400"
             >
               Pay / Ledger
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => handleDeleteBill(row.id)} 
+              className="text-[10px] uppercase h-6 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+              title="Delete this bill and revert supplier ledger"
+            >
+              Delete
             </Button>
           </div>
         )

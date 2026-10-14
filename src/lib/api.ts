@@ -355,8 +355,10 @@ export const updateGRN = async (id: string, data: any) => (await (await fetch(`$
 export const deleteGRN = async (id: string) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'DELETE' })).json());
 
 export const fetchBills = async () => (await (await fetch(`${API_URL}/purchasing/bills`)).json());
+export const fetchBillsByPO = async (poId: string) => (await (await fetch(`${API_URL}/purchasing/pos/${poId}/bills`)).json());
 export const createBill = async (data: any) => (await (await fetch(`${API_URL}/purchasing/bills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const updateBill = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const deleteBill = async (id: string) => (await (await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'DELETE' })).json());
 
 
 

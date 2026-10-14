@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, Printer, Building2, 
@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useTaxProfiles } from '@/hooks/useFinance';
-import { useMaterialRequests, usePurchaseOrders } from '@/hooks/usePurchasing';
+import { useMaterialRequests, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { createPO, updatePO, fetchPOs } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 // @ts-ignore
@@ -41,6 +42,7 @@ export const POBuilder: React.FC = () => {
   const { data: mrs } = useMaterialRequests();
   const { data: pos } = usePurchaseOrders();
   const { data: taxProfiles } = useTaxProfiles();
+  const { data: allBills } = useBills();
 
   const [docNo, setDocNo] = useState('PO-' + Date.now().toString().slice(-4));
   const [status, setStatus] = useState('DRAFT');
@@ -332,6 +334,21 @@ export const POBuilder: React.FC = () => {
   }
 
   const grandTotal = netTaxableAmount + totalTax + shippingCost;
+
+  // Filter all bills linked to this PO (Multiple Invoices per PO)
+  const poBills = useMemo(() => {
+    const targetId = id || docNo;
+    if (!targetId) return [];
+    return allBills.filter((b: any) => b.poId === targetId);
+  }, [id, docNo, allBills]);
+
+  const totalInvoiced = useMemo(() => {
+    return poBills.reduce((acc: number, b: any) => acc + Number(b.amount || 0), 0);
+  }, [poBills]);
+
+  const unbilledBalance = useMemo(() => {
+    return Math.max(0, Number((grandTotal - totalInvoiced).toFixed(2)));
+  }, [grandTotal, totalInvoiced]);
 
   const handleSave = async () => {
     if (!supplierId) {
@@ -801,6 +818,72 @@ export const POBuilder: React.FC = () => {
                   <span className="text-emerald-500 font-mono text-base">{formatCurrency(grandTotal)}</span>
                 </div>
               </div>
+            </GlassCard>
+
+            {/* VENDOR INVOICES & BILLS SECTION (Multi-Invoice Support) */}
+            <GlassCard className="p-5 border-t-2 border-t-amber-500 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[12px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-2">
+                  <CreditCard size={16} /> Vendor Invoices ({poBills.length})
+                </h2>
+                <Badge 
+                  value={totalInvoiced >= grandTotal - 0.01 && grandTotal > 0 ? 'Fully Billed' : totalInvoiced > 0 ? 'Partially Billed' : 'Unbilled'} 
+                  size="sm" 
+                />
+              </div>
+
+              {/* Financial Metrics */}
+              <div className="bg-surface/50 p-3 rounded-lg border border-theme-subtle space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Total Ordered:</span>
+                  <span className="font-mono font-bold text-primary">{formatCurrency(grandTotal, true)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Total Invoiced:</span>
+                  <span className="font-mono font-bold text-amber-500">{formatCurrency(totalInvoiced, true)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle">
+                  <span className="font-semibold text-primary">Unbilled Balance:</span>
+                  <span className={`font-mono font-black ${unbilledBalance <= 0.01 && grandTotal > 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                    {formatCurrency(unbilledBalance, true)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action: Add Invoice / Bill */}
+              <Button 
+                variant="primary" 
+                size="sm" 
+                onClick={() => navigate(`/purchasing/bill-builder?po=${docNo}`)}
+                className="w-full text-xs font-bold py-2 bg-amber-600 hover:bg-amber-500 text-white"
+              >
+                + Record Vendor Invoice / Bill
+              </Button>
+
+              {/* List of existing invoices */}
+              {poBills.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-theme-subtle">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted block">
+                    Recorded Invoices for this PO
+                  </span>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {poBills.map((b: any) => (
+                      <div key={b.id} className="p-2 bg-surface2/60 border border-theme-subtle rounded flex items-center justify-between text-xs">
+                        <div>
+                          <p className="font-bold text-primary font-mono">{b.invoiceNo || b.id}</p>
+                          <p className="text-[10px] text-muted">{b.date?.split('T')[0]} • {b.id}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-amber-500">{formatCurrency(Number(b.amount || 0), true)}</p>
+                          <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-bold ${b.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-zinc-400'}`}>
+                            {b.status || 'unpaid'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </GlassCard>
           </div>
         </div>
