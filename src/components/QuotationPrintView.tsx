@@ -41,10 +41,10 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const attention = data.attention || ''
   const subject = data.subject || ''
 
-  const toCompany = data.customerCompany || data.company || lead?.company || (data.customerName !== attention ? data.customerName : '') || (lead?.name !== attention ? lead?.name : '') || data.customerName || lead?.name || ''
-  const toContact = (data.customerName && data.customerName !== toCompany && data.customerName !== attention) 
-    ? data.customerName 
-    : (lead?.name && lead.name !== toCompany && lead.name !== attention ? lead.name : '')
+  const toCompany = data.customerCompany || data.company || lead?.company || (data.customerName && data.customerName !== attention ? data.customerName : '') || (lead?.name && lead.name !== attention ? lead.name : '') || data.customerName || lead?.name || ''
+  const toContact = attention 
+    || ((data.customerName && data.customerName !== toCompany) ? data.customerName : '') 
+    || ((lead?.name && lead.name !== toCompany) ? lead.name : '')
   const toAddress = data.customerAddress || data.address || lead?.address || ''
   
   const custItems = data.custItems || []

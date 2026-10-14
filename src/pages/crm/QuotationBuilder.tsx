@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -229,6 +229,8 @@ export const QuotationBuilder: React.FC = () => {
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [draftId, setDraftId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [previewCollapsed, setPreviewCollapsed] = useState(false)
+  const initialLoadedRef = useRef(false)
 
   const loadVersions = useCallback(async () => {
       if (!leadId) return
@@ -236,10 +238,11 @@ export const QuotationBuilder: React.FC = () => {
         const data = await fetchQuotations(leadId)
         setSavedVersions(data)
         
-        // Auto-load if quoteId is in URL
-        if (quoteIdParam) {
+        // Auto-load if quoteId is in URL (only on initial load so it doesn't overwrite user edits)
+        if (quoteIdParam && !initialLoadedRef.current) {
            const target = data.find((v: any) => v.id === quoteIdParam)
-           if (target && currentId !== target.id) {
+           if (target) {
+              initialLoadedRef.current = true
               const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data
               restoreSnapshot(snap)
               if (target.type === 'draft') {
@@ -256,7 +259,7 @@ export const QuotationBuilder: React.FC = () => {
       } catch (err) {
         console.error(err)
       }
-    }, [leadId, quoteIdParam, previewParam, currentId])
+    }, [leadId, quoteIdParam, previewParam])
 
   useEffect(() => { loadVersions() }, [loadVersions])
 
@@ -900,17 +903,34 @@ export const QuotationBuilder: React.FC = () => {
 
       const amount = custWithSSCL
 
-      const result = await createQuotation({
-        leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
-        totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
-      })
-      if (result.success) {
-        setCurrentId(result.quotation?.id || null)
-        
-        showToast('success', `Quotation v${result.quotation?.version || ''} saved!`)
-        await loadVersions()
+      let result;
+      if (currentId) {
+        result = await updateQuotation(currentId, {
+          leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
+          totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+        });
+        if (result.success) {
+          showToast('success', 'Quotation updated successfully!');
+          await loadVersions();
+        } else {
+          showToast('error', result.error || 'Update failed');
+        }
       } else {
-        showToast('error', result.error || 'Save failed')
+        result = await createQuotation({
+          leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
+          totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+        });
+        if (result.success) {
+          const newId = result.quotation?.id || null;
+          setCurrentId(newId);
+          if (newId && leadId) {
+            navigate(`/crm/quotations/new/${leadId}?quoteId=${newId}`, { replace: true });
+          }
+          showToast('success', `Quotation v${result.quotation?.version || ''} saved!`);
+          await loadVersions();
+        } else {
+          showToast('error', result.error || 'Save failed');
+        }
       }
     } catch (e: any) {
       showToast('error', e.message)
@@ -967,6 +987,13 @@ export const QuotationBuilder: React.FC = () => {
             (showHistory ? 'bg-surface2 border-rex-500/50 text-primary' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2')}
           >
             <History size={14} /> History {showHistory ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+          </button>
+          <button onClick={() => setPreviewCollapsed(p => !p)}
+            className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ' + 
+            (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-rex-500/50 text-primary')}
+            title={previewCollapsed ? 'Expand Live Preview' : 'Collapse Live Preview'}
+          >
+            <Eye size={14} /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
           </button>
           <button onClick={() => setShowPreview(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
@@ -1904,55 +1931,87 @@ export const QuotationBuilder: React.FC = () => {
                 </div>
               </div>
             </div>
-\n        </div>
+        </div>
         
         </div>
         {/* RIGHT COLUMN: AI & LIVE PREVIEW */}
-        <div className="w-[450px] xl:w-[500px] shrink-0 border-l border-theme-subtle flex flex-col bg-surface/40 relative z-10">
-           {/* TABS */}
-           <div className="flex items-center gap-1 p-2 border-b border-theme-subtle bg-surface/80 backdrop-blur">
-             <button className="flex-1 py-2 text-xs font-bold bg-white dark:bg-zinc-800 text-primary rounded-lg shadow-sm border border-theme-subtle/40">
-               Live Preview
-             </button>
-             <button className="flex-1 py-2 text-xs font-bold text-muted hover:text-primary transition-colors flex items-center justify-center gap-1.5 rounded-lg hover:bg-surface2">
-               <span className="text-purple-500"><Wand2 size={13} /></span> AI Co-Pilot
-             </button>
-           </div>
-           
-           {/* LIVE PREVIEW CANVAS */}
-           <div className="flex-1 overflow-y-auto bg-gray-500/5 relative p-4 custom-scrollbar flex justify-center">
-              <div className="shadow-2xl ring-1 ring-black/5 bg-white flex flex-col" style={{ zoom: 0.55, width: '210mm', minHeight: '297mm', flexShrink: 0, marginBottom: '20px' }}>
-                 <div className="w-full p-12 pointer-events-none flex-1">
-                   <QuotationPrintView 
-                      data={{
-                         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
-                         custItems, custDiscount, custDiscountType, custDiscountAmount, boms,
-                         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-                         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
-                         custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
-                      }}
-                      type="main"
-                      lead={currentEntity || lead}
-                      settings={settings}
-                   />
-                 </div>
-              </div>
-           </div>
-           
-           {/* AI CHAT INPUT */}
-           <div className="p-4 bg-surface border-t border-theme-subtle">
-              <div className="relative">
-                 <input 
-                   type="text" 
-                   placeholder="Ask AI to adjust margins, add terms..." 
-                   className="w-full bg-surface2 border border-theme-subtle/40 rounded-xl py-3 pl-4 pr-12 text-xs text-primary focus:border-purple-500 outline-none transition-colors" 
-                 />
-                 <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-purple-500 hover:bg-purple-500/10 rounded-lg transition-colors">
-                   <Wand2 size={16} />
+        {!previewCollapsed ? (
+          <div className="w-[450px] xl:w-[500px] shrink-0 border-l border-theme-subtle flex flex-col bg-surface/40 relative z-10">
+             {/* TABS */}
+             <div className="flex items-center justify-between p-2 border-b border-theme-subtle bg-surface/80 backdrop-blur">
+               <div className="flex items-center gap-1 flex-1">
+                 <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-zinc-800 text-primary rounded-lg shadow-sm border border-theme-subtle/40">
+                   Live Preview
                  </button>
+                 <button className="flex-1 py-1.5 text-xs font-bold text-muted hover:text-primary transition-colors flex items-center justify-center gap-1.5 rounded-lg hover:bg-surface2">
+                   <span className="text-purple-500"><Wand2 size={13} /></span> AI Co-Pilot
+                 </button>
+               </div>
+               <button 
+                 onClick={() => setPreviewCollapsed(true)}
+                 className="p-1.5 ml-2 hover:bg-surface2 rounded-lg text-muted hover:text-primary transition-colors"
+                 title="Collapse Live Preview"
+               >
+                 <ChevronRight size={16} />
+               </button>
+             </div>
+             
+             {/* LIVE PREVIEW CANVAS */}
+             <div className="flex-1 overflow-y-auto bg-gray-500/5 relative p-4 custom-scrollbar flex justify-center">
+                <div className="shadow-2xl ring-1 ring-black/5 bg-white flex flex-col" style={{ zoom: 0.55, width: '210mm', minHeight: '297mm', flexShrink: 0, marginBottom: '20px' }}>
+                   <div className="w-full p-12 pointer-events-none flex-1">
+                     <QuotationPrintView 
+                        data={{
+                           docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
+                           custItems, custDiscount, custDiscountType, custDiscountAmount, boms,
+                           custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+                           jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
+                           custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+                        }}
+                        type="main"
+                        lead={currentEntity || lead}
+                        settings={settings}
+                     />
+                   </div>
+                </div>
+             </div>
+             
+             {/* AI CHAT INPUT */}
+             <div className="p-4 bg-surface border-t border-theme-subtle">
+                <div className="relative">
+                   <input 
+                     type="text" 
+                     placeholder="Ask AI to adjust margins, add terms..." 
+                     className="w-full bg-surface2 border border-theme-subtle/40 rounded-xl py-3 pl-4 pr-12 text-xs text-primary focus:border-purple-500 outline-none transition-colors" 
+                   />
+                   <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-purple-500 hover:bg-purple-500/10 rounded-lg transition-colors">
+                     <Wand2 size={16} />
+                   </button>
+                </div>
+             </div>
+          </div>
+        ) : (
+          <div className="w-10 shrink-0 border-l border-theme-subtle bg-surface/40 flex flex-col items-center py-4 relative z-10 transition-all">
+            <button
+              onClick={() => setPreviewCollapsed(false)}
+              className="p-2 hover:bg-surface2 rounded-lg text-muted hover:text-primary transition-colors mb-4"
+              title="Expand Live Preview"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div 
+              onClick={() => setPreviewCollapsed(false)}
+              className="flex-1 flex items-center justify-center cursor-pointer select-none py-4 text-muted hover:text-primary transition-colors"
+              style={{ writingMode: 'vertical-rl' }}
+              title="Expand Live Preview"
+            >
+              <div className="flex items-center gap-2 tracking-widest text-[11px] font-bold uppercase">
+                <Eye size={13} />
+                <span>Live Preview</span>
               </div>
-           </div>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <Modal isOpen={showPreview} onClose={() => setShowPreview(false)} title={'Preview Quotation'} size="xl">
