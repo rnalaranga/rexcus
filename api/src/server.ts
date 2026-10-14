@@ -1553,6 +1553,151 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
   }
 });
 
+// -- FINISHED GOODS ORDERS --
+app.get('/api/finished-goods-orders', async (req, res) => {
+  try {
+    const { productId, status } = req.query;
+    let query = 'SELECT * FROM finished_goods_orders WHERE 1=1';
+    const params: any[] = [];
+    if (productId) {
+      query += ' AND productId = ?';
+      params.push(productId);
+    }
+    if (status && status !== 'all') {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+    query += ' ORDER BY createdAt DESC';
+    const [rows] = await db.query(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/finished-goods-orders', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const id = data.id || `FGO-${Date.now().toString().slice(-6)}`;
+    const orderNo = data.orderNo || `ORD-${Date.now().toString().slice(-5)}`;
+    
+    let stockStatus = 'In Stock';
+    if (data.productId) {
+      const [inv]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [data.productId]);
+      if (inv.length > 0) {
+        const available = Number(inv[0].quantity || 0);
+        const ordered = Number(data.qty || 1);
+        if (available < ordered) {
+          stockStatus = `Shortage (${ordered - available} req)`;
+        }
+      }
+    }
+
+    const order = {
+      id,
+      orderNo,
+      productId: data.productId,
+      productName: data.productName,
+      productSku: data.productSku || '',
+      customerId: data.customerId || null,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone || null,
+      customerEmail: data.customerEmail || null,
+      orderDate: data.orderDate || now.slice(0, 10),
+      targetDeliveryDate: data.targetDeliveryDate || null,
+      qty: Number(data.qty) || 1,
+      unitPrice: Number(data.unitPrice) || 0,
+      totalPrice: Number(data.totalPrice) || (Number(data.qty || 1) * Number(data.unitPrice || 0)),
+      status: data.status || 'Pending',
+      stockStatus: data.stockStatus || stockStatus,
+      isDispatched: data.isDispatched ? 1 : 0,
+      dispatchedAt: data.dispatchedAt || null,
+      notes: data.notes || '',
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await db.query('INSERT INTO finished_goods_orders SET ?', order);
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.put('/api/finished-goods-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = { ...req.body };
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('UPDATE finished_goods_orders SET ? WHERE id = ?', [data, id]);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [orders]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ?', [id]);
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const order = orders[0];
+    if (order.isDispatched) {
+      return res.status(400).json({ error: 'Order is already dispatched' });
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const dispatchQty = Number(order.qty) || 1;
+
+    const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [order.productId]);
+    if (invRows.length > 0) {
+      const currentQty = Number(invRows[0].quantity || 0);
+      const newQty = currentQty - dispatchQty;
+      await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, order.productId]);
+
+      const ledgerEntry = {
+        id: 'LGR-' + Date.now().toString().slice(-5),
+        inventoryId: order.productId,
+        date: now,
+        type: 'OUT',
+        qty: dispatchQty,
+        reference: order.orderNo,
+        notes: `Dispatched Order ${order.orderNo} for ${order.customerName}`
+      };
+      await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+    }
+
+    await db.query('UPDATE finished_goods_orders SET status = ?, isDispatched = 1, dispatchedAt = ?, updatedAt = ? WHERE id = ?', [
+      'Dispatched',
+      now,
+      now,
+      id
+    ]);
+
+    res.json({ success: true, message: 'Order dispatched and stock updated successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.delete('/api/finished-goods-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM finished_goods_orders WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
 // -- PURCHASING --
 
 // Helper to sync Material Request fulfillment status across all linked Purchase Orders

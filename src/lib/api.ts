@@ -199,6 +199,48 @@ export const addStockLedgerEntry = async (inventoryId: string, data: any) => {
   return res.json();
 };
 
+// -- FINISHED GOODS ORDERS --
+export const fetchFinishedGoodsOrders = async (params?: { productId?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.productId) query.append('productId', params.productId);
+  if (params?.status) query.append('status', params.status);
+  const qStr = query.toString();
+  const res = await fetch(`${API_URL}/finished-goods-orders${qStr ? `?${qStr}` : ''}`);
+  return res.json();
+};
+
+export const createFinishedGoodsOrder = async (data: any) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const updateFinishedGoodsOrder = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const dispatchFinishedGoodsOrder = async (id: string) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${id}/dispatch`, {
+    method: 'POST'
+  });
+  return res.json();
+};
+
+export const deleteFinishedGoodsOrder = async (id: string) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${id}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+};
+
 // -- SUPPLIERS --
 export const fetchSuppliers = async () => {
   const res = await fetch(`${API_URL}/suppliers`);

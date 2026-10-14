@@ -1,19 +1,21 @@
 import React, { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar } from 'lucide-react'
+import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { useInventory, useSuppliers, useStockLedger, useLeads } from '@/hooks/useData'
+import { useInventory, useSuppliers, useStockLedger, useLeads, useFinishedGoodsOrders } from '@/hooks/useData'
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN, fetchGatePasses, createGatePass, deleteGatePass, fetchQuotations, createCustomerGRN } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView'
 import { GatePassPrintView } from '@/components/GatePassPrintView'
+import { FinishedProductModal } from './FinishedProductModal'
+import { FinishedGoodsOrdersView } from './FinishedGoodsOrdersView'
 import html2pdf from 'html2pdf.js'
 
 type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample'
@@ -116,6 +118,11 @@ export const Inventory: React.FC = () => {
   const [quotationsList, setQuotationsList] = useState<any[]>([])
   const [sampleSubTab, setSampleSubTab] = useState<'samples' | 'gate_passes'>('samples')
   const [sampleFilterStatus, setSampleFilterStatus] = useState<'all' | 'in_stock' | 'dispatched'>('all')
+
+  const [finishedSubTab, setFinishedSubTab] = useState<'products' | 'orders'>('products')
+  const [finishedProductModalOpen, setFinishedProductModalOpen] = useState(false)
+  const [selectedFinishedProduct, setSelectedFinishedProduct] = useState<any | null>(null)
+  const { data: fgOrders = [], refetch: refetchFgOrders } = useFinishedGoodsOrders()
 
   const [printGrnData, setPrintGrnData] = useState<any | null>(null)
   const [printGatePassData, setPrintGatePassData] = useState<any | null>(null)
@@ -255,10 +262,13 @@ export const Inventory: React.FC = () => {
   const initialForm = { type: 'raw_material', name: '', sku: '', description: '', unitPrice: '', unitCost: '', quantity: '0', status: 'active', uom: 'pcs', suppliers: [] as string[], location: '', reorderLevel: '0' }
   const [formData, setFormData] = useState(initialForm)
 
-  const filteredData = inventory.filter(item => 
-    (activeTab === 'all' || item.type === activeTab) &&
-    (item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku && item.sku.toLowerCase().includes(search.toLowerCase())))
-  )
+  const isItemFinishedProduct = (type: string) => type === 'finished_product' || type === 'product'
+
+  const filteredData = inventory.filter(item => {
+    const matchesTab = activeTab === 'all' || 
+      (activeTab === 'finished_product' ? isItemFinishedProduct(item.type) : item.type === activeTab)
+    return matchesTab && (item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku && item.sku.toLowerCase().includes(search.toLowerCase())))
+  })
 
   const handleOpenForm = (item?: any) => {
     if (item) {
@@ -420,8 +430,181 @@ export const Inventory: React.FC = () => {
       key: 'id',
       render: (_, item) => (
         <div className="flex justify-end gap-2">
-          <button onClick={() => handleOpenForm(item)} className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"><Edit size={14}/></button>
+          <button 
+            onClick={() => {
+              if (item.type === 'finished_product') {
+                setSelectedFinishedProduct(item)
+                setFinishedProductModalOpen(true)
+              } else {
+                handleOpenForm(item)
+              }
+            }} 
+            className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
+            title="Edit item"
+          >
+            <Edit size={14}/>
+          </button>
           <button onClick={() => handleDelete(item.id)} className="p-1 hover:bg-red-500/20 rounded text-muted hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+        </div>
+      )
+    }
+  ]
+
+  const finishedProductColumns: Column<any>[] = [
+    {
+      header: 'Product Details',
+      key: 'name',
+      render: (val: any, item: any) => (
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+            {item.imageUrl ? (
+              <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <Package size={20} />
+            )}
+          </div>
+          <div>
+            <div className="font-bold text-primary flex items-center gap-2">
+              <span className="text-sm">{val}</span>
+              {item.category && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-secondary font-medium">
+                  {item.category}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              {item.sku && <span className="text-[10px] text-muted font-mono">{item.sku}</span>}
+              {item.description && <span className="text-[10px] text-muted truncate max-w-xs">• {item.description}</span>}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'CAD / Drawings',
+      key: 'drawingsUrl',
+      render: (val: any) => {
+        if (!val) return <span className="text-xs text-muted italic">No link</span>
+        return (
+          <a
+            href={val}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors"
+          >
+            <ExternalLink size={12} /> Google Drive
+          </a>
+        )
+      }
+    },
+    {
+      header: 'BOMs & Cost Rollup',
+      key: 'boms',
+      render: (val: any, item: any) => {
+        let bomCount = 0
+        try {
+          const parsed = typeof val === 'string' ? JSON.parse(val) : val
+          if (Array.isArray(parsed)) bomCount = parsed.length
+        } catch (e) {}
+
+        const unitCost = Number(item.unitCost || 0)
+
+        return (
+          <div className="flex flex-col">
+            <span className="text-xs font-mono font-bold text-primary">
+              {unitCost > 0 ? formatCurrency(unitCost) : '-'}
+            </span>
+            <div className="flex items-center gap-1 mt-0.5">
+              <Badge variant={bomCount > 0 ? 'info' : 'default'} size="sm">
+                <Layers size={10} className="mr-1 inline" />
+                {bomCount} {bomCount === 1 ? 'BOM' : 'BOMs'}
+              </Badge>
+            </div>
+          </div>
+        )
+      }
+    },
+    {
+      header: 'Stock in Hand',
+      key: 'quantity',
+      render: (val: any, item: any) => {
+        const qty = Number(val || 0)
+        const reorder = Number(item.reorderLevel || 0)
+        const isLow = qty <= reorder
+
+        return (
+          <div className="flex flex-col">
+            <span className={`font-mono font-bold text-sm ${isLow ? 'text-red-500' : 'text-primary'}`}>
+              {qty} {item.uom || 'pcs'}
+            </span>
+            {isLow ? (
+              <span className="text-[10px] text-red-500 font-semibold flex items-center gap-0.5">
+                Low Stock (Alert: {reorder})
+              </span>
+            ) : (
+              <span className="text-[10px] text-muted">Reorder @ {reorder}</span>
+            )}
+          </div>
+        )
+      }
+    },
+    {
+      header: 'Final Selling Price',
+      key: 'unitPrice',
+      render: (val: any, item: any) => {
+        const price = Number(val || 0)
+        const cost = Number(item.unitCost || 0)
+        const margin = price > 0 ? ((price - cost) / price) * 100 : 0
+
+        return (
+          <div className="flex flex-col">
+            <span className="font-mono font-bold text-primary">{formatCurrency(price)}</span>
+            {cost > 0 && price > 0 && (
+              <span className={`text-[10px] font-mono font-semibold ${margin >= 20 ? 'text-emerald-500' : margin > 0 ? 'text-amber-500' : 'text-red-500'}`}>
+                {margin.toFixed(1)}% margin
+              </span>
+            )}
+          </div>
+        )
+      }
+    },
+    {
+      header: 'Actions',
+      key: 'id',
+      render: (_: any, item: any) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Layers}
+            onClick={() => {
+              setSelectedFinishedProduct(item)
+              setFinishedProductModalOpen(true)
+            }}
+            className="h-7 text-xs px-2.5 text-rex-600 hover:text-rex-700 bg-rex-600/10 hover:bg-rex-600/20"
+            title="Manage BOMs & Pricing"
+          >
+            BOMs & Pricing
+          </Button>
+          <button 
+            type="button" 
+            onClick={() => {
+              setSelectedFinishedProduct(item)
+              setFinishedProductModalOpen(true)
+            }} 
+            className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
+            title="Edit Product"
+          >
+            <Edit size={14}/>
+          </button>
+          <button 
+            type="button" 
+            onClick={() => handleDelete(item.id)} 
+            className="p-1.5 hover:bg-red-500/20 rounded text-muted hover:text-red-500 transition-colors"
+            title="Delete Product"
+          >
+            <Trash2 size={14}/>
+          </button>
         </div>
       )
     }
@@ -1156,11 +1339,17 @@ export const Inventory: React.FC = () => {
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">
-            {activeTab === 'customer_sample' ? 'Customer Samples & Gate Passes' : 'Inventory & Services'}
+            {activeTab === 'customer_sample' 
+              ? 'Customer Samples & Gate Passes' 
+              : activeTab === 'finished_product'
+              ? 'Finished Goods: Products & Orders'
+              : 'Inventory & Services'}
           </h1>
           <p className="text-sm text-secondary mt-1">
             {activeTab === 'customer_sample' 
               ? 'Track customer sample parts, linked quotation details, and manage outward return gate passes.' 
+              : activeTab === 'finished_product'
+              ? 'Manage manufactured ready-made products, quotation-grade BOM rollups, CAD drawings, and customer orders.'
               : 'Manage products, raw materials, and service offerings.'}
           </p>
         </div>
@@ -1169,6 +1358,19 @@ export const Inventory: React.FC = () => {
             <Button variant="primary" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
               Receive Customer Sample
             </Button>
+          ) : activeTab === 'finished_product' ? (
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="primary" 
+                icon={Plus} 
+                onClick={() => {
+                  setSelectedFinishedProduct(null)
+                  setFinishedProductModalOpen(true)
+                }}
+              >
+                Add Ready-Made Product
+              </Button>
+            </div>
           ) : (
             <>
               <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
@@ -1185,7 +1387,7 @@ export const Inventory: React.FC = () => {
             {[
               { id: 'all', label: 'All Items' },
               { id: 'raw_material', label: 'Raw Materials' },
-              { id: 'finished_product', label: 'Finished Products' },
+              { id: 'finished_product', label: `Finished Products (${inventory.filter(i => isItemFinishedProduct(i.type)).length})` },
               { id: 'company_asset', label: 'Company Assets' },
               { id: 'service', label: 'Services' },
               { id: 'customer_sample', label: `Customer Samples (${grns.length})` }
@@ -1202,12 +1404,42 @@ export const Inventory: React.FC = () => {
             <SearchBar 
               value={search} 
               onChange={setSearch} 
-              placeholder={activeTab === 'customer_sample' ? "Search quotation, company, sample #..." : "Search inventory..."} 
+              placeholder={activeTab === 'customer_sample' ? "Search quotation, company, sample #..." : activeTab === 'finished_product' ? "Search product name, SKU..." : "Search inventory..."} 
               className="w-72" 
             />
             <Button variant="ghost" icon={Filter}>Filters</Button>
           </div>
         </div>
+
+        {/* Finished Goods Sub-navigation */}
+        {activeTab === 'finished_product' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2.5 rounded-lg border border-theme-subtle">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setFinishedSubTab('products')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${finishedSubTab === 'products' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+              >
+                <Package size={14} /> Ready-Made Products ({inventory.filter(i => isItemFinishedProduct(i.type)).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFinishedSubTab('orders')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${finishedSubTab === 'orders' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+              >
+                <ShoppingCart size={14} /> Customer Orders ({fgOrders.length})
+              </button>
+            </div>
+
+            <div className="text-xs text-muted flex items-center gap-2">
+              <span>
+                {finishedSubTab === 'products'
+                  ? 'Standard ready-made products with multi-BOM cost rollups and Google Drive CAD drawings.'
+                  : 'Track customer product orders, delivery deadlines, and one-click stock dispatch.'}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Customer Samples Sub-navigation & Status Filters */}
         {activeTab === 'customer_sample' && (
@@ -1248,29 +1480,47 @@ export const Inventory: React.FC = () => {
         )}
       </div>
 
-      <GlassCard className="p-0 overflow-hidden">
-        {activeTab === 'customer_sample' ? (
-          sampleSubTab === 'samples' ? (
+      {activeTab === 'finished_product' && finishedSubTab === 'orders' ? (
+        <FinishedGoodsOrdersView
+          onRefreshProducts={refetch}
+          onOpenProductBOM={(prod) => {
+            setSelectedFinishedProduct(prod)
+            setFinishedProductModalOpen(true)
+          }}
+        />
+      ) : (
+        <GlassCard className="p-0 overflow-hidden">
+          {activeTab === 'customer_sample' ? (
+            sampleSubTab === 'samples' ? (
+              <DataTable 
+                columns={customerSampleColumns} 
+                data={filteredGrns} 
+                keyExtractor={(item: any) => item.id} 
+                pagination 
+                itemsPerPage={50} 
+              />
+            ) : (
+              <DataTable 
+                columns={gatePassColumns} 
+                data={filteredGatePasses} 
+                keyExtractor={(item: any) => item.id} 
+                pagination 
+                itemsPerPage={50} 
+              />
+            )
+          ) : activeTab === 'finished_product' ? (
             <DataTable 
-              columns={customerSampleColumns} 
-              data={filteredGrns} 
+              columns={finishedProductColumns} 
+              data={filteredData} 
               keyExtractor={(item: any) => item.id} 
               pagination 
               itemsPerPage={50} 
             />
           ) : (
-            <DataTable 
-              columns={gatePassColumns} 
-              data={filteredGatePasses} 
-              keyExtractor={(item: any) => item.id} 
-              pagination 
-              itemsPerPage={50} 
-            />
-          )
-        ) : (
-          <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
-        )}
-      </GlassCard>
+            <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
+          )}
+        </GlassCard>
+      )}
 
       {/* Toast Notification */}
       {toast && (
@@ -1966,6 +2216,23 @@ export const Inventory: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Finished Product Modal (Multi-BOM, Drawings, Pricing & Stock Ledger) */}
+      <FinishedProductModal
+        isOpen={finishedProductModalOpen}
+        onClose={() => setFinishedProductModalOpen(false)}
+        product={selectedFinishedProduct}
+        onSave={async (prodData) => {
+          if (selectedFinishedProduct?.id) {
+            await updateInventoryItem(selectedFinishedProduct.id, prodData)
+            showToast('success', 'Finished product updated successfully')
+          } else {
+            await createInventoryItem(prodData)
+            showToast('success', 'Finished product created successfully')
+          }
+          refetch()
+        }}
+      />
     </div>
   )
 }

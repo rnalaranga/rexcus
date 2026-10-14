@@ -173,3 +173,27 @@ export const useMachiningOperations = () => {
   useEffect(() => { fetch() }, []);
   return { data, loading, error, refetch: fetch };
 }
+
+export function useFinishedGoodsOrders(params?: { productId?: string; status?: string }) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(() => {
+    return api.fetchFinishedGoodsOrders(params).then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      setData(arr);
+      setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch finished goods orders:', err);
+      setData([]);
+      setLoading(false);
+      return [];
+    });
+  }, [params?.productId, params?.status]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, setData, loading, refetch };
+}
+

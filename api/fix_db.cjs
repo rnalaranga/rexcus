@@ -221,6 +221,29 @@ async function run() {
       data LONGTEXT DEFAULT NULL,
       createdAt DATETIME DEFAULT NULL,
       updatedAt DATETIME DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS finished_goods_orders (
+      id VARCHAR(50) PRIMARY KEY,
+      orderNo VARCHAR(50) NOT NULL,
+      productId VARCHAR(50) NOT NULL,
+      productName VARCHAR(255) NOT NULL,
+      productSku VARCHAR(100) DEFAULT NULL,
+      customerId VARCHAR(50) DEFAULT NULL,
+      customerName VARCHAR(255) NOT NULL,
+      customerPhone VARCHAR(100) DEFAULT NULL,
+      customerEmail VARCHAR(150) DEFAULT NULL,
+      orderDate DATE NOT NULL,
+      targetDeliveryDate DATE DEFAULT NULL,
+      qty DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+      unitPrice DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      totalPrice DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      status VARCHAR(50) DEFAULT 'Pending',
+      stockStatus VARCHAR(50) DEFAULT 'In Stock',
+      isDispatched TINYINT(1) DEFAULT 0,
+      dispatchedAt DATETIME DEFAULT NULL,
+      notes TEXT DEFAULT NULL,
+      createdAt DATETIME DEFAULT NULL,
+      updatedAt DATETIME DEFAULT NULL
     )`
   ];
 
@@ -344,7 +367,14 @@ async function run() {
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
-    "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL"
+    "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN boms LONGTEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN imageUrl LONGTEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN drawingsUrl TEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN category VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerEmail VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN stockStatus VARCHAR(50) DEFAULT 'In Stock'"
   ];
 
   for (const patch of patches) {

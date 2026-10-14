@@ -158,6 +158,35 @@ CREATE TABLE IF NOT EXISTS `inventory` (
   `uom` varchar(50) DEFAULT NULL,
   `suppliers` longtext,
   `location` varchar(255) DEFAULT NULL,
+  `boms` longtext DEFAULT NULL,
+  `imageUrl` longtext DEFAULT NULL,
+  `drawingsUrl` text DEFAULT NULL,
+  `category` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+CREATE TABLE IF NOT EXISTS `finished_goods_orders` (
+  `id` varchar(50) NOT NULL,
+  `orderNo` varchar(50) NOT NULL,
+  `productId` varchar(50) NOT NULL,
+  `productName` varchar(255) NOT NULL,
+  `productSku` varchar(100) DEFAULT NULL,
+  `customerId` varchar(50) DEFAULT NULL,
+  `customerName` varchar(255) NOT NULL,
+  `customerPhone` varchar(100) DEFAULT NULL,
+  `customerEmail` varchar(150) DEFAULT NULL,
+  `orderDate` date NOT NULL,
+  `targetDeliveryDate` date DEFAULT NULL,
+  `qty` decimal(10,2) NOT NULL DEFAULT '1.00',
+  `unitPrice` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `totalPrice` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `status` varchar(50) DEFAULT 'Pending',
+  `stockStatus` varchar(50) DEFAULT 'In Stock',
+  `isDispatched` tinyint(1) DEFAULT '0',
+  `dispatchedAt` datetime DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `createdAt` datetime DEFAULT NULL,
+  `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
