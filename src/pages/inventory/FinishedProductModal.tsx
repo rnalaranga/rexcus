@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { 
   Package, DollarSign, Layers, Plus, Trash2, ChevronDown, ChevronUp, 
   ExternalLink, Image as ImageIcon, Upload, X, Save, AlertCircle, 
-  Clock, Wrench, FileText, CheckCircle2, TrendingUp, BarChart3, History, ArrowRight
+  Clock, Wrench, FileText, CheckCircle2, TrendingUp, BarChart3, History, ArrowRight, ArrowLeft
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -113,13 +113,15 @@ interface FinishedProductModalProps {
   onClose: () => void
   product?: any
   onSave: (productData: any) => Promise<void>
+  isPage?: boolean
 }
 
 export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   isOpen,
   onClose,
   product,
-  onSave
+  onSave,
+  isPage = false
 }) => {
   const { data: rawOperations } = useMachiningOperations()
   const { data: inventory } = useInventory()
@@ -459,12 +461,23 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-6xl h-[92vh] max-h-[92vh] bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div className={isPage ? "w-full min-h-[calc(100vh-100px)] flex flex-col animate-fade-in pb-12" : "fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in"}>
+      <div className={isPage ? "relative w-full flex-1 bg-surface border border-theme-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden" : "relative w-full max-w-6xl h-[92vh] max-h-[92vh] bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden"}>
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-theme-subtle bg-surface2/40 shrink-0">
           <div className="flex items-center gap-3">
+            {isPage && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 hover:bg-surface2 rounded-xl text-muted hover:text-primary transition-colors border border-theme-subtle flex items-center gap-1.5 text-xs font-semibold mr-1"
+                title="Back to Finished Goods"
+              >
+                <ArrowLeft size={16} />
+                <span className="hidden sm:inline">Back</span>
+              </button>
+            )}
             <div className="w-10 h-10 rounded-xl bg-rex-600/10 text-rex-600 border border-rex-600/20 flex items-center justify-center">
               <Package size={20} />
             </div>
