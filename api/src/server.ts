@@ -403,6 +403,20 @@ app.post('/api/settings/fix-db', async (req, res) => {
         exchangeRate DECIMAL(15,4) DEFAULT 1.0000,
         isBase TINYINT(1) DEFAULT 0,
         lastUpdated DATETIME DEFAULT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS quotation_templates (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(150) NOT NULL,
+        description TEXT DEFAULT NULL,
+        subject VARCHAR(255) DEFAULT NULL,
+        items LONGTEXT DEFAULT NULL,
+        terms TEXT DEFAULT NULL,
+        validity VARCHAR(100) DEFAULT NULL,
+        delivery VARCHAR(100) DEFAULT NULL,
+        taxProfileId VARCHAR(50) DEFAULT NULL,
+        boms LONGTEXT DEFAULT NULL,
+        createdAt DATETIME DEFAULT NULL,
+        updatedAt DATETIME DEFAULT NULL
       )`
     ];
 
@@ -412,6 +426,72 @@ app.post('/api/settings/fix-db', async (req, res) => {
       } catch (err) {
         // Ignore
       }
+    }
+
+    // Default quotation templates seeding
+    try {
+      const [tplRows]: any = await db.query('SELECT COUNT(*) as count FROM quotation_templates');
+      if (tplRows && tplRows[0]?.count === 0) {
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const seedTemplates = [
+          {
+            id: 'QTPL-0001',
+            name: 'Standard Precision CNC Machining',
+            description: 'Standard template for CNC milling, turning and custom metal component fabrication',
+            subject: 'Quotation for Precision CNC Machining & Fabrication',
+            items: JSON.stringify([
+              { desc: 'Precision CNC Machining of Components as per drawing / CAD model', qty: 1, unitPrice: 25000, unit: 'pcs', note: 'Material: MS / SS / Aluminum as specified' },
+              { desc: 'Surface Finishing, Deburring & Dimensional Inspection Report', qty: 1, unitPrice: 3500, unit: 'lot', note: 'Certificate of Conformity included' }
+            ]),
+            terms: '1. Payment: 30 days from delivery.\n2. Delivery: 2-3 weeks from confirmed Purchase Order.\n3. Inspection: Dimensional inspection carried out at REX QC lab.\n4. Taxes: Applicable taxes extra as per prevailing statutory rates.',
+            validity: '30 Days',
+            delivery: '2-3 Weeks',
+            taxProfileId: null,
+            boms: '[]',
+            createdAt: now,
+            updatedAt: now
+          },
+          {
+            id: 'QTPL-0002',
+            name: 'Sheet Metal & Enclosure Fabrication',
+            description: 'Laser cutting, CNC bending, and industrial enclosure manufacturing',
+            subject: 'Quotation for Sheet Metal Laser Cutting & Powder Coated Enclosure',
+            items: JSON.stringify([
+              { desc: 'Custom Heavy-Duty Sheet Metal Enclosure with Hinged Door & Locking mechanism', qty: 1, unitPrice: 48000, unit: 'sets', note: '1.5mm CRCA Sheet with 7-tank pretreatment' },
+              { desc: 'Electrostatic Epoxy Polyester Powder Coating (RAL 7035 Grey)', qty: 1, unitPrice: 6500, unit: 'lot', note: 'Dry film thickness 60-80 microns' }
+            ]),
+            terms: '1. Advance: 50% with confirmed PO, balance 50% upon delivery.\n2. Raw material price escalation: Valid for 14 days due to steel price volatility.\n3. Loading / Unloading at site by client unless specified.',
+            validity: '14 Days',
+            delivery: '10-15 Working Days',
+            taxProfileId: null,
+            boms: '[]',
+            createdAt: now,
+            updatedAt: now
+          },
+          {
+            id: 'QTPL-0003',
+            name: 'Industrial Machinery Repair & Maintenance',
+            description: 'Routine overhauling, on-site service, bushing replacement, and mechanical maintenance',
+            subject: 'Quotation for Machinery Overhaul & Preventative Maintenance',
+            items: JSON.stringify([
+              { desc: 'Technical Labor: Dismantling, Shaft Alignment & Bearing Replacement', qty: 1, unitPrice: 35000, unit: 'service', note: 'REX senior mechanical maintenance crew' },
+              { desc: 'Machining of Custom Bronze Bushings & Pin Fabrication', qty: 2, unitPrice: 8500, unit: 'pcs', note: 'Phosphor Bronze SAE 660' }
+            ]),
+            terms: '1. Payment: 100% on submission of service sign-off report.\n2. Any unforeseen extra replacement parts will be quoted separately before execution.\n3. Work carried out under REX warranty of 90 days.',
+            validity: '30 Days',
+            delivery: '3-5 Working Days',
+            taxProfileId: null,
+            boms: '[]',
+            createdAt: now,
+            updatedAt: now
+          }
+        ];
+        for (const tpl of seedTemplates) {
+          await db.query('INSERT INTO quotation_templates SET ?', tpl);
+        }
+      }
+    } catch (e) {
+      // Ignore
     }
 
     // Safe schema patches
@@ -1023,6 +1103,11 @@ app.put('/api/quotations/update/:id', async (req, res) => {
       [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, data.type || 'customer', id]
     );
     res.json({ success: true, id });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
 
 app.put('/api/quotations/status/:id', async (req, res) => {
   try {
@@ -1030,13 +1115,7 @@ app.put('/api/quotations/status/:id', async (req, res) => {
     const { status } = req.body;
     await db.query('UPDATE quotations SET status = ? WHERE id = ?', [status, id]);
     res.json({ success: true, id, status });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
-  }
-});
-
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
@@ -1047,9 +1126,92 @@ app.delete('/api/quotations/:id', async (req, res) => {
     const { id } = req.params;
     await db.query('DELETE FROM quotations WHERE id = ?', [id]);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// -- QUOTATION TEMPLATES --
+app.get('/api/quotation-templates', async (req, res) => {
+  try {
+    const [rows]: any = await db.query('SELECT * FROM quotation_templates ORDER BY updatedAt DESC, createdAt DESC');
+    const parsed = rows.map((r: any) => ({
+      ...r,
+      items: typeof r.items === 'string' ? JSON.parse(r.items || '[]') : (r.items || []),
+      boms: typeof r.boms === 'string' ? JSON.parse(r.boms || '[]') : (r.boms || []),
+    }));
+    res.json(parsed);
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to fetch quotation templates' });
+  }
+});
+
+app.post('/api/quotation-templates', async (req, res) => {
+  try {
+    const { name, description, subject, items, terms, validity, delivery, taxProfileId, boms } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Template name is required' });
+    }
+    const id = `QTPL-${Date.now().toString().slice(-6)}`;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const newTemplate = {
+      id,
+      name,
+      description: description || null,
+      subject: subject || null,
+      items: JSON.stringify(items || []),
+      terms: terms || null,
+      validity: validity || null,
+      delivery: delivery || null,
+      taxProfileId: taxProfileId || null,
+      boms: JSON.stringify(boms || []),
+      createdAt: now,
+      updatedAt: now
+    };
+    await db.query('INSERT INTO quotation_templates SET ?', newTemplate);
+    res.json({ success: true, template: { ...newTemplate, items: items || [], boms: boms || [] } });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to create quotation template' });
+  }
+});
+
+app.put('/api/quotation-templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, subject, items, terms, validity, delivery, taxProfileId, boms } = req.body;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const updateData: any = {
+      updatedAt: now
+    };
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (subject !== undefined) updateData.subject = subject;
+    if (items !== undefined) updateData.items = JSON.stringify(items);
+    if (terms !== undefined) updateData.terms = terms;
+    if (validity !== undefined) updateData.validity = validity;
+    if (delivery !== undefined) updateData.delivery = delivery;
+    if (taxProfileId !== undefined) updateData.taxProfileId = taxProfileId;
+    if (boms !== undefined) updateData.boms = JSON.stringify(boms);
+
+    await db.query('UPDATE quotation_templates SET ? WHERE id = ?', [updateData, id]);
+    res.json({ success: true, id });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to update quotation template' });
+  }
+});
+
+app.delete('/api/quotation-templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM quotation_templates WHERE id = ?', [id]);
+    res.json({ success: true, id });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to delete quotation template' });
   }
 });
 

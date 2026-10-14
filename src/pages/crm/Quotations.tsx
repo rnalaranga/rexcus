@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView'
+import { QuotationTemplatesModal } from '@/components/crm/QuotationTemplatesModal'
 import { useSettings } from '@/contexts/SettingsContext'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -139,6 +140,7 @@ export const Quotations: React.FC = () => {
   const [printGrnData, setPrintGrnData] = useState<{ grn: any, group: any } | null>(null)
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
   const [quoteGrns, setQuoteGrns] = useState<Record<string, any[]>>({})
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false)
   const { settings } = useSettings()
     useEffect(() => {
     import('@/lib/api').then(({ fetchAllCustomerGRNs }) => {
@@ -231,6 +233,7 @@ export const Quotations: React.FC = () => {
               Make Final Quote ({selectedQuotes.length})
             </Button>
           )}
+          <Button variant="ghost" size="sm" icon={Bookmark} onClick={() => setShowTemplatesModal(true)} className="border border-theme-subtle">Templates</Button>
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
           <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/crm/quotations/new')}>New Quote</Button>
         </div>
@@ -774,6 +777,14 @@ export const Quotations: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      <QuotationTemplatesModal
+        isOpen={showTemplatesModal}
+        onClose={() => setShowTemplatesModal(false)}
+        onSelectForNewQuote={(tpl) => {
+          navigate(`/crm/quotations/new?templateId=${tpl.id}`);
+        }}
+      />
 
     </div>
   )

@@ -707,3 +707,26 @@ INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, 
 INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
 INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
 
+-- Quotation Templates
+CREATE TABLE IF NOT EXISTS `quotation_templates` (
+  `id` varchar(50) NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `description` text,
+  `subject` varchar(255) DEFAULT NULL,
+  `items` longtext,
+  `terms` text,
+  `validity` varchar(100) DEFAULT NULL,
+  `delivery` varchar(100) DEFAULT NULL,
+  `taxProfileId` varchar(50) DEFAULT NULL,
+  `boms` longtext,
+  `createdAt` datetime DEFAULT NULL,
+  `updatedAt` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+INSERT INTO quotation_templates (id, name, description, subject, items, terms, validity, delivery, createdAt, updatedAt) VALUES
+('QTPL-0001', 'Standard Precision CNC Machining', 'Standard template for CNC milling, turning and custom metal component fabrication', 'Quotation for Precision CNC Machining & Fabrication', '[{"desc":"Precision CNC Machining of Components as per drawing / CAD model","qty":1,"unitPrice":25000,"unit":"pcs","note":"Material: MS / SS / Aluminum as specified"},{"desc":"Surface Finishing, Deburring & Dimensional Inspection Report","qty":1,"unitPrice":3500,"unit":"lot","note":"Certificate of Conformity included"}]', '1. Payment: 30 days from delivery.\n2. Delivery: 2-3 weeks from confirmed Purchase Order.\n3. Inspection: Dimensional inspection carried out at REX QC lab.\n4. Taxes: Applicable taxes extra as per prevailing statutory rates.', '30 Days', '2-3 Weeks', NOW(), NOW()),
+('QTPL-0002', 'Sheet Metal & Enclosure Fabrication', 'Laser cutting, CNC bending, and industrial enclosure manufacturing', 'Quotation for Sheet Metal Laser Cutting & Powder Coated Enclosure', '[{"desc":"Custom Heavy-Duty Sheet Metal Enclosure with Hinged Door & Locking mechanism","qty":1,"unitPrice":48000,"unit":"sets","note":"1.5mm CRCA Sheet with 7-tank pretreatment"},{"desc":"Electrostatic Epoxy Polyester Powder Coating (RAL 7035 Grey)","qty":1,"unitPrice":6500,"unit":"lot","note":"Dry film thickness 60-80 microns"}]', '1. Advance: 50% with confirmed PO, balance 50% upon delivery.\n2. Raw material price escalation: Valid for 14 days due to steel price volatility.\n3. Loading / Unloading at site by client unless specified.', '14 Days', '10-15 Working Days', NOW(), NOW()),
+('QTPL-0003', 'Industrial Machinery Repair & Maintenance', 'Routine overhauling, on-site service, bushing replacement, and mechanical maintenance', 'Quotation for Machinery Overhaul & Preventative Maintenance', '[{"desc":"Technical Labor: Dismantling, Shaft Alignment & Bearing Replacement","qty":1,"unitPrice":35000,"unit":"service","note":"REX senior mechanical maintenance crew"},{"desc":"Machining of Custom Bronze Bushings & Pin Fabrication","qty":2,"unitPrice":8500,"unit":"pcs","note":"Phosphor Bronze SAE 660"}]', '1. Payment: 100% on submission of service sign-off report.\n2. Any unforeseen extra replacement parts will be quoted separately before execution.\n3. Work carried out under REX warranty of 90 days.', '30 Days', '3-5 Working Days', NOW(), NOW())
+ON DUPLICATE KEY UPDATE name=VALUES(name);
+

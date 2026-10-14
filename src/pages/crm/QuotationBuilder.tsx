@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { CustomerModal } from '@/components/crm/CustomerModal'
+import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
 import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
@@ -952,6 +953,54 @@ export const QuotationBuilder: React.FC = () => {
   }
 
   const [showPreview, setShowPreview] = useState(false)
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false)
+
+  const handleApplyTemplate = (tpl: QuotationTemplate, mode: 'replace' | 'append') => {
+    if (tpl.subject) setSubject(tpl.subject)
+    if (tpl.terms) setCustTerms(tpl.terms)
+    if (tpl.validity) setCustValidity(tpl.validity)
+    if (tpl.delivery) setCustDelivery(tpl.delivery)
+    if (tpl.taxProfileId) setSelectedProfileId(tpl.taxProfileId)
+
+    if (tpl.items && tpl.items.length > 0) {
+      const formattedItems = tpl.items.map((it: any, idx: number) => ({
+        id: Date.now() + idx,
+        desc: it.desc || '',
+        qty: Number(it.qty) || 1,
+        unitPrice: Number(it.unitPrice) || 0,
+        note: it.note || ''
+      }))
+
+      if (mode === 'replace') {
+        setCustItems(formattedItems)
+      } else {
+        setCustItems(prev => [
+          ...prev.filter(i => i.desc.trim() !== ''),
+          ...formattedItems
+        ])
+      }
+    }
+
+    showToast('success', `Applied template: ${tpl.name}`)
+  }
+
+  const templateIdParam = searchParams.get('templateId')
+  const templateLoadedRef = useRef(false)
+
+  useEffect(() => {
+    if (templateIdParam && !templateLoadedRef.current) {
+      templateLoadedRef.current = true
+      fetch('http://localhost:3000/api/quotation-templates')
+        .then(r => r.json())
+        .then((tpls: QuotationTemplate[]) => {
+          const found = tpls.find(t => t.id === templateIdParam)
+          if (found) {
+            handleApplyTemplate(found, 'replace')
+          }
+        })
+        .catch(console.error)
+    }
+  }, [templateIdParam])
 
   if (loading) return <div className="p-8 text-center animate-pulse text-muted">Loading...</div>
   if (leadId && !lead) return <div className="p-8 text-center text-red-500">Lead not found.</div>
@@ -982,6 +1031,12 @@ export const QuotationBuilder: React.FC = () => {
 
         {/* Actions */}
         <div className="flex gap-2">
+          <button onClick={() => setShowTemplatesModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors"
+            title="Load or Save Quotation Templates"
+          >
+            <Bookmark size={14} className="text-rex-500" /> Templates
+          </button>
           <button onClick={() => setShowHistory(p => !p)}
             className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ' + 
             (showHistory ? 'bg-surface2 border-rex-500/50 text-primary' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2')}
@@ -2078,6 +2133,22 @@ export const QuotationBuilder: React.FC = () => {
            setSelectedLeadId(newCustomer.id);
            setCustomerName(newCustomer.name + (newCustomer.company ? ` (${newCustomer.company})` : ''));
         }} 
+      />
+
+      {/* Quotation Templates Modal */}
+      <QuotationTemplatesModal
+        isOpen={showTemplatesModal}
+        onClose={() => setShowTemplatesModal(false)}
+        currentQuotationData={{
+          subject,
+          custItems,
+          custTerms,
+          custValidity,
+          custDelivery,
+          selectedProfileId,
+          boms
+        }}
+        onApplyTemplate={handleApplyTemplate}
       />
 
     </div>
