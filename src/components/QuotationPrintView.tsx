@@ -41,7 +41,11 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const attention = data.attention || ''
   const subject = data.subject || ''
 
-  const toCompany = data.customerCompany || data.company || lead?.company || data.customerName || lead?.name || ''
+  let toCompany = data.customerCompany || data.company || lead?.company || data.customerName || lead?.name || ''
+  const leadContact = lead?.name || data.attention || ''
+  if (leadContact && toCompany.toLowerCase().includes(`(${leadContact.toLowerCase()})`)) {
+    toCompany = toCompany.replace(new RegExp(`\\s*\\(${leadContact}\\)`, 'i'), '').trim();
+  }
   const toAddress = data.customerAddress || data.address || lead?.address || ''
   
   const custItems = data.custItems || []
@@ -101,14 +105,48 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 <tbody>
                   <tr>
                     <td className="font-bold w-16 align-top">Office</td>
-                    <td style={{ whiteSpace: 'pre-wrap' }}>: {settings?.company_address || settings?.companyAddress || 'No.451/2,Chilaw Road, Kattuwa,\n  Negombo,11500,Sri Lanka'}</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1 whitespace-pre-line">{settings?.company_address || settings?.companyAddress || 'No.451/2,Chilaw Road, Kattuwa,\nNegombo,11500,Sri Lanka'}</span>
+                      </div>
+                    </td>
                   </tr>
-                  <tr><td className="font-bold">Tel.</td><td>: {settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}</td></tr>
-                  <tr><td className="font-bold">E-mail</td><td>: {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}</td></tr>
-                  <tr><td className="font-bold">Web</td><td>: {settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}</td></tr>
                   <tr>
-                    <td className="font-bold">TIN</td>
-                    <td className="font-bold">: {settings?.company_tin || settings?.company_vat || settings?.tin || '114106470-7000'}</td>
+                    <td className="font-bold w-16 align-top">Tel.</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-bold w-16 align-top">E-mail</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-bold w-16 align-top">Web</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-bold w-16 align-top">TIN</td>
+                    <td className="align-top font-bold">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{settings?.company_tin || settings?.company_vat || settings?.tin || '114106470-7000'}</span>
+                      </div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -137,7 +175,11 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 )}
               </div>
               <div className="mt-4 space-y-0.5 font-medium">
-                <div className="flex"><span className="w-24 font-bold">TIN No.</span><span>: {tinNo || vatNo}</span></div>
+                <div className="flex items-start">
+                  <span className="w-20 font-bold shrink-0">TIN No.</span>
+                  <span className="font-bold mr-1 shrink-0">:</span>
+                  <span className="flex-1">{tinNo || vatNo || '-'}</span>
+                </div>
               </div>
             </div>
             <div className="w-[45%] p-0">
@@ -145,11 +187,21 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 <tbody>
                   <tr className="border-b border-black">
                     <td className="p-1.5 border-r border-black font-bold w-24">QUO DATE</td>
-                    <td className="p-1.5">: {quoDate}</td>
+                    <td className="p-1.5">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{quoDate}</span>
+                      </div>
+                    </td>
                   </tr>
                   <tr>
                     <td className="p-1.5 border-r border-black font-bold">QUO NO</td>
-                    <td className="p-1.5 font-bold">: {quotationNo}</td>
+                    <td className="p-1.5 font-bold">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{quotationNo}</span>
+                      </div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -158,8 +210,16 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
 
           {/* Attention & Subject */}
           <div className="p-3 border-b border-black flex flex-col gap-1.5">
-            <div className="flex"><span className="w-24 font-bold">ATTENTION</span><span>: {attention}</span></div>
-            <div className="flex"><span className="w-24 font-bold">SUBJECT</span><span className="font-bold underline uppercase">: {subject}</span></div>
+            <div className="flex items-start">
+              <span className="w-24 font-bold shrink-0">ATTENTION</span>
+              <span className="font-bold mr-1.5 shrink-0">:</span>
+              <span className="flex-1">{attention || '-'}</span>
+            </div>
+            <div className="flex items-start">
+              <span className="w-24 font-bold shrink-0">SUBJECT</span>
+              <span className="font-bold mr-1.5 shrink-0">:</span>
+              <span className="font-bold underline uppercase flex-1 whitespace-pre-wrap">{subject}</span>
+            </div>
           </div>
 
           {/* Table Headers */}
@@ -271,18 +331,74 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               <div className="font-bold underline mb-1">TERMS & CONDITIONS</div>
               <table className="w-full">
                 <tbody>
-                  <tr><td className="w-24">Payment terms</td><td>: {custTerms}</td></tr>
-                  <tr><td>Validity</td><td>: {custValidity}</td></tr>
-                  <tr><td>Delivery</td><td>: {custDelivery}</td></tr>
+                  <tr>
+                    <td className="w-24 align-top">Payment terms</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1 whitespace-pre-wrap">{custTerms}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="w-24 align-top">Validity</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1 whitespace-pre-wrap">{custValidity}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="w-24 align-top">Delivery</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1 whitespace-pre-wrap">{custDelivery}</span>
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
               <div className="mt-4 font-bold underline mb-1">BANK DETAILS</div>
               <table className="w-full">
                 <tbody>
-                  <tr><td className="w-24">A/C NAME</td><td className="font-bold">: REX INDUSTRIES (PVT) LTD</td></tr>
-                  <tr><td>A/C NO</td><td>: 011010078028</td></tr>
-                  <tr><td>BANK</td><td>: HATTON NATIONAL BANK</td></tr>
-                  <tr><td>BRANCH</td><td>: NEGOMBO</td></tr>
+                  <tr>
+                    <td className="w-24 align-top">A/C NAME</td>
+                    <td className="align-top font-bold">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1">REX INDUSTRIES (PVT) LTD</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="w-24 align-top">A/C NO</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1">011010078028</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="w-24 align-top">BANK</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1">HATTON NATIONAL BANK</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="w-24 align-top">BRANCH</td>
+                    <td className="align-top">
+                      <div className="flex items-start">
+                        <span className="mr-1.5 shrink-0">:</span>
+                        <span className="flex-1">NEGOMBO</span>
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

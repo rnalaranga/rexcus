@@ -199,7 +199,21 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
       setReorderLevel('5')
       setInitialQty('0')
       setSellingPrice('')
-      setBoms([])
+      setBoms([
+        {
+          id: Date.now(),
+          title: 'BOM Sub-Assembly 1',
+          description: '',
+          drawingsUrl: '',
+          collapsed: false,
+          autoCollapsed: false,
+          manualCollapsed: false,
+          machiningCollapsed: false,
+          autoMats: [],
+          manualMats: [],
+          procState: initProcState()
+        }
+      ])
     }
     setActiveTab('info')
   }, [product, isOpen])
@@ -445,11 +459,11 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-6xl my-auto bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-6xl h-[92vh] max-h-[92vh] bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-theme-subtle bg-surface2/40">
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-theme-subtle bg-surface2/40 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-rex-600/10 text-rex-600 border border-rex-600/20 flex items-center justify-center">
               <Package size={20} />
@@ -477,7 +491,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
         </div>
 
         {/* Sub-Tabs Bar */}
-        <div className="flex items-center justify-between px-6 py-2.5 bg-surface2/20 border-b border-theme-subtle">
+        <div className="flex items-center justify-between px-6 py-2.5 bg-surface2/20 border-b border-theme-subtle shrink-0">
           <div className="flex items-center gap-1.5 overflow-x-auto">
             <button
               type="button"
@@ -545,7 +559,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
         </div>
 
         {/* Tab Content (Scrollable) */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 
           {/* TAB 1: PRODUCT INFO & MEDIA */}
           {activeTab === 'info' && (
@@ -1533,7 +1547,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-theme-subtle bg-surface2/40">
+        <div className="flex items-center justify-between px-6 py-3.5 border-t border-theme-subtle bg-surface2/40 shrink-0">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancel
           </Button>

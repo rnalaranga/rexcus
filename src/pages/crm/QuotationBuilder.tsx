@@ -1183,7 +1183,7 @@ export const QuotationBuilder: React.FC = () => {
             <p className="text-[11px] text-muted mt-0.5">
               {isTemplateMode 
                 ? (templateSaveName ? `Template: ${templateSaveName}` : 'Reusable Template (BOMs, operations, materials & pricing)')
-                : ((lead?.name || customerName || 'Walk-in Customer') + (lead?.company ? ' · ' + lead.company : ''))}
+                : (lead?.company || customerName || lead?.name || 'Walk-in Customer')}
             </p>
           </div>
         </div>
@@ -1408,12 +1408,12 @@ export const QuotationBuilder: React.FC = () => {
 
                 <div>
                   <label className="block text-[11px] text-muted mb-1.5">Company / Customer Address</label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     value={customerAddress}
                     onChange={e => setCustomerAddress(e.target.value)}
-                    placeholder="e.g. No. 128, Panchikawatta Road, Colombo 10"
-                    className={docInputClass}
+                    placeholder="e.g. No. 128, Panchikawatta Road,&#10;Colombo 10"
+                    className={docInputClass + " resize-none"}
                   />
                 </div>
 
@@ -2379,7 +2379,7 @@ export const QuotationBuilder: React.FC = () => {
         onSuccess={(newCustomer) => {
            showToast('success', 'Customer registered successfully!');
            setSelectedLeadId(newCustomer.id);
-           setCustomerName(newCustomer.name + (newCustomer.company ? ` (${newCustomer.company})` : ''));
+           setCustomerName(newCustomer.company || newCustomer.name || '');
         }} 
       />
 

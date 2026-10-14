@@ -376,7 +376,7 @@ export const Quotations: React.FC = () => {
 
 
                       </h3>
-                    <p className="text-xs text-secondary mt-0.5 font-medium">{group.leadName || 'Unknown Customer'} {group.leadCompany ? `(${group.leadCompany})` : ''}</p>
+                    <p className="text-xs text-secondary mt-0.5 font-medium">{group.leadCompany || group.leadName || 'Unknown Customer'}</p>
                     <p className="text-[10px] text-muted mt-0.5">Last updated: {formatDate(group.latestDate)}</p>
                   </div>
                 </div>

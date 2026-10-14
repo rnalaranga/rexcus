@@ -9,11 +9,26 @@ import { useTheme } from '@/store/theme'
 import { useCurrencies } from '@/hooks/useFinance'
 
 const breadcrumbMap: Record<string, string> = {
-  '/crm':           'Dashboard',
-  '/crm/customers': 'Customers',
-  '/crm/leads':     'Leads',
-  '/crm/deals':     'Deals',
-  '/crm/contacts':  'Contacts',
+  '/crm':             'Dashboard',
+  '/crm/customers':   'Customers',
+  '/crm/leads':       'Leads',
+  '/crm/quotations':  'Quotations',
+  '/crm/deals':       'Deals',
+  '/crm/contacts':    'Contacts',
+  '/crm/followups':   'Follow-ups',
+  '/inventory':       'Stock & Finished Goods',
+  '/purchasing':      'Purchasing & GRN',
+  '/purchasing/suppliers': 'Suppliers',
+  '/production':      'Production & Work Orders',
+  '/finance':         'Finance Dashboard',
+  '/finance/invoices':'Invoices',
+  '/finance/banking': 'Banking',
+  '/finance/accounting': 'Accounting',
+  '/finance/receivables': 'Receivables',
+  '/finance/payables': 'Payables',
+  '/finance/reports': 'Reports',
+  '/admin/settings':  'Settings',
+  '/admin/users':     'Users',
 }
 
 const notifications = [
@@ -52,7 +67,8 @@ export const TopBar: React.FC = () => {
 
 
   const pathParts = location.pathname.split('/').filter(Boolean)
-  const label     = breadcrumbMap[location.pathname] || 'CRM'
+  const rootSection = (pathParts[0] || 'crm').toUpperCase()
+  const label     = breadcrumbMap[location.pathname] || (pathParts[pathParts.length - 1] ? (pathParts[pathParts.length - 1].charAt(0).toUpperCase() + pathParts[pathParts.length - 1].slice(1)) : 'Dashboard')
 
   return (
     <header className="glass-topbar flex items-center h-14 px-6 gap-4 flex-shrink-0 z-30 relative">
@@ -61,11 +77,11 @@ export const TopBar: React.FC = () => {
       <div className="flex items-center gap-1.5 min-w-0 mr-2">
         <span className="text-[10px] text-muted uppercase tracking-[0.15em] font-medium">ERP</span>
         <ChevronRight size={10} className="text-faint" />
-        <span className="text-[10px] text-muted uppercase tracking-[0.15em] font-medium">CRM</span>
-        {label !== 'Dashboard' && (
+        <span className="text-[10px] text-muted uppercase tracking-[0.15em] font-medium">{rootSection}</span>
+        {label !== 'Dashboard' && label.toUpperCase() !== rootSection && (
           <>
             <ChevronRight size={10} className="text-faint" />
-            <span className="text-[10px] text-rex-600 dark:text-rex-400 uppercase tracking-[0.15em] font-semibold">
+            <span className="text-[10px] text-rex-600 dark:text-rex-400 uppercase tracking-[0.15em] font-semibold truncate max-w-[160px]">
               {label}
             </span>
           </>

@@ -491,7 +491,7 @@ export const Leads: React.FC = () => {
                 <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Select Customer <span className="text-rex-500">*</span></label>
 <SearchableSelect
-                    options={customers.map((c: any) => ({ value: c.id, label: c.company ? `${c.company} (${c.name})` : c.name }))}
+                    options={customers.map((c: any) => ({ value: c.id, label: c.company || c.name }))}
                     value={formData.customerId}
                     onChange={(val) => {
                       setFormData({...formData, customerId: val});

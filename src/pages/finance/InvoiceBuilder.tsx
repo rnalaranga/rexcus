@@ -60,7 +60,7 @@ export const InvoiceBuilder: React.FC = () => {
   const selectedCustomer = customers.find(c => c.id === customerId);
   const selectedBank = bankDetailId === 'none' ? null : (bankAccounts.find(b => b.id === bankDetailId) || null);
 
-  const customerOptions = customers.map(c => ({ value: c.id, label: c.company ? `${c.company} (${c.name})` : c.name, group: c.segment || 'Customers', extra: c.email || '' }));
+  const customerOptions = customers.map(c => ({ value: c.id, label: c.company || c.name, group: c.segment || 'Customers', extra: c.email || '' }));
   const itemOptions = inventory.map(i => ({ value: i.id, label: `${i.sku} - ${i.name}`, group: i.category || 'Products', extra: `Stock: ${i.qtyOnHand}` }));
 
   useEffect(() => {
@@ -319,7 +319,7 @@ export const InvoiceBuilder: React.FC = () => {
           </button>
           <div>
             <h1 className="text-lg font-black text-primary tracking-tight">Invoice Builder</h1>
-            <p className="text-[11px] text-muted mt-0.5">{selectedCustomer ? `${selectedCustomer.name} · ${selectedCustomer.company}` : 'New Invoice'}</p>
+            <p className="text-[11px] text-muted mt-0.5">{selectedCustomer ? (selectedCustomer.company || selectedCustomer.name) : 'New Invoice'}</p>
           </div>
         </div>
 
