@@ -311,7 +311,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         justifyContent: 'space-between', 
         alignItems: 'center', 
         marginBottom: '14px',
-        minHeight: '48px'
+        minHeight: '48px',
+        width: '100%'
       }}>
         {/* Left: Company Logo */}
         <div style={{ display: 'flex', alignItems: 'center' }}>

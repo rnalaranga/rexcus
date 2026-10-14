@@ -408,8 +408,64 @@ export const Invoices: React.FC = () => {
                       if (!content) return;
                       const win = window.open('', '_blank');
                       if (!win) return;
-                      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${viewInvoice.id}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;display:flex;justify-content:center}@page{size:A4;margin:0}@media print{body{margin:0;width:210mm;height:297mm}}</style></head><body>${content.innerHTML}</body></html>`);
-                      win.document.close(); win.focus(); win.print();
+                      win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>${viewInvoice.id}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      background: #fff;
+      color: #000;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      display: block !important;
+      width: 100%;
+    }
+    #invoice-preview {
+      width: 210mm !important;
+      min-height: 297mm !important;
+      padding: 12mm 15mm !important;
+      margin: 0 auto !important;
+      box-sizing: border-box !important;
+      background: #fff !important;
+    }
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+    @media print {
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        background: #fff !important;
+      }
+      #invoice-preview {
+        width: 210mm !important;
+        margin: 0 auto !important;
+        padding: 12mm 15mm !important;
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  ${content.outerHTML}
+</body>
+</html>`);
+                      win.document.close();
+                      win.focus();
+                      setTimeout(() => {
+                        win.print();
+                      }, 350);
                   }}>
                     Print / PDF
                   </Button>
