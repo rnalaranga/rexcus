@@ -1161,27 +1161,18 @@ export const QuotationBuilder: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1.5">Customer VAT No.</label>
-                    <input
-                      type="text"
-                      value={vatNo}
-                      onChange={e => setVatNo(e.target.value)}
-                      placeholder="e.g. 104106470-7000"
-                      className={docInputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1.5">Customer TIN No.</label>
-                    <input
-                      type="text"
-                      value={tinNo}
-                      onChange={e => setTinNo(e.target.value)}
-                      placeholder="e.g. SVAT001245 / TIN"
-                      className={docInputClass}
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[11px] text-muted mb-1.5">Customer TIN No.</label>
+                  <input
+                    type="text"
+                    value={tinNo || vatNo}
+                    onChange={e => {
+                      setTinNo(e.target.value)
+                      setVatNo(e.target.value)
+                    }}
+                    placeholder="e.g. 104106470-7000"
+                    className={docInputClass}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

@@ -41,10 +41,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const attention = data.attention || ''
   const subject = data.subject || ''
 
-  const toCompany = data.customerCompany || data.company || lead?.company || (data.customerName && data.customerName !== attention ? data.customerName : '') || (lead?.name && lead.name !== attention ? lead.name : '') || data.customerName || lead?.name || ''
-  const toContact = attention 
-    || ((data.customerName && data.customerName !== toCompany) ? data.customerName : '') 
-    || ((lead?.name && lead.name !== toCompany) ? lead.name : '')
+  const toCompany = data.customerCompany || data.company || lead?.company || data.customerName || lead?.name || ''
   const toAddress = data.customerAddress || data.address || lead?.address || ''
   
   const custItems = data.custItems || []
@@ -110,8 +107,8 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   <tr><td className="font-bold">E-mail</td><td>: {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}</td></tr>
                   <tr><td className="font-bold">Web</td><td>: {settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}</td></tr>
                   <tr>
-                    <td className="font-bold">VAT</td>
-                    <td className="font-bold">: No:{settings?.company_tin || settings?.company_vat || settings?.tin || '114106470-7000'}  SVAT No:{settings?.company_svat || 'SVAT003857'}</td>
+                    <td className="font-bold">TIN</td>
+                    <td className="font-bold">: {settings?.company_tin || settings?.company_vat || settings?.tin || '114106470-7000'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -133,11 +130,6 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     {toCompany}
                   </div>
                 )}
-                {toContact && (
-                  <div className="text-[12px] leading-snug text-gray-800">
-                    {toContact}
-                  </div>
-                )}
                 {toAddress && (
                   <div className="whitespace-pre-line text-[11px] leading-relaxed text-black mt-1">
                     {toAddress}
@@ -145,8 +137,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 )}
               </div>
               <div className="mt-4 space-y-0.5 font-medium">
-                <div className="flex"><span className="w-24 font-bold">VAT No.</span><span>: {vatNo}</span></div>
-                <div className="flex"><span className="w-24 font-bold">TIN No.</span><span>: {tinNo}</span></div>
+                <div className="flex"><span className="w-24 font-bold">TIN No.</span><span>: {tinNo || vatNo}</span></div>
               </div>
             </div>
             <div className="w-[45%] p-0">
