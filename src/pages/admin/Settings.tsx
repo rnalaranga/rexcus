@@ -7,6 +7,7 @@ import { CurrencyManager } from '@/components/CurrencyManager';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
 import { BankDetailsManager } from '@/components/BankDetailsManager';
+import { TermsConditionsManager } from '@/components/TermsConditionsManager';
 export const Settings = () => {
   const { toast, showConfirm } = useDialog();
   const { settings, updateSettings } = useSettings();
@@ -305,6 +306,7 @@ export const Settings = () => {
         </GlassCard>
 
         <div className="col-span-1 md:col-span-2 space-y-6">
+          <TermsConditionsManager />
           <BankDetailsManager />
           <TaxManager />
           <CurrencyManager />

@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, Printer, Building2, 
   Calendar, Truck, FileText, Calculator, CreditCard, ShieldCheck, 
-  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag
+  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag, Briefcase
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +29,7 @@ interface POItem {
   mrItemId?: string;
   requestedQty?: number;
   balanceToOrder?: number;
+  workOrderNos?: string[];
 }
 
 export const POBuilder: React.FC = () => {
@@ -254,6 +255,7 @@ export const POBuilder: React.FC = () => {
         total: itemQty * unitPrice,
         mrId: mr.id,
         mrItemId: i.id,
+        workOrderNos: Array.isArray(i.workOrderNos) ? i.workOrderNos : (mr.workOrderNos ? (Array.isArray(mr.workOrderNos) ? mr.workOrderNos : (() => { try { return JSON.parse(mr.workOrderNos); } catch { return []; } })()) : []),
         requestedQty,
         balanceToOrder: balanceQty
       });
@@ -688,6 +690,11 @@ export const POBuilder: React.FC = () => {
                             {item.mrId && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 w-fit">
                                 <GitPullRequest size={9} /> MR: {item.mrId}
+                              </span>
+                            )}
+                            {item.workOrderNos && item.workOrderNos.length > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20 w-fit">
+                                <Briefcase size={9} /> Job: {item.workOrderNos.join(', ')}
                               </span>
                             )}
                           </div>

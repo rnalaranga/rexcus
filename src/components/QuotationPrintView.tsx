@@ -207,10 +207,8 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             <div className="flex border-b border-black items-center h-8">
               <div className="w-[65%] text-right font-bold pr-6">
                 {isSsclHidden && isVatHidden 
-                  ? 'Total Value of Supply (VAT & SSCL Inclusive)' 
-                  : isSsclHidden 
-                    ? `Sub Total (incl. ${data.selectedProfile?.tax1_name || 'SSCL'})` 
-                    : 'Sub Total'}
+                  ? 'Total Value of Supply' 
+                  : 'Sub Total'}
               </div>
               <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
               <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">

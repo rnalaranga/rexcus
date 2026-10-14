@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
+import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
 import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
@@ -618,6 +619,55 @@ export const QuotationBuilder: React.FC = () => {
   const [custDiscount, setCustDiscount] = useState<number | string>(0)
   const [custDiscountType, setCustDiscountType] = useState<'percent' | 'amount'>('percent')
   const [custDiscountAmount, setCustDiscountAmount] = useState<number | string>(0)
+
+  // Quotation Terms & Conditions Presets (loaded from Settings)
+  const termsPresets = useMemo<QuotationTermsPreset[]>(() => {
+    if (settings?.quotation_terms_presets) {
+      try {
+        const parsed = JSON.parse(settings.quotation_terms_presets);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error('Error parsing quotation_terms_presets', e);
+      }
+    }
+    return DEFAULT_TERMS_PRESETS;
+  }, [settings?.quotation_terms_presets]);
+
+  const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
+
+  const handleSelectTermsPreset = (presetId: string) => {
+    setSelectedTermsPresetId(presetId);
+    if (!presetId) return;
+    const preset = termsPresets.find(p => p.id === presetId);
+    if (preset) {
+      if (preset.paymentTerms) setCustTerms(preset.paymentTerms);
+      if (preset.validity) setCustValidity(preset.validity);
+      if (preset.delivery) setCustDelivery(preset.delivery);
+    }
+  };
+
+  // Auto-select default preset if terms are blank
+  useEffect(() => {
+    if (!custTerms && termsPresets.length > 0) {
+      const def = termsPresets.find(p => p.isDefault) || termsPresets[0];
+      if (def) {
+        setSelectedTermsPresetId(def.id);
+        if (def.paymentTerms) setCustTerms(def.paymentTerms);
+        if (def.validity) setCustValidity(def.validity);
+        if (def.delivery) setCustDelivery(def.delivery);
+      }
+    }
+  }, [termsPresets]);
+
+  // Keep dropdown in sync if terms match an existing preset
+  useEffect(() => {
+    if (custTerms && termsPresets.length > 0) {
+      const matched = termsPresets.find(p => p.paymentTerms.trim().toLowerCase() === custTerms.trim().toLowerCase());
+      if (matched && matched.id !== selectedTermsPresetId) {
+        setSelectedTermsPresetId(matched.id);
+      }
+    }
+  }, [custTerms, termsPresets]);
 
   // --- Calculations ---
   
@@ -1445,6 +1495,29 @@ export const QuotationBuilder: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  {/* Terms Preset Selector */}
+                  <div className="bg-surface2/60 border border-theme-subtle/60 rounded-xl p-2.5 mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-bold text-primary flex items-center gap-1 uppercase tracking-wider">
+                        <FileText size={12} className="text-rex-500" />
+                        Terms & Conditions Preset
+                      </label>
+                      <span className="text-[9px] text-muted">From Settings</span>
+                    </div>
+                    <select
+                      value={selectedTermsPresetId}
+                      onChange={e => handleSelectTermsPreset(e.target.value)}
+                      className={docInputClass + " bg-surface font-medium text-xs"}
+                    >
+                      <option value="">-- Choose Preset (Payment, Validity & Delivery) --</option>
+                      {termsPresets.map(tp => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.name} ({tp.validity}) {tp.isDefault ? '★ (Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div>
                     <label className="block text-[11px] text-muted mb-1.5">Payment Terms</label>
                     <input type="text" value={custTerms} onChange={e => setCustTerms(e.target.value)}
@@ -1922,18 +1995,44 @@ export const QuotationBuilder: React.FC = () => {
               </div>
 
               {/* Quotation Terms */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
-                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Payment Terms</label>
-                  <input type="text" value={custTerms} onChange={e => setCustTerms(e.target.value)} placeholder="e.g. 50% Advance" className={docInputClass + " bg-surface"} />
+              <div className="mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface2/60 border border-theme-subtle/60 rounded-xl p-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText size={15} className="text-rex-500" />
+                    <div>
+                      <span className="text-xs font-bold text-primary block">Quotation Terms & Conditions Preset</span>
+                      <span className="text-[10px] text-muted">Select a pre-saved term preset or customize the fields below</span>
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-80">
+                    <select
+                      value={selectedTermsPresetId}
+                      onChange={e => handleSelectTermsPreset(e.target.value)}
+                      className="w-full bg-surface border border-theme-subtle rounded-lg px-2.5 py-1.5 text-xs text-primary focus:border-rex-500 outline-none font-medium"
+                    >
+                      <option value="">-- Choose Terms Preset --</option>
+                      {termsPresets.map(tp => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.name} ({tp.validity}) {tp.isDefault ? '★ (Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
-                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Validity</label>
-                  <input type="text" value={custValidity} onChange={e => setCustValidity(e.target.value)} placeholder="e.g. 30 Days" className={docInputClass + " bg-surface"} />
-                </div>
-                <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
-                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Delivery Timeline</label>
-                  <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)} placeholder="e.g. 3-4 weeks" className={docInputClass + " bg-surface"} />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
+                    <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Payment Terms</label>
+                    <input type="text" value={custTerms} onChange={e => setCustTerms(e.target.value)} placeholder="e.g. 50% Advance" className={docInputClass + " bg-surface"} />
+                  </div>
+                  <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
+                    <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Validity</label>
+                    <input type="text" value={custValidity} onChange={e => setCustValidity(e.target.value)} placeholder="e.g. 30 Days" className={docInputClass + " bg-surface"} />
+                  </div>
+                  <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
+                    <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Delivery Timeline</label>
+                    <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)} placeholder="e.g. 3-4 weeks" className={docInputClass + " bg-surface"} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1952,10 +2051,8 @@ export const QuotationBuilder: React.FC = () => {
                                     <div className="flex justify-between items-center text-xs">
                     <span className="text-muted font-medium">
                         {taxEnabled && selectedProfile?.tax1_show_separately === 0 && selectedProfile?.tax2_show_separately === 0
-                          ? 'Sub Total (VAT & SSCL Inclusive)'
-                          : taxEnabled && selectedProfile?.tax1_show_separately === 0
-                            ? `Sub Total (incl. ${selectedProfile.tax1_name})`
-                            : 'Sub Total'}
+                          ? 'Sub Total'
+                          : 'Sub Total'}
                       </span>
                       <span className="font-mono font-semibold text-secondary text-sm">
                         {formatCurrency(

@@ -206,6 +206,21 @@ async function run() {
       exchangeRate DECIMAL(15,4) DEFAULT 1.0000,
       isBase TINYINT(1) DEFAULT 0,
       lastUpdated DATETIME DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS quotation_templates (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(150) NOT NULL,
+      description TEXT DEFAULT NULL,
+      subject VARCHAR(255) DEFAULT NULL,
+      items LONGTEXT DEFAULT NULL,
+      terms TEXT DEFAULT NULL,
+      validity VARCHAR(100) DEFAULT NULL,
+      delivery VARCHAR(100) DEFAULT NULL,
+      taxProfileId VARCHAR(50) DEFAULT NULL,
+      boms LONGTEXT DEFAULT NULL,
+      data LONGTEXT DEFAULT NULL,
+      createdAt DATETIME DEFAULT NULL,
+      updatedAt DATETIME DEFAULT NULL
     )`
   ];
 
@@ -328,7 +343,8 @@ async function run() {
     "ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
-    "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00"
+    "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -339,7 +355,7 @@ async function run() {
     }
   }
 
-  // 4. Seed Tax Profiles and Base Currencies
+  // 4. Seed Tax Profiles, Base Currencies and Settings
   const seeds = [
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt1_absorbed', 'Option 1: VAT & SSCL Absorbed (Total Value)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 0) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt2_sscl_absorbed_vat_sep', 'Option 2: SSCL Absorbed + VAT Separate', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
@@ -347,7 +363,8 @@ async function run() {
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{\"id\":\"bank_hnb\",\"bankName\":\"Hatton National Bank\",\"branchName\":\"Negombo\",\"accountName\":\"Rex Industries (Pvt) Ltd\",\"accountNumber\":\"011010078028\",\"swiftCode\":\"HNBLLKLX\",\"isDefault\":true}]')"
+    "INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{\"id\":\"bank_hnb\",\"bankName\":\"Hatton National Bank\",\"branchName\":\"Negombo\",\"accountName\":\"Rex Industries (Pvt) Ltd\",\"accountNumber\":\"011010078028\",\"swiftCode\":\"HNBLLKLX\",\"isDefault\":true}]')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{\"id\":\"tc_std_30d\",\"name\":\"Standard 30 Days Credit\",\"paymentTerms\":\"30 days from date of delivery\",\"validity\":\"30 Days\",\"delivery\":\"2-3 weeks from confirmed PO\",\"isDefault\":true},{\"id\":\"tc_50_adv\",\"name\":\"50% Advance + Balance on Delivery\",\"paymentTerms\":\"50% Advance with confirmed PO, balance 50% upon delivery\",\"validity\":\"14 Days\",\"delivery\":\"10-15 working days\",\"isDefault\":false},{\"id\":\"tc_cod\",\"name\":\"Immediate Payment on Delivery (COD)\",\"paymentTerms\":\"100% on delivery against invoice\",\"validity\":\"30 Days\",\"delivery\":\"3-5 working days / Ex-stock\",\"isDefault\":false},{\"id\":\"tc_milestone\",\"name\":\"Progressive Milestone Payment\",\"paymentTerms\":\"30% Advance, 40% on dispatch, 30% after installation & sign-off\",\"validity\":\"30 Days\",\"delivery\":\"4-6 weeks from approved drawings\",\"isDefault\":false}]')"
   ];
 
   for (const seed of seeds) {
@@ -356,6 +373,72 @@ async function run() {
     } catch (err) {
       // Ignore
     }
+  }
+
+  // 5. Seed default quotation templates if table is empty
+  try {
+    const [tplRows] = await conn.query('SELECT COUNT(*) as count FROM quotation_templates');
+    if (tplRows && tplRows[0]?.count === 0) {
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const seedTemplates = [
+        {
+          id: 'QTPL-0001',
+          name: 'Standard Precision CNC Machining',
+          description: 'Standard template for CNC milling, turning and custom metal component fabrication',
+          subject: 'Quotation for Precision CNC Machining & Fabrication',
+          items: JSON.stringify([
+            { desc: 'Precision CNC Machining of Components as per drawing / CAD model', qty: 1, unitPrice: 25000, unit: 'pcs', note: 'Material: MS / SS / Aluminum as specified' },
+            { desc: 'Surface Finishing, Deburring & Dimensional Inspection Report', qty: 1, unitPrice: 3500, unit: 'lot', note: 'Certificate of Conformity included' }
+          ]),
+          terms: '1. Payment: 30 days from delivery.\n2. Delivery: 2-3 weeks from confirmed Purchase Order.\n3. Inspection: Dimensional inspection carried out at REX QC lab.\n4. Taxes: Applicable taxes extra as per prevailing statutory rates.',
+          validity: '30 Days',
+          delivery: '2-3 Weeks',
+          taxProfileId: null,
+          boms: '[]',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: 'QTPL-0002',
+          name: 'Sheet Metal & Enclosure Fabrication',
+          description: 'Laser cutting, CNC bending, and industrial enclosure manufacturing',
+          subject: 'Quotation for Sheet Metal Laser Cutting & Powder Coated Enclosure',
+          items: JSON.stringify([
+            { desc: 'Custom Heavy-Duty Sheet Metal Enclosure with Hinged Door & Locking mechanism', qty: 1, unitPrice: 48000, unit: 'sets', note: '1.5mm CRCA Sheet with 7-tank pretreatment' },
+            { desc: 'Electrostatic Epoxy Polyester Powder Coating (RAL 7035 Grey)', qty: 1, unitPrice: 6500, unit: 'lot', note: 'Dry film thickness 60-80 microns' }
+          ]),
+          terms: '1. Advance: 50% with confirmed PO, balance 50% upon delivery.\n2. Raw material price escalation: Valid for 14 days due to steel price volatility.\n3. Loading / Unloading at site by client unless specified.',
+          validity: '14 Days',
+          delivery: '10-15 Working Days',
+          taxProfileId: null,
+          boms: '[]',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: 'QTPL-0003',
+          name: 'Industrial Machinery Repair & Maintenance',
+          description: 'Routine overhauling, on-site service, bushing replacement, and mechanical maintenance',
+          subject: 'Quotation for Machinery Overhaul & Preventative Maintenance',
+          items: JSON.stringify([
+            { desc: 'Technical Labor: Dismantling, Shaft Alignment & Bearing Replacement', qty: 1, unitPrice: 35000, unit: 'service', note: 'REX senior mechanical maintenance crew' },
+            { desc: 'Machining of Custom Bronze Bushings & Pin Fabrication', qty: 2, unitPrice: 8500, unit: 'pcs', note: 'Phosphor Bronze SAE 660' }
+          ]),
+          terms: '1. Payment: 100% on submission of service sign-off report.\n2. Any unforeseen extra replacement parts will be quoted separately before execution.\n3. Work carried out under REX warranty of 90 days.',
+          validity: '30 Days',
+          delivery: '3-5 Working Days',
+          taxProfileId: null,
+          boms: '[]',
+          createdAt: now,
+          updatedAt: now
+        }
+      ];
+      for (const tpl of seedTemplates) {
+        await conn.query('INSERT INTO quotation_templates SET ?', tpl);
+      }
+    }
+  } catch (e) {
+    // Ignore
   }
 
   console.log('✅ Database synchronized successfully! All tables, columns, and seed options are up to date.');

@@ -22,6 +22,7 @@ interface MRItem {
   qty: number;
   uom?: string;
   unitCost?: number;
+  workOrderNos?: string[];
 }
 
 export const MRBuilder: React.FC = () => {
@@ -97,7 +98,12 @@ export const MRBuilder: React.FC = () => {
             return {
               ...item,
               uom: item.uom || inv?.uom || 'units',
-              unitCost: item.unitCost !== undefined ? Number(item.unitCost) : (Number(inv?.unitCost) || 0)
+              unitCost: item.unitCost !== undefined ? Number(item.unitCost) : (Number(inv?.unitCost) || 0),
+              workOrderNos: Array.isArray(item.workOrderNos) 
+                ? item.workOrderNos 
+                : (typeof item.workOrderNos === 'string' 
+                    ? [item.workOrderNos] 
+                    : (item.workOrderNo ? [item.workOrderNo] : []))
             };
           }));
         }
@@ -105,9 +111,15 @@ export const MRBuilder: React.FC = () => {
     }
   }, [id, inventory]);
 
+  const hasItemWorkOrders = items.some(item => item.workOrderNos && item.workOrderNos.length > 0);
+
   const handleAddWorkOrder = (woNumber: string) => {
     const trimmed = woNumber.trim();
     if (!trimmed) return;
+    if (hasItemWorkOrders) {
+      alert("Job numbers are already assigned to individual items below. Clear item job numbers to use MR-level job numbers.");
+      return;
+    }
     if (!workOrderNos.includes(trimmed)) {
       setWorkOrderNos([...workOrderNos, trimmed]);
     }
@@ -118,10 +130,43 @@ export const MRBuilder: React.FC = () => {
     setWorkOrderNos(workOrderNos.filter(w => w !== woNumber));
   };
 
+  const handleAddItemWorkOrder = (itemId: string, woNumber: string) => {
+    const trimmed = woNumber.trim();
+    if (!trimmed) return;
+
+    // Mutually exclusive: When assigning job numbers per item, clear header-level MR work orders!
+    if (workOrderNos.length > 0) {
+      setWorkOrderNos([]);
+    }
+
+    setItems(prevItems => prevItems.map(it => {
+      if (it.id === itemId) {
+        const current = it.workOrderNos || [];
+        if (!current.includes(trimmed)) {
+          return { ...it, workOrderNos: [...current, trimmed] };
+        }
+      }
+      return it;
+    }));
+  };
+
+  const handleRemoveItemWorkOrder = (itemId: string, woNumber: string) => {
+    setItems(prevItems => prevItems.map(it => {
+      if (it.id === itemId) {
+        return { ...it, workOrderNos: (it.workOrderNos || []).filter(w => w !== woNumber) };
+      }
+      return it;
+    }));
+  };
+
+  const handleClearAllItemWorkOrders = () => {
+    setItems(prevItems => prevItems.map(it => ({ ...it, workOrderNos: [] })));
+  };
+
   const addItem = () => {
     setItems([
       ...items, 
-      { id: Date.now().toString(), inventoryId: '', desc: '', qty: 1, uom: 'pcs', unitCost: 0 }
+      { id: Date.now().toString(), inventoryId: '', desc: '', qty: 1, uom: 'pcs', unitCost: 0, workOrderNos: [] }
     ]);
   };
 
@@ -184,6 +229,9 @@ export const MRBuilder: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const finalWorkOrderNos = hasItemWorkOrders ? [] : workOrderNos;
+      const finalWorkOrderNo = hasItemWorkOrders ? null : (workOrderNos[0] || null);
+
       const payload = {
         id: docNo,
         date,
@@ -194,8 +242,8 @@ export const MRBuilder: React.FC = () => {
         status,
         poId: allPoIds[0] || null,
         poIds: JSON.stringify(allPoIds),
-        workOrderNo: workOrderNos[0] || null,
-        workOrderNos: JSON.stringify(workOrderNos),
+        workOrderNo: finalWorkOrderNo,
+        workOrderNos: JSON.stringify(finalWorkOrderNos),
         items,
         notes
       };
@@ -273,11 +321,15 @@ export const MRBuilder: React.FC = () => {
             </div>
             <p className="text-[11px] text-muted mt-0.5">
               {docNo} • {department} Department
-              {workOrderNos.length > 0 && (
+              {hasItemWorkOrders ? (
+                <span className="ml-2 text-purple-500 font-mono font-bold">
+                  Jobs: {Array.from(new Set(items.flatMap(i => i.workOrderNos || []))).join(', ')} (Per Item)
+                </span>
+              ) : workOrderNos.length > 0 ? (
                 <span className="ml-2 text-purple-500 font-mono font-bold">
                   WO: {workOrderNos.join(', ')}
                 </span>
-              )}
+              ) : null}
               {allPoIds.length > 0 && (
                 <span className="ml-2 text-emerald-500 font-mono font-bold">
                   POs: {allPoIds.join(', ')}
@@ -411,74 +463,110 @@ export const MRBuilder: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* LINKED WORK ORDERS (ONE OR MULTIPLE) */}
-                  <div className="p-3 bg-surface2/60 rounded-xl border border-theme-subtle/80 space-y-2.5">
-                    <label className="block text-[11px] font-bold text-purple-500 uppercase tracking-wide flex items-center justify-between">
-                      <span className="flex items-center gap-1.5"><Briefcase size={13} /> Work Order No(s)</span>
-                      <span className="text-[10px] text-muted font-normal">Multiple allowed</span>
-                    </label>
-
-                    {/* Chips for Selected Work Orders */}
-                    {workOrderNos.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {workOrderNos.map((wo) => (
+                  {/* LINKED WORK ORDERS (HEADER LEVEL vs PER-ITEM) */}
+                  {hasItemWorkOrders ? (
+                    <div className="p-3 bg-purple-500/10 rounded-xl border border-purple-500/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-purple-600 dark:text-purple-300 uppercase tracking-wide flex items-center gap-1.5">
+                          <Briefcase size={13} /> Work Order No(s)
+                        </label>
+                        <span className="text-[9px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-700 dark:text-purple-200 px-1.5 py-0.5 rounded">
+                          Per-Item Mode
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted leading-tight">
+                        Job numbers are assigned to individual items below. MR-level job number input is disabled.
+                      </p>
+                      
+                      {/* Summary of all unique job numbers used across items */}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {Array.from(new Set(items.flatMap(i => i.workOrderNos || []))).map(wo => (
                           <span 
                             key={wo} 
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/30 rounded-md text-xs font-mono font-bold"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/20 text-purple-700 dark:text-purple-200 border border-purple-500/30 rounded-md text-xs font-mono font-bold"
                           >
                             {wo}
-                            <button 
-                              type="button" 
-                              onClick={() => handleRemoveWorkOrder(wo)}
-                              className="hover:text-red-500 transition-colors ml-0.5"
-                              title={`Remove ${wo}`}
-                            >
-                              <X size={11} />
-                            </button>
                           </span>
                         ))}
                       </div>
-                    )}
 
-                    {/* Quick Select from Active Work Orders */}
-                    {availableWorkOrders.length > 0 && (
-                      <select 
-                        value="" 
-                        onChange={e => { if (e.target.value) handleAddWorkOrder(e.target.value); }}
-                        className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                      >
-                        <option value="">+ Select from Work Orders...</option>
-                        {availableWorkOrders
-                          .filter(w => !workOrderNos.includes(w.id))
-                          .map(w => (
-                            <option key={w.id} value={w.id}>
-                              {w.id} {w.title ? `- ${w.title}` : ''} ({w.status || 'Active'})
-                            </option>
-                          ))}
-                      </select>
-                    )}
-
-                    {/* Manual Work Order Input */}
-                    <div className="flex gap-1.5">
-                      <input 
-                        type="text" 
-                        value={workOrderInput}
-                        onChange={e => setWorkOrderInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddWorkOrder(workOrderInput); } }}
-                        placeholder="Type WO # (e.g. WO-101)..." 
-                        className="flex-1 bg-surface border border-theme-subtle px-2.5 py-1 rounded text-xs font-mono"
-                      />
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <button
                         type="button"
-                        onClick={() => handleAddWorkOrder(workOrderInput)}
-                        className="px-2 h-7 text-xs"
+                        onClick={handleClearAllItemWorkOrders}
+                        className="text-[10px] text-purple-600 dark:text-purple-400 hover:underline pt-1 block"
                       >
-                        Add
-                      </Button>
+                        Switch back to MR-level job number (clear item jobs)
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="p-3 bg-surface2/60 rounded-xl border border-theme-subtle/80 space-y-2.5">
+                      <label className="block text-[11px] font-bold text-purple-500 uppercase tracking-wide flex items-center justify-between">
+                        <span className="flex items-center gap-1.5"><Briefcase size={13} /> Work Order No(s)</span>
+                        <span className="text-[10px] text-muted font-normal">Entire MR</span>
+                      </label>
+
+                      {/* Chips for Selected Work Orders */}
+                      {workOrderNos.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {workOrderNos.map((wo) => (
+                            <span 
+                              key={wo} 
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/30 rounded-md text-xs font-mono font-bold"
+                            >
+                              {wo}
+                              <button 
+                                type="button" 
+                                onClick={() => handleRemoveWorkOrder(wo)}
+                                className="hover:text-red-500 transition-colors ml-0.5"
+                                title={`Remove ${wo}`}
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick Select from Active Work Orders */}
+                      {availableWorkOrders.length > 0 && (
+                        <select 
+                          value="" 
+                          onChange={e => { if (e.target.value) handleAddWorkOrder(e.target.value); }}
+                          className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                        >
+                          <option value="">+ Select from Work Orders...</option>
+                          {availableWorkOrders
+                            .filter(w => !workOrderNos.includes(w.id))
+                            .map(w => (
+                              <option key={w.id} value={w.id}>
+                                {w.id} {w.title ? `- ${w.title}` : ''} ({w.status || 'Active'})
+                              </option>
+                            ))}
+                        </select>
+                      )}
+
+                      {/* Manual Work Order Input */}
+                      <div className="flex gap-1.5">
+                        <input 
+                          type="text" 
+                          value={workOrderInput}
+                          onChange={e => setWorkOrderInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddWorkOrder(workOrderInput); } }}
+                          placeholder="Type WO # (e.g. WO-101)..." 
+                          className="flex-1 bg-surface border border-theme-subtle px-2.5 py-1 rounded text-xs font-mono"
+                        />
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          type="button"
+                          onClick={() => handleAddWorkOrder(workOrderInput)}
+                          className="px-2 h-7 text-xs"
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
@@ -625,6 +713,7 @@ export const MRBuilder: React.FC = () => {
                     <tr className="text-[10px] uppercase tracking-widest text-muted">
                       <th className="px-4 py-3 w-10 text-center">#</th>
                       <th className="px-3 py-3">Material / Item</th>
+                      <th className="px-3 py-3 min-w-[180px]">Job / WO No(s)</th>
                       <th className="px-3 py-3 text-center">In Stock</th>
                       <th className="px-3 py-3 text-right">Req. Qty</th>
                       <th className="px-3 py-3 text-right">Ordered in POs</th>
@@ -672,6 +761,66 @@ export const MRBuilder: React.FC = () => {
                                 onChange={e => updateItem(item.id, 'desc', e.target.value)} 
                                 placeholder="Specifications, grade, or reason for requirement..." 
                                 className="w-full bg-transparent border border-theme-subtle/50 hover:border-theme-subtle focus:border-theme-subtle px-2 py-1 rounded text-[11px] text-secondary" 
+                              />
+                            </div>
+                          </td>
+                          <td className="p-3 align-top">
+                            <div className="space-y-1.5 max-w-[190px]">
+                              {/* Selected Chips */}
+                              {(item.workOrderNos && item.workOrderNos.length > 0) && (
+                                <div className="flex flex-wrap gap-1">
+                                  {item.workOrderNos.map((wo) => (
+                                    <span 
+                                      key={wo} 
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 rounded text-[10px] font-mono font-bold"
+                                    >
+                                      {wo}
+                                      <button 
+                                        type="button" 
+                                        onClick={() => handleRemoveItemWorkOrder(item.id, wo)}
+                                        className="hover:text-red-500 transition-colors ml-0.5"
+                                        title={`Remove ${wo}`}
+                                      >
+                                        <X size={10} />
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Dropdown selector */}
+                              {availableWorkOrders.length > 0 && (
+                                <select 
+                                  value="" 
+                                  onChange={e => { if (e.target.value) handleAddItemWorkOrder(item.id, e.target.value); }}
+                                  className="w-full bg-surface border border-theme-subtle px-1.5 py-1 rounded text-[11px] font-medium"
+                                >
+                                  <option value="">+ Add Job / WO...</option>
+                                  {availableWorkOrders
+                                    .filter(w => !(item.workOrderNos || []).includes(w.id))
+                                    .map(w => (
+                                      <option key={w.id} value={w.id}>
+                                        {w.id} {w.title ? `- ${w.title}` : ''}
+                                      </option>
+                                    ))}
+                                </select>
+                              )}
+
+                              {/* Manual Input */}
+                              <input 
+                                type="text" 
+                                placeholder="Type Job # & Enter..." 
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const inputEl = e.target as HTMLInputElement;
+                                    if (inputEl.value.trim()) {
+                                      handleAddItemWorkOrder(item.id, inputEl.value);
+                                      inputEl.value = '';
+                                    }
+                                  }
+                                }}
+                                className="w-full bg-transparent border border-theme-subtle/50 hover:border-theme-subtle focus:border-purple-500 px-2 py-0.5 rounded text-[10px] font-mono"
                               />
                             </div>
                           </td>
@@ -744,7 +893,7 @@ export const MRBuilder: React.FC = () => {
                     })}
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-muted text-xs">
+                        <td colSpan={10} className="p-8 text-center text-muted text-xs">
                           No materials requested yet. Click "Add Item" to add requested materials.
                         </td>
                       </tr>
@@ -808,7 +957,11 @@ export const MRBuilder: React.FC = () => {
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Work Order(s)</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#4c1d95' }}>{workOrderNos.length > 0 ? workOrderNos.join(', ') : 'N/A'}</p>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#4c1d95' }}>
+                  {hasItemWorkOrders 
+                    ? 'Specified Per Line Item' 
+                    : workOrderNos.length > 0 ? workOrderNos.join(', ') : 'N/A'}
+                </p>
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Linked PO(s)</p>
@@ -828,11 +981,12 @@ export const MRBuilder: React.FC = () => {
             <tr style={{ background: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
               <th style={{ padding: '8px 12px', textAlign: 'center', width: '40px' }}>#</th>
               <th style={{ padding: '8px 12px', textAlign: 'left' }}>Item & Specifications</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Req. Qty</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Ordered</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Balance</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '100px' }}>Est. Cost</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '110px' }}>Est. Total</th>
+              <th style={{ padding: '8px 12px', textAlign: 'center', width: '130px' }}>Job / WO #</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Req. Qty</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Ordered</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Balance</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Est. Cost</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '100px' }}>Est. Total</th>
             </tr>
           </thead>
           <tbody>
@@ -847,6 +1001,11 @@ export const MRBuilder: React.FC = () => {
                   <td style={{ padding: '8px 12px' }}>
                     <strong>{inventory.find(i => i.id === it.inventoryId)?.name || it.desc || it.inventoryId}</strong>
                     {it.desc && <div style={{ fontSize: '10px', color: '#718096' }}>{it.desc}</div>}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#4c1d95', fontWeight: 'bold', fontSize: '11px' }}>
+                    {(it.workOrderNos && it.workOrderNos.length > 0)
+                      ? it.workOrderNos.join(', ')
+                      : workOrderNos.length > 0 ? workOrderNos.join(', ') : '-'}
                   </td>
                   <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
                     {it.qty} {it.uom || 'units'}
@@ -869,7 +1028,7 @@ export const MRBuilder: React.FC = () => {
           </tbody>
           <tfoot>
             <tr style={{ background: '#f7fafc', fontWeight: 'bold' }}>
-              <td colSpan={6} style={{ padding: '10px 12px', textAlign: 'right' }}>Estimated Total:</td>
+              <td colSpan={7} style={{ padding: '10px 12px', textAlign: 'right' }}>Estimated Total:</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: '#2b6cb0' }}>
                 {formatCurrency(totalEstimatedCost)}
               </td>

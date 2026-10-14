@@ -495,10 +495,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
               {isSsclHidden && isVatHidden
-                ? <>Amount<br/>(Taxes Incl.)<br/>(Rs.)</>
-                : isSsclHidden
-                  ? <>Amount<br/>Excl. VAT (incl. SSCL)<br/>(Rs.)</>
-                  : <>Amount<br/>Excluding VAT<br/>(Rs.)</>}
+                ? <>Amount<br/>(Rs.)</>
+                : <>Amount<br/>Excluding VAT<br/>(Rs.)</>}
             </th>
           </tr>
         </thead>
@@ -540,11 +538,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           {/* TOTAL VALUE OF SUPPLY */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isSsclHidden && isVatHidden 
-                ? 'Total Value of Supply (VAT & SSCL Inclusive):'
-                : isSsclHidden 
-                  ? 'Total Value of Supply (inclusive of SSCL):' 
-                  : 'Total Value of Supply:'}
+              Total Value of Supply:
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
               {(subtotal * itemMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
