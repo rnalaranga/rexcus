@@ -267,6 +267,7 @@ export const QuotationBuilder: React.FC = () => {
   const [quoDate, setQuoDate] = useState(new Date().toISOString().split('T')[0])
   const [vatNo, setVatNo] = useState(lead?.vat || '')
   const [tinNo, setTinNo] = useState(lead?.svat || '')
+  const [customerAddress, setCustomerAddress] = useState(lead?.address || '')
   const [quotationNo, setQuotationNo] = useState('')
   const [jobQty, setJobQty] = useState('1')
   const [attention, setAttention] = useState('')
@@ -378,10 +379,12 @@ export const QuotationBuilder: React.FC = () => {
     if (clientType === 'customer') {
       const cust = customers?.find((c: any) => c.id === itemId) || item;
       setCustomerName(cust.company || cust.name || '');
+      setCustomerAddress(cust.address || '');
       if (cust.name) {
         setAttention(cust.name);
       }
-      setVatNo(cust.vat || cust.svat || '');
+      setVatNo(cust.vat || '');
+      setTinNo(cust.svat || cust.tin || cust.brNumber || '');
       if (cust.paymentTerms) {
         setCustTerms(cust.paymentTerms);
       } else {
@@ -407,7 +410,9 @@ export const QuotationBuilder: React.FC = () => {
       if (leadItem.customerId) cust = customers?.find((c: any) => c.id === leadItem.customerId);
 
       if (cust) {
-        setVatNo(cust.vat || cust.svat || leadItem.vat || leadItem.svat || '');
+        setCustomerAddress(cust.address || leadItem.address || '');
+        setVatNo(cust.vat || leadItem.vat || '');
+        setTinNo(cust.svat || cust.tin || cust.brNumber || leadItem.svat || leadItem.tin || '');
         if (cust.paymentTerms) {
           setCustTerms(cust.paymentTerms);
         } else {
@@ -423,7 +428,9 @@ export const QuotationBuilder: React.FC = () => {
         const seq = Date.now().toString().slice(-4);
         setQuotationNo(`${userPrefix}${custPrefix}${seq}`);
       } else {
-        setVatNo(leadItem.vat || leadItem.svat || '');
+        setCustomerAddress(leadItem.address || '');
+        setVatNo(leadItem.vat || '');
+        setTinNo(leadItem.svat || leadItem.tin || '');
         const userPrefix = user?.prefix ? `${user.prefix}-` : '';
         const seq = Date.now().toString().slice(-4);
         setQuotationNo(`${userPrefix}${seq}`);
@@ -433,12 +440,16 @@ export const QuotationBuilder: React.FC = () => {
 
   useEffect(() => {
      if (leadId && lead) {
-        setClientType('lead')
-        setCustomerName(lead.company || lead.name)
-        setSelectedLeadId(lead.id)
-        if (!attention) setAttention(lead.name || '')
+        const isCust = leadId.startsWith('CUST-') || customers?.some(c => c.id === leadId);
+        setClientType(isCust ? 'customer' : 'lead');
+        setCustomerName(lead.company || lead.name || '');
+        setCustomerAddress(lead.address || '');
+        setSelectedLeadId(lead.id);
+        if (!attention && lead.name) setAttention(lead.name);
+        if (lead.vat) setVatNo(lead.vat);
+        if (lead.svat || lead.tin) setTinNo(lead.svat || lead.tin);
      }
-  }, [leadId, lead])
+  }, [leadId, lead, customers])
 
   // --- Job Items / Description ---
   const [attachments, setAttachments] = useState<any[]>([]);
@@ -690,6 +701,8 @@ export const QuotationBuilder: React.FC = () => {
     setJobQty(snap.jobQty || '1')
     setAttention(snap.attention || '')
     setSubject(snap.subject || 'To machining parts as per given sample')
+    if (snap.customerName) setCustomerName(snap.customerName)
+    if (snap.customerAddress || snap.address) setCustomerAddress(snap.customerAddress || snap.address)
     setTaxEnabled(snap.taxEnabled ?? true)
     setSelectedProfileId(snap.selectedProfileId || '')
     setJobItems(snap.jobItems || [])
@@ -737,7 +750,7 @@ export const QuotationBuilder: React.FC = () => {
       
       setSaveStatus('saving');
       const snapshot: any = {
-        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName,
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
         taxEnabled, selectedProfileId,
         boms,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
@@ -779,7 +792,7 @@ export const QuotationBuilder: React.FC = () => {
     
     return () => clearTimeout(timer)
   }, [
-    selectedLeadId, docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName,
+    selectedLeadId, docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
     taxEnabled, selectedProfileId, boms, custItems, custTerms, custValidity, custDelivery, custDiscount, custDiscountType, custDiscountAmount
   ])
 
@@ -875,12 +888,14 @@ export const QuotationBuilder: React.FC = () => {
       })
         
       const snapshot: any = {
-        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName,
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
         boms: bomsWithTotals,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
         custDiscountType, custDiscountAmount,
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-        jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }
+        jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+        taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
       }
 
       const amount = custWithSSCL
@@ -1108,6 +1123,40 @@ export const QuotationBuilder: React.FC = () => {
                     placeholder="e.g. Supply and fabrication of..." className={docInputClass} />
                 </div>
 
+                <div>
+                  <label className="block text-[11px] text-muted mb-1.5">Company / Customer Address</label>
+                  <input
+                    type="text"
+                    value={customerAddress}
+                    onChange={e => setCustomerAddress(e.target.value)}
+                    placeholder="e.g. No. 128, Panchikawatta Road, Colombo 10"
+                    className={docInputClass}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Customer VAT No.</label>
+                    <input
+                      type="text"
+                      value={vatNo}
+                      onChange={e => setVatNo(e.target.value)}
+                      placeholder="e.g. 104106470-7000"
+                      className={docInputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Customer TIN No.</label>
+                    <input
+                      type="text"
+                      value={tinNo}
+                      onChange={e => setTinNo(e.target.value)}
+                      placeholder="e.g. SVAT001245 / TIN"
+                      className={docInputClass}
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
@@ -1173,23 +1222,16 @@ export const QuotationBuilder: React.FC = () => {
                     )}
                   </div>
                   <div>
-                    <label className="block text-[11px] text-muted mb-1.5">Customer VAT</label>
-                    <input type="text" value={vatNo} onChange={e => setVatNo(e.target.value)}
-                      placeholder="VAT Reg. No." className={docInputClass} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
                     <label className="block text-[11px] text-muted mb-1.5">Payment Terms</label>
                     <input type="text" value={custTerms} onChange={e => setCustTerms(e.target.value)}
                       placeholder="e.g. 30 days credit" className={docInputClass} />
                   </div>
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1.5">Delivery Terms</label>
-                    <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)}
-                      placeholder="e.g. Ex-works" className={docInputClass} />
-                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-muted mb-1.5">Delivery Terms</label>
+                  <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)}
+                    placeholder="e.g. Ex-works" className={docInputClass} />
                 </div>
               </div>
 
@@ -1684,8 +1726,22 @@ export const QuotationBuilder: React.FC = () => {
                 
                 <div className="space-y-4 relative z-10">
                                     <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted font-medium">{taxEnabled && selectedProfile?.tax1_show_separately === 0 ? `Sub Total (incl. ${selectedProfile.tax1_name})` : 'Sub Total'}</span>
-                    <span className="font-mono font-semibold text-secondary text-sm">{formatCurrency(taxEnabled && selectedProfile?.tax1_show_separately === 0 ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100)) : custSubtotal)}</span>
+                    <span className="text-muted font-medium">
+                        {taxEnabled && selectedProfile?.tax1_show_separately === 0 && selectedProfile?.tax2_show_separately === 0
+                          ? 'Sub Total (VAT & SSCL Inclusive)'
+                          : taxEnabled && selectedProfile?.tax1_show_separately === 0
+                            ? `Sub Total (incl. ${selectedProfile.tax1_name})`
+                            : 'Sub Total'}
+                      </span>
+                      <span className="font-mono font-semibold text-secondary text-sm">
+                        {formatCurrency(
+                          taxEnabled && selectedProfile?.tax1_show_separately === 0 && selectedProfile?.tax2_show_separately === 0
+                            ? custWithSSCL
+                            : taxEnabled && selectedProfile?.tax1_show_separately === 0
+                              ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100))
+                              : custSubtotal
+                        )}
+                      </span>
                   </div>
                   
                   <div className="space-y-2 group">
@@ -1790,11 +1846,51 @@ export const QuotationBuilder: React.FC = () => {
                       <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
                     </button>
                     {taxEnabled && (
-                      <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                        className="flex-1 bg-surface border border-theme-subtle px-1.5 py-1 rounded text-[10px] outline-none focus:border-blue-500">
-                        <option value="">— Select Tax Profile —</option>
-                        {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
+                      <div className="flex-1 space-y-1.5">
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
+                            className={`px-1.5 py-1 text-[9px] font-bold rounded border transition-all text-center leading-tight ${
+                              selectedProfileId === 'tp_opt1_absorbed'
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                            }`}
+                            title="Option 1: VAT & SSCL Absorbed (Total Value)"
+                          >
+                            Opt 1: Absorbed
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProfileId('tp_opt2_sscl_absorbed_vat_sep')}
+                            className={`px-1.5 py-1 text-[9px] font-bold rounded border transition-all text-center leading-tight ${
+                              selectedProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || selectedProfileId === 'tp_vat_sscl'
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                            }`}
+                            title="Option 2: SSCL Absorbed + VAT Separate"
+                          >
+                            Opt 2: SSCL In, VAT Sep
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
+                            className={`px-1.5 py-1 text-[9px] font-bold rounded border transition-all text-center leading-tight ${
+                              selectedProfileId === 'tp_opt3_both_separate'
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                            }`}
+                            title="Option 3: Both SSCL & VAT Separate (2 Lines)"
+                          >
+                            Opt 3: Both 2 Lines
+                          </button>
+                        </div>
+                        <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
+                          className="w-full bg-surface border border-theme-subtle px-1.5 py-1 rounded text-[10px] outline-none focus:border-blue-500">
+                          <option value="">- Select Tax Profile -</option>
+                          {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
                     )}
                   </div>
                   <div className="flex justify-between items-center">
@@ -1833,10 +1929,10 @@ export const QuotationBuilder: React.FC = () => {
                          custItems, custDiscount, custDiscountType, custDiscountAmount, boms,
                          custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                          jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
-                         custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat
+                         custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
                       }}
                       type="main"
-                      lead={lead}
+                      lead={currentEntity || lead}
                       settings={settings}
                    />
                  </div>
@@ -1867,16 +1963,16 @@ export const QuotationBuilder: React.FC = () => {
                custItems, custDiscount, custDiscountType, custDiscountAmount, boms,
                custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
-               custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat
+               custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
             }}
             type="main"
-            lead={lead}
+            lead={currentEntity || lead}
             settings={settings}
           />
           
           <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
             <Button variant="ghost" icon={Mail} onClick={() => {
-              const email = lead?.email || '';
+              const email = (currentEntity || lead)?.email || '';
               const subj = encodeURIComponent(`Quotation ${quotationNo} - ${subject}`);
               const body = encodeURIComponent(`Dear ${attention || lead?.name || customerName || 'Customer'},\n\nPlease find our Quotation ${quotationNo} attached.\n\nThank you,\n${user?.name || 'Rex Industries'}`);
               window.open(`mailto:${email}?subject=${subj}&body=${body}`);

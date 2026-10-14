@@ -230,15 +230,30 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
   const vatRateLabel = `VAT Amount (Total Value of Supply @ ${displayVatRate}%):`;
 
-  const isMultiTax = Boolean(
-    taxBreakdown && 
-    Number(taxBreakdown.tax1Amount) > 0 && 
-    Number(taxBreakdown.tax2Amount) > 0
-  );
-  const tax1Name = taxProfile?.tax1_name || 'SSCL';
-  const tax1Rate = taxProfile?.tax1_rate || 2.5;
-  const tax2Name = taxProfile?.tax2_name || 'VAT';
-  const tax2Rate = taxProfile?.tax2_rate || displayVatRate || 18;
+    // Check whether tax1 (SSCL) and tax2 (VAT) are hidden (absorbed) or shown separately
+  const hasTax1 = Boolean(taxProfile && Number(taxProfile.tax1_rate) > 0);
+  const hasTax2 = Boolean(taxProfile && Number(taxProfile.tax2_rate) > 0);
+
+  const isSsclHidden = Boolean(hasTax1 && taxProfile.tax1_show_separately === 0);
+  const isVatHidden = Boolean(hasTax2 && taxProfile.tax2_show_separately === 0);
+  const isSsclSeparate = Boolean(hasTax1 && taxProfile.tax1_show_separately === 1);
+  const isVatSeparate = Boolean(hasTax2 ? taxProfile.tax2_show_separately === 1 : (taxAmount > 0));
+
+  const t1Rate = Number(taxProfile?.tax1_rate || taxBreakdown?.tax1Rate || 2.5);
+  const t2Rate = Number(taxProfile?.tax2_rate || taxBreakdown?.tax2Rate || displayVatRate || 18);
+
+  // Multiplier for line items & supply value when taxes are absorbed
+  let itemMultiplier = 1;
+  if (isSsclHidden && isVatHidden) {
+    // Option 1: Both SSCL & VAT absorbed into unit prices & supply value
+    itemMultiplier = taxProfile?.tax2_compound ? ((1 + t1Rate/100) * (1 + t2Rate/100)) : (1 + (t1Rate + t2Rate)/100);
+  } else if (isSsclHidden && !isVatHidden) {
+    // Option 2: SSCL absorbed into prices & supply value, VAT separate
+    itemMultiplier = 1 + t1Rate/100;
+  } else {
+    // Option 3: Base unit prices, both taxes separate
+    itemMultiplier = 1;
+  }
 
   const borderColor = '#000000';
   const borderWidth = '1.2px';
@@ -422,13 +437,17 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               Unit<br/>Price
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
-              Amount<br/>Excluding VAT<br/>(Rs.)
+              {isSsclHidden && isVatHidden
+                ? <>Amount<br/>(Taxes Incl.)<br/>(Rs.)</>
+                : isSsclHidden
+                  ? <>Amount<br/>Excl. VAT (incl. SSCL)<br/>(Rs.)</>
+                  : <>Amount<br/>Excluding VAT<br/>(Rs.)</>}
             </th>
           </tr>
         </thead>
         <tbody>
           {items.map((item: any, idx: number) => {
-            const lineExclVat = Number(item.qty || 0) * Number(item.unitPrice || 0);
+            const lineExclVat = Number(item.qty || 0) * (Number(item.unitPrice || 0) * itemMultiplier);
             return (
               <tr key={idx} style={{ borderBottom: tableBorder }}>
                 <td style={{ padding: '8px 4px', textAlign: 'center', borderRight: tableBorder, verticalAlign: 'top' }}>
@@ -441,7 +460,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                   {Number(item.qty).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', borderRight: tableBorder, verticalAlign: 'top' }}>
-                  {Number(item.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {(Number(item.unitPrice) * itemMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', verticalAlign: 'top' }}>
                   {lineExclVat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -464,42 +483,37 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           {/* TOTAL VALUE OF SUPPLY */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              Total Value of Supply:
+              {isSsclHidden && isVatHidden 
+                ? 'Total Value of Supply (VAT & SSCL Inclusive):'
+                : isSsclHidden 
+                  ? 'Total Value of Supply (inclusive of SSCL):' 
+                  : 'Total Value of Supply:'}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-              {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {(subtotal * itemMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
           </tr>
 
-          {/* VAT / TAX BREAKDOWN AMOUNT */}
-          {isMultiTax ? (
-            <>
-              {/* SSCL Amount */}
-              <tr style={{ borderBottom: tableBorder }}>
-                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-                  {`${tax1Name} Amount (Total Value of Supply @ ${tax1Rate}%):`}
-                </td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-                  {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-              </tr>
-              {/* VAT Amount */}
-              <tr style={{ borderBottom: tableBorder }}>
-                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-                  {`${tax2Name} Amount (Total Value of Supply @ ${tax2Rate}%):`}
-                </td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-                  {Number(taxBreakdown.tax2Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-              </tr>
-            </>
-          ) : (
+          {/* Option 3: SSCL Amount (Separate line) */}
+          {isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0 && (
+            <tr style={{ borderBottom: tableBorder }}>
+              <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                {`${taxProfile?.tax1_name || 'SSCL'} Amount (Total Value of Supply @ ${t1Rate}%):`}
+              </td>
+              <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+            </tr>
+          )}
+
+          {/* Option 2 & 3: VAT Amount (Separate line) */}
+          {isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0) && (
             <tr style={{ borderBottom: tableBorder }}>
               <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
                 {vatRateLabel}
               </td>
               <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-                {taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {Number(taxBreakdown?.tax2Amount || taxAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
             </tr>
           )}

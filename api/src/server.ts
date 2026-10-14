@@ -495,6 +495,10 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
       "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL",
+    "ALTER TABLE material_requests ADD COLUMN workOrderNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE material_requests ADD COLUMN workOrderNos TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN mrIds TEXT DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL",
       "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
       "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL"
     ];
@@ -508,9 +512,12 @@ app.post('/api/settings/fix-db', async (req, res) => {
     }
 
     // Default seeds if missing
-    const defaultSeeds = [
-      "INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId) VALUES ('tp_vat18', 'VAT (18%)', 'VAT', 18, NULL)",
-      "INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, accountId) VALUES ('tp_vat_sscl', 'VAT (18%) + SSCL (2.5%)', 'SSCL', 2.5, 'VAT', 18, 1, NULL)",
+        const defaultSeeds = [
+      "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt1_absorbed', 'Option 1: VAT & SSCL Absorbed (Total Value)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 0) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+      "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt2_sscl_absorbed_vat_sep', 'Option 2: SSCL Absorbed + VAT Separate', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+      "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt3_both_separate', 'Option 3: Both SSCL & VAT Separate (2 Lines)', 'SSCL', 2.50, 'VAT', 18.00, 1, 1, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+      "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+      "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
       "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)"
     ];
     for (const seed of defaultSeeds) {
@@ -900,7 +907,16 @@ app.post('/api/deals', async (req, res) => {
 // -- QUOTATIONS --
 app.get('/api/quotations', async (req, res) => {
     try {
-      const [rows] = await db.query('SELECT q.*, l.name as leadName, l.company as leadCompany FROM quotations q LEFT JOIN leads l ON q.leadId = l.id ORDER BY q.date DESC');
+      const [rows] = await db.query(`SELECT q.*, 
+        COALESCE(c.name, l.name) as leadName, 
+        COALESCE(c.company, l.company) as leadCompany,
+        COALESCE(c.address, '') as leadAddress,
+        COALESCE(c.vat, l.vat, '') as leadVat,
+        COALESCE(c.svat, l.svat, '') as leadSvat
+      FROM quotations q 
+      LEFT JOIN leads l ON q.leadId = l.id 
+      LEFT JOIN customers c ON (q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
+      ORDER BY q.date DESC`);
       res.json(rows);
     } catch (error) {
       console.error(error);
@@ -1319,6 +1335,162 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
 });
 
 // -- PURCHASING --
+
+// Helper to sync Material Request fulfillment status across all linked Purchase Orders
+async function syncMRFulfillmentStatus(targetMrIds: string[] | string) {
+  const ids = Array.from(new Set((Array.isArray(targetMrIds) ? targetMrIds : [targetMrIds]).filter(Boolean)));
+  for (const mrId of ids) {
+    try {
+      // Find all POs that link to this MR
+      const [pos]: any = await db.query(
+        'SELECT id, items, mrId, mrIds FROM purchase_orders WHERE mrId = ? OR mrIds LIKE ? OR items LIKE ?',
+        [mrId, `%${mrId}%`, `%"mrId":"${mrId}"%`]
+      );
+      
+      const [mrRows]: any = await db.query('SELECT id, items, status FROM material_requests WHERE id = ?', [mrId]);
+      if (!mrRows || mrRows.length === 0) continue;
+      
+      const mr = mrRows[0];
+      const mrItems = typeof mr.items === 'string' ? JSON.parse(mr.items) : (mr.items || []);
+      
+      const orderedMap: Record<string, number> = {};
+      const linkedPoIdSet = new Set<string>();
+
+      for (const po of pos) {
+        let poMrIds: string[] = [];
+        if (Array.isArray(po.mrIds)) poMrIds = po.mrIds;
+        else if (typeof po.mrIds === 'string') {
+          try { poMrIds = JSON.parse(po.mrIds); } catch { poMrIds = [po.mrIds]; }
+        }
+        if (po.mrId && !poMrIds.includes(po.mrId)) poMrIds.push(po.mrId);
+
+        const isLinkedToThisMr = poMrIds.includes(mrId);
+        const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+        let poHasItemsForThisMr = false;
+
+        for (const it of pItems) {
+          if (it.mrId ? it.mrId === mrId : isLinkedToThisMr) {
+            poHasItemsForThisMr = true;
+            const key = String(it.inventoryId || it.desc || it.id || '');
+            if (key) {
+              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+            }
+          }
+        }
+
+        if (isLinkedToThisMr || poHasItemsForThisMr) {
+          linkedPoIdSet.add(po.id);
+        }
+      }
+
+      let totalRequested = 0;
+      let totalOrdered = 0;
+      let allItemsFulfilled = mrItems.length > 0;
+
+      for (const mrIt of mrItems) {
+        const key = String(mrIt.inventoryId || mrIt.desc || mrIt.id || '');
+        const reqQty = Number(mrIt.qty) || 0;
+        const ordQty = orderedMap[key] || 0;
+        totalRequested += reqQty;
+        totalOrdered += Math.min(ordQty, reqQty);
+        if (ordQty < reqQty) {
+          allItemsFulfilled = false;
+        }
+      }
+
+      let newStatus = mr.status;
+      if (linkedPoIdSet.size === 0 || totalOrdered === 0) {
+        newStatus = (mr.status === 'ordered' || mr.status === 'partially_ordered') ? 'approved' : mr.status;
+      } else if (allItemsFulfilled || (totalRequested > 0 && totalOrdered >= totalRequested)) {
+        newStatus = 'ordered';
+      } else {
+        newStatus = 'partially_ordered';
+      }
+
+      const allPoIds = Array.from(linkedPoIdSet);
+      await db.query(
+        'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
+        [newStatus, allPoIds[0] || null, JSON.stringify(allPoIds), mrId]
+      );
+    } catch (err) {
+      console.error(`Error syncing MR ${mrId}:`, err);
+    }
+  }
+}
+
+// Helper to sync Purchase Order receipt status across all linked Goods Received Notes (supports multiple GRNs per PO and multiple POs per GRN)
+async function syncPOReceiptStatus(targetPoIds: string[] | string) {
+  const ids = Array.from(new Set((Array.isArray(targetPoIds) ? targetPoIds : [targetPoIds]).filter(Boolean)));
+  for (const poId of ids) {
+    try {
+      const [poRows]: any = await db.query('SELECT id, items, status FROM purchase_orders WHERE id = ?', [poId]);
+      if (!poRows || poRows.length === 0) continue;
+      const po = poRows[0];
+      const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+      if (!Array.isArray(poItems) || poItems.length === 0) continue;
+
+      // Fetch all GRNs that link to this PO
+      const [grnRows]: any = await db.query(
+        'SELECT id, items, poId, poIds FROM grns WHERE poId = ? OR poIds LIKE ? OR items LIKE ?',
+        [poId, `%${poId}%`, `%"poId":"${poId}"%`]
+      );
+
+      const receivedMap: Record<string, number> = {};
+      let totalReceivedForThisPO = 0;
+
+      for (const g of grnRows) {
+        let gPoIds: string[] = [];
+        if (Array.isArray(g.poIds)) gPoIds = g.poIds;
+        else if (typeof g.poIds === 'string') {
+          try { gPoIds = JSON.parse(g.poIds); } catch { gPoIds = [g.poIds]; }
+        }
+        if (g.poId && !gPoIds.includes(g.poId)) gPoIds.push(g.poId);
+
+        const isDedicatedToPo = gPoIds.length <= 1 && (g.poId === poId || gPoIds.includes(poId));
+        const gItems = typeof g.items === 'string' ? JSON.parse(g.items) : (g.items || []);
+
+        if (Array.isArray(gItems)) {
+          for (const gi of gItems) {
+            if (gi.poId ? gi.poId === poId : isDedicatedToPo) {
+              const key = String(gi.inventoryId || gi.id || gi.desc || '');
+              const q = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
+              receivedMap[key] = (receivedMap[key] || 0) + q;
+              totalReceivedForThisPO += q;
+            }
+          }
+        }
+      }
+
+      let totalOrdered = 0;
+      let allItemsFulfilled = true;
+
+      for (const pi of poItems) {
+        const key = String(pi.inventoryId || pi.id || pi.desc || '');
+        const ord = Number(pi.qty || 0);
+        const rec = receivedMap[key] || 0;
+        totalOrdered += ord;
+        if (rec < ord) {
+          allItemsFulfilled = false;
+        }
+      }
+
+      let newStatus = po.status;
+      if (grnRows.length === 0 || totalReceivedForThisPO === 0) {
+        newStatus = (po.status === 'received' || po.status === 'partially_received') ? 'ordered' : po.status;
+      } else if (allItemsFulfilled || (totalOrdered > 0 && totalReceivedForThisPO >= totalOrdered)) {
+        newStatus = 'received';
+      } else {
+        newStatus = 'partially_received';
+      }
+
+      await db.query('UPDATE purchase_orders SET status = ?, updatedAt = NOW() WHERE id = ?', [newStatus, poId]);
+    } catch (err) {
+      console.error(`Error syncing PO receipt status for ${poId}:`, err);
+    }
+  }
+}
+
+// MR ROUTES
 app.get('/api/purchasing/mrs', async (req, res) => {
   try {
     const [rows]: any = await db.query('SELECT * FROM material_requests ORDER BY date DESC, createdAt DESC');
@@ -1328,10 +1500,16 @@ app.get('/api/purchasing/mrs', async (req, res) => {
       } else if (!r.poIds) {
         r.poIds = r.poId ? [r.poId] : [];
       }
+      if (typeof r.workOrderNos === 'string') {
+        try { r.workOrderNos = JSON.parse(r.workOrderNos); } catch(e) { r.workOrderNos = [r.workOrderNo].filter(Boolean); }
+      } else if (!r.workOrderNos) {
+        r.workOrderNos = r.workOrderNo ? [r.workOrderNo] : [];
+      }
     }
     res.json(rows);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.get('/api/purchasing/mrs/:id', async (req, res) => {
   try {
     const [rows]: any = await db.query('SELECT * FROM material_requests WHERE id = ?', [req.params.id]);
@@ -1342,213 +1520,206 @@ app.get('/api/purchasing/mrs/:id', async (req, res) => {
     } else if (!r.poIds) {
       r.poIds = r.poId ? [r.poId] : [];
     }
+    if (typeof r.workOrderNos === 'string') {
+      try { r.workOrderNos = JSON.parse(r.workOrderNos); } catch(e) { r.workOrderNos = [r.workOrderNo].filter(Boolean); }
+    } else if (!r.workOrderNos) {
+      r.workOrderNos = r.workOrderNo ? [r.workOrderNo] : [];
+    }
     res.json(r);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.post('/api/purchasing/mrs', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
     if (data.poIds && typeof data.poIds === 'object') data.poIds = JSON.stringify(data.poIds);
+    if (data.workOrderNos && typeof data.workOrderNos === 'object') {
+      if (Array.isArray(data.workOrderNos) && data.workOrderNos.length > 0 && !data.workOrderNo) {
+        data.workOrderNo = data.workOrderNos[0];
+      }
+      data.workOrderNos = JSON.stringify(data.workOrderNos);
+    }
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO material_requests SET ?', data);
     res.json({ success: true, id: data.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.put('/api/purchasing/mrs/:id', async (req, res) => {
   try {
     const data = { ...req.body };
     delete data.id;
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
     if (data.poIds && typeof data.poIds === 'object') data.poIds = JSON.stringify(data.poIds);
+    if (data.workOrderNos && typeof data.workOrderNos === 'object') {
+      if (Array.isArray(data.workOrderNos) && data.workOrderNos.length > 0 && !data.workOrderNo) {
+        data.workOrderNo = data.workOrderNos[0];
+      }
+      data.workOrderNos = JSON.stringify(data.workOrderNos);
+    }
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE material_requests SET ? WHERE id = ?', [data, req.params.id]);
     res.json({ success: true, id: req.params.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.delete('/api/purchasing/mrs/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM material_requests WHERE id = ?', [req.params.id]);
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
+// PO ROUTES
 app.get('/api/purchasing/pos', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM purchase_orders ORDER BY date DESC, createdAt DESC');
+    const [rows]: any = await db.query('SELECT * FROM purchase_orders ORDER BY date DESC, createdAt DESC');
+    for (const r of rows) {
+      if (typeof r.mrIds === 'string') {
+        try { r.mrIds = JSON.parse(r.mrIds); } catch(e) { r.mrIds = [r.mrId].filter(Boolean); }
+      } else if (!r.mrIds) {
+        r.mrIds = r.mrId ? [r.mrId] : [];
+      }
+    }
     res.json(rows);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.get('/api/purchasing/pos/:id', async (req, res) => {
   try {
     const [rows]: any = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Purchase order not found' });
-    res.json(rows[0]);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    const r = rows[0];
+    if (typeof r.mrIds === 'string') {
+      try { r.mrIds = JSON.parse(r.mrIds); } catch(e) { r.mrIds = [r.mrId].filter(Boolean); }
+    } else if (!r.mrIds) {
+      r.mrIds = r.mrId ? [r.mrId] : [];
+    }
+    res.json(r);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.post('/api/purchasing/pos', async (req, res) => {
   try {
     const data = { ...req.body };
-    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    let itemsArray: any[] = [];
+    if (Array.isArray(data.items)) {
+      itemsArray = data.items;
+      data.items = JSON.stringify(data.items);
+    } else if (typeof data.items === 'string') {
+      try { itemsArray = JSON.parse(data.items); } catch { itemsArray = []; }
+    }
     if (data.taxBreakdown && typeof data.taxBreakdown === 'object') data.taxBreakdown = JSON.stringify(data.taxBreakdown);
+
+    // Extract all MR IDs from mrId, mrIds, and item level
+    const targetMrIds = new Set<string>();
+    if (data.mrId) targetMrIds.add(data.mrId);
+    if (Array.isArray(data.mrIds)) data.mrIds.forEach((m: string) => targetMrIds.add(m));
+    else if (typeof data.mrIds === 'string') {
+      try { JSON.parse(data.mrIds).forEach((m: string) => targetMrIds.add(m)); } catch { targetMrIds.add(data.mrIds); }
+    }
+    for (const it of itemsArray) {
+      if (it.mrId) targetMrIds.add(it.mrId);
+    }
+
+    if (targetMrIds.size > 0 && !data.mrId) {
+      data.mrId = Array.from(targetMrIds)[0];
+    }
+    data.mrIds = JSON.stringify(Array.from(targetMrIds));
+
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
     await db.query('INSERT INTO purchase_orders SET ?', data);
 
-    // If generated from a Material Request, dynamically check fulfillment balance across all linked POs
-    if (data.mrId) {
-      try {
-        const [linkedPOs]: any = await db.query(
-          'SELECT id, items FROM purchase_orders WHERE mrId = ?',
-          [data.mrId]
-        );
-        const [mrRows]: any = await db.query('SELECT items FROM material_requests WHERE id = ?', [data.mrId]);
-        
-        let allFulfilled = false;
-        if (mrRows.length > 0) {
-          const mrItems = typeof mrRows[0].items === 'string' ? JSON.parse(mrRows[0].items) : (mrRows[0].items || []);
-          const orderedMap: Record<string, number> = {};
-          for (const po of linkedPOs) {
-            const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-            for (const it of pItems) {
-              const key = it.inventoryId || it.desc || it.id;
-              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
-            }
-          }
-
-          let remainingTotal = 0;
-          for (const mrIt of mrItems) {
-            const key = mrIt.inventoryId || mrIt.desc || mrIt.id;
-            const reqQty = Number(mrIt.qty) || 0;
-            const ordQty = orderedMap[key] || 0;
-            if (reqQty > ordQty) {
-              remainingTotal += (reqQty - ordQty);
-            }
-          }
-          allFulfilled = remainingTotal <= 0;
-        }
-
-        const newStatus = allFulfilled ? 'ordered' : 'partially_ordered';
-        const allPoIds = Array.from(new Set(linkedPOs.map((p: any) => p.id)));
-        await db.query(
-          'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
-          [newStatus, data.id, JSON.stringify(allPoIds), data.mrId]
-        );
-      } catch (err) {
-        console.error('Error updating MR fulfillment status:', err);
-      }
+    // Sync all affected Material Requests
+    if (targetMrIds.size > 0) {
+      await syncMRFulfillmentStatus(Array.from(targetMrIds));
     }
 
     res.json({ success: true, id: data.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.put('/api/purchasing/pos/:id', async (req, res) => {
   try {
     const data = { ...req.body };
     delete data.id;
-    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+
+    // Fetch existing PO to detect previously linked MRs
+    const [existingRows]: any = await db.query('SELECT mrId, mrIds, items FROM purchase_orders WHERE id = ?', [req.params.id]);
+    const prevMrIds = new Set<string>();
+    if (existingRows.length > 0) {
+      const ex = existingRows[0];
+      if (ex.mrId) prevMrIds.add(ex.mrId);
+      if (ex.mrIds) {
+        try { JSON.parse(ex.mrIds).forEach((m: string) => prevMrIds.add(m)); } catch { prevMrIds.add(ex.mrIds); }
+      }
+      const exItems = typeof ex.items === 'string' ? JSON.parse(ex.items) : (ex.items || []);
+      for (const it of exItems) { if (it.mrId) prevMrIds.add(it.mrId); }
+    }
+
+    let itemsArray: any[] = [];
+    if (Array.isArray(data.items)) {
+      itemsArray = data.items;
+      data.items = JSON.stringify(data.items);
+    } else if (typeof data.items === 'string') {
+      try { itemsArray = JSON.parse(data.items); } catch { itemsArray = []; }
+    }
     if (data.taxBreakdown && typeof data.taxBreakdown === 'object') data.taxBreakdown = JSON.stringify(data.taxBreakdown);
+
+    const targetMrIds = new Set<string>(prevMrIds);
+    if (data.mrId) targetMrIds.add(data.mrId);
+    if (Array.isArray(data.mrIds)) data.mrIds.forEach((m: string) => targetMrIds.add(m));
+    else if (typeof data.mrIds === 'string') {
+      try { JSON.parse(data.mrIds).forEach((m: string) => targetMrIds.add(m)); } catch { targetMrIds.add(data.mrIds); }
+    }
+    for (const it of itemsArray) {
+      if (it.mrId) targetMrIds.add(it.mrId);
+    }
+
+    if (data.mrIds && Array.isArray(data.mrIds)) {
+      data.mrIds = JSON.stringify(data.mrIds);
+    }
+
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE purchase_orders SET ? WHERE id = ?', [data, req.params.id]);
 
-    // Keep linked MR in sync if mrId is supplied
-    if (data.mrId) {
-      try {
-        const [linkedPOs]: any = await db.query(
-          'SELECT id, items FROM purchase_orders WHERE mrId = ?',
-          [data.mrId]
-        );
-        const [mrRows]: any = await db.query('SELECT items FROM material_requests WHERE id = ?', [data.mrId]);
-        
-        let allFulfilled = false;
-        if (mrRows.length > 0) {
-          const mrItems = typeof mrRows[0].items === 'string' ? JSON.parse(mrRows[0].items) : (mrRows[0].items || []);
-          const orderedMap: Record<string, number> = {};
-          for (const po of linkedPOs) {
-            const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-            for (const it of pItems) {
-              const key = it.inventoryId || it.desc || it.id;
-              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
-            }
-          }
-
-          let remainingTotal = 0;
-          for (const mrIt of mrItems) {
-            const key = mrIt.inventoryId || mrIt.desc || mrIt.id;
-            const reqQty = Number(mrIt.qty) || 0;
-            const ordQty = orderedMap[key] || 0;
-            if (reqQty > ordQty) {
-              remainingTotal += (reqQty - ordQty);
-            }
-          }
-          allFulfilled = remainingTotal <= 0;
-        }
-
-        const newStatus = allFulfilled ? 'ordered' : 'partially_ordered';
-        const allPoIds = Array.from(new Set(linkedPOs.map((p: any) => p.id)));
-        await db.query(
-          'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
-          [newStatus, req.params.id, JSON.stringify(allPoIds), data.mrId]
-        );
-      } catch (err) {
-        console.error('Error updating MR fulfillment status:', err);
-      }
+    if (targetMrIds.size > 0) {
+      await syncMRFulfillmentStatus(Array.from(targetMrIds));
     }
 
     res.json({ success: true, id: req.params.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
 app.delete('/api/purchasing/pos/:id', async (req, res) => {
   try {
-    const [poRows]: any = await db.query('SELECT mrId FROM purchase_orders WHERE id = ?', [req.params.id]);
-    const mrId = poRows.length > 0 ? poRows[0].mrId : null;
+    const [poRows]: any = await db.query('SELECT mrId, mrIds, items FROM purchase_orders WHERE id = ?', [req.params.id]);
+    const targetMrIds = new Set<string>();
+    if (poRows.length > 0) {
+      const p = poRows[0];
+      if (p.mrId) targetMrIds.add(p.mrId);
+      if (p.mrIds) {
+        try { JSON.parse(p.mrIds).forEach((m: string) => targetMrIds.add(m)); } catch { targetMrIds.add(p.mrIds); }
+      }
+      const pItems = typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []);
+      for (const it of pItems) { if (it.mrId) targetMrIds.add(it.mrId); }
+    }
     
     await db.query('DELETE FROM purchase_orders WHERE id = ?', [req.params.id]);
 
-    if (mrId) {
-      const [remainingPOs]: any = await db.query('SELECT id, items FROM purchase_orders WHERE mrId = ?', [mrId]);
-      if (remainingPOs.length === 0) {
-        await db.query('UPDATE material_requests SET status = "approved", poId = NULL, poIds = "[]", updatedAt = NOW() WHERE id = ?', [mrId]);
-      } else {
-        const [mrRows]: any = await db.query('SELECT items FROM material_requests WHERE id = ?', [mrId]);
-        let allFulfilled = false;
-        if (mrRows.length > 0) {
-          const mrItems = typeof mrRows[0].items === 'string' ? JSON.parse(mrRows[0].items) : (mrRows[0].items || []);
-          const orderedMap: Record<string, number> = {};
-          for (const po of remainingPOs) {
-            const pItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-            for (const it of pItems) {
-              const key = it.inventoryId || it.desc || it.id;
-              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
-            }
-          }
-
-          let remainingTotal = 0;
-          for (const mrIt of mrItems) {
-            const key = mrIt.inventoryId || mrIt.desc || mrIt.id;
-            const reqQty = Number(mrIt.qty) || 0;
-            const ordQty = orderedMap[key] || 0;
-            if (reqQty > ordQty) {
-              remainingTotal += (reqQty - ordQty);
-            }
-          }
-          allFulfilled = remainingTotal <= 0;
-        }
-
-        const newStatus = allFulfilled ? 'ordered' : 'partially_ordered';
-        const allPoIds = Array.from(new Set(remainingPOs.map((p: any) => p.id)));
-        await db.query(
-          'UPDATE material_requests SET status = ?, poId = ?, poIds = ?, updatedAt = NOW() WHERE id = ?',
-          [newStatus, allPoIds[allPoIds.length - 1], JSON.stringify(allPoIds), mrId]
-        );
-      }
+    if (targetMrIds.size > 0) {
+      await syncMRFulfillmentStatus(Array.from(targetMrIds));
     }
 
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
+// GRN ROUTES
 app.get('/api/purchasing/grns', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -1559,9 +1730,14 @@ app.get('/api/purchasing/grns', async (req, res) => {
       } else if (!Array.isArray(r.items)) {
         r.items = [];
       }
+      if (typeof r.poIds === 'string') {
+        try { r.poIds = JSON.parse(r.poIds); } catch(e) { r.poIds = [r.poId].filter(Boolean); }
+      } else if (!r.poIds) {
+        r.poIds = r.poId ? [r.poId] : [];
+      }
     }
     res.json(rows);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/purchasing/grns/:id', async (req, res) => {
@@ -1575,64 +1751,14 @@ app.get('/api/purchasing/grns/:id', async (req, res) => {
     } else if (!Array.isArray(r.items)) {
       r.items = [];
     }
+    if (typeof r.poIds === 'string') {
+      try { r.poIds = JSON.parse(r.poIds); } catch(e) { r.poIds = [r.poId].filter(Boolean); }
+    } else if (!r.poIds) {
+      r.poIds = r.poId ? [r.poId] : [];
+    }
     res.json(r);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
-
-async function syncPOReceiptStatus(poId: string) {
-  if (!poId) return;
-  try {
-    const [poRows]: any = await db.query('SELECT id, items, status, mrId FROM purchase_orders WHERE id = ?', [poId]);
-    if (!poRows || poRows.length === 0) return;
-    const po = poRows[0];
-    const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-    if (!Array.isArray(poItems) || poItems.length === 0) return;
-
-    // Fetch all GRNs for this PO
-    const [grnRows]: any = await db.query('SELECT items FROM grns WHERE poId = ?', [poId]);
-    
-    // Aggregate received qty per item across all GRNs
-    const receivedMap: Record<string, number> = {};
-    for (const g of grnRows) {
-      const gItems = typeof g.items === 'string' ? JSON.parse(g.items) : (g.items || []);
-      if (Array.isArray(gItems)) {
-        for (const gi of gItems) {
-          const key = String(gi.inventoryId || gi.id || gi.desc || '');
-          const q = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
-          receivedMap[key] = (receivedMap[key] || 0) + q;
-        }
-      }
-    }
-
-    let totalOrdered = 0;
-    let totalReceived = 0;
-    let allItemsFulfilled = true;
-
-    for (const pi of poItems) {
-      const key = String(pi.inventoryId || pi.id || pi.desc || '');
-      const ord = Number(pi.qty || 0);
-      const rec = receivedMap[key] || 0;
-      totalOrdered += ord;
-      totalReceived += rec;
-      if (rec < ord) {
-        allItemsFulfilled = false;
-      }
-    }
-
-    let newStatus = po.status;
-    if (grnRows.length === 0 || totalReceived === 0) {
-      newStatus = 'ordered';
-    } else if (allItemsFulfilled || (totalOrdered > 0 && totalReceived >= totalOrdered)) {
-      newStatus = 'received';
-    } else {
-      newStatus = 'partially_received';
-    }
-
-    await db.query('UPDATE purchase_orders SET status = ?, updatedAt = NOW() WHERE id = ?', [newStatus, poId]);
-  } catch (err) {
-    console.error('Error syncing PO receipt status:', err);
-  }
-}
 
 app.post('/api/purchasing/grns', async (req, res) => {
   try {
@@ -1645,26 +1771,34 @@ app.post('/api/purchasing/grns', async (req, res) => {
       itemsArray = [data.items];
       data.items = JSON.stringify(data.items);
     } else if (typeof data.items === 'string') {
-      try {
-        itemsArray = JSON.parse(data.items);
-      } catch(e) {
-        itemsArray = [];
-      }
+      try { itemsArray = JSON.parse(data.items); } catch(e) { itemsArray = []; }
     }
 
-    if (!data.createdAt) {
-      data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // Extract all PO IDs (from poId, poIds, and item-level poId)
+    const targetPoIds = new Set<string>();
+    if (data.poId) targetPoIds.add(data.poId);
+    if (Array.isArray(data.poIds)) data.poIds.forEach((p: string) => targetPoIds.add(p));
+    else if (typeof data.poIds === 'string') {
+      try { JSON.parse(data.poIds).forEach((p: string) => targetPoIds.add(p)); } catch { targetPoIds.add(data.poIds); }
     }
-    if (!data.updatedAt) {
-      data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    for (const it of itemsArray) {
+      if (it.poId) targetPoIds.add(it.poId);
     }
+
+    if (targetPoIds.size > 0 && !data.poId) {
+      data.poId = Array.from(targetPoIds)[0];
+    }
+    data.poIds = JSON.stringify(Array.from(targetPoIds));
+
+    if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (!data.updatedAt) data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     await db.query('INSERT INTO grns SET ?', data);
 
-    // Update inventory quantity and stock ledger for each item received
+    // Update inventory stock and record in stock ledger
     for (const item of itemsArray) {
       const invId = item.inventoryId || item.id;
-      const qtyRecv = Number(item.qtyReceived || item.qty || 0);
+      const qtyRecv = Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.qty || 0));
       if (invId && qtyRecv > 0) {
         try {
           const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [invId]);
@@ -1673,6 +1807,7 @@ app.post('/api/purchasing/grns', async (req, res) => {
             const newQty = currentQty + qtyRecv;
             await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, invId]);
 
+            const itemPoRef = item.poId || data.poId || 'N/A';
             const ledgerEntry = {
               id: 'LGR-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 1000),
               inventoryId: invId,
@@ -1680,7 +1815,7 @@ app.post('/api/purchasing/grns', async (req, res) => {
               type: 'IN',
               qty: qtyRecv,
               reference: data.id,
-              notes: `GRN Received (PO: ${data.poId || 'N/A'})${item.condition ? ` - Condition: ${item.condition}` : ''}`
+              notes: `GRN Received (PO: ${itemPoRef})${item.condition ? ` - Condition: ${item.condition}` : ''}`
             };
             await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
           }
@@ -1690,12 +1825,13 @@ app.post('/api/purchasing/grns', async (req, res) => {
       }
     }
 
-    if (data.poId) {
-      await syncPOReceiptStatus(data.poId);
+    // Sync all linked POs
+    if (targetPoIds.size > 0) {
+      await syncPOReceiptStatus(Array.from(targetPoIds));
     }
 
     res.json({ success: true, id: data.id });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to create GRN:', error);
     res.status(500).json({ error: error.message });
   }
@@ -1705,21 +1841,42 @@ app.put('/api/purchasing/grns/:id', async (req, res) => {
   try {
     const data = { ...req.body };
     delete data.id;
+
+    // Find previous POs
+    const [exRows]: any = await db.query('SELECT poId, poIds, items FROM grns WHERE id = ?', [req.params.id]);
+    const targetPoIds = new Set<string>();
+    if (exRows.length > 0) {
+      const ex = exRows[0];
+      if (ex.poId) targetPoIds.add(ex.poId);
+      if (ex.poIds) {
+        try { JSON.parse(ex.poIds).forEach((p: string) => targetPoIds.add(p)); } catch { targetPoIds.add(ex.poIds); }
+      }
+    }
+
     if (data.items !== undefined && typeof data.items === 'object') {
+      if (Array.isArray(data.items)) {
+        for (const it of data.items) { if (it.poId) targetPoIds.add(it.poId); }
+      }
       data.items = JSON.stringify(data.items);
     }
+    if (data.poId) targetPoIds.add(data.poId);
+    if (Array.isArray(data.poIds)) data.poIds.forEach((p: string) => targetPoIds.add(p));
+    else if (typeof data.poIds === 'string') {
+      try { JSON.parse(data.poIds).forEach((p: string) => targetPoIds.add(p)); } catch { targetPoIds.add(data.poIds); }
+    }
+    if (data.poIds && Array.isArray(data.poIds)) {
+      data.poIds = JSON.stringify(data.poIds);
+    }
+
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE grns SET ? WHERE id = ?', [data, req.params.id]);
 
-    const poId = data.poId || (await (async () => {
-      const [r]: any = await db.query('SELECT poId FROM grns WHERE id = ?', [req.params.id]);
-      return r?.[0]?.poId;
-    })());
-    if (poId) {
-      await syncPOReceiptStatus(poId);
+    if (targetPoIds.size > 0) {
+      await syncPOReceiptStatus(Array.from(targetPoIds));
     }
 
     res.json({ success: true, id: req.params.id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 app.delete('/api/purchasing/grns/:id', async (req, res) => {
@@ -1735,6 +1892,15 @@ app.delete('/api/purchasing/grns/:id', async (req, res) => {
       try { itemsArray = JSON.parse(grn.items); } catch(e) { itemsArray = []; }
     } else if (Array.isArray(grn.items)) {
       itemsArray = grn.items;
+    }
+
+    const targetPoIds = new Set<string>();
+    if (grn.poId) targetPoIds.add(grn.poId);
+    if (grn.poIds) {
+      try { JSON.parse(grn.poIds).forEach((p: string) => targetPoIds.add(p)); } catch { targetPoIds.add(grn.poIds); }
+    }
+    for (const it of itemsArray) {
+      if (it.poId) targetPoIds.add(it.poId);
     }
 
     // Revert inventory quantity
@@ -1756,9 +1922,9 @@ app.delete('/api/purchasing/grns/:id', async (req, res) => {
     // Delete GRN
     await db.query('DELETE FROM grns WHERE id = ?', [id]);
 
-    // Recalculate PO status
-    if (grn.poId) {
-      await syncPOReceiptStatus(grn.poId);
+    // Recalculate all affected PO statuses
+    if (targetPoIds.size > 0) {
+      await syncPOReceiptStatus(Array.from(targetPoIds));
     }
 
     res.json({ success: true, message: 'GRN deleted and inventory reverted successfully' });
@@ -3858,6 +4024,12 @@ async function runStartupMigrations() {
     "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
     "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL",
+    "ALTER TABLE material_requests ADD COLUMN workOrderNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE material_requests ADD COLUMN workOrderNos TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN mrIds TEXT DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN payments TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
@@ -3885,6 +4057,19 @@ async function runStartupMigrations() {
   for (const p of patches) {
     try { await db.query(p); } catch (e) {}
   }
+
+  const seeds = [
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt1_absorbed', 'Option 1: VAT & SSCL Absorbed (Total Value)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 0) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt2_sscl_absorbed_vat_sep', 'Option 2: SSCL Absorbed + VAT Separate', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt3_both_separate', 'Option 3: Both SSCL & VAT Separate (2 Lines)', 'SSCL', 2.50, 'VAT', 18.00, 1, 1, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)"
+  ];
+  for (const s of seeds) {
+    try { await db.query(s); } catch (e) {}
+  }
+
 }
 
 app.listen(PORT, async () => {

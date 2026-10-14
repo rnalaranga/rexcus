@@ -1,29 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
-  ArrowLeft, Save, Plus, Trash2, Printer, Building2, Truck, FileText, 
-  Calculator, ShieldCheck, GitPullRequest, CheckCircle2, XCircle, ExternalLink 
+  ArrowLeft, Save, Plus, Trash2, Printer, Building2, 
+  Calendar, Truck, FileText, Calculator, CreditCard, ShieldCheck, 
+  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useSuppliers, useInventory } from '@/hooks/useData';
-import { createPO, updatePO, fetchPOs } from '@/lib/api';
-import { useMaterialRequests, usePurchaseOrders } from '@/hooks/usePurchasing';
 import { useTaxProfiles } from '@/hooks/useFinance';
+import { useMaterialRequests, usePurchaseOrders } from '@/hooks/usePurchasing';
+import { createPO, updatePO, fetchPOs } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
+interface POItem {
+  id: string;
+  inventoryId: string;
+  desc: string;
+  qty: number;
+  unitPrice: number;
+  taxRate: number;
+  discount: number;
+  total: number;
+  mrId?: string;
+  mrItemId?: string;
+  requestedQty?: number;
+  balanceToOrder?: number;
+}
+
 export const POBuilder: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { data: suppliers } = useSuppliers();
-  const { data: mrs } = useMaterialRequests();
-  const { data: pos } = usePurchaseOrders();
-  const { data: taxProfiles = [] } = useTaxProfiles();
   const [searchParams] = useSearchParams();
   const mrParam = searchParams.get('mr');
+
+  const navigate = useNavigate();
+  const { data: suppliers } = useSuppliers();
   const { data: inventory } = useInventory();
+  const { data: mrs } = useMaterialRequests();
+  const { data: pos } = usePurchaseOrders();
+  const { data: taxProfiles } = useTaxProfiles();
 
   const [docNo, setDocNo] = useState('PO-' + Date.now().toString().slice(-4));
   const [status, setStatus] = useState('DRAFT');
@@ -32,13 +49,13 @@ export const POBuilder: React.FC = () => {
   const [supplierId, setSupplierId] = useState('');
   const [supplierDetails, setSupplierDetails] = useState({ contact: '', email: '', phone: '', address: '', vat: '', svat: '', brNumber: '' });
   
-  const [selectedMrId, setSelectedMrId] = useState<string>(mrParam || '');
-  const [mrFulfillmentSummary, setMrFulfillmentSummary] = useState<{
-    totalRequested: number;
-    totalOrderedBefore: number;
-    totalBalance: number;
-    items: { desc: string; requested: number; alreadyOrdered: number; balance: number }[];
-  } | null>(null);
+  // Multi-MR Support
+  const [selectedMrIds, setSelectedMrIds] = useState<string[]>(mrParam ? [mrParam] : []);
+  const [mrFulfillmentSummaries, setMrFulfillmentSummaries] = useState<{
+    mrId: string;
+    department?: string;
+    items: { id: string; desc: string; requested: number; alreadyOrdered: number; balance: number }[];
+  }[]>([]);
 
   const [expectedDate, setExpectedDate] = useState('');
   const [shippingMethod, setShippingMethod] = useState('Standard Delivery');
@@ -47,7 +64,7 @@ export const POBuilder: React.FC = () => {
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [taxProfileId, setTaxProfileId] = useState('');
 
-  const [items, setItems] = useState<{ id: string, inventoryId: string, desc: string, qty: number, unitPrice: number, taxRate: number, discount: number, total: number }[]>([]);
+  const [items, setItems] = useState<POItem[]>([]);
   const [shippingCost, setShippingCost] = useState(0);
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('1. Please send two copies of your invoice.\n2. Enter this order in accordance with the prices, terms, delivery method, and specifications listed above.\n3. Please notify us immediately if you are unable to ship as specified.');
@@ -84,7 +101,17 @@ export const POBuilder: React.FC = () => {
           setStatus((existing.status || 'draft').toUpperCase());
           setExpectedDate(existing.expectedDate ? existing.expectedDate.split('T')[0] : '');
           setSupplierId(existing.supplierId || '');
-          if (existing.mrId) setSelectedMrId(existing.mrId);
+          
+          let parsedMrIds: string[] = [];
+          if (Array.isArray(existing.mrIds)) parsedMrIds = existing.mrIds;
+          else if (typeof existing.mrIds === 'string') {
+            try { parsedMrIds = JSON.parse(existing.mrIds); } catch { parsedMrIds = [existing.mrIds]; }
+          }
+          if (existing.mrId && !parsedMrIds.includes(existing.mrId)) {
+            parsedMrIds.push(existing.mrId);
+          }
+          setSelectedMrIds(parsedMrIds);
+
           if (existing.taxProfileId) {
             setTaxProfileId(existing.taxProfileId);
             setTaxEnabled(true);
@@ -101,97 +128,149 @@ export const POBuilder: React.FC = () => {
     }
   }, [id]);
 
-  // Handle MR loading (from query param or initial state)
+  // Handle MR loading from query param
   useEffect(() => {
     if (!id && mrParam && mrs.length > 0 && inventory.length > 0 && pos.length >= 0) {
-      loadFromMR(mrParam);
+      if (!selectedMrIds.includes(mrParam)) {
+        addMR(mrParam);
+      }
     }
   }, [id, mrParam, mrs, inventory, pos]);
 
-  const loadFromMR = (targetMrId: string) => {
-    if (!targetMrId) {
-      setSelectedMrId('');
-      setMrFulfillmentSummary(null);
+  // Recalculate fulfillment summaries for all linked MRs
+  useEffect(() => {
+    if (selectedMrIds.length === 0 || mrs.length === 0) {
+      setMrFulfillmentSummaries([]);
       return;
     }
+
+    const summaries = selectedMrIds.map(targetMrId => {
+      const mr = mrs.find((m: any) => m.id === targetMrId);
+      if (!mr) return null;
+
+      const mrItems = typeof mr.items === 'string' ? JSON.parse(mr.items) : (mr.items || []);
+
+      // Calculate previously ordered quantities across all other POs
+      const otherPOs = pos.filter((p: any) => {
+        if (id && p.id === id) return false;
+        const pMrIds = Array.isArray(p.mrIds) ? p.mrIds : (typeof p.mrIds === 'string' ? JSON.parse(p.mrIds || '[]') : [p.mrId].filter(Boolean));
+        return p.mrId === targetMrId || pMrIds.includes(targetMrId);
+      });
+
+      const orderedMap: Record<string, number> = {};
+      for (const p of otherPOs) {
+        const pItems = typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []);
+        for (const it of pItems) {
+          if (!it.mrId || it.mrId === targetMrId) {
+            const key = it.inventoryId || it.desc || it.id;
+            if (key) {
+              orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+            }
+          }
+        }
+      }
+
+      const itemBreakdowns = mrItems.map((i: any) => {
+        const key = i.inventoryId || i.desc || i.id;
+        const requested = Number(i.qty) || 0;
+        const alreadyOrdered = orderedMap[key] || 0;
+        const balance = Math.max(0, requested - alreadyOrdered);
+        return {
+          id: i.id,
+          desc: i.desc || i.name || i.inventoryId || 'Item',
+          requested,
+          alreadyOrdered,
+          balance
+        };
+      });
+
+      return {
+        mrId: mr.id,
+        department: mr.department,
+        items: itemBreakdowns
+      };
+    }).filter(Boolean) as any[];
+
+    setMrFulfillmentSummaries(summaries);
+  }, [selectedMrIds, mrs, pos, id]);
+
+  const addMR = (targetMrId: string) => {
+    if (!targetMrId) return;
+    if (selectedMrIds.includes(targetMrId)) return;
+
     const mr = mrs.find((m: any) => m.id === targetMrId);
     if (!mr) return;
 
-    setSelectedMrId(mr.id);
+    const updatedMrIds = [...selectedMrIds, targetMrId];
+    setSelectedMrIds(updatedMrIds);
+
     if (mr.requiredDate && !expectedDate) {
       setExpectedDate(mr.requiredDate.split('T')[0]);
     }
+
     const mrItems = typeof mr.items === 'string' ? JSON.parse(mr.items) : (mr.items || []);
 
-    // Tally previously ordered quantities across all existing POs linked to this MR (excluding current PO if editing)
-    const linkedPOs = pos.filter((p: any) => p.mrId === targetMrId && (!id || p.id !== id));
+    // Tally previously ordered quantities across all existing other POs
+    const otherPOs = pos.filter((p: any) => {
+      if (id && p.id === id) return false;
+      const pMrIds = Array.isArray(p.mrIds) ? p.mrIds : (typeof p.mrIds === 'string' ? JSON.parse(p.mrIds || '[]') : [p.mrId].filter(Boolean));
+      return p.mrId === targetMrId || pMrIds.includes(targetMrId);
+    });
+
     const orderedMap: Record<string, number> = {};
-    for (const p of linkedPOs) {
+    for (const p of otherPOs) {
       const pItems = typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []);
       for (const it of pItems) {
-        const key = it.inventoryId || it.desc || it.id;
-        if (key) {
-          orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+        if (!it.mrId || it.mrId === targetMrId) {
+          const key = it.inventoryId || it.desc || it.id;
+          if (key) {
+            orderedMap[key] = (orderedMap[key] || 0) + (Number(it.qty) || 0);
+          }
         }
       }
     }
 
-    let sumReq = 0;
-    let sumOrd = 0;
-    let sumBal = 0;
-    const summaryItems: { desc: string; requested: number; alreadyOrdered: number; balance: number }[] = [];
-
-    const populated: any[] = [];
+    const newRows: POItem[] = [];
     for (const i of mrItems) {
       const inv = inventory.find((x: any) => x.id === i.inventoryId);
-      const unitPrice = Number(inv?.unitCost) || 0;
+      const unitPrice = Number(i.unitCost !== undefined ? i.unitCost : inv?.unitCost) || 0;
       const requestedQty = Number(i.qty) || 0;
       const key = i.inventoryId || i.desc || i.id;
       const alreadyOrdered = orderedMap[key] || 0;
       const balanceQty = Math.max(0, requestedQty - alreadyOrdered);
 
-      sumReq += requestedQty;
-      sumOrd += alreadyOrdered;
-      sumBal += balanceQty;
-
-      summaryItems.push({
-        desc: i.desc || inv?.name || i.inventoryId || 'Item',
-        requested: requestedQty,
-        alreadyOrdered,
-        balance: balanceQty
+      // Add item if there is remaining balance to order
+      const itemQty = balanceQty > 0 ? balanceQty : requestedQty;
+      newRows.push({
+        id: (i.id || '') + '_' + Date.now().toString() + Math.random().toString().slice(2, 5),
+        inventoryId: i.inventoryId || '',
+        desc: i.desc || inv?.name || '',
+        qty: itemQty,
+        unitPrice,
+        taxRate: 0,
+        discount: 0,
+        total: itemQty * unitPrice,
+        mrId: mr.id,
+        mrItemId: i.id,
+        requestedQty,
+        balanceToOrder: balanceQty
       });
-
-      // If there is still a balance to order (or if this is the first order), populate the line item
-      if (balanceQty > 0 || mrItems.length === 1) {
-        const itemQty = balanceQty > 0 ? balanceQty : requestedQty;
-        populated.push({
-          id: i.id || Date.now().toString() + Math.random().toString().slice(2, 6),
-          inventoryId: i.inventoryId || '',
-          desc: i.desc || inv?.name || '',
-          qty: itemQty,
-          unitPrice,
-          taxRate: 0,
-          discount: 0,
-          total: itemQty * unitPrice
-        });
-      }
     }
 
-    setMrFulfillmentSummary({
-      totalRequested: sumReq,
-      totalOrderedBefore: sumOrd,
-      totalBalance: sumBal,
-      items: summaryItems
-    });
-
-    if (populated.length > 0) {
-      setItems(populated);
+    if (newRows.length > 0) {
+      setItems(prev => [...prev, ...newRows]);
     }
 
     const mrNote = `Generated from Material Request: ${mr.id} (${mr.department} Dept - Requested by: ${mr.requestedBy})`;
     if (!notes.includes(mr.id)) {
       setNotes(prev => prev ? `${prev}\n${mrNote}` : mrNote);
     }
+  };
+
+  const removeMR = (targetMrId: string) => {
+    setSelectedMrIds(selectedMrIds.filter(m => m !== targetMrId));
+    // Remove items associated with this MR
+    setItems(items.filter(i => i.mrId !== targetMrId));
   };
 
   const addItem = () => setItems([...items, { id: Date.now().toString(), inventoryId: '', desc: '', qty: 1, unitPrice: 0, taxRate: 0, discount: 0, total: 0 }]);
@@ -223,28 +302,30 @@ export const POBuilder: React.FC = () => {
   const totalDiscount = items.reduce((sum, item) => sum + (Number(item.discount) || 0), 0);
   const netTaxableAmount = Math.max(0, subtotal - totalDiscount);
 
-  // Tax Profile Calculation
-  const selectedTaxProfile = taxProfiles.find((p: any) => p.id === taxProfileId);
+  const selectedTaxProfile = taxProfiles.find((t: any) => t.id === taxProfileId);
+
   let totalTax = 0;
   let taxBreakdown: any = null;
 
   if (taxEnabled && selectedTaxProfile) {
     const t1Rate = Number(selectedTaxProfile.tax1_rate) || 0;
     const t2Rate = Number(selectedTaxProfile.tax2_rate) || 0;
-    const t1Amount = netTaxableAmount * (t1Rate / 100);
-    const baseForT2 = selectedTaxProfile.tax2_compound ? (netTaxableAmount + t1Amount) : netTaxableAmount;
-    const t2Amount = baseForT2 * (t2Rate / 100);
-    totalTax = t1Amount + t2Amount;
+    const isCompound = Boolean(selectedTaxProfile.tax2_compound);
+
+    const tax1Amount = netTaxableAmount * (t1Rate / 100);
+    const tax2Base = isCompound ? (netTaxableAmount + tax1Amount) : netTaxableAmount;
+    const tax2Amount = tax2Base * (t2Rate / 100);
+
+    totalTax = tax1Amount + tax2Amount;
     taxBreakdown = {
-      profileId: selectedTaxProfile.id,
       profileName: selectedTaxProfile.name,
       tax1Name: selectedTaxProfile.tax1_name,
       tax1Rate: t1Rate,
-      tax1Amount: t1Amount,
+      tax1Amount,
       tax2Name: selectedTaxProfile.tax2_name,
       tax2Rate: t2Rate,
-      tax2Amount: t2Amount,
-      totalTax
+      tax2Amount,
+      isCompound
     };
   } else {
     totalTax = items.reduce((sum, item) => sum + ((((Number(item.qty) || 0) * (Number(item.unitPrice) || 0) - (Number(item.discount) || 0))) * ((Number(item.taxRate) || 0) / 100)), 0);
@@ -261,7 +342,8 @@ export const POBuilder: React.FC = () => {
     try {
       const payload = { 
         id: docNo, 
-        mrId: selectedMrId || null,
+        mrId: selectedMrIds[0] || null,
+        mrIds: JSON.stringify(selectedMrIds),
         taxProfileId: (taxEnabled && selectedTaxProfile) ? taxProfileId : null,
         taxBreakdown: (taxEnabled && selectedTaxProfile) ? JSON.stringify(taxBreakdown) : null,
         supplierId, 
@@ -309,7 +391,6 @@ export const POBuilder: React.FC = () => {
     html2pdf().from(clone).set(opt).save().then(() => document.body.removeChild(clone));
   };
 
-  const selectedMrData = mrs.find((m: any) => m.id === selectedMrId);
   const supplierObj = suppliers.find((s: any) => s.id === supplierId);
 
   return (
@@ -327,13 +408,14 @@ export const POBuilder: React.FC = () => {
               <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
                 status === 'SENT' ? 'bg-blue-500/10 border-blue-500/30 text-blue-500' :
                 status === 'RECEIVED' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500' :
-                'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                status === 'PARTIALLY_RECEIVED' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' :
+                'bg-zinc-500/10 border-zinc-500/30 text-muted'
               }`}>
                 {status}
               </span>
             </div>
             <p className="text-[11px] text-muted mt-0.5">
-              {docNo} {selectedMrId ? `• Linked to MR: ${selectedMrId}` : ''}
+              {docNo} {selectedMrIds.length > 0 ? `• Linked to MR(s): ${selectedMrIds.join(', ')}` : ''}
             </p>
           </div>
         </div>
@@ -345,32 +427,37 @@ export const POBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* MATERIAL REQUEST BANNER IF LINKED */}
-      {selectedMrId && (
+      {/* MULTI-MR BANNER IF LINKED */}
+      {selectedMrIds.length > 0 && (
         <div className="bg-blue-500/10 border-b border-blue-500/20 px-5 py-2.5 flex items-center justify-between text-xs text-blue-600 dark:text-blue-400">
-          <div className="flex items-center gap-2">
-            <GitPullRequest size={15} />
-            <span>
-              Originating Request: <strong>{selectedMrId}</strong> 
-              {selectedMrData && ` (${selectedMrData.department} Dept • Requested by ${selectedMrData.requestedBy})`}
-            </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <GitPullRequest size={15} className="shrink-0" />
+            <span>Originating Requisitions ({selectedMrIds.length}):</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {selectedMrIds.map(mid => (
+                <span key={mid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 rounded font-mono font-bold">
+                  {mid}
+                  <button 
+                    onClick={() => removeMR(mid)}
+                    className="hover:text-red-400 transition-colors"
+                    title={`Unlink ${mid}`}
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => navigate(`/purchasing/mr-builder/${selectedMrId}`)}
-              className="text-xs font-bold underline hover:text-blue-300 flex items-center gap-1"
-            >
-              View MR <ExternalLink size={11} />
-            </button>
-            {!id && (
+          <div className="flex items-center gap-2">
+            {selectedMrIds.map(mid => (
               <button 
-                onClick={() => setSelectedMrId('')}
-                className="text-xs text-red-400 hover:text-red-300 ml-2"
-                title="Unlink MR"
+                key={mid}
+                onClick={() => navigate(`/purchasing/mr-builder/${mid}`)}
+                className="text-[11px] font-bold underline hover:text-blue-300 flex items-center gap-1"
               >
-                Unlink
+                View {mid} <ExternalLink size={10} />
               </button>
-            )}
+            ))}
           </div>
         </div>
       )}
@@ -382,58 +469,89 @@ export const POBuilder: React.FC = () => {
           {/* LEFT COL (Form) */}
           <div className="xl:col-span-2 space-y-5">
 
-            {/* SOURCE MATERIAL REQUEST SELECTOR (IF NOT ALREADY LOADED OR EDITING) */}
-            {!id && (
-              <GlassCard className="p-4 border-l-4 border-l-blue-500 bg-surface/50">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <GitPullRequest size={16} className="text-blue-500 shrink-0" />
-                    <div>
-                      <h3 className="text-xs font-bold text-primary">Import from Material Request</h3>
-                      <p className="text-[11px] text-muted">Auto-populates remaining item balances from approved or partially ordered requests.</p>
-                    </div>
-                  </div>
-                  <div className="w-full sm:w-80">
-                    <select 
-                      value={selectedMrId} 
-                      onChange={e => loadFromMR(e.target.value)}
-                      className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded-lg text-xs font-medium focus:border-blue-500"
-                    >
-                      <option value="">-- Standalone PO (No MR) --</option>
-                      {mrs
-                        .filter((m: any) => m.status === 'approved' || m.status === 'pending' || m.status === 'partially_ordered' || m.id === selectedMrId)
-                        .map((m: any) => (
-                          <option key={m.id} value={m.id}>
-                            {m.id} - {m.department} Dept ({m.status === 'partially_ordered' ? 'Partially Ordered' : m.status})
-                          </option>
-                        ))
-                      }
-                    </select>
+            {/* SOURCE MATERIAL REQUESTS SELECTOR (MULTI-MR SUPPORT) */}
+            <GlassCard className="p-4 border-l-4 border-l-blue-500 bg-surface/50">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <GitPullRequest size={16} className="text-blue-500 shrink-0" />
+                  <div>
+                    <h3 className="text-xs font-bold text-primary">Import Items from Material Requests (Multi-MR)</h3>
+                    <p className="text-[11px] text-muted">You can link multiple MRs into this single Purchase Order. Remaining item balances are automatically calculated.</p>
                   </div>
                 </div>
+                <div className="w-full sm:w-80">
+                  <select 
+                    value="" 
+                    onChange={e => { if (e.target.value) addMR(e.target.value); }}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded-lg text-xs font-medium focus:border-blue-500"
+                  >
+                    <option value="">+ Add Items from Material Request...</option>
+                    {mrs
+                      .filter((m: any) => !selectedMrIds.includes(m.id))
+                      .map((m: any) => (
+                        <option key={m.id} value={m.id}>
+                          {m.id} - {m.department} Dept ({m.status === 'partially_ordered' ? 'Partially Ordered' : m.status})
+                        </option>
+                      ))
+                    }
+                  </select>
+                </div>
+              </div>
 
-                {mrFulfillmentSummary && (
-                  <div className="mt-3 pt-3 border-t border-theme-subtle/70 text-xs">
-                    <div className="flex items-center justify-between font-semibold mb-1.5 text-blue-500">
-                      <span>MR Item Fulfillment & Remaining Balance:</span>
-                      <span className="text-[11px] font-mono">
-                        Requested: {mrFulfillmentSummary.totalRequested} | Previously Ordered: {mrFulfillmentSummary.totalOrderedBefore} | Remaining: {mrFulfillmentSummary.totalBalance}
-                      </span>
+              {/* Linked MR Badges */}
+              {selectedMrIds.length > 0 && (
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-muted font-bold uppercase">Linked MRs:</span>
+                  {selectedMrIds.map(mid => (
+                    <span 
+                      key={mid} 
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface2 border border-theme-subtle rounded-lg text-xs font-mono font-bold text-primary"
+                    >
+                      <GitPullRequest size={11} className="text-blue-500" />
+                      {mid}
+                      <button 
+                        onClick={() => removeMR(mid)}
+                        className="text-muted hover:text-red-500 transition-colors ml-1"
+                        title={`Remove ${mid} and its items`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* MR Fulfillment Summaries */}
+              {mrFulfillmentSummaries.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-theme-subtle/70 space-y-3 text-xs">
+                  {mrFulfillmentSummaries.map(summary => (
+                    <div key={summary.mrId} className="bg-surface/50 p-2.5 rounded-lg border border-theme-subtle">
+                      <div className="flex items-center justify-between font-bold text-blue-500 mb-1.5">
+                        <span className="flex items-center gap-1.5">
+                          <GitPullRequest size={12} /> Requisition {summary.mrId} ({summary.department} Dept)
+                        </span>
+                        <span className="text-[10px] text-muted">
+                          {summary.items.length} materials tracked
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {summary.items.map((it, idx) => (
+                          <div key={idx} className="bg-surface2/60 border border-theme-subtle/80 px-2.5 py-1.5 rounded flex items-center justify-between">
+                            <span className="truncate max-w-[130px] text-primary" title={it.desc}>{it.desc}</span>
+                            <div className="text-right text-[10px] font-mono font-medium">
+                              <span className="text-muted block">Req: {it.requested} | Ord: {it.alreadyOrdered}</span>
+                              <span className={`font-bold ${it.balance > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                {it.balance > 0 ? `${it.balance} to order` : 'Fulfilled'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-2">
-                      {mrFulfillmentSummary.items.map((it, idx) => (
-                        <div key={idx} className="bg-surface/70 border border-theme-subtle px-2.5 py-1.5 rounded flex items-center justify-between">
-                          <span className="truncate max-w-[140px] text-primary" title={it.desc}>{it.desc}</span>
-                          <span className={`font-mono text-[11px] font-bold ${it.balance > 0 ? 'text-emerald-500' : 'text-muted'}`}>
-                            {it.balance > 0 ? `${it.balance} remaining` : 'Fulfilled (0)'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </GlassCard>
-            )}
+                  ))}
+                </div>
+              )}
+            </GlassCard>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <GlassCard className="p-5">
@@ -498,19 +616,21 @@ export const POBuilder: React.FC = () => {
                       <label className="block text-[11px] font-bold text-muted uppercase mb-1">Ship Via</label>
                       <select value={shippingMethod} onChange={e => setShippingMethod(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
                         <option>Standard Delivery</option>
-                        <option>Express</option>
-                        <option>Vendor Truck</option>
-                        <option>Pickup</option>
+                        <option>Express Air Freight</option>
+                        <option>Sea Cargo</option>
+                        <option>Supplier Direct Fleet</option>
+                        <option>Customer Pickup</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-muted uppercase mb-1">Payment</label>
+                      <label className="block text-[11px] font-bold text-muted uppercase mb-1">Payment Terms</label>
                       <select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
-                        <option>Due on Receipt</option>
-                        <option>Net 15</option>
                         <option>Net 30</option>
-                        <option>Net 60</option>
+                        <option>Net 15</option>
+                        <option>Cash on Delivery</option>
                         <option>Advance 50%</option>
+                        <option>Advance 100%</option>
+                        <option>LC (Letter of Credit)</option>
                       </select>
                     </div>
                   </div>
@@ -548,10 +668,20 @@ export const POBuilder: React.FC = () => {
                               {inventory.map(i => <option key={i.id} value={i.id}>{i.sku ? `[${i.sku}] ` : ''}{i.name}</option>)}
                             </select>
                             <input type="text" value={item.desc} onChange={e => updateItem(item.id, 'desc', e.target.value)} placeholder="Description..." className="w-full bg-transparent border border-transparent hover:border-theme-subtle focus:border-theme-subtle px-2 py-1 rounded text-[11px]" />
+                            {item.mrId && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 w-fit">
+                                <GitPullRequest size={9} /> MR: {item.mrId}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="p-2 text-right align-top">
                           <input type="number" min="1" value={item.qty} onChange={e => updateItem(item.id, 'qty', Number(e.target.value))} className="w-16 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-bold focus:border-primary" />
+                          {item.balanceToOrder !== undefined && (
+                            <span className="text-[10px] text-muted block text-right font-mono mt-0.5" title={`Original Req: ${item.requestedQty || item.qty}`}>
+                              Bal: {item.balanceToOrder}
+                            </span>
+                          )}
                         </td>
                         <td className="p-2 text-right align-top">
                           <input type="number" step="0.01" value={item.unitPrice} onChange={e => updateItem(item.id, 'unitPrice', Number(e.target.value))} className="w-24 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right focus:border-primary font-mono" />
@@ -642,111 +772,101 @@ export const POBuilder: React.FC = () => {
                     </select>
                   )}
                   {taxEnabled && selectedTaxProfile && taxBreakdown && (
-                    <div className="bg-surface/50 p-2 rounded border border-theme-subtle space-y-1 text-[11px]">
+                    <div className="bg-surface/50 p-2.5 rounded-lg border border-theme-subtle space-y-1.5 text-[11px]">
                       {taxBreakdown.tax1Rate > 0 && (
-                        <div className="flex justify-between text-muted">
-                          <span>{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%)</span>
-                          <span className="font-mono text-foreground font-semibold">{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                        <div className="flex justify-between">
+                          <span className="text-muted">{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%):</span>
+                          <span className="font-mono">{formatCurrency(taxBreakdown.tax1Amount)}</span>
                         </div>
                       )}
                       {taxBreakdown.tax2Rate > 0 && (
-                        <div className="flex justify-between text-muted">
-                          <span>{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%)</span>
-                          <span className="font-mono text-foreground font-semibold">{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                        <div className="flex justify-between">
+                          <span className="text-muted">{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%):</span>
+                          <span className="font-mono">{formatCurrency(taxBreakdown.tax2Amount)}</span>
                         </div>
+                      )}
+                      {taxBreakdown.isCompound && (
+                        <span className="text-[10px] text-muted italic block">* VAT is compounded on SSCL</span>
                       )}
                     </div>
                   )}
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <span>Total Tax</span>
-                  <span className="text-foreground font-mono font-bold text-amber-500">{formatCurrency(totalTax)}</span>
+                  <span>Shipping Cost</span>
+                  <input type="number" step="0.01" value={shippingCost} onChange={e => setShippingCost(Number(e.target.value))} className="w-24 bg-surface border border-theme-subtle px-2 py-1 rounded text-right font-mono" />
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="flex items-center gap-1.5">Shipping <Truck size={10}/></span>
-                  <input type="number" value={shippingCost} onChange={e => setShippingCost(Number(e.target.value))} className="w-20 bg-surface border border-theme-subtle px-2 py-1 rounded text-right font-bold focus:border-emerald-500 font-mono" />
+                <div className="pt-4 border-t border-theme-subtle flex justify-between items-center text-sm font-bold text-foreground">
+                  <span>Total Amount</span>
+                  <span className="text-emerald-500 font-mono text-base">{formatCurrency(grandTotal)}</span>
                 </div>
-                
-                <div className="pt-4 border-t border-theme-subtle mt-4">
-                  <div className="flex justify-between items-end">
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted">Grand Total</span>
-                    <span className="text-2xl font-black text-emerald-500 tracking-tighter font-mono">{formatCurrency(grandTotal)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-2">
-                <Button variant="primary" icon={Save} onClick={handleSave} disabled={saving} className="w-full">
-                  {saving ? 'Saving Order...' : 'Save Order'}
-                </Button>
-                <Button variant="ghost" icon={Printer} onClick={exportPDF} className="w-full bg-surface border border-theme-subtle">
-                  Download PDF
-                </Button>
               </div>
             </GlassCard>
           </div>
         </div>
       </div>
-      
-      {/* Hidden Corporate PDF Template for High-Quality Export */}
+
+      {/* HIDDEN PRINT / PDF TEMPLATE */}
       <div id="po-pdf-content" style={{ display: 'none', background: 'white', color: 'black', padding: '40px', fontFamily: 'Arial, sans-serif' }}>
          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '3px solid #1a202c', paddingBottom: '20px', marginBottom: '25px' }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: '30px', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.5px' }}>PURCHASE ORDER</h1>
-              <div style={{ marginTop: '10px', display: 'flex', gap: '25px' }}>
-                <div><p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>PO Number</p><p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{docNo}</p></div>
-                <div><p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Order Date</p><p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{date}</p></div>
-                <div><p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Expected Delivery</p><p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{expectedDate || 'Prompt'}</p></div>
-                {selectedMrId && <div><p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Ref Material Req.</p><p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#2b6cb0' }}>{selectedMrId}</p></div>}
-              </div>
+               <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.5px' }}>PURCHASE ORDER</h1>
+               <div style={{ marginTop: '10px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>PO Number</p>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{docNo}</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Date</p>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{date}</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Expected Date</p>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{expectedDate || 'ASAP'}</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Ref MR(s)</p>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#2b6cb0' }}>{selectedMrIds.length > 0 ? selectedMrIds.join(', ') : 'N/A'}</p>
+                  </div>
+               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#2b6cb0' }}>REX INDUSTRIES</h2>
-              <p style={{ margin: '5px 0 0 0', fontSize: '11px', color: '#4a5568' }}>123 Industrial Zone, Phase II</p>
-              <p style={{ margin: 0, fontSize: '11px', color: '#4a5568' }}>Colombo 08, Sri Lanka</p>
-              <p style={{ margin: 0, fontSize: '11px', color: '#4a5568' }}>info@rexindustries.lk • +94 11 234 5678</p>
+               <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#2b6cb0' }}>REX INDUSTRIES</h2>
+               <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#4a5568' }}>No. 451/2, Chilaw Road, Kattuwa, Negombo, Sri Lanka</p>
+               <p style={{ margin: 0, fontSize: '11px', color: '#4a5568' }}>Tel: 031-2233117 | Email: info@rexgroup.lk</p>
             </div>
          </div>
 
-         {/* VENDOR & SHIP-TO ROW */}
-         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '25px', gap: '20px' }}>
-           <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '4px', padding: '15px', background: '#f7fafc' }}>
-             <p style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase' }}>VENDOR / SUPPLIER</p>
-             <h3 style={{ margin: '0 0 5px 0', fontSize: '15px', fontWeight: 'bold' }}>{supplierObj?.name || 'N/A'}</h3>
-             {supplierDetails.address && <p style={{ margin: 0, fontSize: '11px', color: '#4a5568' }}>{supplierDetails.address}</p>}
-             {supplierDetails.contact && <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: '#4a5568' }}>Attn: {supplierDetails.contact}</p>}
-             {supplierDetails.phone && <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#4a5568' }}>Tel: {supplierDetails.phone}</p>}
-             {supplierDetails.email && <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#4a5568' }}>Email: {supplierDetails.email}</p>}
-             {(supplierDetails.vat || supplierDetails.svat || supplierDetails.brNumber) && (
-               <div style={{ marginTop: '6px', fontSize: '10px', color: '#718096' }}>
-                 {supplierDetails.vat && <span>VAT: {supplierDetails.vat} | </span>}
-                 {supplierDetails.svat && <span>SVAT: {supplierDetails.svat} | </span>}
-                 {supplierDetails.brNumber && <span>BR: {supplierDetails.brNumber}</span>}
-               </div>
-             )}
-           </div>
-
-           <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '4px', padding: '15px', background: '#f7fafc' }}>
-             <p style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase' }}>ORDER SPECIFICATIONS</p>
-             <div style={{ fontSize: '11px', lineHeight: '1.6', color: '#4a5568' }}>
-               <p style={{ margin: 0 }}><strong>Shipping Method:</strong> {shippingMethod}</p>
-               <p style={{ margin: 0 }}><strong>Payment Terms:</strong> {paymentTerms}</p>
-               {selectedMrId && <p style={{ margin: 0 }}><strong>Originating MR:</strong> {selectedMrId}</p>}
-             </div>
-           </div>
+         {/* VENDOR & SHIPPING DETAILS */}
+         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '40px', marginBottom: '25px', fontSize: '12px' }}>
+            <div style={{ flex: 1, border: '1px solid #e2e8f0', padding: '12px', borderRadius: '4px' }}>
+               <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Vendor</p>
+               <h3 style={{ margin: '4px 0', fontSize: '14px', fontWeight: 'bold' }}>{supplierObj?.name || 'Supplier'}</h3>
+               {supplierDetails.address && <p style={{ margin: '2px 0', color: '#4a5568' }}>{supplierDetails.address}</p>}
+               {supplierDetails.contact && <p style={{ margin: '2px 0', color: '#4a5568' }}>Contact: {supplierDetails.contact}</p>}
+               {supplierDetails.email && <p style={{ margin: '2px 0', color: '#4a5568' }}>Email: {supplierDetails.email}</p>}
+               {supplierDetails.phone && <p style={{ margin: '2px 0', color: '#4a5568' }}>Phone: {supplierDetails.phone}</p>}
+               {supplierDetails.vat && <p style={{ margin: '2px 0', color: '#4a5568', fontWeight: 'bold' }}>VAT No: {supplierDetails.vat}</p>}
+            </div>
+            <div style={{ flex: 1, border: '1px solid #e2e8f0', padding: '12px', borderRadius: '4px' }}>
+               <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Shipping & Payment</p>
+               <p style={{ margin: '4px 0', color: '#4a5568' }}><strong>Shipping Method:</strong> {shippingMethod}</p>
+               <p style={{ margin: '4px 0', color: '#4a5568' }}><strong>Payment Terms:</strong> {paymentTerms}</p>
+               <p style={{ margin: '4px 0', color: '#4a5568' }}><strong>Delivery Location:</strong> Rex Industries Factory, Kattuwa</p>
+            </div>
          </div>
 
          {/* ITEMS TABLE */}
          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
-                <th style={{ padding: '8px 10px', textAlign: 'center', width: '30px' }}>#</th>
-                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Item / Description</th>
+                <th style={{ padding: '8px 10px', textAlign: 'center', width: '40px' }}>#</th>
+                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Item Description</th>
+                {selectedMrIds.length > 1 && <th style={{ padding: '8px 10px', textAlign: 'center', width: '80px' }}>MR Ref</th>}
                 <th style={{ padding: '8px 10px', textAlign: 'right', width: '60px' }}>Qty</th>
                 <th style={{ padding: '8px 10px', textAlign: 'right', width: '90px' }}>Unit Price</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '70px' }}>Disc</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '60px' }}>Tax%</th>
+                <th style={{ padding: '8px 10px', textAlign: 'right', width: '80px' }}>Discount</th>
+                <th style={{ padding: '8px 10px', textAlign: 'right', width: '70px' }}>Tax</th>
                 <th style={{ padding: '8px 10px', textAlign: 'right', width: '110px' }}>Total Amount</th>
               </tr>
             </thead>
@@ -760,6 +880,11 @@ export const POBuilder: React.FC = () => {
                       <strong>{inv?.name || it.desc || it.inventoryId}</strong>
                       {it.desc && it.desc !== inv?.name && <div style={{ fontSize: '10px', color: '#718096' }}>{it.desc}</div>}
                     </td>
+                    {selectedMrIds.length > 1 && (
+                      <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: '10px', color: '#2b6cb0', fontWeight: 'bold' }}>
+                        {it.mrId || '-'}
+                      </td>
+                    )}
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>{it.qty}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(Number(it.unitPrice) || 0)}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>{Number(it.discount) > 0 ? formatCurrency(Number(it.discount)) : '-'}</td>

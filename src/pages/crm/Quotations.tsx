@@ -10,7 +10,7 @@ import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView'
 import { useSettings } from '@/contexts/SettingsContext'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
-import { useQuotations, useLeads } from '@/hooks/useData'
+import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
@@ -130,6 +130,7 @@ export const Quotations: React.FC = () => {
   const { data: quotations, loading, refetch } = useQuotations()
   const { data: taxProfiles } = useTaxProfiles()
   const { data: leads = [] } = useLeads()
+  const { data: customers = [] } = useCustomers()
   const [search, setSearch] = useState('')
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
   const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string} | null>(null)
@@ -162,7 +163,7 @@ export const Quotations: React.FC = () => {
 
 
   
-    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
+    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadAddress: string, leadVat: string, leadSvat: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
     
     quotations.forEach(q => {
        let parsed: any = {}
@@ -170,8 +171,15 @@ export const Quotations: React.FC = () => {
        const quoNo = parsed.quotationNo || q.id
        
        if (!groups[quoNo]) {
-         groups[quoNo] = { quoNo, leadName: q.leadName || parsed.customerName || 'Walk-in Customer', leadCompany: q.leadCompany, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date }
-       }
+          const cust = customers.find((c: any) => c.id === q.leadId);
+          const lead = leads.find((l: any) => l.id === q.leadId);
+          const leadCompany = q.leadCompany || cust?.company || lead?.company || '';
+          const leadName = q.leadName || cust?.name || lead?.name || parsed.customerName || 'Walk-in Customer';
+          const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || (lead as any)?.address || '';
+          const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || '';
+          const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || (cust as any)?.tin || lead?.svat || (lead as any)?.tin || '';
+          groups[quoNo] = { quoNo, leadName, leadCompany, leadAddress, leadVat, leadSvat, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date };
+        }
        
        if (q.type === 'main') groups[quoNo].main.push(q)
        else if (q.type === 'job') groups[quoNo].job.push(q)
@@ -192,7 +200,7 @@ export const Quotations: React.FC = () => {
     
     // Sort groups by latest date descending
     return Object.values(groups).sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
-  }, [quotations])
+  }, [quotations, customers, leads])
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
 
@@ -379,7 +387,7 @@ export const Quotations: React.FC = () => {
                   )}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, address: '' } })} className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/20 h-8">
+                      <Button variant="ghost" size="sm" onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })} className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/20 h-8">
                          View Quote
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${displayQ.id}`)} className="bg-surface border border-theme-subtle hover:bg-surface2 h-8">
@@ -446,7 +454,7 @@ export const Quotations: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPreviewData({ quotation: latestJob, type: 'job', lead: { name: group.leadName, company: group.leadCompany, address: '' } }); }} className="text-xs h-7 px-2">
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPreviewData({ quotation: latestJob, type: 'job', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } }); }} className="text-xs h-7 px-2">
                         View
                       </Button>
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${group.leadId}?quoteId=${latestJob.id}`); }} className="text-xs h-7 px-2">
@@ -472,7 +480,7 @@ export const Quotations: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPreviewData({ quotation: latestCust, type: 'customer', lead: { name: group.leadName, company: group.leadCompany, address: '' } }); }} className="text-xs h-7 px-2">
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPreviewData({ quotation: latestCust, type: 'customer', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } }); }} className="text-xs h-7 px-2">
                         View
                       </Button>
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${group.leadId}?quoteId=${latestCust.id}`); }} className="text-xs h-7 px-2">
@@ -503,6 +511,12 @@ export const Quotations: React.FC = () => {
                           parsed.custSscl = cTotal * t1;
                           parsed.custVat = parsed.selectedProfile.tax2_compound ? (cTotal + parsed.custSscl) * t2 : cTotal * t2;
                       }
+                  }
+                  if (!parsed.vatNo && previewData.lead?.vat) parsed.vatNo = previewData.lead.vat;
+                  if (!parsed.tinNo && previewData.lead?.svat) parsed.tinNo = previewData.lead.svat;
+                  if (!parsed.customerAddress && previewData.lead?.address) parsed.customerAddress = previewData.lead.address;
+                  if (!parsed.customerName && (previewData.lead?.company || previewData.lead?.name)) {
+                    parsed.customerName = previewData.lead.company || previewData.lead.name;
                   }
                   return parsed;
                })()} 

@@ -102,15 +102,23 @@ export const PurchasingHub: React.FC = () => {
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{getSupplierName(row.supplierId)}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="text-[10px] text-muted font-mono">{row.id}</span>
-                  {row.mrId && (
-                    <span 
-                      onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/mr-builder/${row.mrId}`); }}
-                      className="text-[9px] bg-blue-500/10 text-blue-500 hover:text-blue-400 px-1.5 py-0.2 rounded font-mono border border-blue-500/20 cursor-pointer font-bold"
-                      title="View Originating Material Request"
-                    >
-                      MR: {row.mrId}
-                    </span>
-                  )}
+                  {(() => {
+                    const linkedMrList: string[] = Array.isArray(row.mrIds)
+                      ? row.mrIds
+                      : (typeof row.mrIds === 'string'
+                          ? (() => { try { const m = JSON.parse(row.mrIds); return Array.isArray(m) ? m : [row.mrIds]; } catch { return [row.mrIds]; } })()
+                          : (row.mrId ? [row.mrId] : []));
+                    return linkedMrList.map((mrNum: string) => (
+                      <span 
+                        key={mrNum}
+                        onClick={(e) => { e.stopPropagation(); navigate('/purchasing/mr-builder/' + mrNum); }}
+                        className="text-[9px] bg-blue-500/10 text-blue-500 hover:text-blue-400 px-1.5 py-0.2 rounded font-mono border border-blue-500/20 cursor-pointer font-bold"
+                        title="View Originating Material Request"
+                      >
+                        MR: {mrNum}
+                      </span>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>
@@ -150,6 +158,23 @@ export const PurchasingHub: React.FC = () => {
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="text-[10px] text-muted">{row.department} Dept</span>
+                  {(() => {
+                    const linkedWoList: string[] = Array.isArray(row.workOrderNos)
+                      ? row.workOrderNos
+                      : (typeof row.workOrderNos === 'string'
+                          ? (() => { try { const w = JSON.parse(row.workOrderNos); return Array.isArray(w) ? w : [row.workOrderNos]; } catch { return [row.workOrderNos]; } })()
+                          : (row.workOrderNo ? [row.workOrderNo] : []));
+                    return linkedWoList.map((woNum: string) => (
+                      <span 
+                        key={woNum}
+                        onClick={(e) => { e.stopPropagation(); navigate('/production/work-orders'); }}
+                        className="text-[9px] bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:text-purple-400 px-1.5 py-0.2 rounded font-mono border border-purple-500/30 cursor-pointer font-bold"
+                        title={`Linked Work Order ${woNum}`}
+                      >
+                        WO: {woNum}
+                      </span>
+                    ));
+                  })()}
                   {(() => {
                     const linkedPoList: string[] = Array.isArray(row.poIds) 
                       ? row.poIds 
@@ -229,7 +254,30 @@ export const PurchasingHub: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
-                <p className="text-[10px] text-muted truncate mt-0.5 font-mono">Ref: {row.isCustomerSample ? (row.quoNo || row.leadId || 'Customer Sample') : row.poId}</p>
+                {(() => {
+                    if (row.isCustomerSample) {
+                      return <p className="text-[10px] text-muted truncate mt-0.5 font-mono">Ref: {row.quoNo || row.leadId || 'Customer Sample'}</p>;
+                    }
+                    const linkedPoList: string[] = Array.isArray(row.poIds)
+                      ? row.poIds
+                      : (typeof row.poIds === 'string'
+                          ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                          : (row.poId ? [row.poId] : []));
+                    return (
+                      <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                        <span className="text-[10px] text-muted font-mono">PO:</span>
+                        {linkedPoList.length > 0 ? linkedPoList.map((pNum: string) => (
+                          <span 
+                            key={pNum}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${pNum}`); }}
+                            className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                          >
+                            {pNum}
+                          </span>
+                        )) : <span className="text-[10px] text-muted font-mono">N/A</span>}
+                      </div>
+                    );
+                  })()}
               </div>
             </div>
           )

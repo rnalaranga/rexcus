@@ -3,13 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, GitPullRequest, Calendar, Users2, 
   Activity, Building2, ShoppingCart, Printer, CheckCircle2, Clock, 
-  AlertCircle, Package, ArrowRight
+  AlertCircle, Package, ArrowRight, Briefcase, Tag, X, ExternalLink
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useInventory } from '@/hooks/useData';
-import { createMR, updateMR, fetchMRs } from '@/lib/api';
+import { createMR, updateMR, fetchMRs, fetchWorkOrders } from '@/lib/api';
 import { usePurchaseOrders } from '@/hooks/usePurchasing';
 import { formatCurrency } from '@/lib/utils';
 // @ts-ignore
@@ -37,12 +37,27 @@ export const MRBuilder: React.FC = () => {
   const [department, setDepartment] = useState('Production');
   const [priority, setPriority] = useState('Normal');
   const [status, setStatus] = useState<'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'rejected'>('approved');
+  
+  // Work Order Numbers
+  const [workOrderNos, setWorkOrderNos] = useState<string[]>([]);
+  const [workOrderInput, setWorkOrderInput] = useState<string>('');
+  const [availableWorkOrders, setAvailableWorkOrders] = useState<any[]>([]);
+
+  // Linked Purchase Orders
   const [poId, setPoId] = useState<string | null>(null);
   const [poIds, setPoIds] = useState<string[]>([]);
+  
   const [items, setItems] = useState<MRItem[]>([]);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!id);
+
+  // Fetch available work orders
+  useEffect(() => {
+    fetchWorkOrders().then(data => {
+      if (Array.isArray(data)) setAvailableWorkOrders(data);
+    }).catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -58,12 +73,23 @@ export const MRBuilder: React.FC = () => {
           setPriority(existing.priority || 'Normal');
           setStatus((existing.status as any) || 'approved');
           setPoId(existing.poId || null);
+
+          // Parse linked POs
           const parsedPoIds = Array.isArray(existing.poIds)
             ? existing.poIds
             : (typeof existing.poIds === 'string'
                 ? (() => { try { const p = JSON.parse(existing.poIds); return Array.isArray(p) ? p : [existing.poIds]; } catch { return [existing.poIds]; } })()
                 : (existing.poId ? [existing.poId] : []));
           setPoIds(parsedPoIds);
+
+          // Parse linked Work Orders
+          const parsedWoNos = Array.isArray(existing.workOrderNos)
+            ? existing.workOrderNos
+            : (typeof existing.workOrderNos === 'string'
+                ? (() => { try { const w = JSON.parse(existing.workOrderNos); return Array.isArray(w) ? w : [existing.workOrderNos]; } catch { return [existing.workOrderNos]; } })()
+                : (existing.workOrderNo ? [existing.workOrderNo] : []));
+          setWorkOrderNos(parsedWoNos);
+
           setNotes(existing.notes || '');
           const loadedItems = typeof existing.items === 'string' ? JSON.parse(existing.items) : (existing.items || []);
           setItems(loadedItems.map((item: any) => {
@@ -78,6 +104,19 @@ export const MRBuilder: React.FC = () => {
       }).catch(console.error).finally(() => setLoading(false));
     }
   }, [id, inventory]);
+
+  const handleAddWorkOrder = (woNumber: string) => {
+    const trimmed = woNumber.trim();
+    if (!trimmed) return;
+    if (!workOrderNos.includes(trimmed)) {
+      setWorkOrderNos([...workOrderNos, trimmed]);
+    }
+    setWorkOrderInput('');
+  };
+
+  const handleRemoveWorkOrder = (woNumber: string) => {
+    setWorkOrderNos(workOrderNos.filter(w => w !== woNumber));
+  };
 
   const addItem = () => {
     setItems([
@@ -109,14 +148,20 @@ export const MRBuilder: React.FC = () => {
   };
 
   // Compute fulfillment status across all linked Purchase Orders
-  const linkedPOs = pos.filter((p: any) => p.mrId === docNo || (id && p.mrId === id));
+  const linkedPOs = pos.filter((p: any) => {
+    const pMrIds = Array.isArray(p.mrIds) ? p.mrIds : (typeof p.mrIds === 'string' ? JSON.parse(p.mrIds || '[]') : [p.mrId].filter(Boolean));
+    return p.mrId === docNo || (id && p.mrId === id) || pMrIds.includes(docNo) || (id && pMrIds.includes(id));
+  });
+
   const orderedTotals: Record<string, number> = {};
   for (const p of linkedPOs) {
     const pItems = typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []);
     for (const it of pItems) {
-      const key = it.inventoryId || it.desc || it.id;
-      if (key) {
-        orderedTotals[key] = (orderedTotals[key] || 0) + (Number(it.qty) || 0);
+      if (!it.mrId || it.mrId === docNo || (id && it.mrId === id)) {
+        const key = it.inventoryId || it.desc || it.id;
+        if (key) {
+          orderedTotals[key] = (orderedTotals[key] || 0) + (Number(it.qty) || 0);
+        }
       }
     }
   }
@@ -129,7 +174,7 @@ export const MRBuilder: React.FC = () => {
 
   const totalEstimatedCost = items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
   const totalUnits = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-  const totalOrderedUnits = items.reduce((sum, item) => sum + (orderedTotals[item.inventoryId || item.desc || item.id] || 0), 0);
+  const totalOrderedUnits = items.reduce((sum, item) => sum + Math.min(Number(item.qty) || 0, orderedTotals[item.inventoryId || item.desc || item.id] || 0), 0);
   const totalBalanceUnits = items.reduce((sum, item) => {
     const req = Number(item.qty) || 0;
     const ord = orderedTotals[item.inventoryId || item.desc || item.id] || 0;
@@ -147,8 +192,10 @@ export const MRBuilder: React.FC = () => {
         department,
         priority,
         status,
-        poId,
+        poId: allPoIds[0] || null,
         poIds: JSON.stringify(allPoIds),
+        workOrderNo: workOrderNos[0] || null,
+        workOrderNos: JSON.stringify(workOrderNos),
         items,
         notes
       };
@@ -226,6 +273,11 @@ export const MRBuilder: React.FC = () => {
             </div>
             <p className="text-[11px] text-muted mt-0.5">
               {docNo} • {department} Department
+              {workOrderNos.length > 0 && (
+                <span className="ml-2 text-purple-500 font-mono font-bold">
+                  WO: {workOrderNos.join(', ')}
+                </span>
+              )}
               {allPoIds.length > 0 && (
                 <span className="ml-2 text-emerald-500 font-mono font-bold">
                   POs: {allPoIds.join(', ')}
@@ -359,6 +411,75 @@ export const MRBuilder: React.FC = () => {
                     </select>
                   </div>
 
+                  {/* LINKED WORK ORDERS (ONE OR MULTIPLE) */}
+                  <div className="p-3 bg-surface2/60 rounded-xl border border-theme-subtle/80 space-y-2.5">
+                    <label className="block text-[11px] font-bold text-purple-500 uppercase tracking-wide flex items-center justify-between">
+                      <span className="flex items-center gap-1.5"><Briefcase size={13} /> Work Order No(s)</span>
+                      <span className="text-[10px] text-muted font-normal">Multiple allowed</span>
+                    </label>
+
+                    {/* Chips for Selected Work Orders */}
+                    {workOrderNos.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {workOrderNos.map((wo) => (
+                          <span 
+                            key={wo} 
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/30 rounded-md text-xs font-mono font-bold"
+                          >
+                            {wo}
+                            <button 
+                              type="button" 
+                              onClick={() => handleRemoveWorkOrder(wo)}
+                              className="hover:text-red-500 transition-colors ml-0.5"
+                              title={`Remove ${wo}`}
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Quick Select from Active Work Orders */}
+                    {availableWorkOrders.length > 0 && (
+                      <select 
+                        value="" 
+                        onChange={e => { if (e.target.value) handleAddWorkOrder(e.target.value); }}
+                        className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                      >
+                        <option value="">+ Select from Work Orders...</option>
+                        {availableWorkOrders
+                          .filter(w => !workOrderNos.includes(w.id))
+                          .map(w => (
+                            <option key={w.id} value={w.id}>
+                              {w.id} {w.title ? `- ${w.title}` : ''} ({w.status || 'Active'})
+                            </option>
+                          ))}
+                      </select>
+                    )}
+
+                    {/* Manual Work Order Input */}
+                    <div className="flex gap-1.5">
+                      <input 
+                        type="text" 
+                        value={workOrderInput}
+                        onChange={e => setWorkOrderInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddWorkOrder(workOrderInput); } }}
+                        placeholder="Type WO # (e.g. WO-101)..." 
+                        className="flex-1 bg-surface border border-theme-subtle px-2.5 py-1 rounded text-xs font-mono"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        type="button"
+                        onClick={() => handleAddWorkOrder(workOrderInput)}
+                        className="px-2 h-7 text-xs"
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                       <Calendar size={12}/> Request Date
@@ -467,16 +588,16 @@ export const MRBuilder: React.FC = () => {
                  <span className="font-bold text-primary font-mono">{totalUnits}</span>
                </div>
                <div className="flex justify-between text-xs">
-                 <span className="text-secondary">Total Ordered Units:</span>
+                 <span className="text-secondary">Total Ordered in POs:</span>
                  <span className="font-bold text-emerald-500 font-mono">{totalOrderedUnits}</span>
                </div>
-               <div className="flex justify-between text-xs">
-                 <span className="text-secondary font-bold">Remaining Balance:</span>
+               <div className="flex justify-between text-xs border-t border-theme-subtle pt-1.5">
+                 <span className="text-secondary font-bold">Remaining to Order:</span>
                  <span className={`font-mono font-bold ${totalBalanceUnits > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
                    {totalBalanceUnits} units
                  </span>
                </div>
-               <div className="flex justify-between text-xs pt-2 border-t border-theme-subtle">
+               <div className="flex justify-between text-xs border-t border-theme-subtle pt-2">
                  <span className="text-secondary font-bold">Est. Total Cost:</span>
                  <span className="font-black text-emerald-500">{formatCurrency(totalEstimatedCost)}</span>
                </div>
@@ -491,7 +612,7 @@ export const MRBuilder: React.FC = () => {
                   <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                     <Package size={16} /> Required Materials & Specifications
                   </h2>
-                  <p className="text-[10px] text-muted">Select catalog items from inventory to auto-populate units and estimated costs.</p>
+                  <p className="text-[10px] text-muted">Track requested quantities, amounts already ordered across POs, and remaining balances.</p>
                 </div>
                 <Button variant="ghost" size="sm" icon={Plus} onClick={addItem} className="text-primary hover:bg-primary/10">
                   Add Item
@@ -505,7 +626,9 @@ export const MRBuilder: React.FC = () => {
                       <th className="px-4 py-3 w-10 text-center">#</th>
                       <th className="px-3 py-3">Material / Item</th>
                       <th className="px-3 py-3 text-center">In Stock</th>
-                      <th className="px-3 py-3 text-right">Qty Needed</th>
+                      <th className="px-3 py-3 text-right">Req. Qty</th>
+                      <th className="px-3 py-3 text-right">Ordered in POs</th>
+                      <th className="px-3 py-3 text-right">Balance to Order</th>
                       <th className="px-3 py-3 text-right">Est. Unit Cost</th>
                       <th className="px-3 py-3 text-right">Est. Total</th>
                       <th className="px-4 py-3 text-center"></th>
@@ -516,6 +639,13 @@ export const MRBuilder: React.FC = () => {
                       const invItem = inventory.find(i => i.id === item.inventoryId);
                       const currentStock = invItem ? (Number(invItem.quantity) || 0) : null;
                       const lineCost = (Number(item.qty) || 0) * (Number(item.unitCost) || 0);
+
+                      const itemKey = item.inventoryId || item.desc || item.id;
+                      const ord = orderedTotals[itemKey] || 0;
+                      const req = Number(item.qty) || 0;
+                      const bal = Math.max(0, req - ord);
+                      const isFulfilled = ord >= req && req > 0;
+                      const isPartial = ord > 0 && ord < req;
 
                       return (
                         <tr key={item.id} className="hover:bg-surface/30 transition-colors">
@@ -571,20 +701,22 @@ export const MRBuilder: React.FC = () => {
                               />
                               <span className="text-[10px] text-muted font-mono w-8">{item.uom || 'units'}</span>
                             </div>
-                            {(() => {
-                              const itemKey = item.inventoryId || item.desc || item.id;
-                              const ord = orderedTotals[itemKey] || 0;
-                              const bal = Math.max(0, (Number(item.qty) || 0) - ord);
-                              if (ord === 0 && allPoIds.length === 0) return null;
-                              return (
-                                <div className="mt-1 text-[10px] font-mono">
-                                  <span className="text-muted">Ordered: {ord} | </span>
-                                  <span className={bal > 0 ? "text-amber-500 font-bold" : "text-emerald-500 font-bold"}>
-                                    Bal: {bal}
-                                  </span>
-                                </div>
-                              );
-                            })()}
+                          </td>
+                          <td className="p-3 text-right align-top pt-4 font-mono text-xs">
+                            <span className={ord > 0 ? "font-bold text-emerald-500" : "text-muted"}>
+                              {ord} {item.uom || ''}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right align-top pt-4 font-mono text-xs">
+                            <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                              isFulfilled 
+                                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                                : isPartial 
+                                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                                : 'text-primary'
+                            }`}>
+                              {bal} {item.uom || ''}
+                            </span>
                           </td>
                           <td className="p-3 text-right align-top pt-3">
                             <input 
@@ -612,7 +744,7 @@ export const MRBuilder: React.FC = () => {
                     })}
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-8 text-center text-muted text-xs">
+                        <td colSpan={9} className="p-8 text-center text-muted text-xs">
                           No materials requested yet. Click "Add Item" to add requested materials.
                         </td>
                       </tr>
@@ -657,7 +789,7 @@ export const MRBuilder: React.FC = () => {
             <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.5px' }}>
               MATERIAL REQUISITION NOTE
             </h1>
-            <div style={{ marginTop: '10px', display: 'flex', gap: '25px' }}>
+            <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
               <div>
                 <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>MR Number</p>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{docNo}</p>
@@ -674,6 +806,14 @@ export const MRBuilder: React.FC = () => {
                 <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Department</p>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{department}</p>
               </div>
+              <div>
+                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Work Order(s)</p>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#4c1d95' }}>{workOrderNos.length > 0 ? workOrderNos.join(', ') : 'N/A'}</p>
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Linked PO(s)</p>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#047857' }}>{allPoIds.length > 0 ? allPoIds.join(', ') : 'Pending'}</p>
+              </div>
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -688,34 +828,48 @@ export const MRBuilder: React.FC = () => {
             <tr style={{ background: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
               <th style={{ padding: '8px 12px', textAlign: 'center', width: '40px' }}>#</th>
               <th style={{ padding: '8px 12px', textAlign: 'left' }}>Item & Specifications</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Qty</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Req. Qty</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Ordered</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Balance</th>
               <th style={{ padding: '8px 12px', textAlign: 'right', width: '100px' }}>Est. Cost</th>
               <th style={{ padding: '8px 12px', textAlign: 'right', width: '110px' }}>Est. Total</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((it, idx) => (
-              <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                <td style={{ padding: '8px 12px', textAlign: 'center', color: '#718096' }}>{idx + 1}</td>
-                <td style={{ padding: '8px 12px' }}>
-                  <strong>{inventory.find(i => i.id === it.inventoryId)?.name || it.desc || it.inventoryId}</strong>
-                  {it.desc && <div style={{ fontSize: '10px', color: '#718096' }}>{it.desc}</div>}
-                </td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
-                  {it.qty} {it.uom || 'units'}
-                </td>
-                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                  {formatCurrency(Number(it.unitCost) || 0)}
-                </td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
-                  {formatCurrency((Number(it.qty) || 0) * (Number(it.unitCost) || 0))}
-                </td>
-              </tr>
-            ))}
+            {items.map((it, idx) => {
+              const itemKey = it.inventoryId || it.desc || it.id;
+              const ord = orderedTotals[itemKey] || 0;
+              const req = Number(it.qty) || 0;
+              const bal = Math.max(0, req - ord);
+              return (
+                <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#718096' }}>{idx + 1}</td>
+                  <td style={{ padding: '8px 12px' }}>
+                    <strong>{inventory.find(i => i.id === it.inventoryId)?.name || it.desc || it.inventoryId}</strong>
+                    {it.desc && <div style={{ fontSize: '10px', color: '#718096' }}>{it.desc}</div>}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
+                    {it.qty} {it.uom || 'units'}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', color: '#047857', fontWeight: 'bold' }}>
+                    {ord} {it.uom || 'units'}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', color: bal > 0 ? '#b45309' : '#047857', fontWeight: 'bold' }}>
+                    {bal} {it.uom || 'units'}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                    {formatCurrency(Number(it.unitCost) || 0)}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
+                    {formatCurrency((Number(it.qty) || 0) * (Number(it.unitCost) || 0))}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr style={{ background: '#f7fafc', fontWeight: 'bold' }}>
-              <td colSpan={4} style={{ padding: '10px 12px', textAlign: 'right' }}>Estimated Total:</td>
+              <td colSpan={6} style={{ padding: '10px 12px', textAlign: 'right' }}>Estimated Total:</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: '#2b6cb0' }}>
                 {formatCurrency(totalEstimatedCost)}
               </td>
@@ -743,7 +897,9 @@ export const MRBuilder: React.FC = () => {
           <div style={{ textAlign: 'center', width: '180px' }}>
             <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
             <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Purchasing Dept</p>
-            <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>PO Issued: {poId || 'Pending'}</p>
+            <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>
+              POs: {allPoIds.length > 0 ? allPoIds.join(', ') : 'Pending'}
+            </p>
           </div>
         </div>
       </div>

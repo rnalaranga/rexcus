@@ -35,11 +35,17 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const issueNo = data.issueNo || '01'
   const issueDate = data.issueDate || 'March 04, 2026'
   const quoDate = data.quoDate || new Date().toISOString().slice(0, 10)
-  const vatNo = data.vatNo || ''
-  const tinNo = data.tinNo || ''
+  const vatNo = data.vatNo || data.vat || lead?.vat || ''
+  const tinNo = data.tinNo || data.tin || data.svat || lead?.svat || lead?.tin || ''
   const quotationNo = data.quotationNo || ''
   const attention = data.attention || ''
   const subject = data.subject || ''
+
+  const toCompany = data.customerCompany || data.company || lead?.company || (data.customerName !== attention ? data.customerName : '') || (lead?.name !== attention ? lead?.name : '') || data.customerName || lead?.name || ''
+  const toContact = (data.customerName && data.customerName !== toCompany && data.customerName !== attention) 
+    ? data.customerName 
+    : (lead?.name && lead.name !== toCompany && lead.name !== attention ? lead.name : '')
+  const toAddress = data.customerAddress || data.address || lead?.address || ''
   
   const custItems = data.custItems || []
   const custDiscount = data.custDiscount || 0
@@ -47,8 +53,25 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
   
   const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 };
-  const isHidden = data.taxEnabled && data.selectedProfile?.tax1_show_separately === 0;
-  const multiplier = isHidden ? (1 + (Number(data.selectedProfile?.tax1_rate) || 0) / 100) : 1;
+    const isSsclHidden = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax1_show_separately === 0 && Number(data.selectedProfile.tax1_rate) > 0);
+  const isVatHidden = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax2_show_separately === 0 && Number(data.selectedProfile.tax2_rate) > 0);
+  const isSsclSeparate = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax1_show_separately === 1 && Number(data.selectedProfile.tax1_rate) > 0);
+  const isVatSeparate = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax2_show_separately === 1 && Number(data.selectedProfile.tax2_rate) > 0);
+
+  const t1Rate = Number(data.selectedProfile?.tax1_rate || 0) / 100;
+  const t2Rate = Number(data.selectedProfile?.tax2_rate || 0) / 100;
+
+  let multiplier = 1;
+  if (isSsclHidden && isVatHidden) {
+    // Option 1: Both SSCL & VAT absorbed into unit prices & total supply value
+    multiplier = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
+  } else if (isSsclHidden && !isVatHidden) {
+    // Option 2: SSCL absorbed into unit prices & supply value, VAT separate
+    multiplier = 1 + t1Rate;
+  } else {
+    // Option 3: Base unit prices, both taxes separate
+    multiplier = 1;
+  }
   
   const custTerms = data.custTerms || ''
   const custValidity = data.custValidity || ''
@@ -104,14 +127,26 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           <div className="flex border-b border-black text-[12px]">
             <div className="w-[55%] p-2 border-r border-black flex flex-col justify-between">
               <div>
-                <div className="font-bold italic">TO</div>
-                <div>{lead?.name || ''}</div>
-                {lead?.company && <div>{lead.company}</div>}
-                <div>{lead?.address || ''}</div>
+                <div className="font-bold italic mb-1 text-[11px] text-gray-700">TO</div>
+                {toCompany && (
+                  <div className="font-bold text-[13px] uppercase leading-snug text-black">
+                    {toCompany}
+                  </div>
+                )}
+                {toContact && (
+                  <div className="text-[12px] leading-snug text-gray-800">
+                    {toContact}
+                  </div>
+                )}
+                {toAddress && (
+                  <div className="whitespace-pre-line text-[11px] leading-relaxed text-black mt-1">
+                    {toAddress}
+                  </div>
+                )}
               </div>
-              <div className="mt-4">
-                <div className="flex"><span className="w-24">VAT No.</span><span>: {vatNo}</span></div>
-                <div className="flex"><span className="w-24">TIN No.</span><span>: {tinNo}</span></div>
+              <div className="mt-4 space-y-0.5 font-medium">
+                <div className="flex"><span className="w-24 font-bold">VAT No.</span><span>: {vatNo}</span></div>
+                <div className="flex"><span className="w-24 font-bold">TIN No.</span><span>: {tinNo}</span></div>
               </div>
             </div>
             <div className="w-[45%] p-0">
@@ -179,7 +214,13 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           {/* Totals */}
           <div className="border-t border-black flex flex-col">
             <div className="flex border-b border-black items-center h-8">
-              <div className="w-[65%] text-right font-bold pr-6">Sub Total</div>
+              <div className="w-[65%] text-right font-bold pr-6">
+                {isSsclHidden && isVatHidden 
+                  ? 'Total Value of Supply (VAT & SSCL Inclusive)' 
+                  : isSsclHidden 
+                    ? `Sub Total (incl. ${data.selectedProfile?.tax1_name || 'SSCL'})` 
+                    : 'Sub Total'}
+              </div>
               <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
               <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
                 {Number((quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
@@ -201,7 +242,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                </div>
             )}
 
-            {data.selectedProfile && !isHidden && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
+            {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
                  <div className="flex border-b border-black items-center h-8">
                    <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</div>
                    <div className="w-[15%] text-center">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</div>
@@ -211,7 +252,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                  </div>
             )}
             
-            {data.selectedProfile && data.selectedProfile.tax2_show_separately === 1 && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
+            {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
                  <div className="flex border-b border-black items-center h-8">
                    <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</div>
                    <div className="w-[15%] text-center">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</div>

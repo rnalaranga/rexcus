@@ -393,6 +393,8 @@ export const deleteMachiningOperation = async (id: string) => {
 };
 
 
+export const fetchWorkOrders = async () => (await fetch(`${API_URL}/production/work-orders`)).json();
+
 export const createWorkOrder = async (data: any) => {
   const res = await fetch(`${API_URL}/production/work-orders`, {
     method: 'POST',

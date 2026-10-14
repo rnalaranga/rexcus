@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Truck, PackageCheck, FileSignature, MapPin, 
   ShieldCheck, Printer, FileText, Calendar, Building2, UserCheck, 
-  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2
+  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2, X, Plus
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -36,7 +36,9 @@ export const GRNBuilder: React.FC = () => {
   const [receivedBy, setReceivedBy] = useState<string>('Warehouse Manager');
   const [vehicleNo, setVehicleNo] = useState<string>('');
   const [storageLocation, setStorageLocation] = useState<string>('Main Warehouse - Receiving Bay');
-  const [selectedPoId, setSelectedPoId] = useState<string>(poParam || '');
+  
+  // Multi-PO selection
+  const [selectedPoIds, setSelectedPoIds] = useState<string[]>(poParam ? [poParam] : []);
   const [supplierId, setSupplierId] = useState<string>('');
   const [status, setStatus] = useState<string>('received');
   
@@ -46,19 +48,19 @@ export const GRNBuilder: React.FC = () => {
 
   // Helper to get supplier name
   const supplierName = useMemo(() => {
-    if (!supplierId) {
-      if (selectedPoId && pos?.length > 0) {
-        const p = pos.find((x: any) => x.id === selectedPoId);
-        if (p?.supplierId) {
-          const s = suppliers?.find((x: any) => x.id === p.supplierId);
-          return s ? (s.company || s.name) : p.supplierId;
-        }
-      }
-      return 'N/A';
+    if (supplierId) {
+      const s = suppliers?.find((x: any) => x.id === supplierId);
+      if (s) return s.company || s.name;
     }
-    const s = suppliers?.find((x: any) => x.id === supplierId);
-    return s ? (s.company || s.name) : supplierId;
-  }, [supplierId, selectedPoId, pos, suppliers]);
+    if (selectedPoIds.length > 0 && pos?.length > 0) {
+      const p = pos.find((x: any) => selectedPoIds.includes(x.id));
+      if (p?.supplierId) {
+        const s = suppliers?.find((x: any) => x.id === p.supplierId);
+        return s ? (s.company || s.name) : p.supplierId;
+      }
+    }
+    return 'N/A';
+  }, [supplierId, selectedPoIds, pos, suppliers]);
 
   // Load GRN details if viewing existing GRN
   useEffect(() => {
@@ -83,7 +85,17 @@ export const GRNBuilder: React.FC = () => {
 
         if (grn && isMounted) {
           setDocNo(grn.id);
-          setSelectedPoId(grn.poId || '');
+
+          let parsedPoIds: string[] = [];
+          if (Array.isArray(grn.poIds)) parsedPoIds = grn.poIds;
+          else if (typeof grn.poIds === 'string') {
+            try { parsedPoIds = JSON.parse(grn.poIds); } catch { parsedPoIds = [grn.poIds]; }
+          }
+          if (grn.poId && !parsedPoIds.includes(grn.poId)) {
+            parsedPoIds.push(grn.poId);
+          }
+          setSelectedPoIds(parsedPoIds);
+
           setSupplierId(grn.supplierId || '');
           setDate(grn.date ? grn.date.split('T')[0] : (grn.createdAt ? grn.createdAt.split('T')[0] : ''));
           setReceivedBy(grn.receivedBy || 'Warehouse Manager');
@@ -106,11 +118,9 @@ export const GRNBuilder: React.FC = () => {
           setVehicleNo(vNo);
           setStorageLocation(sLoc || 'Main Warehouse - Receiving Bay');
 
-          // Clean notes string if it was prefixed with delivery meta
           const cleanNotes = rawNotes.replace(/Vehicle:[^|]+\|\s*Location:[^|]+\|\s*/, '').trim();
           setNotes(cleanNotes || rawNotes || 'All items inspected and received in good condition.');
 
-          // Parse items safely
           let parsedItems: any[] = [];
           if (Array.isArray(grn.items)) {
             parsedItems = grn.items;
@@ -123,11 +133,11 @@ export const GRNBuilder: React.FC = () => {
             }
           }
 
-          // Format items array consistently
           const formatted = parsedItems.map((item: any, idx: number) => ({
             id: item.inventoryId || item.id || `ITEM-${idx + 1}`,
             inventoryId: item.inventoryId || item.id || '',
             desc: item.desc || item.name || item.description || `Item #${idx + 1}`,
+            poId: item.poId || parsedPoIds[0] || '',
             qty: Number(item.qty !== undefined ? item.qty : (item.orderedQty || 0)),
             qtyReceived: Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.receivedQty !== undefined ? item.receivedQty : item.qty || 0)),
             condition: item.condition || 'Good',
@@ -151,88 +161,104 @@ export const GRNBuilder: React.FC = () => {
     };
   }, [targetId]);
 
-  // Prior GRNs for selected PO to calculate previously received quantities
-  const priorGRNs = useMemo(() => {
-    if (!allGRNs || !selectedPoId || isViewMode) return [];
-    return allGRNs.filter((g: any) => g.poId === selectedPoId);
-  }, [allGRNs, selectedPoId, isViewMode]);
-
+  // Compute prior received quantities across all GRNs for all selected POs
   const previousReceivedMap = useMemo(() => {
+    if (!allGRNs || selectedPoIds.length === 0 || isViewMode) return {};
     const map: Record<string, number> = {};
-    for (const g of priorGRNs) {
+
+    for (const g of allGRNs) {
+      // Skip current GRN if editing
+      if (targetId && g.id === targetId) continue;
+
+      let gPoIds: string[] = [];
+      if (Array.isArray(g.poIds)) gPoIds = g.poIds;
+      else if (typeof g.poIds === 'string') {
+        try { gPoIds = JSON.parse(g.poIds); } catch { gPoIds = [g.poIds]; }
+      }
+      if (g.poId && !gPoIds.includes(g.poId)) gPoIds.push(g.poId);
+
+      const hasRelevantPo = selectedPoIds.some(pid => gPoIds.includes(pid));
+      if (!hasRelevantPo) continue;
+
       const gItems = typeof g.items === 'string' ? JSON.parse(g.items) : (g.items || []);
       if (Array.isArray(gItems)) {
         for (const gi of gItems) {
-          const key = String(gi.inventoryId || gi.id || gi.desc || '');
+          const itemPoId = gi.poId || gPoIds[0] || '';
+          const key = `${itemPoId}_${String(gi.inventoryId || gi.id || gi.desc || '')}`;
           const q = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
           map[key] = (map[key] || 0) + q;
         }
       }
     }
     return map;
-  }, [priorGRNs]);
+  }, [allGRNs, selectedPoIds, isViewMode, targetId]);
 
-  // Load from PO if in Create Mode with po param or PO selected
-  useEffect(() => {
-    if (isViewMode) return;
-
-    if (selectedPoId && pos && pos.length > 0) {
-      const po = pos.find((p: any) => p.id === selectedPoId);
-      if (po) {
-        setSupplierId(po.supplierId || '');
-        const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-        setItems(poItems.map((i: any, idx: number) => {
-          const key = String(i.inventoryId || i.id || i.desc || `ITEM-${idx + 1}`);
-          const ordered = Number(i.qty || 0);
-          const prev = previousReceivedMap[key] || 0;
-          const rem = Math.max(0, ordered - prev);
-          return {
-            ...i,
-            id: i.inventoryId || i.id || `ITEM-${idx + 1}`,
-            inventoryId: i.inventoryId || i.id || '',
-            desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
-            qty: ordered,
-            prevReceived: prev,
-            remainingQty: rem,
-            qtyReceived: rem,
-            condition: 'Good',
-            unit: i.unit || 'Nos'
-          };
-        }));
-      }
-    }
-  }, [selectedPoId, pos, previousReceivedMap, isViewMode]);
-
-  const handleSelectPo = (poId: string) => {
-    setSelectedPoId(poId);
-    if (!poId) {
+  // Re-populate items whenever selectedPoIds changes in Create Mode
+  const syncItemsFromSelectedPOs = (poIdList: string[]) => {
+    if (poIdList.length === 0) {
       setItems([]);
-      setSupplierId('');
       return;
     }
-    const po = pos.find((p: any) => p.id === poId);
-    if (po) {
-      setSupplierId(po.supplierId || '');
+
+    const consolidatedItems: any[] = [];
+    let detectedSupplierId = supplierId;
+
+    for (const pid of poIdList) {
+      const po = pos?.find((p: any) => p.id === pid);
+      if (!po) continue;
+
+      if (!detectedSupplierId && po.supplierId) {
+        detectedSupplierId = po.supplierId;
+      }
+
       const poItems = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
-      setItems(poItems.map((i: any, idx: number) => {
-        const key = String(i.inventoryId || i.id || i.desc || `ITEM-${idx + 1}`);
+      for (let idx = 0; idx < poItems.length; idx++) {
+        const i = poItems[idx];
+        const key = `${pid}_${String(i.inventoryId || i.id || i.desc || `ITEM-${idx + 1}`)}`;
         const ordered = Number(i.qty || 0);
         const prev = previousReceivedMap[key] || 0;
         const rem = Math.max(0, ordered - prev);
-        return {
+
+        consolidatedItems.push({
           ...i,
-          id: i.inventoryId || i.id || `ITEM-${idx + 1}`,
+          id: (i.id || '') + '_' + pid + '_' + idx,
           inventoryId: i.inventoryId || i.id || '',
           desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
+          poId: pid,
           qty: ordered,
           prevReceived: prev,
           remainingQty: rem,
           qtyReceived: rem,
           condition: 'Good',
-          unit: i.unit || 'Nos'
-        };
-      }));
+          unit: i.unit || 'Nos',
+          unitCost: i.unitPrice || 0
+        });
+      }
     }
+
+    if (detectedSupplierId && detectedSupplierId !== supplierId) {
+      setSupplierId(detectedSupplierId);
+    }
+    setItems(consolidatedItems);
+  };
+
+  // Initial load in Create Mode
+  useEffect(() => {
+    if (isViewMode) return;
+    if (selectedPoIds.length > 0 && pos?.length > 0) {
+      syncItemsFromSelectedPOs(selectedPoIds);
+    }
+  }, [selectedPoIds.join(','), pos, previousReceivedMap, isViewMode]);
+
+  const handleAddPo = (newPoId: string) => {
+    if (!newPoId || selectedPoIds.includes(newPoId)) return;
+    const updated = [...selectedPoIds, newPoId];
+    setSelectedPoIds(updated);
+  };
+
+  const handleRemovePo = (poToRemove: string) => {
+    const updated = selectedPoIds.filter(p => p !== poToRemove);
+    setSelectedPoIds(updated);
   };
 
   const handleDeleteGRN = async () => {
@@ -250,13 +276,8 @@ export const GRNBuilder: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!selectedPoId) {
-      alert('Please select a Purchase Order first.');
-      return;
-    }
-    const po = pos.find((p: any) => p.id === selectedPoId);
-    if (!po) {
-      alert('Selected Purchase Order was not found.');
+    if (selectedPoIds.length === 0) {
+      alert('Please select at least one Purchase Order first.');
       return;
     }
 
@@ -265,10 +286,17 @@ export const GRNBuilder: React.FC = () => {
       return;
     }
 
+    const totalRecv = items.reduce((sum, it) => sum + (Number(it.qtyReceived) || 0), 0);
+    if (totalRecv <= 0) {
+      alert('Please enter a received quantity greater than 0 for at least one item.');
+      return;
+    }
+
     const payload = {
       id: docNo,
-      poId: selectedPoId,
-      supplierId: po.supplierId || supplierId,
+      poId: selectedPoIds[0],
+      poIds: JSON.stringify(selectedPoIds),
+      supplierId: supplierId,
       date,
       receivedBy,
       vehicleNo,
@@ -285,6 +313,16 @@ export const GRNBuilder: React.FC = () => {
   const totalOrdered = items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
   const totalReceived = items.reduce((sum, item) => sum + Number(item.qtyReceived || 0), 0);
   const progress = totalOrdered > 0 ? (totalReceived / totalOrdered) * 100 : (items.length > 0 ? 100 : 0);
+
+  // Available POs for selection (optionally filtered by supplier)
+  const availablePOs = useMemo(() => {
+    if (!pos) return [];
+    return pos.filter((p: any) => {
+      if (selectedPoIds.includes(p.id)) return false;
+      if (supplierId && p.supplierId && p.supplierId !== supplierId) return false;
+      return p.status !== 'received';
+    });
+  }, [pos, selectedPoIds, supplierId]);
 
   if (loading) {
     return (
@@ -319,7 +357,7 @@ export const GRNBuilder: React.FC = () => {
               )}
             </div>
             <p className="text-[11px] text-muted mt-0.5">
-              PO: <span className="font-mono text-primary font-bold">{selectedPoId || 'N/A'}</span> • Supplier: <span className="text-secondary font-semibold">{supplierName}</span> • Doc: <span className="font-mono">{docNo}</span>
+              PO(s): <span className="font-mono text-primary font-bold">{selectedPoIds.join(', ') || 'N/A'}</span> • Supplier: <span className="text-secondary font-semibold">{supplierName}</span> • Doc: <span className="font-mono">{docNo}</span>
             </p>
           </div>
         </div>
@@ -378,17 +416,45 @@ export const GRNBuilder: React.FC = () => {
               </h2>
 
               <div className="space-y-4">
-                {/* PO Selector in Create Mode when PO is not yet specified */}
+                {/* Linked PO Badges & Selector in Create Mode */}
                 {!isViewMode && (
-                  <div>
-                    <label className="block text-[11px] font-bold text-muted uppercase mb-1">Purchase Order</label>
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-muted uppercase">
+                      Linked Purchase Order(s) ({selectedPoIds.length})
+                    </label>
+
+                    {/* Chips for linked POs */}
+                    {selectedPoIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {selectedPoIds.map(pid => (
+                          <span 
+                            key={pid} 
+                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 rounded-md text-xs font-mono font-bold"
+                          >
+                            <FileText size={11} /> {pid}
+                            <button 
+                              type="button" 
+                              onClick={() => handleRemovePo(pid)}
+                              className="hover:text-red-500 transition-colors ml-0.5"
+                              title={`Remove ${pid}`}
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Select / Add PO */}
                     <select 
-                      value={selectedPoId} 
-                      onChange={e => handleSelectPo(e.target.value)}
+                      value="" 
+                      onChange={e => { if (e.target.value) handleAddPo(e.target.value); }}
                       className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium"
                     >
-                      <option value="">-- Select Purchase Order --</option>
-                      {pos?.map((po: any) => (
+                      <option value="">
+                        {selectedPoIds.length === 0 ? '-- Select Purchase Order --' : '+ Add Another PO for this Supplier...'}
+                      </option>
+                      {availablePOs.map((po: any) => (
                         <option key={po.id} value={po.id}>
                           {po.id} ({po.status}) - {suppliers?.find((s: any) => s.id === po.supplierId)?.name || po.supplierId}
                         </option>
@@ -401,18 +467,20 @@ export const GRNBuilder: React.FC = () => {
                 {isViewMode && (
                   <div>
                     <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                      <Package size={12} className="text-muted" /> Reference PO
+                      <Package size={12} className="text-muted" /> Reference PO(s)
                     </label>
-                    <div className="flex items-center justify-between p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono font-bold text-primary">
-                      <span>{selectedPoId || 'N/A'}</span>
-                      {selectedPoId && (
-                        <button 
-                          onClick={() => navigate(`/purchasing/po-builder/${selectedPoId}`)}
-                          className="text-[10px] uppercase font-sans text-rex-500 hover:underline"
-                        >
-                          View PO
-                        </button>
-                      )}
+                    <div className="space-y-1">
+                      {selectedPoIds.map(pid => (
+                        <div key={pid} className="flex items-center justify-between p-2 bg-surface border border-theme-subtle rounded-lg text-xs font-mono font-bold text-primary">
+                          <span>{pid}</span>
+                          <button 
+                            onClick={() => navigate(`/purchasing/po-builder/${pid}`)}
+                            className="text-[10px] uppercase font-sans text-rex-500 hover:underline"
+                          >
+                            View PO
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -449,54 +517,47 @@ export const GRNBuilder: React.FC = () => {
                 {/* Carrier / Vehicle No */}
                 <div>
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                    <Truck size={12} className="text-muted" /> Vehicle No / Carrier
+                    <Truck size={12} className="text-muted" /> Vehicle / Carrier No.
                   </label>
                   {isViewMode ? (
-                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono font-bold text-primary">
+                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
                       {vehicleNo || 'N/A'}
                     </div>
                   ) : (
                     <input 
                       type="text" 
-                      placeholder="e.g. WP LA-1234" 
                       value={vehicleNo} 
                       onChange={e => setVehicleNo(e.target.value)} 
-                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono" 
+                      placeholder="e.g. WP-CA-8921 or Courier Name" 
+                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
                     />
                   )}
                 </div>
 
-                {/* Storage Location */}
+                {/* Storage Bay */}
                 <div>
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                    <MapPin size={12} className="text-muted" /> Storage Location
+                    <MapPin size={12} className="text-muted" /> Receiving Bay / Location
                   </label>
                   {isViewMode ? (
-                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-semibold text-secondary">
+                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-medium">
                       {storageLocation}
                     </div>
                   ) : (
-                    <div className="relative">
-                      <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                      <select 
-                        value={storageLocation} 
-                        onChange={e => setStorageLocation(e.target.value)} 
-                        className="w-full bg-surface border border-theme-subtle pl-8 pr-3 py-2 rounded-lg text-xs"
-                      >
-                        <option>Main Warehouse - Receiving Bay</option>
-                        <option>Zone B - Raw Materials</option>
-                        <option>Zone C - Chemicals</option>
-                        <option>Zone D - Packaging Supplies</option>
-                        <option>Quarantine Area (Hold)</option>
-                      </select>
-                    </div>
+                    <input 
+                      type="text" 
+                      value={storageLocation} 
+                      onChange={e => setStorageLocation(e.target.value)} 
+                      placeholder="e.g. Bay 2 / Raw Material Racks" 
+                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
+                    />
                   )}
                 </div>
 
-                {/* Inspected By */}
+                {/* Receiver Name */}
                 <div>
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                    <UserCheck size={12} className="text-muted" /> Inspected / Received By
+                    <UserCheck size={12} className="text-muted" /> Inspected & Received By
                   </label>
                   {isViewMode ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-medium">
@@ -551,7 +612,7 @@ export const GRNBuilder: React.FC = () => {
                       onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.qty })))}
                       className="text-[10px] uppercase h-6 text-emerald-500 font-medium"
                     >
-                      Receive Full PO
+                      Receive Full PO(s)
                     </Button>
                   </div>
                 )}
@@ -561,6 +622,7 @@ export const GRNBuilder: React.FC = () => {
                 <table className="w-full text-left whitespace-nowrap">
                   <thead className="bg-surface/50 border-b border-theme-subtle">
                     <tr className="text-[10px] uppercase tracking-widest text-muted">
+                      {selectedPoIds.length > 1 && <th className="px-3 py-3 text-center">PO #</th>}
                       <th className="px-5 py-3 w-1/3">Material Description</th>
                       <th className="px-3 py-3 text-center">Ordered Qty</th>
                       {!isViewMode && <th className="px-3 py-3 text-center">Prev. Received</th>}
@@ -578,6 +640,14 @@ export const GRNBuilder: React.FC = () => {
                       const remaining = item.remainingQty !== undefined ? Number(item.remainingQty) : Math.max(0, ordered - prevRecv);
                       return (
                         <tr key={idx} className="hover:bg-surface/30 transition-colors">
+                          {selectedPoIds.length > 1 && (
+                            <td className="p-3 text-center">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                {item.poId || '-'}
+                              </span>
+                            </td>
+                          )}
+
                           <td className="p-3 pl-5">
                             <p className="font-bold text-xs text-primary">{item.desc || item.name || 'Material Item'}</p>
                             <p className="text-[10px] text-muted font-mono mt-0.5">
@@ -627,6 +697,11 @@ export const GRNBuilder: React.FC = () => {
                                   }} 
                                   className="w-24 bg-surface border-2 border-primary/50 px-2 py-1.5 rounded text-xs text-center font-bold text-primary focus:border-primary outline-none font-mono" 
                                 />
+                                {Number(item.qtyReceived) > remaining && remaining > 0 && (
+                                  <span className="block text-[9px] text-amber-500 font-bold mt-0.5" title="Quantity exceeds open PO balance">
+                                    Exceeds balance!
+                                  </span>
+                                )}
                               </div>
                             )}
                           </td>
@@ -649,82 +724,49 @@ export const GRNBuilder: React.FC = () => {
                                   const newItems = [...items];
                                   newItems[idx].condition = e.target.value;
                                   setItems(newItems);
-                                }}
-                                className={`bg-surface border border-theme-subtle px-2 py-1.5 rounded text-[11px] font-bold ${
-                                  item.condition !== 'Good' 
-                                    ? 'text-amber-500 border-amber-500/50 bg-amber-500/10' 
-                                    : 'text-emerald-500'
-                                }`}
+                                }} 
+                                className="bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-medium focus:border-primary"
                               >
-                                <option value="Good">Good / Undamaged</option>
-                                <option value="Damaged">Damaged Box</option>
-                                <option value="Rejected">Defective / Rejected</option>
+                                <option value="Good">Good / Inspected</option>
+                                <option value="Damaged">Damaged / Rejected</option>
+                                <option value="Partial Pass">Partial Pass</option>
                               </select>
                             )}
                           </td>
                         </tr>
                       );
                     })}
-
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-muted text-xs">
-                          {isViewMode 
-                            ? 'No incoming items recorded for this GRN.' 
-                            : selectedPoId 
-                            ? 'No items found in the selected Purchase Order.' 
-                            : 'Please select a Purchase Order to populate receiving freight items.'}
+                        <td colSpan={selectedPoIds.length > 1 ? 7 : 6} className="p-8 text-center text-muted text-xs">
+                          No items loaded. Select one or more Purchase Orders on the left to receive inventory.
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-              
-              {!isViewMode && (
-                <div className="p-4 bg-primary/5 border-t border-primary/20 flex items-start gap-3">
-                  <ShieldCheck size={16} className="text-primary mt-0.5 shrink-0" />
-                  <p className="text-[11px] text-primary/80 font-medium leading-relaxed">
-                    By clicking "Confirm & Add to Stock", the receiving quantities above will be permanently committed to the master inventory and stock ledger. Please ensure physical counts match the receiving quantities accurately.
-                  </p>
-                </div>
-              )}
             </GlassCard>
 
-            {/* Inspection Notes Card */}
+            {/* Remarks Card */}
             <GlassCard className="p-5">
-              <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2 mb-3">
-                <FileSignature size={16}/> Inspection Notes & Remarks
-              </h2>
+              <label className="block text-[11px] font-bold text-muted uppercase mb-2">
+                Quality Inspection Remarks & Notes
+              </label>
               {isViewMode ? (
-                <div className="p-3.5 bg-surface/50 border border-theme-subtle rounded-lg text-xs leading-relaxed text-secondary whitespace-pre-wrap">
-                  {notes || 'No inspection notes specified.'}
-                </div>
+                <p className="text-xs text-secondary leading-relaxed p-3 bg-surface border border-theme-subtle rounded-lg">
+                  {notes || 'No notes added.'}
+                </p>
               ) : (
                 <textarea 
                   value={notes} 
                   onChange={e => setNotes(e.target.value)} 
                   rows={3} 
-                  className="w-full bg-surface border border-theme-subtle px-4 py-3 rounded-lg text-xs focus:border-primary outline-none" 
-                  placeholder="Enter quality inspection remarks, driver details, or discrepancies..."
+                  placeholder="Record any deviations, damage remarks, physical count notes, or test cert numbers..." 
+                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs leading-relaxed" 
                 />
               )}
             </GlassCard>
-
-            {/* Bottom Confirm Button in Create Mode */}
-            {!isViewMode && items.length > 0 && (
-              <div className="flex justify-end pt-2">
-                <Button 
-                  variant="primary" 
-                  size="md" 
-                  icon={Save} 
-                  onClick={handleSave}
-                >
-                  Confirm & Add to Stock
-                </Button>
-              </div>
-            )}
-
           </div>
         </div>
       </div>
@@ -778,7 +820,7 @@ export const GRNBuilder: React.FC = () => {
                 <p className="font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Supplier Details:</p>
                 <p className="font-bold text-sm text-black">{supplierName}</p>
                 <p className="text-neutral-700">Supplier ID: {supplierId || 'N/A'}</p>
-                <p className="text-neutral-700">Ref PO Number: <span className="font-mono font-bold">{selectedPoId || 'N/A'}</span></p>
+                <p className="text-neutral-700">Ref PO Number(s): <span className="font-mono font-bold">{selectedPoIds.join(', ') || 'N/A'}</span></p>
               </div>
               <div className="space-y-1 pl-2">
                 <p className="font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Delivery Logistics:</p>
@@ -795,6 +837,7 @@ export const GRNBuilder: React.FC = () => {
                 <thead>
                   <tr className="bg-neutral-100 border-b border-black text-[10px] uppercase font-bold">
                     <th className="p-2.5 border-r border-black w-10 text-center">#</th>
+                    {selectedPoIds.length > 1 && <th className="p-2.5 border-r border-black text-center w-24">PO #</th>}
                     <th className="p-2.5 border-r border-black">Item & Description</th>
                     <th className="p-2.5 border-r border-black text-center w-24">Ordered</th>
                     <th className="p-2.5 border-r border-black text-center w-24">Received</th>
@@ -808,6 +851,11 @@ export const GRNBuilder: React.FC = () => {
                     return (
                       <tr key={idx}>
                         <td className="p-2.5 border-r border-black text-center font-mono">{idx + 1}</td>
+                        {selectedPoIds.length > 1 && (
+                          <td className="p-2.5 border-r border-black text-center font-mono text-xs font-bold">
+                            {it.poId || '-'}
+                          </td>
+                        )}
                         <td className="p-2.5 border-r border-black">
                           <p className="font-bold text-black">{it.desc || it.name}</p>
                           <p className="text-[10px] font-mono text-neutral-600">ID: {it.inventoryId || it.id || '-'}</p>
@@ -852,7 +900,6 @@ export const GRNBuilder: React.FC = () => {
           </div>
         </div>
       </Modal>
-
     </div>
   );
 };

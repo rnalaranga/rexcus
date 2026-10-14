@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS `followups` (
 CREATE TABLE IF NOT EXISTS `grns` (
   `id` varchar(50) NOT NULL,
   `poId` varchar(50) DEFAULT NULL,
+  `poIds` text,
   `supplierId` varchar(50) DEFAULT NULL,
   `date` datetime DEFAULT NULL,
   `receivedBy` varchar(100) DEFAULT NULL,
@@ -255,6 +256,10 @@ CREATE TABLE IF NOT EXISTS `machining_operations` (
 
 CREATE TABLE IF NOT EXISTS `material_requests` (
   `id` varchar(50) NOT NULL,
+  `workOrderNo` varchar(100) DEFAULT NULL,
+  `workOrderNos` text,
+  `poId` varchar(50) DEFAULT NULL,
+  `poIds` text,
   `date` datetime DEFAULT NULL,
   `requiredDate` datetime DEFAULT NULL,
   `requestedBy` varchar(100) DEFAULT NULL,
@@ -271,6 +276,10 @@ CREATE TABLE IF NOT EXISTS `material_requests` (
 CREATE TABLE IF NOT EXISTS `purchase_orders` (
   `id` varchar(50) NOT NULL,
   `supplierId` varchar(50) DEFAULT NULL,
+  `mrId` varchar(50) DEFAULT NULL,
+  `mrIds` text,
+  `taxProfileId` varchar(50) DEFAULT NULL,
+  `taxBreakdown` text,
   `date` datetime DEFAULT NULL,
   `expectedDate` datetime DEFAULT NULL,
   `status` varchar(20) DEFAULT 'draft',
@@ -668,4 +677,16 @@ ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL;
 
 ALTER TABLE grns ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL;
 ALTER TABLE grns ADD COLUMN storageLocation VARCHAR(100) DEFAULT NULL;
+
+ALTER TABLE material_requests ADD COLUMN workOrderNo VARCHAR(100) DEFAULT NULL;
+ALTER TABLE material_requests ADD COLUMN workOrderNos TEXT DEFAULT NULL;
+ALTER TABLE purchase_orders ADD COLUMN mrIds TEXT DEFAULT NULL;
+ALTER TABLE grns ADD COLUMN poIds TEXT DEFAULT NULL;
+
+-- Default tax profile options (Sri Lanka VAT & SSCL options)
+INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt1_absorbed', 'Option 1: VAT & SSCL Absorbed (Total Value)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 0) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
+INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt2_sscl_absorbed_vat_sep', 'Option 2: SSCL Absorbed + VAT Separate', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
+INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt3_both_separate', 'Option 3: Both SSCL & VAT Separate (2 Lines)', 'SSCL', 2.50, 'VAT', 18.00, 1, 1, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
+INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
+INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately);
 
