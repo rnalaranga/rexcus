@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, GitPullRequest, Calendar, Users2, 
   Activity, Building2, ShoppingCart, Printer, CheckCircle2, Clock, 
-  AlertCircle, Package, ArrowRight, Briefcase, Tag, X, ExternalLink
+  AlertCircle, Package, ArrowRight, Briefcase, Tag, X, ExternalLink, Search
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useInventory } from '@/hooks/useData';
 import { createMR, updateMR, fetchMRs, fetchWorkOrders } from '@/lib/api';
 import { usePurchaseOrders } from '@/hooks/usePurchasing';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, cn } from '@/lib/utils';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -25,9 +26,226 @@ interface MRItem {
   workOrderNos?: string[];
 }
 
+interface WorkOrderSearchInputProps {
+  onSelectWorkOrder: (woNumber: string) => void;
+  existingWoNos?: string[];
+  availableWorkOrders: any[];
+  placeholder?: string;
+  className?: string;
+  inputClassName?: string;
+  buttonLabel?: string;
+}
+
+export const WorkOrderSearchInput: React.FC<WorkOrderSearchInputProps> = ({
+  onSelectWorkOrder,
+  existingWoNos = [],
+  availableWorkOrders = [],
+  placeholder = "Search WO # or Job Title...",
+  className = "",
+  inputClassName = "",
+  buttonLabel = "Add"
+}) => {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const updatePosition = () => {
+    if (wrapperRef.current) {
+      const rect = wrapperRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: Math.max(rect.width, 240)
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      const onScrollOrResize = () => updatePosition();
+      window.addEventListener('scroll', onScrollOrResize, true);
+      window.addEventListener('resize', onScrollOrResize);
+      return () => {
+        window.removeEventListener('scroll', onScrollOrResize, true);
+        window.removeEventListener('resize', onScrollOrResize);
+      };
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const isOutsideWrapper = wrapperRef.current && !wrapperRef.current.contains(e.target as Node);
+      const isOutsideList = listRef.current && !listRef.current.contains(e.target as Node);
+      if (isOutsideWrapper && isOutsideList) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const trimmedQuery = query.trim().toLowerCase();
+
+  const filtered = availableWorkOrders.filter(w => {
+    if (existingWoNos.includes(w.id)) return false;
+    if (!trimmedQuery) return true;
+    const idMatch = (w.id || '').toLowerCase().includes(trimmedQuery);
+    const titleMatch = (w.title || '').toLowerCase().includes(trimmedQuery);
+    const customerMatch = (w.customerName || w.customerId || '').toLowerCase().includes(trimmedQuery);
+    return idMatch || titleMatch || customerMatch;
+  });
+
+  const handleSelect = (woId: string) => {
+    const val = woId.trim();
+    if (!val) return;
+    onSelectWorkOrder(val);
+    setQuery('');
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered.length > 0 && trimmedQuery) {
+        handleSelect(filtered[0].id);
+      } else if (query.trim()) {
+        handleSelect(query.trim());
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} className={cn("relative w-full", className)}>
+      <div className="flex gap-1 items-center w-full">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={query}
+            onChange={e => {
+              setQuery(e.target.value);
+              setIsOpen(true);
+            }}
+            onFocus={() => {
+              updatePosition();
+              setIsOpen(true);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className={cn("w-full bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-mono focus:border-purple-500 outline-none", inputClassName)}
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => { setQuery(''); setIsOpen(false); }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted hover:text-primary text-[11px] leading-none px-1"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {buttonLabel && (
+          <button
+            type="button"
+            onClick={() => {
+              if (filtered.length > 0 && trimmedQuery) {
+                handleSelect(filtered[0].id);
+              } else if (query.trim()) {
+                handleSelect(query.trim());
+              }
+            }}
+            className="px-2 py-1 text-[11px] font-bold rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/20 shrink-0 h-full"
+          >
+            {buttonLabel}
+          </button>
+        )}
+      </div>
+
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={listRef}
+          style={{
+            top: coords.top + 4,
+            left: coords.left,
+            width: coords.width,
+            maxHeight: '220px'
+          }}
+          className="fixed z-[9999] overflow-y-auto bg-surface border border-theme shadow-2xl rounded-xl p-1 animate-fade-in text-left"
+        >
+          {filtered.length > 0 ? (
+            <div className="space-y-0.5">
+              <div className="px-2 py-1 text-[9px] font-bold text-muted uppercase tracking-wider border-b border-theme-subtle/50 mb-0.5 flex justify-between">
+                <span>Matching Work Orders ({filtered.length})</span>
+                <span>Click to Add</span>
+              </div>
+              {filtered.slice(0, 12).map(w => (
+                <div
+                  key={w.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSelect(w.id);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg text-xs hover:bg-purple-500/10 cursor-pointer flex items-center justify-between gap-2 transition-colors group"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-primary group-hover:text-purple-600 dark:group-hover:text-purple-400">
+                        {w.id}
+                      </span>
+                      {w.status && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle">
+                          {w.status}
+                        </span>
+                      )}
+                    </div>
+                    {w.title && (
+                      <p className="text-[10px] text-muted truncate mt-0.5">
+                        {w.title}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    + Add
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-2 text-center text-[11px] text-muted">
+              <p>No matching work orders.</p>
+            </div>
+          )}
+
+          {query.trim() && !availableWorkOrders.some(w => w.id.toLowerCase() === trimmedQuery) && (
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelect(query.trim());
+              }}
+              className="mt-1 pt-1 border-t border-theme-subtle/50 px-2 py-1.5 rounded-lg text-xs bg-surface2/40 hover:bg-purple-500/10 cursor-pointer text-purple-600 dark:text-purple-300 font-medium flex items-center justify-between"
+            >
+              <span className="truncate mr-2">Use manual Job #: <strong>"{query.trim()}"</strong></span>
+              <span className="text-[10px] font-bold font-mono shrink-0">↵ Enter</span>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
 export const MRBuilder: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const woParam = searchParams.get('wo');
   const { data: inventory } = useInventory();
   const { data: pos } = usePurchaseOrders();
 
@@ -110,6 +328,67 @@ export const MRBuilder: React.FC = () => {
       }).catch(console.error).finally(() => setLoading(false));
     }
   }, [id, inventory]);
+
+  // Pre-populate MR from Work Order BOM shortage if ?wo= is provided
+  useEffect(() => {
+    if (!id && woParam) {
+      setLoading(true);
+      fetchWorkOrders().then(wos => {
+        if (!Array.isArray(wos)) return;
+        const targetWO = wos.find((w: any) => w.id === woParam);
+        if (!targetWO) return;
+
+        setWorkOrderNos([targetWO.id]);
+        if (targetWO.deadline) setRequiredDate(targetWO.deadline.split('T')[0]);
+        if (targetWO.priority) setPriority(targetWO.priority);
+        setNotes(`Requisition for Work Order ${targetWO.id} (${targetWO.title || ''}) BOM materials.`);
+
+        // Parse BOM items and check inventory stock
+        let bomList: any[] = [];
+        try {
+          bomList = typeof targetWO.bom === 'string' ? JSON.parse(targetWO.bom || '[]') : (targetWO.bom || []);
+        } catch (e) { bomList = []; }
+
+        if (Array.isArray(bomList) && bomList.length > 0) {
+          const invList = inventory || [];
+          const generatedItems: MRItem[] = [];
+
+          bomList.forEach((b: any, idx: number) => {
+            const matName = (b.material || '').trim();
+            if (!matName) return;
+
+            const norm = matName.toLowerCase();
+            const inv = invList.find((i: any) => 
+              (i.name && i.name.toLowerCase() === norm) || 
+              (i.sku && i.sku.toLowerCase() === norm) ||
+              (i.name && i.name.toLowerCase().includes(norm))
+            );
+
+            const available = inv ? Number(inv.quantity) || 0 : 0;
+            const required = Number(b.qty) || 0;
+            const shortage = Math.max(0, required - available);
+
+            // If shortage exists (or if item is missing from inventory), add to MR items
+            if (shortage > 0 || !inv) {
+              generatedItems.push({
+                id: `mri_${Date.now()}_${idx}`,
+                inventoryId: inv ? inv.id : '',
+                desc: matName,
+                qty: shortage > 0 ? shortage : required,
+                uom: b.unit || inv?.uom || 'pcs',
+                unitCost: Number(b.unitCost) || Number(inv?.unitCost) || 0,
+                workOrderNos: [targetWO.id]
+              });
+            }
+          });
+
+          if (generatedItems.length > 0) {
+            setItems(generatedItems);
+          }
+        }
+      }).catch(console.error).finally(() => setLoading(false));
+    }
+  }, [id, woParam, inventory]);
 
   const hasItemWorkOrders = items.some(item => item.workOrderNos && item.workOrderNos.length > 0);
 
@@ -527,44 +806,14 @@ export const MRBuilder: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Quick Select from Active Work Orders */}
-                      {availableWorkOrders.length > 0 && (
-                        <select 
-                          value="" 
-                          onChange={e => { if (e.target.value) handleAddWorkOrder(e.target.value); }}
-                          className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                        >
-                          <option value="">+ Select from Work Orders...</option>
-                          {availableWorkOrders
-                            .filter(w => !workOrderNos.includes(w.id))
-                            .map(w => (
-                              <option key={w.id} value={w.id}>
-                                {w.id} {w.title ? `- ${w.title}` : ''} ({w.status || 'Active'})
-                              </option>
-                            ))}
-                        </select>
-                      )}
-
-                      {/* Manual Work Order Input */}
-                      <div className="flex gap-1.5">
-                        <input 
-                          type="text" 
-                          value={workOrderInput}
-                          onChange={e => setWorkOrderInput(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddWorkOrder(workOrderInput); } }}
-                          placeholder="Type WO # (e.g. WO-101)..." 
-                          className="flex-1 bg-surface border border-theme-subtle px-2.5 py-1 rounded text-xs font-mono"
-                        />
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          type="button"
-                          onClick={() => handleAddWorkOrder(workOrderInput)}
-                          className="px-2 h-7 text-xs"
-                        >
-                          Add
-                        </Button>
-                      </div>
+                      {/* Searchable Work Order Input (Type to search from Work Orders) */}
+                      <WorkOrderSearchInput
+                        onSelectWorkOrder={handleAddWorkOrder}
+                        existingWoNos={workOrderNos}
+                        availableWorkOrders={availableWorkOrders}
+                        placeholder="Search WO #, Title or type..."
+                        buttonLabel="Add"
+                      />
                     </div>
                   )}
 
@@ -788,39 +1037,14 @@ export const MRBuilder: React.FC = () => {
                                 </div>
                               )}
 
-                              {/* Dropdown selector */}
-                              {availableWorkOrders.length > 0 && (
-                                <select 
-                                  value="" 
-                                  onChange={e => { if (e.target.value) handleAddItemWorkOrder(item.id, e.target.value); }}
-                                  className="w-full bg-surface border border-theme-subtle px-1.5 py-1 rounded text-[11px] font-medium"
-                                >
-                                  <option value="">+ Add Job / WO...</option>
-                                  {availableWorkOrders
-                                    .filter(w => !(item.workOrderNos || []).includes(w.id))
-                                    .map(w => (
-                                      <option key={w.id} value={w.id}>
-                                        {w.id} {w.title ? `- ${w.title}` : ''}
-                                      </option>
-                                    ))}
-                                </select>
-                              )}
-
-                              {/* Manual Input */}
-                              <input 
-                                type="text" 
-                                placeholder="Type Job # & Enter..." 
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    const inputEl = e.target as HTMLInputElement;
-                                    if (inputEl.value.trim()) {
-                                      handleAddItemWorkOrder(item.id, inputEl.value);
-                                      inputEl.value = '';
-                                    }
-                                  }
-                                }}
-                                className="w-full bg-transparent border border-theme-subtle/50 hover:border-theme-subtle focus:border-purple-500 px-2 py-0.5 rounded text-[10px] font-mono"
+                              {/* Searchable Work Order Input (Type to search from Work Orders) */}
+                              <WorkOrderSearchInput
+                                onSelectWorkOrder={(wo) => handleAddItemWorkOrder(item.id, wo)}
+                                existingWoNos={item.workOrderNos || []}
+                                availableWorkOrders={availableWorkOrders}
+                                placeholder="Search WO #..."
+                                inputClassName="text-[10px] py-0.5 px-1.5"
+                                buttonLabel="+"
                               />
                             </div>
                           </td>

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { Download, Plus, Play, CheckCircle, AlertTriangle, Settings, Layers, Trash2, Users, ArrowUp, ArrowDown, Tag, Calculator, Package, Wrench, ListChecks, ClipboardList, ChevronRight, Clock, Zap, TrendingUp, Archive, Image as ImageIcon, Filter, UserCheck, UserX, AlertCircle, BarChart2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { 
+  Download, Plus, Play, CheckCircle, AlertTriangle, Settings, Layers, 
+  Trash2, Users, ArrowUp, ArrowDown, Tag, Calculator, Package, Wrench, 
+  ListChecks, ClipboardList, ChevronRight, Clock, Zap, TrendingUp, Archive, 
+  Image as ImageIcon, Filter, UserCheck, UserX, AlertCircle, BarChart2,
+  GitPullRequest, ExternalLink, CheckCircle2, ArrowRight
+} from 'lucide-react'
+import { createMR, fetchMRs } from '@/lib/api'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -25,11 +33,13 @@ const TAB_ICONS: Record<PlannerTab, React.ReactNode> = {
 }
 
 export const WorkOrders: React.FC = () => {
+  const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [machineries, setMachineries] = useState<any[]>([])
   const [quotations, setQuotations] = useState<any[]>([])
   const [inventory, setInventory] = useState<any[]>([])
+  const [materialRequests, setMaterialRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
@@ -47,6 +57,7 @@ export const WorkOrders: React.FC = () => {
     notes: '', sourceQuoteId: '', jobQty: 1, docNo: '', subject: '', attachments: []
   })
   const [bomRows, setBomRows] = useState<any[]>([{ material: '', qty: 1, unit: 'pcs', unitCost: 0, notes: '' }])
+  const [autoPromptMr, setAutoPromptMr] = useState(true)
   const [operations, setOperations] = useState<any[]>([{ operationName: '', machineId: '', employeeId: '', plannedHours: 1, notes: '' }])
   const [machineWorks, setMachineWorks] = useState<any[]>([])
   const [quoteData, setQuoteData] = useState<any>(null)
@@ -60,17 +71,223 @@ export const WorkOrders: React.FC = () => {
   const [dispatchedHistory, setDispatchedHistory] = useState<any[]>([])
   const [showQcModal, setShowQcModal] = useState<any>(null)
 
+  // MR Generation Modal State
+  interface MrGenItem {
+    selected: boolean;
+    material: string;
+    requiredQty: number;
+    availableStock: number;
+    requestQty: number;
+    unit: string;
+    unitCost: number;
+    inventoryId: string;
+    notes: string;
+  }
+  const [mrGenModal, setMrGenModal] = useState<{
+    isOpen: boolean;
+    woId: string;
+    woTitle: string;
+    priority: string;
+    deadline: string;
+    items: MrGenItem[];
+    requiredDate: string;
+    requestedBy: string;
+    notes: string;
+  } | null>(null);
+  const [isGeneratingMr, setIsGeneratingMr] = useState(false);
+  const [generatedMrSuccess, setGeneratedMrSuccess] = useState<{ id: string; itemCount: number; woId: string } | null>(null);
+
   const API = `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
+
+  // Inventory Matching & BOM Stock Analysis Helpers
+  const matchInventoryItem = (materialName: string) => {
+    if (!materialName || !inventory || inventory.length === 0) return null;
+    const nameNorm = materialName.trim().toLowerCase();
+    
+    // 1. Exact match on name
+    let found = inventory.find((i: any) => i.name && i.name.trim().toLowerCase() === nameNorm);
+    if (found) return found;
+
+    // 2. Exact match on sku
+    found = inventory.find((i: any) => i.sku && i.sku.trim().toLowerCase() === nameNorm);
+    if (found) return found;
+
+    // 3. Substring match
+    if (nameNorm.length >= 3) {
+      found = inventory.find((i: any) => i.name && (i.name.toLowerCase().includes(nameNorm) || nameNorm.includes(i.name.toLowerCase())));
+      if (found) return found;
+    }
+    return null;
+  };
+
+  const analyzeBomStock = (bomList: any[]) => {
+    if (!Array.isArray(bomList)) return [];
+    return bomList.map((item: any, idx: number) => {
+      const inv = matchInventoryItem(item.material);
+      const availableStock = inv ? Number(inv.quantity) || 0 : 0;
+      const requiredQty = Number(item.qty) || 0;
+      const shortageQty = Math.max(0, requiredQty - availableStock);
+      const unit = item.unit || inv?.uom || 'pcs';
+      const unitCost = Number(item.unitCost) || Number(inv?.unitCost) || 0;
+      const isFullyInStock = availableStock >= requiredQty && requiredQty > 0;
+      const isPartialStock = availableStock > 0 && availableStock < requiredQty;
+
+      return {
+        index: idx,
+        material: item.material,
+        notes: item.notes || '',
+        requiredQty,
+        availableStock,
+        shortageQty,
+        unit,
+        unitCost,
+        inventoryId: inv ? inv.id : '',
+        isMatched: !!inv,
+        status: isFullyInStock ? 'in_stock' : isPartialStock ? 'partial' : 'out_of_stock'
+      };
+    });
+  };
+
+  const getLinkedMRs = (woId: string) => {
+    if (!woId || !Array.isArray(materialRequests)) return [];
+    return materialRequests.filter((mr: any) => {
+      if (mr.workOrderNo === woId) return true;
+      if (Array.isArray(mr.workOrderNos) && mr.workOrderNos.includes(woId)) return true;
+      if (typeof mr.workOrderNos === 'string') {
+        try {
+          const parsed = JSON.parse(mr.workOrderNos);
+          if (Array.isArray(parsed) && parsed.includes(woId)) return true;
+        } catch (e) {}
+      }
+      if (mr.items) {
+        try {
+          const parsedItems = typeof mr.items === 'string' ? JSON.parse(mr.items) : mr.items;
+          if (Array.isArray(parsedItems) && parsedItems.some((it: any) => Array.isArray(it.workOrderNos) && it.workOrderNos.includes(woId))) {
+            return true;
+          }
+        } catch (e) {}
+      }
+      return false;
+    });
+  };
+
+  const openMrGeneratorForWO = (wo: any) => {
+    let bomList: any[] = [];
+    try {
+      if (typeof wo.bom === 'string') {
+        bomList = JSON.parse(wo.bom || '[]');
+      } else if (Array.isArray(wo.bom)) {
+        bomList = wo.bom;
+      }
+    } catch (e) {
+      bomList = [];
+    }
+
+    const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
+    if (validBom.length === 0) {
+      setErrorModal(`Work Order ${wo.id} does not have any Bill of Materials (BOM) items.`);
+      return;
+    }
+
+    const analysis = analyzeBomStock(validBom);
+    const hasAnyShortage = analysis.some(a => a.shortageQty > 0);
+    const genItems: MrGenItem[] = analysis.map(a => ({
+      selected: hasAnyShortage ? a.shortageQty > 0 : true,
+      material: a.material,
+      requiredQty: a.requiredQty,
+      availableStock: a.availableStock,
+      requestQty: a.shortageQty > 0 ? a.shortageQty : a.requiredQty,
+      unit: a.unit,
+      unitCost: a.unitCost,
+      inventoryId: a.inventoryId,
+      notes: a.notes || `For Work Order ${wo.id}`
+    }));
+
+    setMrGenModal({
+      isOpen: true,
+      woId: wo.id,
+      woTitle: wo.title,
+      priority: wo.priority || 'Normal',
+      deadline: wo.deadline ? wo.deadline.split('T')[0] : '',
+      requiredDate: wo.deadline ? wo.deadline.split('T')[0] : new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      requestedBy: 'Production Planning',
+      notes: `Generated from Work Order ${wo.id} BOM shortage.`,
+      items: genItems
+    });
+  };
+
+  const handleConfirmGenerateMR = async () => {
+    if (!mrGenModal) return;
+    const selectedItems = mrGenModal.items.filter(it => it.selected && Number(it.requestQty) > 0);
+    if (selectedItems.length === 0) {
+      alert('Please select at least one material item with a quantity greater than 0.');
+      return;
+    }
+
+    setIsGeneratingMr(true);
+    try {
+      let nextNum = 1001;
+      if (materialRequests.length > 0) {
+        const numbers = materialRequests
+          .map(m => parseInt((m.id || '').replace(/\D/g, ''), 10))
+          .filter(n => !isNaN(n));
+        if (numbers.length > 0) nextNum = Math.max(...numbers) + 1;
+      }
+      const newMrId = `MR-${nextNum}`;
+
+      const mrItems = selectedItems.map((it, idx) => ({
+        id: `mri_${Date.now()}_${idx}`,
+        inventoryId: it.inventoryId || '',
+        desc: it.material,
+        qty: Number(it.requestQty),
+        uom: it.unit || 'pcs',
+        unitCost: Number(it.unitCost) || 0,
+        workOrderNos: [mrGenModal.woId]
+      }));
+
+      const payload = {
+        id: newMrId,
+        date: new Date().toISOString().split('T')[0],
+        requiredDate: mrGenModal.requiredDate,
+        requestedBy: mrGenModal.requestedBy,
+        department: 'Production',
+        priority: mrGenModal.priority,
+        status: 'pending',
+        poId: null,
+        poIds: JSON.stringify([]),
+        workOrderNo: mrGenModal.woId,
+        workOrderNos: JSON.stringify([mrGenModal.woId]),
+        items: mrItems,
+        notes: mrGenModal.notes
+      };
+
+      const res = await createMR(payload);
+      if (res && res.error) {
+        alert(`Error creating Material Request: ${res.error}`);
+        return;
+      }
+
+      setGeneratedMrSuccess({ id: newMrId, itemCount: selectedItems.length, woId: mrGenModal.woId });
+      setMrGenModal(null);
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to generate Material Request: ' + (err.message || err));
+    } finally {
+      setIsGeneratingMr(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [woRes, empRes, machRes, quoRes, invRes] = await Promise.all([
+      const [woRes, empRes, machRes, quoRes, invRes, mrRes] = await Promise.all([
         fetch(API + '/production/work-orders').then(r => r.json()),
         fetch(API + '/hr/employees').then(r => r.json()),
         fetch(API + '/production/machineries').then(r => r.json()),
         fetch(API + '/quotations').then(r => r.json()),
-        fetch(API + '/inventory').then(r => r.json())
+        fetch(API + '/inventory').then(r => r.json()),
+        fetch(API + '/purchasing/mrs').then(r => r.json()).catch(() => [])
       ])
       setWorkOrders(Array.isArray(woRes) ? woRes : [])
       setEmployees(Array.isArray(empRes) ? empRes : [])
@@ -81,6 +298,7 @@ export const WorkOrders: React.FC = () => {
         return { ...q, snapshot: snap };
       }) : [])
       setInventory(Array.isArray(invRes) ? invRes : [])
+      setMaterialRequests(Array.isArray(mrRes) ? mrRes : [])
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -162,7 +380,26 @@ export const WorkOrders: React.FC = () => {
         }
         return;
       }
-      setShowModal(false); resetForm(); fetchData();
+      
+      const createdWoId = data.id;
+      const validBom = bomRows.filter(r => r.material && r.material.trim() && Number(r.qty) > 0);
+      const shouldPromptMr = autoPromptMr && validBom.length > 0;
+      const analysis = shouldPromptMr ? analyzeBomStock(validBom) : [];
+      const hasShortage = analysis.some(a => a.shortageQty > 0);
+
+      setShowModal(false); 
+      resetForm(); 
+      await fetchData();
+
+      if (shouldPromptMr && hasShortage) {
+        openMrGeneratorForWO({
+          id: createdWoId,
+          title: newWO.title || createdWoId,
+          priority: newWO.priority,
+          deadline: newWO.deadline,
+          bom: validBom
+        });
+      }
     } catch (err) { console.error(err) }
     finally { setSubmitting(false) }
   }
@@ -252,12 +489,90 @@ export const WorkOrders: React.FC = () => {
   const filtered = workOrders.filter(w => w.title?.toLowerCase().includes(search.toLowerCase()) || w.id?.toLowerCase().includes(search.toLowerCase()))
 
   const columns: Column<any>[] = [
-    { key: 'title', header: 'Work Order & Job Scope', sortable: true, render: (_: any, row: any) => ( <div className="flex items-start gap-3"><div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center mt-1"><Layers size={14} className="text-white"/></div><div className="min-w-0 max-w-sm"><p className="text-sm font-semibold text-primary truncate">{row.title}</p><p className="text-[10px] text-muted font-mono mb-1">{row.id}</p>{row.notes && <div className="text-[10px] text-secondary/90 line-clamp-2 leading-relaxed bg-surface2/30 p-1.5 rounded border border-theme-subtle">{row.notes}</div>}</div></div> ) },
+    { key: 'title', header: 'Work Order & Job Scope', sortable: true, render: (_: any, row: any) => {
+      const linkedMRs = getLinkedMRs(row.id);
+      let bomList: any[] = [];
+      try {
+        bomList = typeof row.bom === 'string' ? JSON.parse(row.bom || '[]') : (row.bom || []);
+      } catch (e) {}
+      const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
+      const analysis = analyzeBomStock(validBom);
+      const shortages = analysis.filter(a => a.shortageQty > 0);
+      const hasBom = validBom.length > 0;
+
+      return (
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center mt-1">
+            <Layers size={14} className="text-white"/>
+          </div>
+          <div className="min-w-0 max-w-sm">
+            <p className="text-sm font-semibold text-primary truncate">{row.title}</p>
+            <div className="flex items-center gap-1.5 flex-wrap my-0.5">
+              <span className="text-[10px] text-muted font-mono">{row.id}</span>
+              {hasBom && (
+                shortages.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title={`${shortages.length} material(s) have stock shortage`}>
+                    <AlertTriangle size={9}/> Shortage ({shortages.length})
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20" title="All BOM materials in stock">
+                    <CheckCircle size={9}/> In Stock
+                  </span>
+                )
+              )}
+              {linkedMRs.map(mr => (
+                <button 
+                  key={mr.id} 
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/mr-builder/${mr.id}`); }} 
+                  className="cursor-pointer inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20"
+                  title={`Linked MR: ${mr.id} (${mr.status || 'pending'}) - Click to View`}
+                >
+                  <GitPullRequest size={9}/> {mr.id}
+                </button>
+              ))}
+            </div>
+            {row.notes && <div className="text-[10px] text-secondary/90 line-clamp-2 leading-relaxed bg-surface2/30 p-1.5 rounded border border-theme-subtle">{row.notes}</div>}
+          </div>
+        </div>
+      );
+    } },
     { key: 'priority', header: 'Priority', render: (v: any) => <Badge value={String(v)} variant={v==='High'?'error':v==='Urgent'?'warning':'default'}/> },
     { key: 'deadline', header: 'Deadline', render: (v: any) => <span className="text-xs text-secondary">{v ? new Date(v as string).toLocaleDateString() : '-'}</span> },
     { key: 'operations', header: 'Progress', render: (_: any, row: any) => { const ops = row.operations?.filter((o: any) => parseFloat(o.plannedHours) > 0) || []; const total = ops.length; const done = ops.filter((o: any) => o.status === 'Completed').length; const pct = total === 0 ? 0 : Math.round((done/total)*100); return ( <div className="w-36"><div className="flex justify-between text-[10px] mb-1"><span className="text-muted">{done}/{total} Steps</span><span className="font-bold text-rex-600">{pct}%</span></div><div className="h-1.5 w-full bg-surface2 rounded-full overflow-hidden"><div className="h-full bg-rex-600 rounded-full transition-all" style={{ width: pct + '%' }}/></div></div> ) } },
     { key: 'status', header: 'Status', render: (v: any) => <span className="text-xs font-semibold text-secondary">{String(v)}</span> },
-    { key: 'actions', header: '', align: 'right', render: (_: any, row: any) => ( <div className="flex justify-end items-center"><Button variant="ghost" size="sm" onClick={() => openTrackModal(row)} className="text-rex-600 hover:bg-rex-500/10"><Settings size={14} className="mr-1.5"/> Track</Button><Button variant="ghost" size="sm" onClick={() => handleDeleteWO(row.id)} className="text-red-500 hover:bg-red-500/10 ml-2"><Trash2 size={14}/></Button></div> ) }
+    { key: 'actions', header: '', align: 'right', render: (_: any, row: any) => {
+      let bomList: any[] = [];
+      try {
+        bomList = typeof row.bom === 'string' ? JSON.parse(row.bom || '[]') : (row.bom || []);
+      } catch (e) {}
+      const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
+      const hasBom = validBom.length > 0;
+      const analysis = analyzeBomStock(validBom);
+      const hasShortage = analysis.some(a => a.shortageQty > 0);
+
+      return (
+        <div className="flex justify-end items-center gap-1.5">
+          {hasBom && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => openMrGeneratorForWO(row)} 
+              className={`text-xs px-2.5 h-8 font-bold ${hasShortage ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30' : 'text-rex-600 hover:bg-rex-500/10'}`}
+              title={hasShortage ? "Generate Material Requisition (MR) for BOM shortage" : "Generate MR from BOM"}
+            >
+              <Package size={13} className="mr-1"/> {hasShortage ? 'Create MR' : 'MR'}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => openTrackModal(row)} className="text-rex-600 hover:bg-rex-500/10">
+            <Settings size={14} className="mr-1.5"/> Track
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleDeleteWO(row.id)} className="text-red-500 hover:bg-red-500/10">
+            <Trash2 size={14}/>
+          </Button>
+        </div>
+      );
+    } }
   ]
 
   const tabComplete: Record<PlannerTab, boolean> = {
@@ -661,18 +976,171 @@ export const WorkOrders: React.FC = () => {
                   </div>
                 </div>
               )}
-              {activeTab === 'bom' && (
-                <div className="max-w-5xl space-y-4">
-                  <div className="flex items-center justify-between"><h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-rex-500"/> Bill of Materials</h3><Button variant="ghost" size="sm" type="button" onClick={() => setBomRows([...bomRows, { material:'', qty:1, unit:'pcs', unitCost:0, notes:'' }])}>+ Add Material</Button></div>
-                  <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-                    <table className="w-full text-sm">
-                      <thead><tr className="bg-surface2/40 border-b border-theme-subtle text-xs text-secondary"><th className="text-left py-2.5 px-3 font-bold w-8">#</th><th className="text-left py-2.5 px-3 font-bold">Material / Part Name</th><th className="text-left py-2.5 px-3 font-bold w-20">Qty</th><th className="text-left py-2.5 px-3 font-bold w-20">Unit</th><th className="text-left py-2.5 px-3 font-bold w-36">Unit Cost (LKR)</th><th className="text-left py-2.5 px-3 font-bold w-32">Line Total</th><th className="text-left py-2.5 px-3 font-bold">Notes / Supplier</th><th className="w-10"/></tr></thead>
-                      <tbody>{bomRows.map((row, i) => { const lt = (parseFloat(row.qty)||0)*(parseFloat(row.unitCost)||0); return ( <tr key={i} className="border-b border-theme-subtle/60 last:border-0 hover:bg-surface/50"><td className="py-1.5 px-3 text-xs font-mono text-muted">{i+1}</td><td className="py-1.5 px-3"><input value={row.material} onChange={e => { const r=[...bomRows]; r[i].material=e.target.value; setBomRows(r) }} className="w-full input-base text-xs py-1" placeholder="e.g. EN8 Steel Bar"/></td><td className="py-1.5 px-3"><input type="number" value={row.qty} onChange={e => { const r=[...bomRows]; r[i].qty=e.target.value; setBomRows(r) }} className="w-full input-base text-xs py-1 font-mono"/></td><td className="py-1.5 px-3"><select value={row.unit} onChange={e => { const r=[...bomRows]; r[i].unit=e.target.value; setBomRows(r) }} className="w-full input-base text-xs py-1">{['pcs','kg','m','L','mm','set','lot'].map(u => <option key={u}>{u}</option>)}</select></td><td className="py-1.5 px-3"><input type="number" value={row.unitCost} onChange={e => { const r=[...bomRows]; r[i].unitCost=e.target.value; setBomRows(r) }} className="w-full input-base text-xs py-1 font-mono"/></td><td className="py-1.5 px-3 text-xs font-mono font-bold text-primary">{lt.toLocaleString(undefined,{minimumFractionDigits:2})}</td><td className="py-1.5 px-3"><input value={row.notes} onChange={e => { const r=[...bomRows]; r[i].notes=e.target.value; setBomRows(r) }} className="w-full input-base text-xs py-1" placeholder="Supplier / spec..."/></td><td className="py-1.5 px-2"><button type="button" onClick={() => setBomRows(bomRows.filter((_,idx) => idx!==i))} className="w-7 h-7 bg-red-500/10 text-red-500 hover:bg-red-500/20 flex items-center justify-center rounded"><Trash2 size={12}/></button></td></tr> ) })}</tbody>
-                      <tfoot><tr className="bg-surface2/30 border-t-2 border-theme-subtle"><td colSpan={5} className="py-2.5 px-3 text-xs font-bold text-secondary uppercase text-right">Total BOM Cost</td><td className="py-2.5 px-3 text-sm font-black text-primary font-mono">LKR {totalBomCost.toLocaleString(undefined,{minimumFractionDigits:2})}</td><td colSpan={2}/></tr></tfoot>
-                    </table>
-                  </GlassCard>
-                </div>
-              )}
+              {activeTab === 'bom' && (() => {
+                const currentBomAnalysis = analyzeBomStock(bomRows.filter(r => r.material && r.material.trim()));
+                const bomShortageCount = currentBomAnalysis.filter(a => a.shortageQty > 0).length;
+
+                return (
+                  <div className="max-w-5xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2">
+                          <Package size={14} className="text-rex-500"/> Bill of Materials & Stock Check
+                        </h3>
+                        <p className="text-[10px] text-muted mt-0.5">
+                          Materials are automatically cross-checked with warehouse stock levels.
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm" type="button" onClick={() => setBomRows([...bomRows, { material:'', qty:1, unit:'pcs', unitCost:0, notes:'' }])}>
+                        + Add Material
+                      </Button>
+                    </div>
+
+                    <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-surface2/40 border-b border-theme-subtle text-xs text-secondary">
+                            <th className="text-left py-2.5 px-3 font-bold w-8">#</th>
+                            <th className="text-left py-2.5 px-3 font-bold">Material / Part Name</th>
+                            <th className="text-left py-2.5 px-3 font-bold w-20">Qty</th>
+                            <th className="text-left py-2.5 px-3 font-bold w-20">Unit</th>
+                            <th className="text-left py-2.5 px-3 font-bold w-28">Stock Level</th>
+                            <th className="text-left py-2.5 px-3 font-bold w-32">Unit Cost (LKR)</th>
+                            <th className="text-left py-2.5 px-3 font-bold w-28">Line Total</th>
+                            <th className="text-left py-2.5 px-3 font-bold">Notes / Supplier</th>
+                            <th className="w-10"/>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bomRows.map((row, i) => { 
+                            const lt = (parseFloat(row.qty)||0)*(parseFloat(row.unitCost)||0);
+                            const inv = matchInventoryItem(row.material);
+                            const avail = inv ? Number(inv.quantity) || 0 : 0;
+                            const req = Number(row.qty) || 0;
+                            const short = Math.max(0, req - avail);
+
+                            return ( 
+                              <tr key={i} className="border-b border-theme-subtle/60 last:border-0 hover:bg-surface/50">
+                                <td className="py-1.5 px-3 text-xs font-mono text-muted">{i+1}</td>
+                                <td className="py-1.5 px-3">
+                                  <input 
+                                    value={row.material} 
+                                    onChange={e => { const r=[...bomRows]; r[i].material=e.target.value; setBomRows(r) }} 
+                                    className="w-full input-base text-xs py-1" 
+                                    placeholder="e.g. EN8 Steel Bar"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-3">
+                                  <input 
+                                    type="number" 
+                                    value={row.qty} 
+                                    onChange={e => { const r=[...bomRows]; r[i].qty=e.target.value; setBomRows(r) }} 
+                                    className="w-full input-base text-xs py-1 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-3">
+                                  <select 
+                                    value={row.unit} 
+                                    onChange={e => { const r=[...bomRows]; r[i].unit=e.target.value; setBomRows(r) }} 
+                                    className="w-full input-base text-xs py-1"
+                                  >
+                                    {['pcs','kg','m','L','mm','set','lot'].map(u => <option key={u}>{u}</option>)}
+                                  </select>
+                                </td>
+                                <td className="py-1.5 px-3">
+                                  {row.material && row.material.trim() ? (
+                                    inv ? (
+                                      avail >= req ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20 whitespace-nowrap">
+                                          <CheckCircle size={10}/> {avail} {row.unit}
+                                        </span>
+                                      ) : avail > 0 ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 whitespace-nowrap" title={`Available: ${avail}, Shortage: ${short}`}>
+                                          <AlertTriangle size={10}/> Short: {short}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 whitespace-nowrap">
+                                          <AlertCircle size={10}/> Out of Stock
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500/80 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 whitespace-nowrap">
+                                        No Stock (0)
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="text-[10px] text-muted">-</span>
+                                  )}
+                                </td>
+                                <td className="py-1.5 px-3">
+                                  <input 
+                                    type="number" 
+                                    value={row.unitCost} 
+                                    onChange={e => { const r=[...bomRows]; r[i].unitCost=e.target.value; setBomRows(r) }} 
+                                    className="w-full input-base text-xs py-1 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-3 text-xs font-mono font-bold text-primary">
+                                  {lt.toLocaleString(undefined,{minimumFractionDigits:2})}
+                                </td>
+                                <td className="py-1.5 px-3">
+                                  <input 
+                                    value={row.notes} 
+                                    onChange={e => { const r=[...bomRows]; r[i].notes=e.target.value; setBomRows(r) }} 
+                                    className="w-full input-base text-xs py-1" 
+                                    placeholder="Supplier / spec..."
+                                  />
+                                </td>
+                                <td className="py-1.5 px-2">
+                                  <button 
+                                    type="button" 
+                                    onClick={() => setBomRows(bomRows.filter((_,idx) => idx!==i))} 
+                                    className="w-7 h-7 bg-red-500/10 text-red-500 hover:bg-red-500/20 flex items-center justify-center rounded"
+                                  >
+                                    <Trash2 size={12}/>
+                                  </button>
+                                </td>
+                              </tr> 
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-surface2/30 border-t-2 border-theme-subtle">
+                            <td colSpan={6} className="py-2.5 px-3 text-xs font-bold text-secondary uppercase text-right">Total BOM Cost</td>
+                            <td className="py-2.5 px-3 text-sm font-black text-primary font-mono">LKR {totalBomCost.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                            <td colSpan={2}/>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </GlassCard>
+
+                    {bomShortageCount > 0 && (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle size={16} className="text-amber-500 shrink-0"/>
+                          <div>
+                            <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                              Stock Shortage: {bomShortageCount} material(s) are not available in inventory stock
+                            </p>
+                            <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
+                              A Material Requisition (MR) will be auto-prompted upon creating this Work Order so you can order missing materials.
+                            </p>
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-secondary cursor-pointer bg-surface/80 px-3 py-1.5 rounded-lg border border-theme-subtle">
+                          <input 
+                            type="checkbox" 
+                            checked={autoPromptMr} 
+                            onChange={e => setAutoPromptMr(e.target.checked)} 
+                            className="rounded text-rex-600 focus:ring-rex-500 cursor-pointer"
+                          />
+                          Auto-prompt MR generation on save
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {activeTab === 'routing' && (
                 <div className="max-w-5xl space-y-4">
                   <div className="flex items-center justify-between"><h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2"><Layers size={14} className="text-rex-500"/> Operations Routing Sequence</h3><Button variant="ghost" size="sm" type="button" onClick={() => setOperations([...operations, { operationName:'', machineId:'', employeeId:'', plannedHours:1, notes:'' }])}>+ Add Step</Button></div>
@@ -968,15 +1436,163 @@ export const WorkOrders: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    {trackWO.bom && trackWO.bom !== 'null' && trackWO.bom !== '[]' && (
-                      <div>
-                        <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-3 flex items-center gap-2"><Package size={13}/> BOM (Internal Costing) — Quick Dispatch</h4>
-                        <div className="border border-theme-subtle rounded-xl overflow-hidden">
-                          <table className="w-full text-sm"><thead className="bg-surface2/30 border-b border-theme-subtle"><tr className="text-[10px] text-muted uppercase font-semibold"><th className="px-4 py-2.5 text-left">Material</th><th className="px-4 py-2.5 text-left">Qty</th><th className="px-4 py-2.5 text-right">Dispatch</th></tr></thead>
-                          <tbody className="divide-y divide-theme-subtle/40">{JSON.parse(trackWO.bom).map((b: any, i: number) => ( <tr key={i} className="hover:bg-surface2/20 transition-colors"><td className="px-4 py-2.5"><p className="text-xs font-semibold text-primary">{b.material}</p>{b.notes && <p className="text-[9px] text-muted">{b.notes}</p>}</td><td className="px-4 py-2.5 font-mono text-xs text-secondary">{b.qty} {b.unit}</td><td className="px-4 py-2.5 text-right"><button onClick={() => handleDispatch(b, trackWO.id)} className="text-[10px] font-bold px-3 py-1 rounded-lg border border-rex-500/30 text-rex-600 hover:bg-rex-600 hover:text-white transition-all">Dispatch</button></td></tr> ))}</tbody></table>
+                    {trackWO.bom && trackWO.bom !== 'null' && trackWO.bom !== '[]' && (() => {
+                      let bomList: any[] = [];
+                      try {
+                        bomList = typeof trackWO.bom === 'string' ? JSON.parse(trackWO.bom || '[]') : trackWO.bom;
+                      } catch (e) { bomList = []; }
+                      const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
+                      const analysis = analyzeBomStock(validBom);
+                      const shortageItems = analysis.filter(a => a.shortageQty > 0);
+                      const linkedMRs = getLinkedMRs(trackWO.id);
+
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div>
+                              <h4 className="text-xs font-bold text-secondary uppercase tracking-widest flex items-center gap-2">
+                                <Package size={13}/> BOM Stock & Material Requirements
+                              </h4>
+                              <p className="text-[10px] text-muted">
+                                {analysis.length} BOM component(s) defined for this job
+                              </p>
+                            </div>
+                            <Button 
+                              variant={shortageItems.length > 0 ? "primary" : "ghost"}
+                              size="sm" 
+                              onClick={() => openMrGeneratorForWO(trackWO)}
+                              className={`text-xs font-bold flex items-center gap-1.5 ${shortageItems.length > 0 ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' : 'text-rex-600 hover:bg-rex-500/10'}`}
+                            >
+                              <Zap size={13}/> {shortageItems.length > 0 ? `Generate MR for Shortage (${shortageItems.length})` : 'Generate MR from BOM'}
+                            </Button>
+                          </div>
+
+                          {shortageItems.length > 0 && (
+                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle size={15} className="text-amber-500 shrink-0"/>
+                                <div>
+                                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                                    Stock Shortage: {shortageItems.length} material(s) unavailable in inventory
+                                  </p>
+                                  <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
+                                    Current warehouse balance cannot fulfill this job. Generate a Material Requisition (MR) to request purchase.
+                                  </p>
+                                </div>
+                              </div>
+                              <Button 
+                                variant="primary" 
+                                size="sm" 
+                                onClick={() => openMrGeneratorForWO(trackWO)} 
+                                className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold h-8 px-3"
+                              >
+                                Create MR
+                              </Button>
+                            </div>
+                          )}
+
+                          <div className="border border-theme-subtle rounded-xl overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead className="bg-surface2/30 border-b border-theme-subtle">
+                                <tr className="text-[10px] text-muted uppercase font-semibold">
+                                  <th className="px-3 py-2 text-left">Material & Spec</th>
+                                  <th className="px-3 py-2 text-right w-16">Required</th>
+                                  <th className="px-3 py-2 text-right w-20">In Stock</th>
+                                  <th className="px-3 py-2 text-right w-20">Shortage</th>
+                                  <th className="px-3 py-2 text-right w-28">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-theme-subtle/40">
+                                {analysis.map((b: any, i: number) => {
+                                  const originalBomItem = validBom[i] || { material: b.material, qty: b.requiredQty, unit: b.unit };
+                                  return (
+                                    <tr key={i} className="hover:bg-surface2/20 transition-colors">
+                                      <td className="px-3 py-2">
+                                        <p className="font-semibold text-primary">{b.material}</p>
+                                        {b.notes && <p className="text-[9px] text-muted italic">{b.notes}</p>}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono font-bold text-secondary">
+                                        {b.requiredQty} {b.unit}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${b.availableStock <= 0 ? 'text-red-500 bg-red-500/10' : b.availableStock < b.requiredQty ? 'text-amber-500 bg-amber-500/10' : 'text-green-500 bg-green-500/10'}`}>
+                                          {b.availableStock}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono text-[11px]">
+                                        {b.shortageQty > 0 ? (
+                                          <span className="text-red-500 font-bold">-{b.shortageQty} {b.unit}</span>
+                                        ) : (
+                                          <span className="text-green-600 font-bold text-[10px]">✓ Available</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 text-right">
+                                        <div className="flex justify-end gap-1">
+                                          {b.availableStock > 0 && (
+                                            <button 
+                                              onClick={() => handleDispatch(originalBomItem, trackWO.id)} 
+                                              className="text-[10px] font-bold px-2 py-0.5 rounded border border-rex-500/30 text-rex-600 hover:bg-rex-600 hover:text-white transition-all"
+                                              title="Issue available inventory to this job"
+                                            >
+                                              Dispatch
+                                            </button>
+                                          )}
+                                          {b.shortageQty > 0 && (
+                                            <button 
+                                              onClick={() => openMrGeneratorForWO(trackWO)} 
+                                              className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/30 text-amber-600 hover:bg-amber-600 hover:text-white transition-all"
+                                              title="Generate Material Requisition (MR)"
+                                            >
+                                              + MR
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Linked Material Requisitions */}
+                          {linkedMRs.length > 0 && (
+                            <div className="mt-3 p-3 bg-surface2/30 border border-theme-subtle rounded-xl space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h5 className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                                  <GitPullRequest size={12} className="text-blue-500"/> Linked Material Requisitions ({linkedMRs.length})
+                                </h5>
+                                <button 
+                                  onClick={() => { setTrackWO(null); navigate('/purchasing/mr-builder?wo=' + trackWO.id); }}
+                                  className="text-[10px] font-bold text-rex-600 hover:underline"
+                                >
+                                  + New MR
+                                </button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {linkedMRs.map(mr => (
+                                  <div key={mr.id} className="flex items-center justify-between p-2 rounded-lg bg-surface border border-theme-subtle/80 text-xs hover:border-blue-500/30 transition-colors">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono font-bold text-primary">{mr.id}</span>
+                                      <Badge value={mr.status || 'pending'} variant={mr.status === 'ordered' ? 'success' : mr.status === 'approved' ? 'default' : 'warning'} />
+                                      <span className="text-[10px] text-muted">
+                                        {new Date(mr.date || mr.createdAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    <button 
+                                      onClick={() => { setTrackWO(null); navigate(`/purchasing/mr-builder/${mr.id}`); }}
+                                      className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1"
+                                    >
+                                      Open MR <ExternalLink size={10}/>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                   <div className="w-full md:w-1/2 p-6 overflow-y-auto bg-surface2/5">
                     <h3 className="text-sm font-bold text-primary flex items-center gap-2 mb-4"><Clock size={15} className="text-rex-500"/> Dispatch Ledger</h3>
@@ -1153,6 +1769,267 @@ export const WorkOrders: React.FC = () => {
             </form>
           );
         })()}
+      </Modal>
+
+      {/* ============ GENERATE MR FROM BOM MODAL ============ */}
+      <Modal 
+        isOpen={!!mrGenModal} 
+        onClose={() => setMrGenModal(null)} 
+        title="Generate Material Requisition (MR) from BOM"
+        size="xl"
+      >
+        {mrGenModal && (
+          <div className="space-y-4 p-1">
+            {/* Header info banner */}
+            <div className="p-3 bg-surface2/40 border border-theme-subtle rounded-xl flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-mono font-bold text-rex-600 dark:text-rex-400 bg-rex-500/10 px-2 py-0.5 rounded border border-rex-500/20">
+                    {mrGenModal.woId}
+                  </span>
+                  <Badge value={mrGenModal.priority} variant={mrGenModal.priority === 'High' || mrGenModal.priority === 'Urgent' ? 'error' : 'default'} />
+                  {mrGenModal.deadline && (
+                    <span className="text-[10px] text-muted flex items-center gap-1">
+                      <Clock size={10} /> Deadline: {new Date(mrGenModal.deadline).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-sm font-bold text-primary">{mrGenModal.woTitle}</h3>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-muted uppercase font-bold block">Items Selected for MR</span>
+                <span className="text-lg font-mono font-bold text-primary">
+                  {mrGenModal.items.filter(i => i.selected).length} / {mrGenModal.items.length}
+                </span>
+              </div>
+            </div>
+
+            {/* Requisition Settings */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-surface border border-theme-subtle rounded-xl text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Required Date *</label>
+                <input 
+                  type="date" 
+                  value={mrGenModal.requiredDate} 
+                  onChange={e => setMrGenModal({ ...mrGenModal, requiredDate: e.target.value })} 
+                  className="w-full input-base text-xs py-1.5"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Priority</label>
+                <select 
+                  value={mrGenModal.priority} 
+                  onChange={e => setMrGenModal({ ...mrGenModal, priority: e.target.value })} 
+                  className="w-full input-base text-xs py-1.5"
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Requested By</label>
+                <input 
+                  type="text" 
+                  value={mrGenModal.requestedBy} 
+                  onChange={e => setMrGenModal({ ...mrGenModal, requestedBy: e.target.value })} 
+                  className="w-full input-base text-xs py-1.5"
+                />
+              </div>
+              <div className="col-span-1 md:col-span-3">
+                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Requisition Notes</label>
+                <input 
+                  type="text" 
+                  value={mrGenModal.notes} 
+                  onChange={e => setMrGenModal({ ...mrGenModal, notes: e.target.value })} 
+                  className="w-full input-base text-xs py-1.5"
+                  placeholder="Notes for purchasing team..."
+                />
+              </div>
+            </div>
+
+            {/* Materials Table */}
+            <div className="border border-theme-subtle rounded-xl overflow-hidden">
+              <div className="bg-surface2/50 px-3 py-2 border-b border-theme-subtle flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="selectAllMrItems"
+                    checked={mrGenModal.items.length > 0 && mrGenModal.items.every(i => i.selected)}
+                    onChange={e => {
+                      const chk = e.target.checked;
+                      setMrGenModal({
+                        ...mrGenModal,
+                        items: mrGenModal.items.map(it => ({ ...it, selected: chk }))
+                      });
+                    }}
+                    className="rounded text-rex-600 focus:ring-rex-500 cursor-pointer"
+                  />
+                  <label htmlFor="selectAllMrItems" className="font-bold text-secondary cursor-pointer select-none">
+                    Select All Items
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-muted">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"/> Shortage / Out of Stock</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"/> In Stock</span>
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-surface2/20 text-muted uppercase text-[10px] font-bold border-b border-theme-subtle/60 sticky top-0 bg-surface">
+                    <tr>
+                      <th className="py-2 px-3 text-center w-8">Include</th>
+                      <th className="py-2 px-3 text-left">Material & Notes</th>
+                      <th className="py-2 px-3 text-right w-20">Req. Qty</th>
+                      <th className="py-2 px-3 text-right w-24">Avail. Stock</th>
+                      <th className="py-2 px-3 text-right w-28">Order Qty</th>
+                      <th className="py-2 px-3 text-left w-16">Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-theme-subtle/40">
+                    {mrGenModal.items.map((it, idx) => {
+                      return (
+                        <tr key={idx} className={`hover:bg-surface2/40 transition-colors ${it.selected ? 'bg-rex-500/[0.02]' : 'opacity-60'}`}>
+                          <td className="py-2 px-3 text-center">
+                            <input 
+                              type="checkbox" 
+                              checked={it.selected} 
+                              onChange={e => {
+                                const newItems = [...mrGenModal.items];
+                                newItems[idx].selected = e.target.checked;
+                                setMrGenModal({ ...mrGenModal, items: newItems });
+                              }}
+                              className="rounded text-rex-600 focus:ring-rex-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <p className="font-bold text-primary">{it.material}</p>
+                            {it.notes && <p className="text-[10px] text-muted italic">{it.notes}</p>}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-medium text-secondary">
+                            {it.requiredQty}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${it.availableStock <= 0 ? 'text-red-600 bg-red-500/10' : it.availableStock < it.requiredQty ? 'text-amber-600 bg-amber-500/10' : 'text-green-600 bg-green-500/10'}`}>
+                              {it.availableStock}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <input 
+                              type="number" 
+                              min="0.01" 
+                              step="any"
+                              value={it.requestQty} 
+                              disabled={!it.selected}
+                              onChange={e => {
+                                const newItems = [...mrGenModal.items];
+                                newItems[idx].requestQty = Number(e.target.value);
+                                setMrGenModal({ ...mrGenModal, items: newItems });
+                              }}
+                              className="w-20 input-base text-xs py-1 px-2 font-mono text-right font-bold focus:border-rex-500 disabled:opacity-40"
+                            />
+                          </td>
+                          <td className="py-2 px-3 text-muted font-medium">
+                            {it.unit}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-theme-subtle">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  const woId = mrGenModal.woId;
+                  setMrGenModal(null);
+                  navigate(`/purchasing/mr-builder?wo=${woId}`);
+                }}
+                className="text-xs text-rex-600 hover:underline flex items-center gap-1"
+              >
+                Open in MR Builder instead <ExternalLink size={12} />
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setMrGenModal(null)} disabled={isGeneratingMr}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm" 
+                  disabled={isGeneratingMr || mrGenModal.items.filter(i => i.selected).length === 0}
+                  onClick={handleConfirmGenerateMR}
+                  className="bg-rex-600 hover:bg-rex-700 text-white font-bold flex items-center gap-1.5 px-4"
+                >
+                  {isGeneratingMr ? 'Generating...' : (
+                    <>
+                      <Zap size={14} /> Generate Material Requisition (MR)
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ============ MR CREATED SUCCESS MODAL ============ */}
+      <Modal
+        isOpen={!!generatedMrSuccess}
+        onClose={() => setGeneratedMrSuccess(null)}
+        title="Material Request Generated"
+        size="md"
+      >
+        {generatedMrSuccess && (
+          <div className="p-4 text-center space-y-4">
+            <div className="w-14 h-14 bg-green-500/10 border border-green-500/20 text-green-600 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle2 size={32} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-primary">Requisition Created Successfully!</h3>
+              <p className="text-xs text-secondary mt-1">
+                Document <span className="font-mono font-bold text-rex-600">{generatedMrSuccess.id}</span> was created with {generatedMrSuccess.itemCount} items linked to Work Order <span className="font-mono font-bold text-primary">{generatedMrSuccess.woId}</span>.
+              </p>
+            </div>
+            <div className="p-3 bg-surface2/40 border border-theme-subtle rounded-xl text-left text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted">Document Number:</span>
+                <span className="font-mono font-bold text-primary">{generatedMrSuccess.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Target Work Order:</span>
+                <span className="font-mono font-bold text-primary">{generatedMrSuccess.woId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Status:</span>
+                <span className="font-bold text-amber-600">Pending Approval</span>
+              </div>
+            </div>
+            <div className="flex justify-center gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setGeneratedMrSuccess(null)}>
+                Dismiss
+              </Button>
+              <Button 
+                variant="primary" 
+                size="sm" 
+                onClick={() => {
+                  const mrId = generatedMrSuccess.id;
+                  setGeneratedMrSuccess(null);
+                  navigate(`/purchasing/mr-builder/${mrId}`);
+                }}
+                className="bg-rex-600 hover:bg-rex-700 text-white font-bold flex items-center gap-1.5"
+              >
+                Open in MR Builder <ExternalLink size={13} />
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
