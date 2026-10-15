@@ -418,6 +418,48 @@ app.post('/api/settings/fix-db', async (req, res) => {
         data LONGTEXT DEFAULT NULL,
         createdAt DATETIME DEFAULT NULL,
         updatedAt DATETIME DEFAULT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS chart_of_accounts (
+        id VARCHAR(50) PRIMARY KEY,
+        code VARCHAR(20) NOT NULL UNIQUE,
+        name VARCHAR(100) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        isTaxAccount TINYINT(1) DEFAULT 0,
+        createdAt DATETIME DEFAULT NULL,
+        updatedAt DATETIME DEFAULT NULL,
+        balance DECIMAL(15,2) DEFAULT 0.00,
+        subtype VARCHAR(50) DEFAULT NULL,
+        accountNumber VARCHAR(50) DEFAULT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS journal_entries (
+        id VARCHAR(50) PRIMARY KEY,
+        date DATETIME NOT NULL,
+        reference VARCHAR(100) DEFAULT NULL,
+        description TEXT DEFAULT NULL,
+        totalAmount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        createdBy VARCHAR(50) DEFAULT NULL,
+        createdAt DATETIME DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'posted'
+      )`,
+      `CREATE TABLE IF NOT EXISTS journal_lines (
+        id VARCHAR(50) PRIMARY KEY,
+        entryId VARCHAR(50) NOT NULL,
+        accountId VARCHAR(50) NOT NULL,
+        debit DECIMAL(15,2) DEFAULT 0.00,
+        credit DECIMAL(15,2) DEFAULT 0.00,
+        description TEXT DEFAULT NULL,
+        partyId VARCHAR(50) DEFAULT NULL,
+        costCenterId VARCHAR(50) DEFAULT NULL,
+        partyType VARCHAR(50) DEFAULT NULL,
+        INDEX idx_je_entryId (entryId),
+        INDEX idx_je_accountId (accountId)
+      )`,
+      `CREATE TABLE IF NOT EXISTS cost_centers (
+        id VARCHAR(50) PRIMARY KEY,
+        code VARCHAR(20) NOT NULL UNIQUE,
+        name VARCHAR(100) NOT NULL,
+        department VARCHAR(100) DEFAULT NULL,
+        isActive TINYINT(1) DEFAULT 1
       )`
     ];
 
@@ -427,6 +469,62 @@ app.post('/api/settings/fix-db', async (req, res) => {
       } catch (err) {
         // Ignore
       }
+    }
+
+    // Default Chart of Accounts seeding
+    try {
+      const [coaRows]: any = await db.query('SELECT COUNT(*) as count FROM chart_of_accounts');
+      if (coaRows && coaRows[0]?.count === 0) {
+        const defaultAccounts = [
+          { id: 'acc_1000', code: '1000', name: 'Commercial Bank', type: 'Asset', subtype: 'Bank', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_1100', code: '1100', name: 'Cash in Hand', type: 'Asset', subtype: 'Cash', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_1500', code: '1500', name: 'Accounts Receivable', type: 'Asset', subtype: 'Current Asset', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_1600', code: '1600', name: 'Inventory - Raw Materials', type: 'Asset', subtype: 'Inventory', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_1610', code: '1610', name: 'Inventory - Finished Goods', type: 'Asset', subtype: 'Inventory', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_1700', code: '1700', name: 'Machinery & Equipment', type: 'Asset', subtype: 'Fixed Asset', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_2000', code: '2000', name: 'Accounts Payable', type: 'Liability', subtype: 'Current Liability', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_2200', code: '2200', name: 'Tax Payable', type: 'Liability', subtype: 'Tax', balance: 0.00, isTaxAccount: 1 },
+          { id: 'acc_2300', code: '2300', name: 'Accrued Expenses', type: 'Liability', subtype: 'Current Liability', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_3000', code: '3000', name: 'Sales Revenue', type: 'Revenue', subtype: 'Sales', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_3100', code: '3100', name: 'Service Income', type: 'Revenue', subtype: 'Service', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_4000', code: '4000', name: 'Raw Materials', type: 'Expense', subtype: 'Production Material', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_4001', code: '4001', name: 'Electric item', type: 'Expense', subtype: 'Production Material', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_4002', code: '4002', name: 'Sub Contract', type: 'Expense', subtype: 'Production Material', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_5000', code: '5000', name: 'Diesel for Generator', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_5001', code: '5001', name: 'Electricity', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_5002', code: '5002', name: 'Factory Maintenance', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_6000', code: '6000', name: 'Audit & Accounting Fees', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_6001', code: '6001', name: 'Bonus', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_6002', code: '6002', name: 'Salaries & Wages', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_7000', code: '7000', name: 'Advertising', type: 'Expense', subtype: 'Selling & Distribution', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_7001', code: '7001', name: 'Sales Commissions', type: 'Expense', subtype: 'Selling & Distribution', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_8000', code: '8000', name: 'Bank Charges', type: 'Expense', subtype: 'Finance', balance: 0.00, isTaxAccount: 0 },
+          { id: 'acc_9000', code: '9000', name: 'Exchange Gain or Loss', type: 'Expense', subtype: 'Non Operating', balance: 0.00, isTaxAccount: 0 }
+        ];
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        for (const acc of defaultAccounts) {
+          await db.query('INSERT IGNORE INTO chart_of_accounts SET ?', { ...acc, createdAt: now });
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Default Cost Centers seeding
+    try {
+      const [ccRows]: any = await db.query('SELECT COUNT(*) as count FROM cost_centers');
+      if (ccRows && ccRows[0]?.count === 0) {
+        const defaultCCs = [
+          { id: 'cc_prod', code: 'PROD', name: 'Production & Workshop', department: 'Manufacturing', isActive: 1 },
+          { id: 'cc_admin', code: 'ADMIN', name: 'Administration & HR', department: 'Management', isActive: 1 },
+          { id: 'cc_sales', code: 'SALES', name: 'Sales & Marketing', department: 'Commercial', isActive: 1 }
+        ];
+        for (const cc of defaultCCs) {
+          await db.query('INSERT IGNORE INTO cost_centers SET ?', cc);
+        }
+      }
+    } catch (e) {
+      // Ignore
     }
 
     // Default quotation templates seeding
@@ -3558,16 +3656,20 @@ app.delete('/api/finance/journals/:id', async (req, res) => {
 
 app.get('/api/finance/journals', async (req, res) => {
   try {
-    const [entries] = await db.query('SELECT * FROM journal_entries ORDER BY date DESC');
-    const [lines] = await db.query('SELECT * FROM journal_lines');
+    const [entries]: any = await db.query('SELECT * FROM journal_entries ORDER BY date DESC, createdAt DESC');
+    const [lines]: any = await db.query(`
+      SELECT jl.*, ca.name as accountName, ca.code as accountCode 
+      FROM journal_lines jl 
+      LEFT JOIN chart_of_accounts ca ON jl.accountId = ca.id
+    `);
     
     // Group lines by entry
-    const result = entries.map(entry => {
-      entry.lines = lines.filter(l => l.entryId === entry.id);
+    const result = entries.map((entry: any) => {
+      entry.lines = lines.filter((l: any) => l.entryId === entry.id);
       return entry;
     });
     res.json(result);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/finance/journals', async (req, res) => {
@@ -3576,50 +3678,77 @@ app.post('/api/finance/journals', async (req, res) => {
     await conn.beginTransaction();
     const { id, date, reference, description, totalAmount, lines, createdBy } = req.body;
     
+    if (!lines || !Array.isArray(lines) || lines.length < 2) {
+      return res.status(400).json({ error: 'A journal entry must contain at least 2 lines.' });
+    }
+
+    const docId = id || `JE-${Date.now().toString().slice(-6)}`;
+    const formattedDate = date 
+      ? (String(date).includes(' ') || String(date).includes('T') 
+          ? String(date).replace('T', ' ').slice(0, 19) 
+          : `${String(date).trim()} 00:00:00`)
+      : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
     const entryData = {
-      id, date, reference, description, totalAmount, createdBy, status: 'posted',
+      id: docId, 
+      date: formattedDate, 
+      reference: reference || null, 
+      description: description || '', 
+      totalAmount: Number(totalAmount || 0), 
+      createdBy: createdBy || 'Admin', 
+      status: 'posted',
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     };
     
     await conn.query('INSERT INTO journal_entries SET ?', entryData);
     
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.accountId) {
+        throw new Error(`Line ${i + 1} does not have an account selected.`);
+      }
+
+      const debitVal = Number(line.debit || 0);
+      const creditVal = Number(line.credit || 0);
+      // Guarantee unique line ID to prevent primary key collision
+      const lineId = `JL-${docId}-${i + 1}-${Math.random().toString(36).substring(2, 7)}`;
+
       await conn.query('INSERT INTO journal_lines SET ?', {
-        id: line.id,
-        entryId: id,
-        accountId: line.accountId, partyType: line.partyType || null, partyId: line.partyId || null, costCenterId: line.costCenterId || null,
+        id: lineId,
+        entryId: docId,
+        accountId: line.accountId, 
+        partyType: line.partyType || null, 
+        partyId: line.partyId || null, 
+        costCenterId: line.costCenterId || null,
         description: line.description || '',
-        debit: line.debit || 0,
-        credit: line.credit || 0
+        debit: debitVal,
+        credit: creditVal
       });
       
       // Update account balances
-      const balanceChange = Number(line.debit || 0) - Number(line.credit || 0);
+      const balanceChange = debitVal - creditVal;
       
-      // Note: In real accounting, Assets/Expenses increase with Debit. Liabilities/Equity/Revenue increase with Credit.
-      // For simplicity in this ledger, we just track the raw balance change, or we adjust based on type.
-      // Let's adjust based on account type.
-      const [accRows] = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+      // Real accounting: Assets/Expenses increase with Debit. Liabilities/Equity/Revenue increase with Credit.
+      const [accRows]: any = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
       if (accRows.length > 0) {
-        const type = accRows[0].type.toLowerCase();
-        let isDebitNormal = type.includes('asset') || type.includes('expense');
-        // If it's a normal debit account, balance = balance + debit - credit
-        // If it's a normal credit account, balance = balance + credit - debit
-        let newBalance = Number(accRows[0].balance);
+        const type = (accRows[0].type || '').toLowerCase();
+        const isDebitNormal = type.includes('asset') || type.includes('expense');
+        let currentBalance = Number(accRows[0].balance || 0);
         if (isDebitNormal) {
-          newBalance += balanceChange;
+          currentBalance += balanceChange;
         } else {
-          newBalance -= balanceChange;
+          currentBalance -= balanceChange;
         }
-        await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [newBalance, line.accountId]);
+        await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [currentBalance, line.accountId]);
       }
     }
     
     await conn.commit();
-    res.json({ success: true });
-  } catch (error) { 
+    res.json({ success: true, id: docId });
+  } catch (error: any) { 
     await conn.rollback();
-    res.status(500).json({ error: error.message }); 
+    console.error('Error posting journal:', error);
+    res.status(500).json({ error: error.message || 'Failed to post journal entry' }); 
   } finally {
     conn.release();
   }

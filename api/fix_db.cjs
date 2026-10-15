@@ -244,6 +244,48 @@ async function run() {
       notes TEXT DEFAULT NULL,
       createdAt DATETIME DEFAULT NULL,
       updatedAt DATETIME DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS chart_of_accounts (
+      id VARCHAR(50) PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(100) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      isTaxAccount TINYINT(1) DEFAULT 0,
+      createdAt DATETIME DEFAULT NULL,
+      updatedAt DATETIME DEFAULT NULL,
+      balance DECIMAL(15,2) DEFAULT 0.00,
+      subtype VARCHAR(50) DEFAULT NULL,
+      accountNumber VARCHAR(50) DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS journal_entries (
+      id VARCHAR(50) PRIMARY KEY,
+      date DATETIME NOT NULL,
+      reference VARCHAR(100) DEFAULT NULL,
+      description TEXT DEFAULT NULL,
+      totalAmount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      createdBy VARCHAR(50) DEFAULT NULL,
+      createdAt DATETIME DEFAULT NULL,
+      status VARCHAR(50) DEFAULT 'posted'
+    )`,
+    `CREATE TABLE IF NOT EXISTS journal_lines (
+      id VARCHAR(50) PRIMARY KEY,
+      entryId VARCHAR(50) NOT NULL,
+      accountId VARCHAR(50) NOT NULL,
+      debit DECIMAL(15,2) DEFAULT 0.00,
+      credit DECIMAL(15,2) DEFAULT 0.00,
+      description TEXT DEFAULT NULL,
+      partyId VARCHAR(50) DEFAULT NULL,
+      costCenterId VARCHAR(50) DEFAULT NULL,
+      partyType VARCHAR(50) DEFAULT NULL,
+      INDEX idx_je_entryId (entryId),
+      INDEX idx_je_accountId (accountId)
+    )`,
+    `CREATE TABLE IF NOT EXISTS cost_centers (
+      id VARCHAR(50) PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(100) NOT NULL,
+      department VARCHAR(100) DEFAULT NULL,
+      isActive TINYINT(1) DEFAULT 1
     )`
   ];
 
@@ -253,6 +295,64 @@ async function run() {
     } catch (err) {
       // Ignore
     }
+  }
+
+  // Default Chart of Accounts seeding
+  try {
+    const [coaRows] = await conn.query('SELECT COUNT(*) as count FROM chart_of_accounts');
+    if (coaRows && coaRows[0]?.count === 0) {
+      const defaultAccounts = [
+        { id: 'acc_1000', code: '1000', name: 'Commercial Bank', type: 'Asset', subtype: 'Bank', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_1100', code: '1100', name: 'Cash in Hand', type: 'Asset', subtype: 'Cash', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_1500', code: '1500', name: 'Accounts Receivable', type: 'Asset', subtype: 'Current Asset', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_1600', code: '1600', name: 'Inventory - Raw Materials', type: 'Asset', subtype: 'Inventory', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_1610', code: '1610', name: 'Inventory - Finished Goods', type: 'Asset', subtype: 'Inventory', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_1700', code: '1700', name: 'Machinery & Equipment', type: 'Asset', subtype: 'Fixed Asset', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_2000', code: '2000', name: 'Accounts Payable', type: 'Liability', subtype: 'Current Liability', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_2200', code: '2200', name: 'Tax Payable', type: 'Liability', subtype: 'Tax', balance: 0.00, isTaxAccount: 1 },
+        { id: 'acc_2300', code: '2300', name: 'Accrued Expenses', type: 'Liability', subtype: 'Current Liability', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_3000', code: '3000', name: 'Sales Revenue', type: 'Revenue', subtype: 'Sales', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_3100', code: '3100', name: 'Service Income', type: 'Revenue', subtype: 'Service', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_4000', code: '4000', name: 'Raw Materials', type: 'Expense', subtype: 'Production Material', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_4001', code: '4001', name: 'Electric item', type: 'Expense', subtype: 'Production Material', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_4002', code: '4002', name: 'Sub Contract', type: 'Expense', subtype: 'Production Material', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_5000', code: '5000', name: 'Diesel for Generator', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_5001', code: '5001', name: 'Electricity', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_5002', code: '5002', name: 'Factory Maintenance', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_6000', code: '6000', name: 'Audit & Accounting Fees', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_6001', code: '6001', name: 'Bonus', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_6002', code: '6002', name: 'Salaries & Wages', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_7000', code: '7000', name: 'Advertising', type: 'Expense', subtype: 'Selling & Distribution', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_7001', code: '7001', name: 'Sales Commissions', type: 'Expense', subtype: 'Selling & Distribution', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_8000', code: '8000', name: 'Bank Charges', type: 'Expense', subtype: 'Finance', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_9000', code: '9000', name: 'Exchange Gain or Loss', type: 'Expense', subtype: 'Non Operating', balance: 0.00, isTaxAccount: 0 }
+      ];
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      for (const acc of defaultAccounts) {
+        await conn.query('INSERT IGNORE INTO chart_of_accounts SET ?', { ...acc, createdAt: now });
+      }
+      console.log('Seeded default chart_of_accounts.');
+    }
+  } catch (e) {
+    // Ignore
+  }
+
+  // Default Cost Centers seeding
+  try {
+    const [ccRows] = await conn.query('SELECT COUNT(*) as count FROM cost_centers');
+    if (ccRows && ccRows[0]?.count === 0) {
+      const defaultCCs = [
+        { id: 'cc_prod', code: 'PROD', name: 'Production & Workshop', department: 'Manufacturing', isActive: 1 },
+        { id: 'cc_admin', code: 'ADMIN', name: 'Administration & HR', department: 'Management', isActive: 1 },
+        { id: 'cc_sales', code: 'SALES', name: 'Sales & Marketing', department: 'Commercial', isActive: 1 }
+      ];
+      for (const cc of defaultCCs) {
+        await conn.query('INSERT IGNORE INTO cost_centers SET ?', cc);
+      }
+      console.log('Seeded default cost_centers.');
+    }
+  } catch (e) {
+    // Ignore
   }
 
   // 3. Run all safe ALTER patches

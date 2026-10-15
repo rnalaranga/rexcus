@@ -418,7 +418,18 @@ export const createTax = async (data: any) => (await (await fetch(`${API_URL}/fi
 export const deleteTax = async (id: string) => (await (await fetch(`${API_URL}/finance/taxes/${id}`, { method: 'DELETE' })).json());
 
 export const fetchJournals = async () => (await (await fetch(`${API_URL}/finance/journals`)).json());
-export const createJournal = async (data: any) => (await (await fetch(`${API_URL}/finance/journals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
+export const createJournal = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/journals`, { 
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(data) 
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to post journal entry');
+  }
+  return json;
+};
 
 export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
 export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());

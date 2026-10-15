@@ -766,3 +766,36 @@ INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"b
 
 INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]');
 
+-- Default Chart of Accounts seed
+INSERT IGNORE INTO `chart_of_accounts` (`id`, `code`, `name`, `type`, `subtype`, `balance`, `isTaxAccount`, `createdAt`) VALUES
+('acc_1000', '1000', 'Commercial Bank', 'Asset', 'Bank', 0.00, 0, NOW()),
+('acc_1100', '1100', 'Cash in Hand', 'Asset', 'Cash', 0.00, 0, NOW()),
+('acc_1500', '1500', 'Accounts Receivable', 'Asset', 'Current Asset', 0.00, 0, NOW()),
+('acc_1600', '1600', 'Inventory - Raw Materials', 'Asset', 'Inventory', 0.00, 0, NOW()),
+('acc_1610', '1610', 'Inventory - Finished Goods', 'Asset', 'Inventory', 0.00, 0, NOW()),
+('acc_1700', '1700', 'Machinery & Equipment', 'Asset', 'Fixed Asset', 0.00, 0, NOW()),
+('acc_2000', '2000', 'Accounts Payable', 'Liability', 'Current Liability', 0.00, 0, NOW()),
+('acc_2200', '2200', 'Tax Payable', 'Liability', 'Tax', 0.00, 1, NOW()),
+('acc_2300', '2300', 'Accrued Expenses', 'Liability', 'Current Liability', 0.00, 0, NOW()),
+('acc_3000', '3000', 'Sales Revenue', 'Revenue', 'Sales', 0.00, 0, NOW()),
+('acc_3100', '3100', 'Service Income', 'Revenue', 'Service', 0.00, 0, NOW()),
+('acc_4000', '4000', 'Raw Materials', 'Expense', 'Production Material', 0.00, 0, NOW()),
+('acc_4001', '4001', 'Electric item', 'Expense', 'Production Material', 0.00, 0, NOW()),
+('acc_4002', '4002', 'Sub Contract', 'Expense', 'Production Material', 0.00, 0, NOW()),
+('acc_5000', '5000', 'Diesel for Generator', 'Expense', 'Production Overhead', 0.00, 0, NOW()),
+('acc_5001', '5001', 'Electricity', 'Expense', 'Production Overhead', 0.00, 0, NOW()),
+('acc_5002', '5002', 'Factory Maintenance', 'Expense', 'Production Overhead', 0.00, 0, NOW()),
+('acc_6000', '6000', 'Audit & Accounting Fees', 'Expense', 'Administration', 0.00, 0, NOW()),
+('acc_6001', '6001', 'Bonus', 'Expense', 'Administration', 0.00, 0, NOW()),
+('acc_6002', '6002', 'Salaries & Wages', 'Expense', 'Administration', 0.00, 0, NOW()),
+('acc_7000', '7000', 'Advertising', 'Expense', 'Selling & Distribution', 0.00, 0, NOW()),
+('acc_7001', '7001', 'Sales Commissions', 'Expense', 'Selling & Distribution', 0.00, 0, NOW()),
+('acc_8000', '8000', 'Bank Charges', 'Expense', 'Finance', 0.00, 0, NOW()),
+('acc_9000', '9000', 'Exchange Gain or Loss', 'Expense', 'Non Operating', 0.00, 0, NOW());
+
+-- Default Cost Centers seed
+INSERT IGNORE INTO `cost_centers` (`id`, `code`, `name`, `department`, `isActive`) VALUES
+('cc_prod', 'PROD', 'Production & Workshop', 'Manufacturing', 1),
+('cc_admin', 'ADMIN', 'Administration & HR', 'Management', 1),
+('cc_sales', 'SALES', 'Sales & Marketing', 'Commercial', 1);
+

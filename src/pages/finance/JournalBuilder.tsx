@@ -44,8 +44,8 @@ export const JournalBuilder: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const [lines, setLines] = useState<JournalLine[]>([
-    { id: '1', accountId: '', partyType: '', partyId: '', costCenterId: '', description: '', debit: 0, credit: 0 },
-    { id: '2', accountId: '', partyType: '', partyId: '', costCenterId: '', description: '', debit: 0, credit: 0 },
+    { id: crypto.randomUUID(), accountId: '', partyType: '', partyId: '', costCenterId: '', description: '', debit: 0, credit: 0 },
+    { id: crypto.randomUUID(), accountId: '', partyType: '', partyId: '', costCenterId: '', description: '', debit: 0, credit: 0 },
   ]);
 
   const addLine = () => setLines(prev => [...prev, {
@@ -91,8 +91,8 @@ export const JournalBuilder: React.FC = () => {
       toast('Journal entry posted successfully!', 'success');
       refetchJournals();
       navigate('/finance');
-    } catch (e) {
-      showError('Failed to post journal entry. Please try again.', 'Post Failed');
+    } catch (e: any) {
+      showError(e?.message || 'Failed to post journal entry. Please try again.', 'Post Failed');
     }
     setSaving(false);
   };
