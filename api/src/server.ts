@@ -908,7 +908,7 @@ async function runDatabaseSync() {
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
     "INSERT IGNORE INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. When queried about purchase prices, items, stock, or customers, use the provided tools to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an advanced intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. You have full read-only access to all modules: Purchasing, Inventory & Stock, Work Orders & Machine Operations, Customers & Invoices, Quotations, and Finance/Accounts. Use the provided tools or execute_custom_erp_query to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
@@ -5475,6 +5475,81 @@ const AI_TOOLS = [
         }
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_production_and_work_orders",
+      description: "Retrieves manufacturing work orders, job cards, target delivery dates, machining operations, assigned machines, and employee operators.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Optional search term for work order number, customer name, or product name"
+          },
+          status: {
+            type: "string",
+            description: "Optional work order status filter, e.g. 'Pending', 'In Progress', 'Completed', 'On Hold'"
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_financial_and_accounting_summary",
+      description: "Retrieves live financial overview including bank balances, cash in hand, total sales revenue, total expenses, and recent journal entries.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_qc_and_machinery_overview",
+      description: "Retrieves machine status (operational, idle, maintenance), hourly rates, and recent quality control (QC) inspection logs, defects, and pass/fail statistics.",
+      parameters: {
+        type: "object",
+        properties: {
+          workOrderId: {
+            type: "string",
+            description: "Optional work order ID to filter QC inspections"
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_erp_database_schema",
+      description: "Returns the schema and available columns across all ERP tables (Inventory, Quotations, Invoices, Customers, Suppliers, Production, Machineries, QC, Accounts, HR, Gate Passes) to assist in crafting accurate SQL queries.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_custom_erp_query",
+      description: "Executes a safe read-only SQL SELECT query on the MySQL ERP database for any complex calculation, cross-table join, or specific data detail across any module in Rex ERP. Only SELECT queries are permitted.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The SQL SELECT statement to execute, e.g. 'SELECT count(*) as total, status FROM work_orders GROUP BY status' or 'SELECT * FROM machineries WHERE status = \"Maintenance\"'"
+          }
+        },
+        required: ["query"]
+      }
+    }
   }
 ];
 
@@ -5590,6 +5665,121 @@ async function executeAITool(name: string, args: any) {
       sql += `ORDER BY q.date DESC LIMIT 12`;
       const [quotes]: any = await db.query(sql, params);
       return { quotations: quotes };
+    } else if (name === "get_production_and_work_orders") {
+      let woSql = `SELECT wo.id, wo.orderNo, wo.customer, wo.productName, wo.qty, wo.status, wo.priority,
+                          wo.plannedStartDate, wo.targetDeliveryDate
+                   FROM work_orders wo WHERE 1=1 `;
+      const params: any[] = [];
+      if (args.status && args.status.trim()) {
+        woSql += `AND wo.status = ? `;
+        params.push(args.status.trim());
+      }
+      if (args.query && args.query.trim()) {
+        const q = `%${args.query.trim()}%`;
+        woSql += `AND (wo.orderNo LIKE ? OR wo.customer LIKE ? OR wo.productName LIKE ?) `;
+        params.push(q, q, q);
+      }
+      woSql += `ORDER BY wo.targetDeliveryDate ASC LIMIT 10`;
+      const [workOrders]: any = await db.query(woSql, params);
+
+      const [activeOps]: any = await db.query(`
+        SELECT woo.id, woo.workOrderId, woo.operationName, woo.stepNumber, woo.plannedHours, woo.status,
+               m.name as machineName, m.code as machineCode,
+               e.name as employeeName
+        FROM work_order_operations woo
+        LEFT JOIN machineries m ON woo.machineId = m.id
+        LEFT JOIN employees e ON woo.employeeId = e.id
+        WHERE woo.status != 'completed'
+        ORDER BY woo.stepNumber ASC LIMIT 15
+      `);
+      return { workOrders, pendingOperations: activeOps };
+    } else if (name === "get_financial_and_accounting_summary") {
+      const [bankAccounts]: any = await db.query(
+        "SELECT id, code, name, type, subtype, balance FROM chart_of_accounts WHERE subtype IN ('Bank', 'Cash') OR type = 'Asset' ORDER BY code ASC"
+      );
+      const [summary]: any = await db.query(`
+        SELECT 
+          COALESCE(SUM(CASE WHEN type = 'Revenue' THEN balance ELSE 0 END), 0) as totalRevenue,
+          COALESCE(SUM(CASE WHEN type = 'Expense' THEN balance ELSE 0 END), 0) as totalExpenses,
+          COALESCE(SUM(CASE WHEN subtype = 'Bank' THEN balance ELSE 0 END), 0) as totalBankBalance,
+          COALESCE(SUM(CASE WHEN subtype = 'Cash' THEN balance ELSE 0 END), 0) as totalCashInHand
+        FROM chart_of_accounts
+      `);
+      const [recentJournals]: any = await db.query(
+        "SELECT id, date, reference, description, totalAmount, status FROM journal_entries ORDER BY date DESC LIMIT 5"
+      );
+      return {
+        summary: summary[0],
+        accounts: bankAccounts,
+        recentJournals
+      };
+    } else if (name === "get_qc_and_machinery_overview") {
+      const [machines]: any = await db.query(
+        "SELECT id, code, name, category, status, hourlyRate FROM machineries ORDER BY name ASC"
+      );
+      let qcSql = `SELECT id, workOrderId, inspectedBy, status, defectReason, notes, createdAt FROM qc_inspections `;
+      const qcParams: any[] = [];
+      if (args.workOrderId) {
+        qcSql += `WHERE workOrderId = ? `;
+        qcParams.push(args.workOrderId);
+      }
+      qcSql += `ORDER BY createdAt DESC LIMIT 10`;
+      const [inspections]: any = await db.query(qcSql, qcParams);
+      return {
+        machineries: machines,
+        recentQCInspections: inspections
+      };
+    } else if (name === "get_erp_database_schema") {
+      return {
+        databaseName: "rex_erp",
+        tables: {
+          inventory: ["id", "name", "sku", "category", "unitCost (purchase price)", "unitPrice (selling price)", "quantity (stock)", "uom", "location", "reorderLevel", "minQty", "boms"],
+          quotations: ["id", "quotationNo", "leadId", "date", "totalAmount", "status (Draft/Pending Approval/Approved/Sent/Rejected)", "approvedBy", "approvedAt", "rejectionReason"],
+          customers: ["id", "name", "company", "phone", "email", "address", "creditLimit", "creditDays", "status"],
+          invoices: ["id", "invoiceNo", "customerId", "date", "dueDate", "total", "subtotal", "taxAmount", "paidAmount", "status (unpaid/partially_paid/paid)"],
+          purchase_orders: ["id", "supplierId", "date", "expectedDate", "subtotal", "tax", "totalAmount", "status", "billedAmount", "billingStatus"],
+          suppliers: ["id", "name", "category", "phone", "email", "creditLimit", "creditDays", "paymentTerms", "status"],
+          grns: ["id", "poId", "supplierId", "date", "receivedBy", "vehicleNo", "storageLocation", "status"],
+          supplier_bills: ["id", "supplierId", "poId", "grnId", "invoiceNo", "date", "dueDate", "amount", "status"],
+          material_requests: ["id", "workOrderNo", "date", "requestedBy", "department", "priority", "status", "items"],
+          work_orders: ["id", "orderNo", "customerId", "customer", "productId", "productName", "qty", "targetDeliveryDate", "plannedStartDate", "status", "priority"],
+          work_order_operations: ["id", "workOrderId", "operationName", "stepNumber", "machineId", "employeeId", "plannedHours", "status", "isLocked"],
+          machineries: ["id", "name", "code", "category", "status", "hourlyRate"],
+          employees: ["id", "name", "code", "designation", "department", "phone", "status"],
+          qc_inspections: ["id", "workOrderId", "inspectedBy", "status (Pass/Fail/Rework)", "defectReason", "notes", "createdAt"],
+          rework_logs: ["id", "qcId", "notes", "status"],
+          chart_of_accounts: ["id", "code", "name", "type (Asset/Liability/Equity/Revenue/Expense)", "subtype (Bank/Cash/Inventory/...)", "balance"],
+          journal_entries: ["id", "date", "reference", "description", "totalAmount", "status"],
+          journal_lines: ["id", "entryId", "accountId", "debit", "credit", "description"],
+          deals: ["id", "customerId", "title", "value", "stage", "probability"],
+          leads: ["id", "customerId", "title", "contactPerson", "phone", "status"],
+          finished_goods_orders: ["id", "orderNo", "productId", "productName", "customerName", "qty", "unitPrice", "totalPrice", "status", "stockStatus"],
+          customer_grns: ["id", "quoteId", "customerName", "items", "receivedAt", "status"],
+          gate_passes: ["id", "type", "customerName", "carrier", "vehicleNo", "items", "status"]
+        }
+      };
+    } else if (name === "execute_custom_erp_query") {
+      const sql = (args.query || '').trim();
+      // Enforce read-only SELECT security
+      if (!/^(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN)\s+/i.test(sql)) {
+        return { error: "Security Restriction: Only read-only SELECT queries are allowed." };
+      }
+      const forbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|REPLACE|CREATE|GRANT|REVOKE|LOCK|UNLOCK|RENAME|CALL|EXEC|EXECUTE)\b/i;
+      if (forbidden.test(sql)) {
+        return { error: "Security Restriction: Data mutation statements are strictly blocked. Please provide a read-only SELECT query." };
+      }
+
+      let finalSql = sql;
+      if (!/\bLIMIT\b/i.test(finalSql)) {
+        finalSql += ' LIMIT 50';
+      }
+
+      const [rows]: any = await db.query(finalSql);
+      return {
+        executedQuery: finalSql,
+        rowCount: Array.isArray(rows) ? rows.length : 0,
+        results: rows
+      };
     }
     return { error: `Unknown tool name: ${name}` };
   } catch (error: any) {
@@ -5652,11 +5842,18 @@ app.post('/api/ai/chat', async (req, res) => {
 
     const model = (settingsMap.openai_model || 'gpt-4o-mini').trim();
     const systemPrompt = settingsMap.openai_system_instructions || 
-      `You are Rex AI, an intelligent, helpful ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
+      `You are Rex AI, an advanced, highly intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
 You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
-When asked about item prices, purchase rates, stock, customers, or suppliers, always call the appropriate tools to look up real-time records from the database.
+You have complete, live read-only access to the entire Rex ERP database across all modules:
+- Purchasing: Supplier rates, past purchase prices, Purchase Orders, Material Requests, GRNs, and Bills
+- Inventory: Standard Purchase Cost (unitCost), Selling Prices (unitPrice), Physical Stock, Low Stock alerts, Storage Locations, and BOMs
+- Production & Shop Floor: Work Orders, Job card status, Operations routing, Planned hours, CNC/Lathe/Milling Machine schedules, and Assigned operators
+- CRM & Sales: Customers, Credit limits, Outstanding Dues, Overdue Invoices, Quotations, and Approval statuses
+- Finance & Accounting: Bank Balances, Cash in Hand, Chart of Accounts, Revenues, Expenses, and Journal entries
+- Machineries & Quality Control: Machine operational status, hourly rates, QC Inspections, Defect reasons, and Pass/Fail statistics
+When asked about ANY detail in the business, always invoke the appropriate specialized tool or use 'execute_custom_erp_query' to retrieve the live facts directly from the database.
 All currency values are in Sri Lankan Rupees (LKR / Rs.).
-Be concise, direct, polite, and format key data with clean markdown bullet points or tables.`;
+Be direct, helpful, polite, and structure your responses with clean markdown tables and bullet points.`;
 
     const systemMessage = {
       role: 'system',
