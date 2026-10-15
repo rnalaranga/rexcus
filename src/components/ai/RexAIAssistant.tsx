@@ -37,6 +37,7 @@ export const RexAIAssistant: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = localStorage.getItem('rex_ai_chat_history');
@@ -163,71 +164,100 @@ export const RexAIAssistant: React.FC = () => {
 
   return (
     <>
-      {/* Floating Trigger Button with Rex AI Brand Logo, Sleek Glassmorphism & Explicit Rounded Corners */}
-      <button
-        onClick={() => setIsOpen(p => !p)}
-        style={{ borderRadius: '9999px' }}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-2.5 rounded-full 
-          bg-zinc-950/85 dark:bg-zinc-900/85 
-          backdrop-blur-xl 
-          border border-rose-500/40 hover:border-rose-500 
-          shadow-[0_8px_30px_0_rgba(225,29,72,0.35)] 
-          hover:shadow-[0_12px_45px_0_rgba(225,29,72,0.6)] 
-          hover:scale-105 active:scale-95 
-          transition-all duration-300 group overflow-hidden"
-        title="Rex AI Agent - Real-Time ERP Intelligence"
-      >
-        {/* Ambient Gradient Background */}
-        <div 
-          style={{ borderRadius: '9999px' }}
-          className="absolute inset-0 bg-gradient-to-r from-rose-600/35 via-zinc-900/60 to-red-600/25 -z-10 group-hover:opacity-95 transition-opacity" 
-        />
-
-        {/* Top-half Glass Sheen / Reflection */}
-        <div 
-          style={{ borderTopLeftRadius: '9999px', borderTopRightRadius: '9999px' }}
-          className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" 
-        />
-
-        {/* Rex AI Logo Gear Emblem with Live Connection Pulse */}
-        <div 
-          style={{ borderRadius: '9999px' }}
-          className="relative flex items-center justify-center p-1 bg-black/50 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 transition-transform duration-300"
+      {/* Docked Half-Circle Trigger Button on Right Screen Edge */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            borderTopLeftRadius: '9999px',
+            borderBottomLeftRadius: '9999px',
+            borderTopRightRadius: '0px',
+            borderBottomRightRadius: '0px'
+          }}
+          className={`fixed right-0 bottom-24 z-50 flex items-center h-[54px] cursor-pointer
+            bg-zinc-950/90 dark:bg-zinc-900/90 
+            backdrop-blur-xl 
+            border-y border-l border-rose-500/50 hover:border-rose-500 
+            transition-all duration-300 ease-out group overflow-hidden select-none
+            ${isHovered 
+              ? 'w-[255px] shadow-[-8px_0_35px_0_rgba(225,29,72,0.65)]' 
+              : 'w-[52px] shadow-[-4px_0_22px_0_rgba(225,29,72,0.4)]'
+            }`}
+          title="Rex AI Agent - Real-Time ERP Intelligence"
         >
-          <RexAILogo variant="icon" size={26} />
-          <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-            <span 
-              style={{ borderRadius: '9999px' }}
-              className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
-            ></span>
-            <span 
-              style={{ borderRadius: '9999px' }}
-              className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-black"
-            ></span>
-          </span>
-        </div>
+          {/* Ambient Glowing Gradient Background */}
+          <div 
+            style={{
+              borderTopLeftRadius: '9999px',
+              borderBottomLeftRadius: '9999px',
+              borderTopRightRadius: '0px',
+              borderBottomRightRadius: '0px'
+            }}
+            className="absolute inset-0 bg-gradient-to-r from-rose-600/40 via-zinc-900/70 to-red-600/30 -z-10 group-hover:opacity-100 transition-opacity" 
+          />
 
-        {/* Brand Text and Subtitle */}
-        <div className="flex flex-col text-left">
-          <div className="flex items-center gap-1.5 leading-tight">
-            <span className="text-[13px] font-black tracking-wider text-white drop-shadow-xs">
-              REX <span className="text-rose-500">AI</span>
-            </span>
-            <span 
+          {/* Top-half Glass Sheen / Reflection */}
+          <div 
+            style={{
+              borderTopLeftRadius: '9999px',
+              borderBottomLeftRadius: '0px',
+              borderTopRightRadius: '0px',
+              borderBottomRightRadius: '0px'
+            }}
+            className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" 
+          />
+
+          {/* Left Rex AI Logo Emblem (Always visible in half-circle) */}
+          <div className="relative flex items-center justify-center w-[52px] h-[54px] shrink-0">
+            <div 
               style={{ borderRadius: '9999px' }}
-              className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-rose-600 text-white tracking-wider shadow-2xs"
+              className="relative flex items-center justify-center p-1 bg-black/60 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-12 transition-all duration-300"
             >
-              AGENT
-            </span>
+              <RexAILogo variant="icon" size={26} />
+              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span 
+                  style={{ borderRadius: '9999px' }}
+                  className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+                ></span>
+                <span 
+                  style={{ borderRadius: '9999px' }}
+                  className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-black"
+                ></span>
+              </span>
+            </div>
           </div>
-          <span className="text-[9px] text-zinc-300 font-medium hidden sm:inline leading-tight">
-            Ask Anything &bull; Live ERP
-          </span>
-        </div>
 
-        {/* Shimmering Sparkles */}
-        <Sparkles size={14} className="text-amber-300 animate-pulse ml-0.5 shrink-0 group-hover:scale-125 transition-transform" />
-      </button>
+          {/* Expandable Content Container (Reveals smoothly on hover) */}
+          <div 
+            className={`flex items-center gap-2.5 overflow-hidden transition-all duration-300 ease-out whitespace-nowrap ${
+              isHovered ? 'max-w-[195px] opacity-100 pr-3.5' : 'max-w-0 opacity-0 pr-0'
+            }`}
+          >
+            {/* Brand Text and Subtitle */}
+            <div className="flex flex-col text-left">
+              <div className="flex items-center gap-1.5 leading-tight">
+                <span className="text-[13px] font-black tracking-wider text-white drop-shadow-xs">
+                  REX <span className="text-rose-500">AI</span>
+                </span>
+                <span 
+                  style={{ borderRadius: '9999px' }}
+                  className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-rose-600 text-white tracking-wider shadow-2xs"
+                >
+                  AGENT
+                </span>
+              </div>
+              <span className="text-[9px] text-zinc-300 font-medium leading-tight">
+                Ask Anything &bull; Live ERP
+              </span>
+            </div>
+
+            {/* Shimmering Sparkles */}
+            <Sparkles size={14} className="text-amber-300 animate-pulse ml-auto shrink-0 group-hover:scale-125 transition-transform" />
+          </div>
+        </button>
+      )}
 
       {/* Slide-Over Drawer / Panel with Glassmorphism & Rounded Corners */}
       {isOpen && (
