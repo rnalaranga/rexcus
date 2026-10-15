@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -13,7 +13,7 @@ import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
-import { createQuotation, fetchQuotations, updateQuotation, fetchAllCustomerGRNs } from '@/lib/api'
+import { createQuotation, fetchQuotations, updateQuotation, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
@@ -203,7 +203,8 @@ export const QuotationBuilder: React.FC = () => {
   const { data: customers } = useCustomers()
   const { data: inventory } = useInventory()
   const { settings } = useSettings()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
+  const canApprove = can ? can('approvals.quotations') : false
   const { data: currencies } = useCurrencies()
   const { data: taxes } = useTaxes()
   const [currency, setCurrency] = useState('LKR')
@@ -252,6 +253,12 @@ export const QuotationBuilder: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const initialLoadedRef = useRef(false)
+
+  const currentQuote = useMemo(() => {
+    if (!currentId && !draftId) return null;
+    const targetId = currentId || draftId;
+    return savedVersions.find((v: any) => v.id === targetId) || null;
+  }, [currentId, draftId, savedVersions])
 
   const loadVersions = useCallback(async () => {
       if (!leadId) return
@@ -1274,6 +1281,126 @@ export const QuotationBuilder: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
             <Download size={14} /> Preview
           </button>
+
+          {/* Approval Workflow Actions */}
+          {!isTemplateMode && currentQuote && (
+            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-theme-subtle">
+              {currentQuote.status === 'Approved' ? (
+                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
+                  <CheckCircle2 size={14} /> Approved {currentQuote.approvedBy ? `(${currentQuote.approvedBy})` : ''}
+                </div>
+              ) : currentQuote.status === 'Pending Approval' ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-xs font-bold">
+                    <Clock size={14} /> Pending Approval
+                  </span>
+                  {canApprove ? (
+                    <>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={CheckCircle2}
+                        className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-none shadow-xs font-bold"
+                        onClick={async () => {
+                          try {
+                            await approveQuotation(currentQuote.id, user?.name || 'Manager');
+                            showToast('success', 'Quotation approved successfully!');
+                            await loadVersions();
+                          } catch(err: any) {
+                            showToast('error', err?.message || 'Failed to approve');
+                          }
+                        }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={XCircle}
+                        className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/30"
+                        onClick={async () => {
+                          const reason = prompt('Enter rejection reason:');
+                          if (!reason) return;
+                          try {
+                            await rejectQuotation(currentQuote.id, reason);
+                            showToast('error', 'Quotation rejected');
+                            await loadVersions();
+                          } catch(err: any) {
+                            showToast('error', err?.message || 'Failed to reject');
+                          }
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-muted italic">Awaiting Manager Approval</span>
+                  )}
+                </div>
+              ) : currentQuote.status === 'Rejected' ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-600 border border-red-500/20 text-xs font-bold" title={currentQuote.rejectionReason}>
+                    <XCircle size={14} /> Rejected {currentQuote.rejectionReason ? `(${currentQuote.rejectionReason})` : ''}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs bg-surface border border-theme-subtle"
+                    onClick={async () => {
+                      try {
+                        await submitQuotationForApproval(currentQuote.id);
+                        showToast('success', 'Resubmitted for approval');
+                        await loadVersions();
+                      } catch(err: any) {
+                        showToast('error', err?.message || 'Failed to resubmit');
+                      }
+                    }}
+                  >
+                    Resubmit
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Send}
+                    className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-semibold"
+                    onClick={async () => {
+                      try {
+                        await submitQuotationForApproval(currentQuote.id);
+                        showToast('success', 'Quotation submitted for approval!');
+                        await loadVersions();
+                      } catch(err: any) {
+                        showToast('error', err?.message || 'Failed to submit');
+                      }
+                    }}
+                  >
+                    Submit for Approval
+                  </Button>
+                  {canApprove && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={CheckCircle2}
+                      className="text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-bold"
+                      onClick={async () => {
+                        try {
+                          await approveQuotation(currentQuote.id, user?.name || 'Manager');
+                          showToast('success', 'Quotation approved directly!');
+                          await loadVersions();
+                        } catch(err: any) {
+                          showToast('error', err?.message || 'Failed to approve');
+                        }
+                      }}
+                    >
+                      Quick Approve
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {!isTemplateMode ? (
             <Button variant="primary" icon={Save} onClick={() => handleSave()} disabled={isSaving} className="text-xs">
@@ -2440,8 +2567,38 @@ export const QuotationBuilder: React.FC = () => {
             settings={settings}
           />
           
+          {currentQuote && currentQuote.status !== 'Approved' && (
+            <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} className="shrink-0 text-amber-600" />
+                <span>Status is <strong>{currentQuote.status || 'Draft'}</strong>. Quotation should be formally approved before issuing or sending to customer.</span>
+              </div>
+              {canApprove && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await approveQuotation(currentQuote.id, user?.name || 'Manager');
+                      showToast('success', 'Quotation approved!');
+                      await loadVersions();
+                    } catch(err: any) {
+                      showToast('error', err?.message || 'Failed to approve');
+                    }
+                  }}
+                  className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shrink-0 shadow-xs"
+                >
+                  Approve Now
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
             <Button variant="ghost" icon={Mail} onClick={() => {
+              if (currentQuote && currentQuote.status !== 'Approved') {
+                if (!window.confirm(`Notice: This quotation is currently "${currentQuote.status || 'Draft'}" and has not been formally approved yet. Do you still wish to email the customer?`)) {
+                  return;
+                }
+              }
               const email = (currentEntity || lead)?.email || '';
               const subj = encodeURIComponent(`Quotation ${quotationNo} - ${subject}`);
               const body = encodeURIComponent(`Dear ${attention || lead?.name || customerName || 'Customer'},\n\nPlease find our Quotation ${quotationNo} attached.\n\nThank you,\n${user?.name || 'Rex Industries'}`);

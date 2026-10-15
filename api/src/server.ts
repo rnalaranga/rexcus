@@ -166,6 +166,38 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+    const token = authHeader.split(' ')[1];
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    const [users]: any = await db.query('SELECT id, name, username, role, prefix FROM users WHERE id = ?', [decoded.id]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+    const user = users[0];
+    
+    let permissions: string[] = [];
+    let roleName = user.role;
+    try {
+      const [roleRows]: any = await db.query('SELECT name, permissions FROM roles WHERE id = ?', [user.role]);
+      if (roleRows && roleRows.length > 0) {
+        roleName = roleRows[0].name || user.role;
+        permissions = typeof roleRows[0].permissions === 'string' ? JSON.parse(roleRows[0].permissions) : (roleRows[0].permissions || []);
+      } else if (user.role === 'admin') {
+        permissions = ['*'];
+      }
+    } catch(e) {}
+
+    res.json({
+      success: true,
+      user: { ...user, roleName, permissions }
+    });
+  } catch (error: any) {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -183,10 +215,30 @@ app.post('/api/auth/login', async (req, res) => {
     
     const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
     
+    let permissions: string[] = [];
+    let roleName = user.role;
+    try {
+      const [roleRows]: any = await db.query('SELECT name, permissions FROM roles WHERE id = ?', [user.role]);
+      if (roleRows && roleRows.length > 0) {
+        roleName = roleRows[0].name || user.role;
+        permissions = typeof roleRows[0].permissions === 'string' ? JSON.parse(roleRows[0].permissions) : (roleRows[0].permissions || []);
+      } else if (user.role === 'admin') {
+        permissions = ['*'];
+      }
+    } catch(e) {}
+
     res.json({ 
       success: true, 
       token, 
-      user: { id: user.id, name: user.name, username: user.username, role: user.role, prefix: user.prefix } 
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        username: user.username, 
+        role: user.role, 
+        roleName,
+        permissions,
+        prefix: user.prefix 
+      } 
     });
   } catch (error) {
     console.error(error);
@@ -705,6 +757,9 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN issueNo VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN issueDate VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN approvedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN approvedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN rejectionReason TEXT DEFAULT NULL",
     "ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
     "ALTER TABLE customers ADD COLUMN paymentTerms TEXT",
     "ALTER TABLE customers ADD COLUMN deliveryTerms TEXT",
@@ -1482,12 +1537,79 @@ app.put('/api/quotations/update/:id', async (req, res) => {
 app.put('/api/quotations/status/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    await db.query('UPDATE quotations SET status = ? WHERE id = ?', [status, id]);
+    const { status, approvedBy, rejectionReason } = req.body;
+
+    // Approval Gate check: Cannot mark as Sent or In Production without being Approved
+    if (status === 'Sent' || status === 'In Production') {
+      const [current]: any = await db.query('SELECT status FROM quotations WHERE id = ?', [id]);
+      if (current && current.length > 0) {
+        const cur = current[0].status;
+        if (cur !== 'Approved' && cur !== 'Sent' && cur !== 'In Production') {
+          return res.status(400).json({ 
+            error: 'Quotation must be Approved before sending to customer or issuing for production.' 
+          });
+        }
+      }
+    }
+
+    if (status === 'Approved') {
+      await db.query(
+        'UPDATE quotations SET status = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?',
+        [status, approvedBy || 'Authorized Approver', id]
+      );
+    } else if (status === 'Rejected') {
+      await db.query(
+        'UPDATE quotations SET status = ?, rejectionReason = ? WHERE id = ?',
+        [status, rejectionReason || null, id]
+      );
+    } else {
+      await db.query('UPDATE quotations SET status = ? WHERE id = ?', [status, id]);
+    }
     res.json({ success: true, id, status });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.post('/api/quotations/:id/submit-approval', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query(
+      "UPDATE quotations SET status = 'Pending Approval', rejectionReason = NULL WHERE id = ?",
+      [id]
+    );
+    res.json({ success: true, id, status: 'Pending Approval' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/quotations/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approvedBy } = req.body;
+    await db.query(
+      "UPDATE quotations SET status = 'Approved', approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?",
+      [approvedBy || 'Authorized Approver', id]
+    );
+    res.json({ success: true, id, status: 'Approved' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/quotations/:id/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    await db.query(
+      "UPDATE quotations SET status = 'Rejected', rejectionReason = ? WHERE id = ?",
+      [reason || 'Rejected by management', id]
+    );
+    res.json({ success: true, id, status: 'Rejected' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

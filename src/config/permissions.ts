@@ -107,6 +107,21 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     ]
   },
   {
+    id: 'approvals',
+    name: 'Approvals & Authorizations',
+    description: 'Grant authority to review, approve, or reject commercial quotes, credit limits, orders, and payments',
+    badgeColor: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400',
+    permissions: [
+      { id: 'approvals.quotations', label: 'Approve Quotations', description: 'Review and approve draft quotations before they can be sent or issued to customers' },
+      { id: 'approvals.discounts', label: 'Discounts & Margin Overrides', description: 'Authorize discretionary line-item and overall discounts on quotes and sales' },
+      { id: 'approvals.credit_limit', label: 'Customer Credit Limits & Terms', description: 'Approve customer credit limit increases, credit periods, and advance waivers' },
+      { id: 'approvals.purchase_orders', label: 'Purchase Orders (PO) Authorization', description: 'Approve vendor purchase orders before dispatching to suppliers' },
+      { id: 'approvals.material_requests', label: 'Material Requisitions (MR)', description: 'Approve store material requests and workshop requisition slips' },
+      { id: 'approvals.bills_payments', label: 'Supplier Bills & Payment Release', description: 'Approve supplier bills and accounts payable payment disbursements' },
+      { id: 'approvals.work_orders', label: 'Production Work Order Release', description: 'Approve production job cards for release to factory floor' }
+    ]
+  },
+  {
     id: 'admin',
     name: 'Administration & System Controls',
     description: 'User access, custom roles, master settings, and audit security',
@@ -114,7 +129,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     permissions: [
       { id: 'admin.users.manage', label: 'Manage Users & Passwords', description: 'Create user logins, reset passwords, and toggle active status' },
       { id: 'admin.roles.manage', label: 'Manage Roles & Permissions', description: 'Create custom roles, edit permission matrices, and assign rights' },
-      { id: 'admin.approvals.manage', label: 'Approvals Matrix', description: 'Configure multi-level approval workflows for quotes & purchases' },
+      { id: 'admin.approvals.manage', label: 'Approvals Hub Access', description: 'Access Central Approvals Hub to review all pending quotes and requests' },
       { id: 'admin.settings.manage', label: 'System & Company Settings', description: 'Modify company branding, TIN, VAT numbers, and defaults' },
       { id: 'admin.database.backup', label: 'Database & Maintenance', description: 'Trigger database backups, audit trail inspection, and diagnostics' }
     ]
@@ -123,6 +138,24 @@ export const PERMISSION_MODULES: PermissionModule[] = [
 
 export const ALL_PERMISSION_IDS: string[] = PERMISSION_MODULES.flatMap(m => m.permissions.map(p => p.id));
 
+// Map alias permissions for seamless backwards compatibility
+const PERMISSION_ALIASES: Record<string, string[]> = {
+  'quotations.approve': ['approvals.quotations', 'quotations.approve'],
+  'approvals.quotations': ['approvals.quotations', 'quotations.approve'],
+  'quotations.discount': ['approvals.discounts', 'quotations.discount'],
+  'approvals.discounts': ['approvals.discounts', 'quotations.discount'],
+  'crm.credit.approve': ['approvals.credit_limit', 'crm.credit.request', 'crm.credit.approve'],
+  'approvals.credit_limit': ['approvals.credit_limit', 'crm.credit.request', 'crm.credit.approve'],
+  'purchasing.po.approve': ['approvals.purchase_orders', 'purchasing.po.manage'],
+  'approvals.purchase_orders': ['approvals.purchase_orders', 'purchasing.po.manage'],
+  'purchasing.mr.approve': ['approvals.material_requests', 'purchasing.mr.manage'],
+  'approvals.material_requests': ['approvals.material_requests', 'purchasing.mr.manage'],
+  'finance.bills.approve': ['approvals.bills_payments', 'finance.invoices.edit', 'purchasing.bills.manage'],
+  'approvals.bills_payments': ['approvals.bills_payments', 'finance.invoices.edit', 'purchasing.bills.manage'],
+  'production.work_orders.approve': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit'],
+  'approvals.work_orders': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit']
+};
+
 export const hasPermission = (
   userPermissions: string[] | undefined,
   requiredPermission: string,
@@ -130,6 +163,9 @@ export const hasPermission = (
 ): boolean => {
   if (userRole === 'admin') return true;
   if (!userPermissions || !Array.isArray(userPermissions)) return false;
-  if (userPermissions.includes('*') || userPermissions.includes(requiredPermission)) return true;
-  return false;
+  if (userPermissions.includes('*')) return true;
+
+  const aliases = PERMISSION_ALIASES[requiredPermission] || [requiredPermission];
+  return aliases.some(alias => userPermissions.includes(alias));
 };
+

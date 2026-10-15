@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { 
   Package, DollarSign, Layers, Plus, Trash2, ChevronDown, ChevronUp, 
   ExternalLink, Image as ImageIcon, Upload, X, Save, AlertCircle, 
-  Clock, Wrench, FileText, CheckCircle2, TrendingUp, BarChart3, History, ArrowRight, ArrowLeft
+  Clock, Wrench, FileText, CheckCircle2, TrendingUp, BarChart3, History, ArrowRight, ArrowLeft,
+  Camera, Barcode, Tag, Boxes, MapPin, Link2
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -588,204 +589,109 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
         {/* Tab Content (Scrollable) */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 
-          {/* TAB 1: PRODUCT INFO & MEDIA (REDESIGNED) */}
+          {/* TAB 1: PRODUCT INFO & MEDIA (CLEAN REDESIGN) */}
           {activeTab === 'info' && (
-            <div className="space-y-6 animate-fade-in">
-              {/* Header Showcase Banner */}
-              <div className="relative overflow-hidden rounded-2xl bg-surface border border-theme-subtle p-5 shadow-xs">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-rex-600/10 border border-rex-500/20 flex items-center justify-center flex-shrink-0 text-rex-500 shadow-inner">
-                      {imageUrl ? (
-                        <img src={imageUrl} alt="" className="w-full h-full object-cover rounded-2xl" />
-                      ) : (
-                        <Package size={28} />
-                      )}
+            <div className="space-y-5 animate-fade-in max-w-5xl mx-auto">
+              
+              {/* 1. Core Identification & Photo Card */}
+              <div className="bg-surface border border-theme-subtle rounded-2xl p-6 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-rex-500/10 text-rex-600 flex items-center justify-center font-bold">
+                      <Package size={17} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-rex-600 bg-rex-500/10 px-2 py-0.5 rounded-md border border-rex-500/20">
-                          {category}
-                        </span>
-                        <span className="text-[11px] font-mono text-muted bg-surface2 px-2 py-0.5 rounded border border-theme-subtle">
-                          {sku || 'PRD-NEW'}
-                        </span>
-                      </div>
-                      <h2 className="text-xl font-bold text-primary tracking-tight mt-1">
-                        {name || 'Untitled Ready-Made Product'}
-                      </h2>
-                      <p className="text-xs text-muted mt-0.5">
-                        {description ? description.slice(0, 100) + (description.length > 100 ? '...' : '') : 'Ready-made finished goods with automated quotation BOM calculations'}
-                      </p>
+                      <h3 className="text-sm font-bold text-primary">Core Identification</h3>
+                      <p className="text-[11px] text-muted">Primary product name, catalog code, category, and visual preview</p>
                     </div>
                   </div>
-
-                  {/* Summary Quick Stats Pill */}
-                  <div className="flex items-center gap-3 bg-surface2/60 backdrop-blur-md px-4 py-2.5 rounded-xl border border-theme-subtle/80 flex-shrink-0">
-                    <div className="text-right">
-                      <div className="text-[10px] uppercase font-semibold text-muted tracking-wider">Current Stock</div>
-                      <div className="text-base font-mono font-bold text-primary">{initialQty || 0} <span className="text-xs font-normal text-muted">{uom}</span></div>
-                    </div>
-                    <div className="h-8 w-px bg-theme-subtle" />
-                    <div className="text-right">
-                      <div className="text-[10px] uppercase font-semibold text-muted tracking-wider">BOM Rollup</div>
-                      <div className="text-base font-mono font-bold text-rex-600">{formatCurrency(totalBOMCost)}</div>
-                    </div>
-                  </div>
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-md bg-rex-500/10 text-rex-600 font-bold border border-rex-500/20">
+                    {category}
+                  </span>
                 </div>
-              </div>
 
-              {/* Two Column Layout: Left Media & Drawings Hero, Right Specs Cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                
-                {/* Left 4 Cols: Media & CAD Showcase */}
-                <div className="lg:col-span-4 space-y-5">
-                  {/* Photo Card */}
-                  <GlassCard className="p-5 border border-theme-subtle/80 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                        <ImageIcon size={15} className="text-emerald-500" /> Product Photo
-                      </h3>
-                      {imageUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setImageUrl('')}
-                          className="text-[11px] text-red-500 hover:underline flex items-center gap-1"
-                        >
-                          <Trash2 size={12} /> Remove
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="relative group rounded-2xl overflow-hidden border border-theme-subtle bg-surface2/40 aspect-square flex flex-col items-center justify-center p-3 text-center transition-all hover:border-rex-500/40">
+                <div className="flex flex-col md:flex-row gap-6 items-start">
+                  {/* Compact, elegant Photo Thumbnail / Uploader */}
+                  <div className="flex flex-col items-center gap-2 shrink-0 w-full md:w-40">
+                    <div className="relative group w-36 h-36 rounded-2xl overflow-hidden border-2 border-dashed border-theme-subtle hover:border-rex-500/50 bg-surface2/30 flex flex-col items-center justify-center transition-all shadow-xs">
                       {imageUrl ? (
                         <>
-                          <img 
-                            src={imageUrl} 
-                            alt={name || 'Product'} 
-                            className="w-full h-full object-cover rounded-xl shadow-sm" 
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-xl backdrop-blur-xs">
-                            <label className="cursor-pointer bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-sm transition-all flex items-center gap-1.5">
-                              <Upload size={13} /> Change Image
+                          <img src={imageUrl} alt={name || 'Product'} className="w-full h-full object-cover rounded-2xl" />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2 backdrop-blur-xs">
+                            <label className="cursor-pointer text-[11px] font-semibold text-white bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1">
+                              <Camera size={12} /> Change
                               <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
                             </label>
+                            <button
+                              type="button"
+                              onClick={() => setImageUrl('')}
+                              className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1"
+                            >
+                              <Trash2 size={11} /> Remove
+                            </button>
                           </div>
                         </>
                       ) : (
-                        <div className="space-y-3 p-4">
-                          <div className="w-16 h-16 rounded-2xl bg-surface2 border border-theme-subtle flex items-center justify-center mx-auto text-muted/60 group-hover:text-rex-500 group-hover:scale-105 transition-all">
-                            <ImageIcon size={32} />
+                        <label className="cursor-pointer w-full h-full flex flex-col items-center justify-center p-3 text-center group-hover:scale-102 transition-transform">
+                          <div className="w-10 h-10 rounded-xl bg-rex-500/10 text-rex-500 flex items-center justify-center mb-1.5 group-hover:bg-rex-500/20 transition-colors">
+                            <Camera size={18} />
                           </div>
-                          <div>
-                            <p className="text-xs font-semibold text-primary">No Image Uploaded</p>
-                            <p className="text-[11px] text-muted mt-0.5">Showcase real finished product photos on catalog & orders</p>
-                          </div>
-                          <label className="inline-flex items-center gap-1.5 cursor-pointer bg-rex-600 hover:bg-rex-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all">
-                            <Upload size={13} /> Select Image
-                            <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
-                          </label>
-                        </div>
+                          <span className="text-xs font-bold text-primary group-hover:text-rex-600 transition-colors">Add Photo</span>
+                          <span className="text-[10px] text-muted leading-tight mt-0.5">Click to upload</span>
+                          <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
+                        </label>
                       )}
                     </div>
-
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-[11px] font-semibold text-secondary">Direct Image URL</label>
+                    {/* Direct Image URL input */}
+                    <div className="w-36">
                       <input
                         type="url"
                         value={imageUrl}
                         onChange={e => setImageUrl(e.target.value)}
-                        placeholder="https://... image link"
-                        className="w-full input-base text-xs font-mono py-1.5 bg-surface"
+                        placeholder="Or paste URL..."
+                        className="w-full text-[10px] font-mono px-2 py-1 rounded-lg border border-theme-subtle bg-surface focus:outline-none focus:border-rex-500 placeholder:text-muted/40 text-secondary"
                       />
                     </div>
-                  </GlassCard>
+                  </div>
 
-                  {/* Drawings / Drive Link Card */}
-                  <GlassCard className="p-5 border border-theme-subtle/80 shadow-sm space-y-3.5">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                        <FileText size={15} className="text-blue-500" /> CAD & Drawings Link
-                      </h3>
-                      <span className="text-[10px] font-semibold font-mono bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full border border-blue-500/20">
-                        Google Drive
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-muted">
-                      Attach folder link containing engineering drawings, 3D STEP files, or CAD specifications.
-                    </p>
-
-                    <div className="space-y-1.5">
+                  {/* Primary Product Inputs (Spacious & Clean) */}
+                  <div className="flex-1 w-full space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-secondary mb-1.5">
+                        Product Name <span className="text-red-500">*</span>
+                      </label>
                       <input
-                        type="url"
-                        value={drawingsUrl}
-                        onChange={e => setDrawingsUrl(e.target.value)}
-                        placeholder="https://drive.google.com/drive/folders/..."
-                        className="w-full input-base text-xs font-mono py-2 bg-surface"
+                        type="text"
+                        required
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        placeholder="e.g. Industrial Hydraulic Cylinder 50×300mm"
+                        className="w-full px-4 py-2.5 rounded-xl border border-theme-subtle bg-surface text-primary font-bold text-sm focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all placeholder:font-normal placeholder:text-muted/40"
                       />
                     </div>
 
-                    {drawingsUrl ? (
-                      <a
-                        href={drawingsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-2.5 px-3.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
-                      >
-                        <ExternalLink size={14} /> Open Drawings in Drive
-                      </a>
-                    ) : (
-                      <div className="p-2.5 bg-surface2/40 rounded-xl border border-dashed border-theme-subtle text-[11px] text-muted text-center">
-                        No Drive link specified
-                      </div>
-                    )}
-                  </GlassCard>
-                </div>
-
-                {/* Right 8 Cols: Comprehensive Specifications & Stock Parameters */}
-                <div className="lg:col-span-8 space-y-5">
-                  {/* General Specifications Card */}
-                  <GlassCard className="p-6 border border-theme-subtle/80 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
-                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-2">
-                        <Package size={16} className="text-rex-600" /> Product Specifications
-                      </h3>
-                      <span className="text-[11px] text-muted">Core identification & classification</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4.5 pt-1">
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-bold text-secondary mb-1.5">
-                          Product Name <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={name}
-                          onChange={e => setName(e.target.value)}
-                          placeholder="e.g. Industrial Hydraulic Cylinder 50x300mm"
-                          className="w-full input-base font-semibold text-sm py-2"
-                        />
-                      </div>
-
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                       <div>
-                        <label className="block text-xs font-bold text-secondary mb-1.5">Product SKU / Serial Code</label>
+                        <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
+                          <Barcode size={13} className="text-muted" /> Product SKU / Code
+                        </label>
                         <input
                           type="text"
                           value={sku}
                           onChange={e => setSku(e.target.value)}
-                          placeholder="e.g. REX-CYL-01"
-                          className="w-full input-base font-mono text-xs py-2 bg-surface"
+                          placeholder="e.g. PRD-5302"
+                          className="w-full px-3 py-2 rounded-xl border border-theme-subtle bg-surface font-mono font-semibold text-xs text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-secondary mb-1.5">Category</label>
+                        <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
+                          <Tag size={13} className="text-muted" /> Category
+                        </label>
                         <select
                           value={category}
                           onChange={e => setCategory(e.target.value)}
-                          className="w-full input-base text-xs py-2"
+                          className="w-full px-3 py-2 rounded-xl border border-theme-subtle bg-surface font-semibold text-xs text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all cursor-pointer"
                         >
                           <option value="Standard Parts">Standard Parts</option>
                           <option value="Hydraulics">Hydraulic Components</option>
@@ -798,11 +704,13 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-secondary mb-1.5">Unit of Measure (UOM)</label>
+                        <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
+                          <Boxes size={13} className="text-muted" /> Unit of Measure (UOM)
+                        </label>
                         <select
                           value={uom}
                           onChange={e => setUom(e.target.value)}
-                          className="w-full input-base text-xs py-2"
+                          className="w-full px-3 py-2 rounded-xl border border-theme-subtle bg-surface font-semibold text-xs text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all cursor-pointer"
                         >
                           <option value="pcs">Pieces (pcs)</option>
                           <option value="sets">Sets (sets)</option>
@@ -812,103 +720,172 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                           <option value="meters">Meters (m)</option>
                         </select>
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-secondary mb-1.5">Storage / Warehouse Bin Location</label>
-                        <input
-                          type="text"
-                          value={location}
-                          onChange={e => setLocation(e.target.value)}
-                          placeholder="e.g. Bay 3 / Rack B-04"
-                          className="w-full input-base text-xs py-2"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-bold text-secondary mb-1.5">Technical Description & Material Notes</label>
-                        <textarea
-                          rows={3}
-                          value={description}
-                          onChange={e => setDescription(e.target.value)}
-                          placeholder="Engineering tolerances, material grades, surface finishing, hardness specifications, or functional notes..."
-                          className="w-full input-base text-xs resize-none py-2"
-                        />
-                      </div>
                     </div>
-                  </GlassCard>
+                  </div>
+                </div>
+              </div>
 
-                  {/* Inventory & Threshold Card */}
-                  <GlassCard className="p-6 border border-theme-subtle/80 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
-                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-2">
-                        <BarChart3 size={16} className="text-indigo-500" /> Stock Quantities & Reorder Triggers
-                      </h3>
-                      <span className="text-[11px] text-muted">Real-time availability monitoring</span>
+              {/* 2. Technical Specifications, Storage & Drawings */}
+              <div className="bg-surface border border-theme-subtle rounded-2xl p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+                      <FileText size={17} />
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
-                      <div className="bg-surface2/30 p-4 rounded-xl border border-theme-subtle space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-xs font-bold text-primary">Current In-Hand Stock</label>
-                          <span className="text-[10px] font-mono text-muted uppercase font-bold">Qty ({uom})</span>
-                        </div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={initialQty}
-                          onChange={e => setInitialQty(e.target.value)}
-                          className="w-full input-base font-mono font-bold text-lg py-2 bg-surface text-primary"
-                        />
-                        <p className="text-[11px] text-muted leading-tight">
-                          {product?.id ? 'Stock updates dynamically through Dispatches and Stock Ledger entries.' : 'Starting physical inventory on-hand in warehouse.'}
-                        </p>
-                      </div>
-
-                      <div className="bg-surface2/30 p-4 rounded-xl border border-theme-subtle space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-xs font-bold text-primary">Low Stock Alert Level</label>
-                          <span className="text-[10px] font-mono text-amber-500 uppercase font-bold">Reorder Point</span>
-                        </div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={reorderLevel}
-                          onChange={e => setReorderLevel(e.target.value)}
-                          className="w-full input-base font-mono font-bold text-lg py-2 bg-surface text-amber-500"
-                        />
-                        <p className="text-[11px] text-muted leading-tight">
-                          Prompts automated low-stock warnings when inventory drops below this threshold.
-                        </p>
-                      </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-primary">Technical Specifications & Storage</h3>
+                      <p className="text-[11px] text-muted">Engineering tolerances, drawings folder, and warehouse bin location</p>
                     </div>
-                  </GlassCard>
-
-                  {/* Flow guidance banner */}
-                  <div className="bg-rex-500/5 border border-rex-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-rex-600/10 text-rex-600 flex items-center justify-center flex-shrink-0">
-                        <Layers size={16} />
-                      </div>
-                      <div className="text-xs">
-                        <span className="font-bold text-primary">Next Step: Configure Bill of Materials</span>
-                        <p className="text-muted text-[11px]">Specify raw plate/shaft dimensions, fasteners, and machining operations in exact quotation format.</p>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="primary" 
-                      size="sm" 
-                      type="button" 
-                      onClick={() => setActiveTab('boms')}
-                      className="text-xs font-bold flex-shrink-0 flex items-center gap-1.5"
-                    >
-                      Open BOMs <ArrowRight size={13} />
-                    </Button>
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
+                      <MapPin size={13} className="text-muted" /> Storage / Warehouse Bin Location
+                    </label>
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={e => setLocation(e.target.value)}
+                      placeholder="e.g. Bay 3 / Rack B-04 / Shelf 2"
+                      className="w-full px-3.5 py-2 rounded-xl border border-theme-subtle bg-surface text-xs font-medium text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all placeholder:text-muted/40"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-secondary mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5"><Link2 size={13} className="text-muted" /> CAD & Engineering Drawings Link</span>
+                      {drawingsUrl && (
+                        <a href={drawingsUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5 font-bold">
+                          Open Link <ExternalLink size={10} />
+                        </a>
+                      )}
+                    </label>
+                    <input
+                      type="url"
+                      value={drawingsUrl}
+                      onChange={e => setDrawingsUrl(e.target.value)}
+                      placeholder="e.g. https://drive.google.com/drive/folders/..."
+                      className="w-full px-3.5 py-2 rounded-xl border border-theme-subtle bg-surface text-xs font-mono text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all placeholder:text-muted/40"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
+                      <FileText size={13} className="text-muted" /> Technical Description & Material Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      placeholder="Specify material grade (e.g. EN8, SS304, MS), heat treatment/hardening, surface finish (zinc plated, blackened), tolerances, or functional notes..."
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-theme-subtle bg-surface text-xs text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all resize-none placeholder:text-muted/40"
+                    />
+                  </div>
+                </div>
               </div>
+
+              {/* 3. Real-Time Stock Quantities & Reorder Monitoring */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Current Stock Card */}
+                <div className="bg-surface border border-theme-subtle rounded-2xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-theme-strong transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-secondary flex items-center gap-1.5">
+                      <Boxes size={14} className="text-rex-600" /> Current Stock
+                    </span>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-surface2 text-muted border border-theme-subtle">
+                      In-Hand ({uom})
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={initialQty}
+                      onChange={e => setInitialQty(e.target.value)}
+                      className="w-28 text-2xl font-black font-mono px-3 py-1.5 rounded-xl border border-theme-subtle bg-surface2/50 text-primary focus:bg-surface focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 transition-all"
+                    />
+                    <span className="text-xs font-semibold text-muted">{uom} on-hand</span>
+                  </div>
+                  <p className="text-[10px] text-muted mt-2">Starting physical inventory count in warehouse</p>
+                </div>
+
+                {/* Reorder Threshold Card */}
+                <div className="bg-surface border border-theme-subtle rounded-2xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-amber-500/40 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-secondary flex items-center gap-1.5">
+                      <AlertCircle size={14} className="text-amber-500" /> Reorder Trigger
+                    </span>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                      Alert Point
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={reorderLevel}
+                      onChange={e => setReorderLevel(e.target.value)}
+                      className="w-28 text-2xl font-black font-mono px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400 focus:bg-surface focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                    />
+                    <span className="text-xs font-semibold text-muted">min threshold</span>
+                  </div>
+                  <p className="text-[10px] text-muted mt-2">Alerts when inventory drops below this level</p>
+                </div>
+
+                {/* BOM Cost & Pricing Snapshot Card */}
+                <div className="bg-surface border border-theme-subtle rounded-2xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-secondary flex items-center gap-1.5">
+                      <DollarSign size={14} className="text-emerald-500" /> BOM Rollup Cost
+                    </span>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                      {boms.length} BOM {boms.length === 1 ? 'Part' : 'Parts'}
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <div className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                      {formatCurrency(totalBOMCost)}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-2 pt-1 border-t border-theme-subtle/40">
+                    <span className="text-[10px] text-muted">Estimated manufacturing cost</span>
+                    <button 
+                      type="button" 
+                      onClick={() => setActiveTab('pricing')} 
+                      className="text-[10px] font-bold text-emerald-600 hover:underline flex items-center gap-0.5"
+                    >
+                      Set Pricing &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Action Banner to Next Step */}
+              <div className="bg-gradient-to-r from-rex-500/10 via-surface to-rex-500/5 border border-rex-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rex-600 text-white flex items-center justify-center font-bold shadow-md shadow-rex-600/20 shrink-0">
+                    <Layers size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-primary">Next Step: Configure Bill of Materials (BOM)</h4>
+                    <p className="text-[11px] text-muted mt-0.5">Define raw plates/shafts, fasteners, and machining operations to calculate accurate manufacturing cost.</p>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="button"
+                  onClick={() => setActiveTab('boms')}
+                  className="font-bold text-xs px-4 py-2 shrink-0 flex items-center gap-1.5 shadow-md shadow-rex-600/20"
+                >
+                  Configure BOM Parts <ArrowRight size={14} />
+                </Button>
+              </div>
+
             </div>
           )}
 

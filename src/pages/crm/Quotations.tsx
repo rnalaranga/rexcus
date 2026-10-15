@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -9,6 +9,7 @@ import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView'
 import { QuotationTemplatesModal } from '@/components/crm/QuotationTemplatesModal'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
@@ -16,19 +17,20 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
-import { deleteQuotation, updateQuotationStatus, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN } from '@/lib/api'
 import { Banknote } from 'lucide-react'
 
 
 export const Quotations: React.FC = () => {
   const { toast, showConfirm } = useDialog();
+  const { user, can } = useAuth();
+  const canApprove = can('approvals.quotations');
 
-
-  
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Sent': return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/50';
       case 'Approved': return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50';
+      case 'Pending Approval': return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50';
       case 'Rejected': return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50';
       case 'In Production': return 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/50';
       default: return 'bg-zinc-50 text-zinc-600 border-zinc-200 dark:bg-zinc-800/50 dark:text-zinc-400 dark:border-zinc-700/50';
@@ -123,13 +125,17 @@ export const Quotations: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (id: string, status: string) => {
+  const handleStatusChange = async (id: string, status: string, currentStatus?: string) => {
+    if ((status === 'Sent' || status === 'In Production') && currentStatus !== 'Approved') {
+      toast('Quotation must be Approved before changing status to Sent or In Production! Please submit for approval first.', 'error');
+      return;
+    }
     try {
-      await updateQuotationStatus(id, status)
-      
-      refetch()
-    } catch(e) {
-      toast('Failed to update status', 'error')
+      await updateQuotationStatus(id, status);
+      toast(`Status updated to ${status}`, 'success');
+      refetch();
+    } catch(e: any) {
+      toast(e?.message || 'Failed to update status', 'error');
     }
   }
 
@@ -329,24 +335,152 @@ export const Quotations: React.FC = () => {
                         {group.quoNo}
                         {latestMain && <span className="text-[10px] bg-rex-500/20 text-rex-700 dark:text-rex-300 px-2 py-0.5 rounded-full font-bold">MAIN v{latestMain.version}</span>}
                         {latestMain && (
-                            <div className="relative ml-2 group/status cursor-pointer">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="relative group/status cursor-pointer">
                               <select 
                                 value={latestMain.status || 'Draft'}
-                                onChange={(e) => handleStatusChange(latestMain.id, e.target.value)}
+                                onChange={(e) => handleStatusChange(latestMain.id, e.target.value, latestMain.status || 'Draft')}
                                 className={`appearance-none cursor-pointer text-[10px] uppercase tracking-wider font-black rounded-full px-3 py-1 pr-6 border focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-rex-500/50 transition-all duration-200 ${getStatusColor(latestMain.status || 'Draft')}`}
                               >
                                 <option value="Draft">Draft</option>
-                                <option value="Sent">Sent</option>
+                                <option value="Pending Approval">Pending Approval</option>
                                 <option value="Approved">Approved</option>
-                                <option value="Rejected">Rejected</option>
+                                <option value="Sent">Sent</option>
                                 <option value="In Production">In Production</option>
+                                <option value="Rejected">Rejected</option>
                               </select>
                               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
                                 <svg className={`w-3 h-3 ${getStatusColor(latestMain.status || 'Draft').split(' ')[1]}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
-                              
                               </div>
                             </div>
-                          )}
+
+                            {/* Action Buttons based on Approval Workflow */}
+                            {(latestMain.status === 'Draft' || !latestMain.status) && (
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  icon={Send}
+                                  className="h-6 text-[9px] px-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/30"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      await submitQuotationForApproval(latestMain.id);
+                                      toast('Quotation submitted for approval!', 'success');
+                                      refetch();
+                                    } catch (err: any) {
+                                      toast(err?.message || 'Failed to submit', 'error');
+                                    }
+                                  }}
+                                >
+                                  Submit Approval
+                                </Button>
+                                {canApprove && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    icon={CheckCircle2}
+                                    className="h-6 text-[9px] px-2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 font-bold"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        await approveQuotation(latestMain.id, user?.name || 'Manager');
+                                        toast('Quotation approved!', 'success');
+                                        refetch();
+                                      } catch (err: any) {
+                                        toast(err?.message || 'Failed to approve', 'error');
+                                      }
+                                    }}
+                                  >
+                                    Approve
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                            {latestMain.status === 'Pending Approval' && (
+                              <div className="flex items-center gap-1.5">
+                                {canApprove ? (
+                                  <>
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      icon={CheckCircle2}
+                                      className="h-6 text-[9px] px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white border-none shadow-xs font-bold"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        try {
+                                          await approveQuotation(latestMain.id, user?.name || 'Manager');
+                                          toast('Quotation approved successfully!', 'success');
+                                          refetch();
+                                        } catch (err: any) {
+                                          toast(err?.message || 'Failed to approve', 'error');
+                                        }
+                                      }}
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      icon={XCircle}
+                                      className="h-6 text-[9px] px-2 bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const reason = prompt('Enter rejection reason:');
+                                        if (!reason) return;
+                                        try {
+                                          await rejectQuotation(latestMain.id, reason);
+                                          toast('Quotation rejected', 'error');
+                                          refetch();
+                                        } catch (err: any) {
+                                          toast(err?.message || 'Failed to reject', 'error');
+                                        }
+                                      }}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                    <Clock size={11} /> Awaiting Manager Approval
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {latestMain.status === 'Approved' && (
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                ✓ Approved {latestMain.approvedBy ? `by ${latestMain.approvedBy}` : ''}
+                              </span>
+                            )}
+
+                            {latestMain.status === 'Rejected' && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-red-600 dark:text-red-400 font-semibold" title={latestMain.rejectionReason}>
+                                  ✕ Rejected {latestMain.rejectionReason ? `(${latestMain.rejectionReason})` : ''}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 text-[9px] px-1.5 bg-surface border border-theme-subtle text-secondary hover:text-primary"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      await submitQuotationForApproval(latestMain.id);
+                                      toast('Resubmitted for approval', 'success');
+                                      refetch();
+                                    } catch (err: any) {
+                                      toast(err?.message || 'Failed to resubmit', 'error');
+                                    }
+                                  }}
+                                >
+                                  Resubmit
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                           
                             {latestMain && latestMain.status === 'Approved' && (
                               <>

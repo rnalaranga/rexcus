@@ -122,13 +122,49 @@ export const updateQuotation = async (id: string, data: any) => {
 };
 
 
-export const updateQuotationStatus = async (id: string, status: string) => {
+export const updateQuotationStatus = async (id: string, status: string, options?: { approvedBy?: string; rejectionReason?: string }) => {
   const res = await fetch(`${API_URL}/quotations/status/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status })
+    body: JSON.stringify({ status, ...options })
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to update quotation status');
+  }
+  return data;
+};
+
+export const submitQuotationForApproval = async (id: string) => {
+  const res = await fetch(`${API_URL}/quotations/${id}/submit-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to submit for approval');
+  return data;
+};
+
+export const approveQuotation = async (id: string, approvedBy?: string) => {
+  const res = await fetch(`${API_URL}/quotations/${id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvedBy })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to approve quotation');
+  return data;
+};
+
+export const rejectQuotation = async (id: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/quotations/${id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to reject quotation');
+  return data;
 };
 
 export const deleteQuotation = async (id: string) => {

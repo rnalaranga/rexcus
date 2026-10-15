@@ -1,10 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { hasPermission } from '@/config/permissions';
 
-type User = {
+export type User = {
   id: string;
   name: string;
   username: string;
   role: string;
+  roleName?: string;
+  permissions?: string[];
   prefix?: string;
 };
 
@@ -13,6 +16,8 @@ type AuthContextType = {
   token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
+  can: (permissionId: string) => boolean;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,6 +27,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const refreshUser = useCallback(async () => {
+    const currentToken = localStorage.getItem('token');
+    if (!currentToken) return;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/auth/me`, {
+        headers: { Authorization: `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+      }
+    } catch (e) {
+      // Ignore background refresh failure
+    }
+  }, []);
+
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
@@ -30,13 +54,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(storedToken);
       try {
         setUser(JSON.parse(storedUser));
+        refreshUser();
       } catch (e) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
     }
     setLoading(false);
-  }, []);
+  }, [refreshUser]);
 
   const login = (newToken: string, newUser: User) => {
     setToken(newToken);
@@ -52,10 +77,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('user');
   };
 
+  const can = useCallback((permissionId: string): boolean => {
+    if (!user) return false;
+    return hasPermission(user.permissions, permissionId, user.role);
+  }, [user]);
+
   if (loading) return null;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, can, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
