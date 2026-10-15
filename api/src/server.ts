@@ -6182,7 +6182,9 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
     }
 
     // Process Tool Calls if model requested ERP data
-    if (responseMsg.tool_calls && responseMsg.tool_calls.length > 0) {
+    let turns = 0;
+    while (responseMsg.tool_calls && responseMsg.tool_calls.length > 0 && turns < 4) {
+      turns++;
       conversation.push(responseMsg);
 
       for (const toolCall of responseMsg.tool_calls) {
@@ -6196,34 +6198,48 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         conversation.push({
           role: 'tool',
           tool_call_id: toolCall.id,
+          name: functionName,
           content: JSON.stringify(toolResult)
         });
       }
 
-      // Follow-up request to synthesize final answer with the real DB data
-      let followUpRes = await callCompletion(activeModelName, conversation);
+      // Follow-up request: Groq requires AI_TOOLS to remain available so the model can process the tool results and synthesize the answer
+      let followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
 
       if (!followUpRes.ok) {
         const errJson: any = await followUpRes.json().catch(() => ({}));
-        return res.status(followUpRes.status).json({
-          success: false,
-          error: errJson.error?.message || 'Failed generating final answer'
-        });
+        const errMsg = (errJson.error?.message || '').toLowerCase();
+
+        // If Groq complains about tool_choice or tool use, retry gracefully
+        if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed')) {
+          console.warn(`[Rex AI] Groq tool_choice warning detected. Retrying synthesis without tool constraint...`);
+          conversation.push({
+            role: 'user',
+            content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
+          });
+          followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+        }
+
+        if (!followUpRes.ok) {
+          const finalErr: any = await followUpRes.json().catch(() => errJson);
+          return res.status(followUpRes.status).json({
+            success: false,
+            error: finalErr.error?.message || 'Failed generating final answer'
+          });
+        }
       }
 
       const followUpData: any = await followUpRes.json();
-      const finalReply = followUpData.choices?.[0]?.message?.content || '';
-      return res.json({
-        success: true,
-        reply: finalReply,
-        model: activeModelName,
-        provider
-      });
+      responseMsg = followUpData.choices?.[0]?.message;
+
+      if (!responseMsg) {
+        break;
+      }
     }
 
     return res.json({
       success: true,
-      reply: responseMsg.content || '',
+      reply: responseMsg?.content || 'No response generated.',
       model: activeModelName,
       provider
     });

@@ -163,11 +163,13 @@ export const RexAIAssistant: React.FC = () => {
     setLoading(true);
 
     try {
-      // Build conversation payload for backend
-      const convPayload = [...messages, userMsg].map(m => ({
-        role: m.role,
-        content: m.content
-      }));
+      // Build conversation payload for backend (filtering out previous UI error banners)
+      const convPayload = [...messages, userMsg]
+        .filter(m => !m.content.startsWith('❌ **Error:**') && !m.content.startsWith('⚠️ **AI API Key'))
+        .map(m => ({
+          role: m.role,
+          content: m.content
+        }));
 
       const res = await fetch(`${API_BASE}/ai/chat`, {
         method: 'POST',
