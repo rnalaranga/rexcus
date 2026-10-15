@@ -65,7 +65,7 @@ export const RexAIAssistant: React.FC = () => {
 
   const hasApiKey = Boolean(settings.openai_api_key && settings.openai_api_key.trim().length > 0);
   const isAiEnabled = settings.ai_enabled !== 'false';
-  const activeModel = settings.openai_model || 'gpt-4o-mini';
+  const activeModel = settings.openai_model || 'gpt-6-luna';
 
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();

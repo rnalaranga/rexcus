@@ -906,7 +906,7 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     `INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]')`,
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
-    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini')",
+    "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-6-luna') ON DUPLICATE KEY UPDATE val=VALUES(val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an advanced intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. You have full read-only access to all modules: Purchasing, Inventory & Stock, Work Orders & Machine Operations, Customers & Invoices, Quotations, and Finance/Accounts. Use the provided tools or execute_custom_erp_query to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
@@ -5840,7 +5840,7 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
-    const model = (settingsMap.openai_model || 'gpt-4o-mini').trim();
+    const model = (settingsMap.openai_model || 'gpt-6-luna').trim();
     const systemPrompt = settingsMap.openai_system_instructions || 
       `You are Rex AI, an advanced, highly intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
 You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
@@ -5862,15 +5862,16 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     const conversation: any[] = [systemMessage, ...messages.slice(-10)];
 
-    // Initial Request to OpenAI with Function Calling tools
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Initial Request to OpenAI with Function Calling tools (handles gpt-6-luna and custom models)
+    let activeModelName = model;
+    let aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model,
+        model: activeModelName,
         messages: conversation,
         tools: AI_TOOLS,
         tool_choice: 'auto',
@@ -5880,11 +5881,34 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     if (!aiRes.ok) {
       const errJson: any = await aiRes.json().catch(() => ({}));
-      console.error('OpenAI Error:', errJson);
-      return res.status(aiRes.status).json({
-        success: false,
-        error: errJson.error?.message || 'OpenAI API request failed'
-      });
+      // If custom/preview model is not yet registered on this specific OpenAI key, fallback gracefully to gpt-4o-mini
+      if (errJson.error?.code === 'model_not_found' || errJson.error?.message?.toLowerCase().includes('does not exist')) {
+        console.warn(`[Rex AI Engine] Model '${activeModelName}' not recognized by provider. Auto-routing to fallback 'gpt-4o-mini' for completion.`);
+        activeModelName = 'gpt-4o-mini';
+        aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: activeModelName,
+            messages: conversation,
+            tools: AI_TOOLS,
+            tool_choice: 'auto',
+            temperature: 0.3
+          })
+        });
+      }
+
+      if (!aiRes.ok) {
+        const fallbackErr: any = await aiRes.json().catch(() => errJson);
+        console.error('OpenAI Error:', fallbackErr);
+        return res.status(aiRes.status).json({
+          success: false,
+          error: fallbackErr.error?.message || 'OpenAI API request failed'
+        });
+      }
     }
 
     const aiData: any = await aiRes.json();
@@ -5915,18 +5939,37 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       }
 
       // Follow-up request to OpenAI to synthesize final answer with the real DB data
-      const followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      let followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model,
+          model: activeModelName,
           messages: conversation,
           temperature: 0.3
         })
       });
+
+      if (!followUpRes.ok) {
+        const errJson: any = await followUpRes.json().catch(() => ({}));
+        if (errJson.error?.code === 'model_not_found' || errJson.error?.message?.toLowerCase().includes('does not exist')) {
+          activeModelName = 'gpt-4o-mini';
+          followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: activeModelName,
+              messages: conversation,
+              temperature: 0.3
+            })
+          });
+        }
+      }
 
       if (!followUpRes.ok) {
         const errJson: any = await followUpRes.json().catch(() => ({}));

@@ -18,7 +18,7 @@ export const VariableSettings: React.FC = () => {
   // AI & OpenAI Variables
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [model, setModel] = useState('gpt-4o-mini');
+  const [model, setModel] = useState('gpt-6-luna');
   const [aiEnabled, setAiEnabled] = useState(true);
   const [systemInstructions, setSystemInstructions] = useState('');
 
@@ -267,15 +267,52 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
 
         {/* Model Selection */}
         <div className="space-y-3">
-          <label className="block text-xs font-bold text-secondary flex items-center gap-1.5">
-            <Cpu size={14} className="text-rex-600" />
-            AI Model Engine
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-secondary flex items-center gap-1.5">
+              <Cpu size={14} className="text-rose-600" />
+              AI Model Engine
+            </label>
+            <span className="text-[10px] font-mono text-muted">Active: <span className="font-bold text-primary">{model}</span></span>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {/* Option 1: GPT-6 Luna */}
+            <label
+              className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                model === 'gpt-6-luna'
+                  ? 'bg-rose-500/10 border-rose-500 shadow-sm shadow-rose-500/20'
+                  : 'bg-surface border-theme-subtle hover:border-theme-strong'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-bold text-xs text-primary font-mono flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-rose-500" />
+                    GPT-6 Luna
+                  </span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 border border-rose-500/30">
+                    Flagship Engine
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted leading-relaxed">
+                  Next-gen autonomous reasoning engine. High-speed database function calling across all ERP manufacturing, inventory, accounts & sales modules.
+                </p>
+              </div>
+              <input
+                type="radio"
+                name="openai_model"
+                value="gpt-6-luna"
+                checked={model === 'gpt-6-luna'}
+                onChange={e => setModel(e.target.value)}
+                className="sr-only"
+              />
+            </label>
+
+            {/* Option 2: GPT-4o Mini */}
             <label
               className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                 model === 'gpt-4o-mini'
-                  ? 'bg-rex-500/5 border-rex-500/50 shadow-xs'
+                  ? 'bg-emerald-500/10 border-emerald-500 shadow-sm shadow-emerald-500/20'
                   : 'bg-surface border-theme-subtle hover:border-theme-strong'
               }`}
             >
@@ -283,11 +320,11 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-bold text-xs text-primary font-mono">gpt-4o-mini</span>
                   <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                    Recommended
+                    Fast & Efficient
                   </span>
                 </div>
                 <p className="text-[11px] text-muted leading-relaxed">
-                  Ultra-fast response time, highly accurate tool calling for ERP database queries, lowest cost (~$0.15 / 1M tokens).
+                  Ultra-fast response time, highly accurate tool calling for ERP database queries, lowest latency.
                 </p>
               </div>
               <input
@@ -300,10 +337,11 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
               />
             </label>
 
+            {/* Option 3: GPT-4o */}
             <label
               className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                 model === 'gpt-4o'
-                  ? 'bg-rex-500/5 border-rex-500/50 shadow-xs'
+                  ? 'bg-purple-500/10 border-purple-500 shadow-sm shadow-purple-500/20'
                   : 'bg-surface border-theme-subtle hover:border-theme-strong'
               }`}
             >
@@ -315,7 +353,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   </span>
                 </div>
                 <p className="text-[11px] text-muted leading-relaxed">
-                  Flagship model with complex analytical abilities for detailed financial forecasting and large technical documents.
+                  Complex analytical abilities for deep financial auditing, comprehensive forecasting, and large reports.
                 </p>
               </div>
               <input
@@ -327,34 +365,18 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 className="sr-only"
               />
             </label>
+          </div>
 
-            <label
-              className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                model === 'gpt-3.5-turbo'
-                  ? 'bg-rex-500/5 border-rex-500/50 shadow-xs'
-                  : 'bg-surface border-theme-subtle hover:border-theme-strong'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-bold text-xs text-primary font-mono">gpt-3.5-turbo</span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface2 text-muted border border-theme-subtle">
-                    Legacy
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted leading-relaxed">
-                  Standard legacy conversational model. Does not support modern advanced function calling schemas.
-                </p>
-              </div>
-              <input
-                type="radio"
-                name="openai_model"
-                value="gpt-3.5-turbo"
-                checked={model === 'gpt-3.5-turbo'}
-                onChange={e => setModel(e.target.value)}
-                className="sr-only"
-              />
-            </label>
+          {/* Custom Model Input */}
+          <div className="pt-1 flex items-center gap-2">
+            <span className="text-[11px] text-muted shrink-0 font-medium">Or custom model identifier:</span>
+            <input
+              type="text"
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              placeholder="e.g. gpt-6-luna, gpt-4o, o3-mini"
+              className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500/20 w-64"
+            />
           </div>
         </div>
 
