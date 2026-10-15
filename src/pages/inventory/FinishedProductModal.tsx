@@ -220,6 +220,17 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
     setActiveTab('info')
   }, [product, isOpen])
 
+  // Prevent background page scrolling when modal is open
+  useEffect(() => {
+    if (!isPage && isOpen) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prev || 'unset'
+      }
+    }
+  }, [isOpen, isPage])
+
   // Image Upload handler
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -460,9 +471,12 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
 
   if (!isOpen) return null
 
-  return (
-    <div className={isPage ? "w-full min-h-[calc(100vh-100px)] flex flex-col animate-fade-in pb-12" : "fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in"}>
-      <div className={isPage ? "relative w-full flex-1 bg-surface border border-theme-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden" : "relative w-full max-w-6xl h-[92vh] max-h-[92vh] bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden"}>
+  const modalBody = (
+    <div className={isPage ? "w-full min-h-[calc(100vh-100px)] flex flex-col animate-fade-in pb-12" : "fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-fade-in overflow-hidden"}>
+      <div 
+        className={isPage ? "relative w-full flex-1 bg-surface border border-theme-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden" : "relative w-full max-w-6xl h-[92vh] max-h-[92vh] bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden"}
+        onClick={e => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-theme-subtle bg-surface2/40 shrink-0">
@@ -1689,4 +1703,8 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
       </div>
     </div>
   )
+
+  if (isPage) return modalBody
+
+  return typeof document !== 'undefined' ? createPortal(modalBody, document.body) : null
 }
