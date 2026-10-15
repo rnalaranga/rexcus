@@ -906,6 +906,12 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     `INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]')`,
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
+    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. When queried about purchase prices, items, stock, or customers, use the provided tools to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())"
   ];
   for (const seed of defaultSeeds) {
@@ -5371,3 +5377,385 @@ setInterval(async () => {
     }
   } catch (err) { console.error('Failed to auto-sync currencies:', err); }
 }, 24 * 60 * 60 * 1000);
+
+// ==========================================
+// REX AI ASSISTANT & REAL-TIME ERP TOOLS
+// ==========================================
+
+const AI_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "get_item_purchase_prices",
+      description: "Searches inventory items and historical purchase orders to find standard purchase price (unitCost), selling price, quantity, and actual past purchase rates paid to suppliers with supplier names and dates.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Item name, material, plate, shaft, fastener, or SKU to search for, e.g. 'EN8', 'Hydraulic Cylinder', 'Bearing 205', 'MS Plate'"
+          }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_inventory_stock",
+      description: "Checks current physical warehouse stock levels, UOM, storage locations (Bay/Rack), and low stock alert thresholds.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Optional item name or category filter"
+          },
+          lowStockOnly: {
+            type: "boolean",
+            description: "Set to true to find items that are at or below reorder level / running out of stock"
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_customer_finance_summary",
+      description: "Looks up customer details, credit limits, unpaid or overdue invoices, and total outstanding balances.",
+      parameters: {
+        type: "object",
+        properties: {
+          customerName: {
+            type: "string",
+            description: "Optional customer or company name"
+          },
+          overdueOnly: {
+            type: "boolean",
+            description: "Set to true to return only overdue unpaid invoices"
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_supplier_history",
+      description: "Retrieves supplier contacts, payment terms, and past purchase order records.",
+      parameters: {
+        type: "object",
+        properties: {
+          supplierName: {
+            type: "string",
+            description: "Optional supplier name or contact person"
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_quotations_overview",
+      description: "Retrieves recent quotations, quotation numbers, customer names, total amounts, and approval statuses.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Optional search query by quotation number or customer name"
+          },
+          status: {
+            type: "string",
+            description: "Optional status filter, e.g. 'Draft', 'Pending Approval', 'Approved', 'Sent', 'In Production'"
+          }
+        }
+      }
+    }
+  }
+];
+
+async function executeAITool(name: string, args: any) {
+  try {
+    if (name === "get_item_purchase_prices") {
+      const rawQ = (args.query || '').trim();
+      const q = `%${rawQ}%`;
+      const [inv]: any = await db.query(
+        `SELECT id, name, sku, unitCost as standardPurchasePrice, unitPrice as sellingPrice, quantity, uom, location, category
+         FROM inventory 
+         WHERE name LIKE ? OR sku LIKE ? OR category LIKE ? 
+         ORDER BY (name = ?) DESC LIMIT 8`,
+        [q, q, q, rawQ]
+      );
+      const [pos]: any = await db.query(
+        `SELECT poi.material, poi.qty, poi.unitCost as actualPurchaseRate, poi.notes,
+                po.id as poNumber, s.name as supplierName, s.phone as supplierPhone,
+                po.date as orderDate, po.status as poStatus
+         FROM po_items poi
+         JOIN purchase_orders po ON poi.poId = po.id
+         LEFT JOIN suppliers s ON po.supplierId = s.id
+         WHERE poi.material LIKE ? OR poi.notes LIKE ?
+         ORDER BY po.date DESC LIMIT 8`,
+        [q, q]
+      );
+      return {
+        searchedQuery: rawQ,
+        matchedInventory: inv,
+        historicalPurchasesFromSuppliers: pos
+      };
+    } else if (name === "check_inventory_stock") {
+      let sql = `SELECT id, name, sku, quantity, uom, location, category, unitCost, unitPrice as sellingPrice, 
+                        COALESCE(reorderLevel, minQty, 5) as minReorderLevel
+                 FROM inventory WHERE 1=1 `;
+      const params: any[] = [];
+      if (args.query && args.query.trim()) {
+        const q = `%${args.query.trim()}%`;
+        sql += `AND (name LIKE ? OR sku LIKE ? OR category LIKE ?) `;
+        params.push(q, q, q);
+      }
+      if (args.lowStockOnly) {
+        sql += `AND quantity <= COALESCE(reorderLevel, minQty, 5) `;
+      }
+      sql += `ORDER BY quantity ASC LIMIT 20`;
+      const [rows]: any = await db.query(sql, params);
+      return { count: rows.length, stockItems: rows };
+    } else if (name === "get_customer_finance_summary") {
+      let custSql = `SELECT id, name, company, phone, email, creditLimit, creditPeriod FROM customers WHERE 1=1 `;
+      const custParams: any[] = [];
+      if (args.customerName && args.customerName.trim()) {
+        const q = `%${args.customerName.trim()}%`;
+        custSql += `AND (name LIKE ? OR company LIKE ?) `;
+        custParams.push(q, q);
+      }
+      custSql += `LIMIT 8`;
+      const [customers]: any = await db.query(custSql, custParams);
+
+      let invSql = `SELECT i.id, i.quotationNo, c.name as customerName, c.company as customerCompany,
+                           i.date, i.dueDate, i.subtotal, i.tax, i.total, i.status
+                    FROM invoices i
+                    LEFT JOIN customers c ON i.customerId = c.id
+                    WHERE i.status != 'paid' `;
+      const invParams: any[] = [];
+      if (args.customerName && args.customerName.trim()) {
+        const q = `%${args.customerName.trim()}%`;
+        invSql += `AND (c.name LIKE ? OR c.company LIKE ?) `;
+        invParams.push(q, q);
+      }
+      if (args.overdueOnly) {
+        invSql += `AND i.dueDate < NOW() `;
+      }
+      invSql += `ORDER BY i.dueDate ASC LIMIT 15`;
+      const [invoices]: any = await db.query(invSql, invParams);
+      const totalDue = invoices.reduce((sum: number, r: any) => sum + Number(r.total || 0), 0);
+
+      return {
+        matchedCustomers: customers,
+        totalOutstandingDue: totalDue,
+        unpaidInvoices: invoices
+      };
+    } else if (name === "get_supplier_history") {
+      let sql = `SELECT s.id, s.name, s.contactPerson, s.phone, s.email, s.paymentTerms,
+                        po.id as poId, po.date as orderDate, po.totalAmount, po.status as poStatus
+                 FROM suppliers s
+                 LEFT JOIN purchase_orders po ON s.id = po.supplierId
+                 WHERE 1=1 `;
+      const params: any[] = [];
+      if (args.supplierName && args.supplierName.trim()) {
+        const q = `%${args.supplierName.trim()}%`;
+        sql += `AND (s.name LIKE ? OR s.contactPerson LIKE ?) `;
+        params.push(q, q);
+      }
+      sql += `ORDER BY po.date DESC LIMIT 15`;
+      const [suppliers]: any = await db.query(sql, params);
+      return { suppliers };
+    } else if (name === "get_quotations_overview") {
+      let sql = `SELECT q.id, q.leadId, q.totalAmount, q.status, q.approvedBy, q.approvedAt, q.date,
+                        c.name as customerName, c.company as customerCompany
+                 FROM quotations q
+                 LEFT JOIN customers c ON q.leadId = c.id
+                 WHERE 1=1 `;
+      const params: any[] = [];
+      if (args.query && args.query.trim()) {
+        const q = `%${args.query.trim()}%`;
+        sql += `AND (q.id LIKE ? OR c.name LIKE ? OR c.company LIKE ?) `;
+        params.push(q, q, q);
+      }
+      if (args.status && args.status.trim()) {
+        sql += `AND q.status = ? `;
+        params.push(args.status.trim());
+      }
+      sql += `ORDER BY q.date DESC LIMIT 12`;
+      const [quotes]: any = await db.query(sql, params);
+      return { quotations: quotes };
+    }
+    return { error: `Unknown tool name: ${name}` };
+  } catch (error: any) {
+    console.error(`Error executing AI tool ${name}:`, error);
+    return { error: error.message };
+  }
+}
+
+// Endpoint to test OpenAI API Key connection
+app.post('/api/ai/test-key', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    const testKey = (apiKey || '').trim();
+    if (!testKey) {
+      return res.status(400).json({ success: false, error: 'OpenAI API key is required.' });
+    }
+    const response = await fetch('https://api.openai.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${testKey}` }
+    });
+    if (!response.ok) {
+      const errData: any = await response.json().catch(() => ({}));
+      return res.status(400).json({ 
+        success: false, 
+        error: errData.error?.message || 'Invalid API key or unauthorized by OpenAI.' 
+      });
+    }
+    res.json({ success: true, message: 'OpenAI API Key verified successfully! Connection established.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Connection test failed.' });
+  }
+});
+
+// Primary AI Chat Completion endpoint with Tools / Function Calling
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { messages = [] } = req.body;
+
+    // 1. Retrieve AI Settings from Database
+    const [settingsRows]: any = await db.query(
+      "SELECT id, val FROM settings WHERE id IN ('openai_api_key', 'openai_model', 'openai_system_instructions', 'ai_enabled')"
+    );
+    const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
+
+    const aiEnabled = settingsMap.ai_enabled !== 'false';
+    if (!aiEnabled) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'AI Assistant is currently disabled in Variable Settings.' 
+      });
+    }
+
+    const apiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+    if (!apiKey) {
+      return res.json({
+        success: false,
+        missingKey: true,
+        reply: 'OpenAI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ OpenAI API Key එක ඇතුළත් කර Save කරන්න.'
+      });
+    }
+
+    const model = (settingsMap.openai_model || 'gpt-4o-mini').trim();
+    const systemPrompt = settingsMap.openai_system_instructions || 
+      `You are Rex AI, an intelligent, helpful ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
+You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
+When asked about item prices, purchase rates, stock, customers, or suppliers, always call the appropriate tools to look up real-time records from the database.
+All currency values are in Sri Lankan Rupees (LKR / Rs.).
+Be concise, direct, polite, and format key data with clean markdown bullet points or tables.`;
+
+    const systemMessage = {
+      role: 'system',
+      content: `${systemPrompt}\n\nToday's Date: ${new Date().toISOString().split('T')[0]}`
+    };
+
+    const conversation: any[] = [systemMessage, ...messages.slice(-10)];
+
+    // Initial Request to OpenAI with Function Calling tools
+    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: conversation,
+        tools: AI_TOOLS,
+        tool_choice: 'auto',
+        temperature: 0.3
+      })
+    });
+
+    if (!aiRes.ok) {
+      const errJson: any = await aiRes.json().catch(() => ({}));
+      console.error('OpenAI Error:', errJson);
+      return res.status(aiRes.status).json({
+        success: false,
+        error: errJson.error?.message || 'OpenAI API request failed'
+      });
+    }
+
+    const aiData: any = await aiRes.json();
+    const choice = aiData.choices?.[0];
+    const responseMsg = choice?.message;
+
+    if (!responseMsg) {
+      return res.status(500).json({ success: false, error: 'Empty response from OpenAI' });
+    }
+
+    // Process Tool Calls if model requested ERP data
+    if (responseMsg.tool_calls && responseMsg.tool_calls.length > 0) {
+      conversation.push(responseMsg);
+
+      for (const toolCall of responseMsg.tool_calls) {
+        const functionName = toolCall.function.name;
+        let functionArgs = {};
+        try {
+          functionArgs = JSON.parse(toolCall.function.arguments || '{}');
+        } catch(e) {}
+
+        const toolResult = await executeAITool(functionName, functionArgs);
+        conversation.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(toolResult)
+        });
+      }
+
+      // Follow-up request to OpenAI to synthesize final answer with the real DB data
+      const followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: conversation,
+          temperature: 0.3
+        })
+      });
+
+      if (!followUpRes.ok) {
+        const errJson: any = await followUpRes.json().catch(() => ({}));
+        return res.status(followUpRes.status).json({
+          success: false,
+          error: errJson.error?.message || 'Failed generating final answer'
+        });
+      }
+
+      const followUpData: any = await followUpRes.json();
+      const finalReply = followUpData.choices?.[0]?.message?.content || '';
+      return res.json({
+        success: true,
+        reply: finalReply,
+        model
+      });
+    }
+
+    return res.json({
+      success: true,
+      reply: responseMsg.content || '',
+      model
+    });
+  } catch (error: any) {
+    console.error('AI chat endpoint error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+

@@ -48,7 +48,9 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { UserManagement } from '@/pages/admin/UserManagement'
 import { Settings } from '@/pages/admin/Settings'
+import { VariableSettings } from '@/pages/admin/VariableSettings'
 import Approvals from '@/pages/admin/Approvals'
+import { RexAIAssistant } from '@/components/ai/RexAIAssistant'
 
 const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-64">
@@ -134,6 +136,7 @@ function AppRoutes() {
           <Route path="/admin/users" element={<UserManagement />} />
           <Route path="/admin/roles" element={<UserManagement initialTab="roles" />} />
           <Route path="/admin/approvals" element={<Approvals />} />
+          <Route path="/admin/variables" element={<VariableSettings />} />
           <Route path="/admin/settings" element={<Settings />} />
 
           {/* 404 */}
@@ -149,6 +152,7 @@ function App() {
       <SettingsProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AppRoutes />
+          <RexAIAssistant />
         </BrowserRouter>
       </SettingsProvider>
     </AuthProvider>

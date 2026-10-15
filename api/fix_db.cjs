@@ -365,6 +365,10 @@ async function run() {
     "ALTER TABLE quotations ADD COLUMN docNo VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN issueNo VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN issueDate VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN approvedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN approvedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN rejectionReason TEXT DEFAULT NULL",
     "ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
     "ALTER TABLE customers ADD COLUMN paymentTerms TEXT",
     "ALTER TABLE customers ADD COLUMN deliveryTerms TEXT",
@@ -468,13 +472,34 @@ async function run() {
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL",
+    "ALTER TABLE work_order_operations ADD COLUMN stepNumber INT DEFAULT 1",
+    "ALTER TABLE work_order_operations ADD COLUMN machineId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE work_order_operations ADD COLUMN employeeId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE work_order_operations ADD COLUMN plannedHours DECIMAL(10,2) DEFAULT 0.00",
+    "ALTER TABLE work_order_operations ADD COLUMN scheduledStart DATETIME DEFAULT NULL",
+    "ALTER TABLE work_order_operations ADD COLUMN scheduledEnd DATETIME DEFAULT NULL",
+    "ALTER TABLE work_order_operations ADD COLUMN isLocked TINYINT(1) DEFAULT 0",
+    "ALTER TABLE work_orders ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN customer VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN orderNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN plannedStartDate DATETIME DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN attachments LONGTEXT DEFAULT NULL",
     "ALTER TABLE inventory ADD COLUMN boms LONGTEXT DEFAULT NULL",
     "ALTER TABLE inventory ADD COLUMN imageUrl LONGTEXT DEFAULT NULL",
     "ALTER TABLE inventory ADD COLUMN drawingsUrl TEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN minQty INT DEFAULT 0",
     "ALTER TABLE inventory ADD COLUMN category VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN customerEmail VARCHAR(150) DEFAULT NULL",
-    "ALTER TABLE finished_goods_orders ADD COLUMN stockStatus VARCHAR(50) DEFAULT 'In Stock'"
+    "ALTER TABLE finished_goods_orders ADD COLUMN stockStatus VARCHAR(50) DEFAULT 'In Stock'",
+    "ALTER TABLE employee_machines ADD COLUMN createdAt DATETIME DEFAULT CURRENT_TIMESTAMP",
+    "ALTER TABLE skills ADD COLUMN description TEXT DEFAULT NULL",
+    "ALTER TABLE qc_inspections ADD COLUMN inspectedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE qc_inspections ADD COLUMN status VARCHAR(50) DEFAULT 'Pass'",
+    "ALTER TABLE qc_inspections ADD COLUMN defectReason TEXT DEFAULT NULL",
+    "ALTER TABLE qc_inspections ADD COLUMN notes TEXT DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN qcId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN status VARCHAR(50) DEFAULT 'Pending'"
   ];
 
   for (const patch of patches) {
@@ -494,7 +519,14 @@ async function run() {
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{\"id\":\"bank_hnb\",\"bankName\":\"Hatton National Bank\",\"branchName\":\"Negombo\",\"accountName\":\"Rex Industries (Pvt) Ltd\",\"accountNumber\":\"011010078028\",\"swiftCode\":\"HNBLLKLX\",\"isDefault\":true}]')",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{\"id\":\"tc_std_30d\",\"name\":\"Standard 30 Days Credit\",\"paymentTerms\":\"30 days from date of delivery\",\"validity\":\"30 Days\",\"delivery\":\"2-3 weeks from confirmed PO\",\"isDefault\":true},{\"id\":\"tc_50_adv\",\"name\":\"50% Advance + Balance on Delivery\",\"paymentTerms\":\"50% Advance with confirmed PO, balance 50% upon delivery\",\"validity\":\"14 Days\",\"delivery\":\"10-15 working days\",\"isDefault\":false},{\"id\":\"tc_cod\",\"name\":\"Immediate Payment on Delivery (COD)\",\"paymentTerms\":\"100% on delivery against invoice\",\"validity\":\"30 Days\",\"delivery\":\"3-5 working days / Ex-stock\",\"isDefault\":false},{\"id\":\"tc_milestone\",\"name\":\"Progressive Milestone Payment\",\"paymentTerms\":\"30% Advance, 40% on dispatch, 30% after installation & sign-off\",\"validity\":\"30 Days\",\"delivery\":\"4-6 weeks from approved drawings\",\"isDefault\":false}]')"
+    "INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{\"id\":\"tc_std_30d\",\"name\":\"Standard 30 Days Credit\",\"paymentTerms\":\"30 days from date of delivery\",\"validity\":\"30 Days\",\"delivery\":\"2-3 weeks from confirmed PO\",\"isDefault\":true},{\"id\":\"tc_50_adv\",\"name\":\"50% Advance + Balance on Delivery\",\"paymentTerms\":\"50% Advance with confirmed PO, balance 50% upon delivery\",\"validity\":\"14 Days\",\"delivery\":\"10-15 working days\",\"isDefault\":false},{\"id\":\"tc_cod\",\"name\":\"Immediate Payment on Delivery (COD)\",\"paymentTerms\":\"100% on delivery against invoice\",\"validity\":\"30 Days\",\"delivery\":\"3-5 working days / Ex-stock\",\"isDefault\":false},{\"id\":\"tc_milestone\",\"name\":\"Progressive Milestone Payment\",\"paymentTerms\":\"30% Advance, 40% on dispatch, 30% after installation & sign-off\",\"validity\":\"30 Days\",\"delivery\":\"4-6 weeks from approved drawings\",\"isDefault\":false}]')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. When queried about purchase prices, items, stock, or customers, use the provided tools to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
+    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())"
   ];
 
   for (const seed of seeds) {
