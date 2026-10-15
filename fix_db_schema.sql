@@ -799,3 +799,26 @@ INSERT IGNORE INTO `cost_centers` (`id`, `code`, `name`, `department`, `isActive
 ('cc_admin', 'ADMIN', 'Administration & HR', 'Management', 1),
 ('cc_sales', 'SALES', 'Sales & Marketing', 'Commercial', 1);
 
+-- User Roles & Permissions Matrix Table
+CREATE TABLE IF NOT EXISTS `roles` (
+  `id` varchar(50) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `permissions` text NOT NULL,
+  `isSystem` tinyint(1) DEFAULT '0',
+  `createdAt` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Default System Roles Seed
+INSERT IGNORE INTO `roles` (`id`, `name`, `description`, `permissions`, `isSystem`, `createdAt`) VALUES
+('admin', 'Administrator', 'Full unconstrained access to all system functions and configurations', '["crm.customers.view","crm.customers.create","crm.customers.edit","crm.customers.delete","crm.credit.request","crm.leads.manage","crm.deals.manage","crm.followups.manage","quotations.view","quotations.create","quotations.edit","quotations.delete","quotations.approve","quotations.discount","quotations.print","finance.invoices.view","finance.invoices.create","finance.invoices.edit","finance.invoices.delete","finance.payments.record","finance.banking.view","finance.banking.manage","finance.accounting.view","finance.journals.create","finance.reports.view","production.work_orders.view","production.work_orders.create","production.work_orders.edit","production.work_orders.delete","production.machining.manage","production.planning.view","production.qc.manage","inventory.items.view","inventory.items.create","inventory.items.edit","inventory.items.delete","inventory.ledger.manage","inventory.customer_grn.manage","inventory.gatepass.manage","purchasing.suppliers.view","purchasing.suppliers.manage","purchasing.mr.manage","purchasing.po.manage","purchasing.grn.manage","purchasing.bills.manage","admin.users.manage","admin.roles.manage","admin.approvals.manage","admin.settings.manage","admin.database.backup"]', 1, NOW()),
+('manager', 'General Manager', 'Operational management across CRM, Production, Finance and Approvals', '["crm.customers.view","crm.customers.create","crm.customers.edit","crm.customers.delete","crm.credit.request","crm.leads.manage","crm.deals.manage","crm.followups.manage","quotations.view","quotations.create","quotations.edit","quotations.delete","quotations.approve","quotations.discount","quotations.print","finance.invoices.view","finance.invoices.create","finance.invoices.edit","finance.invoices.delete","finance.payments.record","finance.banking.view","finance.banking.manage","finance.accounting.view","finance.journals.create","finance.reports.view","production.work_orders.view","production.work_orders.create","production.work_orders.edit","production.work_orders.delete","production.machining.manage","production.planning.view","production.qc.manage","inventory.items.view","inventory.items.create","inventory.items.edit","inventory.items.delete","inventory.ledger.manage","inventory.customer_grn.manage","inventory.gatepass.manage","purchasing.suppliers.view","purchasing.suppliers.manage","purchasing.mr.manage","purchasing.po.manage","purchasing.grn.manage","purchasing.bills.manage","admin.users.manage","admin.roles.manage","admin.approvals.manage","admin.settings.manage"]', 1, NOW()),
+('sales', 'Sales Executive', 'Customer relations, quotations generation, and invoicing view', '["crm.customers.view","crm.customers.create","crm.customers.edit","crm.credit.request","crm.leads.manage","crm.deals.manage","crm.followups.manage","quotations.view","quotations.create","quotations.edit","quotations.print","finance.invoices.view","inventory.items.view"]', 1, NOW()),
+('finance', 'Finance & Accounts Officer', 'Billing, invoice management, customer payment receipts, and banking ledger', '["crm.customers.view","quotations.view","finance.invoices.view","finance.invoices.create","finance.invoices.edit","finance.payments.record","finance.banking.view","finance.banking.manage","finance.accounting.view","finance.journals.create","finance.reports.view","purchasing.bills.manage"]', 1, NOW()),
+('production', 'Production Supervisor', 'Work order job tracking, scheduling, machining operations and QC inspection', '["production.work_orders.view","production.work_orders.create","production.work_orders.edit","production.machining.manage","production.planning.view","production.qc.manage","inventory.items.view","inventory.ledger.manage","inventory.gatepass.manage"]', 1, NOW()),
+('inventory', 'Inventory & Store Keeper', 'Stock management, material receipt, stock ledger entries, and gate pass issue', '["inventory.items.view","inventory.items.create","inventory.items.edit","inventory.ledger.manage","inventory.customer_grn.manage","inventory.gatepass.manage","purchasing.suppliers.view","purchasing.mr.manage","purchasing.grn.manage"]', 1, NOW()),
+('user', 'Standard User', 'Basic view-only access across core business modules', '["crm.customers.view","quotations.view","finance.invoices.view","production.work_orders.view","inventory.items.view"]', 1, NOW());
+
+

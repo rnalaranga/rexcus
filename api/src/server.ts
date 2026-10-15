@@ -460,6 +460,15 @@ app.post('/api/settings/fix-db', async (req, res) => {
         name VARCHAR(100) NOT NULL,
         department VARCHAR(100) DEFAULT NULL,
         isActive TINYINT(1) DEFAULT 1
+      )`,
+      `CREATE TABLE IF NOT EXISTS roles (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description VARCHAR(255) DEFAULT NULL,
+        permissions TEXT NOT NULL,
+        isSystem TINYINT(1) DEFAULT 0,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )`
     ];
 
@@ -469,6 +478,106 @@ app.post('/api/settings/fix-db', async (req, res) => {
       } catch (err) {
         // Ignore
       }
+    }
+
+    // Default Roles Seeding
+    try {
+      const [roleRows]: any = await db.query('SELECT COUNT(*) as count FROM roles');
+      if (roleRows && roleRows[0]?.count === 0) {
+        const ALL_PERMS = [
+          'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
+          'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+          'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
+          'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.invoices.delete', 'finance.payments.record',
+          'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create', 'finance.reports.view',
+          'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit', 'production.work_orders.delete',
+          'production.machining.manage', 'production.planning.view', 'production.qc.manage',
+          'inventory.items.view', 'inventory.items.create', 'inventory.items.edit', 'inventory.items.delete', 'inventory.ledger.manage', 'inventory.customer_grn.manage', 'inventory.gatepass.manage',
+          'purchasing.suppliers.view', 'purchasing.suppliers.manage', 'purchasing.mr.manage', 'purchasing.po.manage', 'purchasing.grn.manage', 'purchasing.bills.manage',
+          'admin.users.manage', 'admin.roles.manage', 'admin.approvals.manage', 'admin.settings.manage', 'admin.database.backup'
+        ];
+
+        const defaultRoles = [
+          {
+            id: 'admin',
+            name: 'Administrator',
+            description: 'Full unconstrained access to all system functions and configurations',
+            permissions: JSON.stringify(ALL_PERMS),
+            isSystem: 1
+          },
+          {
+            id: 'manager',
+            name: 'General Manager',
+            description: 'Operational management across CRM, Production, Finance and Approvals',
+            permissions: JSON.stringify(ALL_PERMS.filter(p => !p.startsWith('admin.database'))),
+            isSystem: 1
+          },
+          {
+            id: 'sales',
+            name: 'Sales Executive',
+            description: 'Customer relations, quotations generation, and invoicing view',
+            permissions: JSON.stringify([
+              'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.credit.request',
+              'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+              'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.print',
+              'finance.invoices.view', 'inventory.items.view'
+            ]),
+            isSystem: 1
+          },
+          {
+            id: 'finance',
+            name: 'Finance & Accounts Officer',
+            description: 'Billing, invoice management, customer payment receipts, and banking ledger',
+            permissions: JSON.stringify([
+              'crm.customers.view', 'quotations.view',
+              'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.payments.record',
+              'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create', 'finance.reports.view',
+              'purchasing.bills.manage'
+            ]),
+            isSystem: 1
+          },
+          {
+            id: 'production',
+            name: 'Production Supervisor',
+            description: 'Work order job tracking, scheduling, machining operations and QC inspection',
+            permissions: JSON.stringify([
+              'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit',
+              'production.machining.manage', 'production.planning.view', 'production.qc.manage',
+              'inventory.items.view', 'inventory.ledger.manage', 'inventory.gatepass.manage'
+            ]),
+            isSystem: 1
+          },
+          {
+            id: 'inventory',
+            name: 'Inventory & Store Keeper',
+            description: 'Stock management, material receipt, stock ledger entries, and gate pass issue',
+            permissions: JSON.stringify([
+              'inventory.items.view', 'inventory.items.create', 'inventory.items.edit', 'inventory.ledger.manage',
+              'inventory.customer_grn.manage', 'inventory.gatepass.manage',
+              'purchasing.suppliers.view', 'purchasing.mr.manage', 'purchasing.grn.manage'
+            ]),
+            isSystem: 1
+          },
+          {
+            id: 'user',
+            name: 'Standard User',
+            description: 'Basic view-only access across core business modules',
+            permissions: JSON.stringify([
+              'crm.customers.view', 'quotations.view', 'finance.invoices.view',
+              'production.work_orders.view', 'inventory.items.view'
+            ]),
+            isSystem: 1
+          }
+        ];
+
+        for (const r of defaultRoles) {
+          await db.query('INSERT INTO roles (id, name, description, permissions, isSystem, createdAt) VALUES (?, ?, ?, ?, ?, NOW())', [
+            r.id, r.name, r.description, r.permissions, r.isSystem
+          ]);
+        }
+      }
+    } catch (e) {
+      console.error('Error seeding roles:', e);
     }
 
     // Default Chart of Accounts seeding
@@ -764,7 +873,12 @@ app.post('/api/settings', async (req, res) => {
 // -- USER MANAGEMENT --
 app.get('/api/users', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, name, username, role, prefix, created_at FROM users ORDER BY created_at DESC');
+    const [rows] = await db.query(`
+      SELECT u.id, u.name, u.username, u.role, u.prefix, u.created_at, r.name as roleName
+      FROM users u
+      LEFT JOIN roles r ON u.role = r.id
+      ORDER BY u.created_at DESC
+    `);
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -818,6 +932,137 @@ app.delete('/api/users/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// -- ROLE & ACCESS CONTROL MANAGEMENT --
+app.get('/api/roles', async (req, res) => {
+  try {
+    const [rows]: any = await db.query(`
+      SELECT r.id, r.name, r.description, r.permissions, r.isSystem, r.createdAt, r.updatedAt,
+             COUNT(u.id) as userCount
+      FROM roles r
+      LEFT JOIN users u ON u.role = r.id
+      GROUP BY r.id, r.name, r.description, r.permissions, r.isSystem, r.createdAt, r.updatedAt
+      ORDER BY r.isSystem DESC, r.name ASC
+    `);
+
+    const formatted = rows.map((r: any) => {
+      let perms: string[] = [];
+      try {
+        perms = typeof r.permissions === 'string' ? JSON.parse(r.permissions) : (r.permissions || []);
+      } catch (e) {
+        perms = [];
+      }
+      return {
+        ...r,
+        permissions: perms,
+        userCount: Number(r.userCount || 0),
+        isSystem: Boolean(r.isSystem)
+      };
+    });
+
+    res.json(formatted);
+  } catch (error: any) {
+    console.error('Error fetching roles:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.post('/api/roles', async (req, res) => {
+  try {
+    const { id, name, description, permissions } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Role name is required' });
+    }
+
+    let roleId = (id || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    if (!roleId) {
+      roleId = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 30);
+    }
+    if (!roleId) {
+      roleId = `role_${Date.now()}`;
+    }
+
+    const [existing]: any = await db.query('SELECT id FROM roles WHERE id = ?', [roleId]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: `Role ID or slug "${roleId}" already exists. Please choose a different name.` });
+    }
+
+    const permsJson = JSON.stringify(Array.isArray(permissions) ? permissions : []);
+    await db.query(
+      'INSERT INTO roles (id, name, description, permissions, isSystem, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, NOW(), NOW())',
+      [roleId, name.trim(), description || '', permsJson]
+    );
+
+    res.json({
+      success: true,
+      role: {
+        id: roleId,
+        name: name.trim(),
+        description: description || '',
+        permissions: Array.isArray(permissions) ? permissions : [],
+        isSystem: false,
+        userCount: 0
+      }
+    });
+  } catch (error: any) {
+    console.error('Error creating role:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.put('/api/roles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, permissions } = req.body;
+
+    const [existing]: any = await db.query('SELECT * FROM roles WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Role not found' });
+    }
+
+    const role = existing[0];
+    const newName = name !== undefined && name.trim() ? name.trim() : role.name;
+    const newDesc = description !== undefined ? description : role.description;
+    const newPerms = permissions !== undefined ? JSON.stringify(Array.isArray(permissions) ? permissions : []) : role.permissions;
+
+    await db.query(
+      'UPDATE roles SET name = ?, description = ?, permissions = ?, updatedAt = NOW() WHERE id = ?',
+      [newName, newDesc, newPerms, id]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating role:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.delete('/api/roles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [existing]: any = await db.query('SELECT * FROM roles WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Role not found' });
+    }
+
+    if (existing[0].isSystem) {
+      return res.status(400).json({ error: 'System default roles cannot be deleted.' });
+    }
+
+    const [users]: any = await db.query('SELECT COUNT(*) as count FROM users WHERE role = ?', [id]);
+    if (users[0]?.count > 0) {
+      return res.status(400).json({
+        error: `Cannot delete role "${existing[0].name}". It is currently assigned to ${users[0].count} user(s). Please reassign them before deleting.`
+      });
+    }
+
+    await db.query('DELETE FROM roles WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting role:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
@@ -4560,6 +4805,198 @@ app.post('/api/production/operations/:id/qc', async (req, res) => {
   }
 });
 
+// GLOBAL SEARCH API
+// ==========================
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (!q || q.length < 1) {
+      return res.json({ customers: [], invoices: [], quotations: [], workOrders: [], inventory: [], suppliers: [] });
+    }
+    const like = `%${q}%`;
+
+    let customers: any[] = [];
+    try {
+      const [c] = await db.query(
+        `SELECT id, name, company, email, phone FROM customers 
+         WHERE name LIKE ? OR company LIKE ? OR email LIKE ? OR phone LIKE ? OR id LIKE ? LIMIT 6`,
+        [like, like, like, like, like]
+      ) as any[];
+      customers = c || [];
+    } catch (e) {}
+
+    let invoices: any[] = [];
+    try {
+      const [inv] = await db.query(
+        `SELECT id, invoiceNo, quotationId, quotationNo, total, status, dueDate, customerId, leadId FROM invoices 
+         WHERE id LIKE ? OR invoiceNo LIKE ? OR quotationId LIKE ? OR quotationNo LIKE ? OR poNo LIKE ? OR orderNo LIKE ? LIMIT 6`,
+        [like, like, like, like, like, like]
+      ) as any[];
+      invoices = inv || [];
+    } catch (e) {}
+
+    let quotations: any[] = [];
+    try {
+      const [qRows] = await db.query(
+        `SELECT id, status, totalAmount, data, leadId FROM quotations 
+         WHERE id LIKE ? OR quotationNo LIKE ? OR data LIKE ? LIMIT 6`,
+        [like, like, like]
+      ) as any[];
+      quotations = qRows || [];
+    } catch (e) {}
+
+    let workOrders: any[] = [];
+    try {
+      const [wos] = await db.query(
+        `SELECT id, orderNo, title, status, customer FROM work_orders 
+         WHERE id LIKE ? OR orderNo LIKE ? OR title LIKE ? OR customer LIKE ? LIMIT 6`,
+        [like, like, like, like]
+      ) as any[];
+      workOrders = wos || [];
+    } catch(e) {}
+
+    let inventory: any[] = [];
+    try {
+      const [inv] = await db.query(
+        `SELECT id, sku, name, category, quantity, unitCost, unitPrice FROM inventory 
+         WHERE sku LIKE ? OR name LIKE ? OR category LIKE ? OR id LIKE ? LIMIT 6`,
+        [like, like, like, like]
+      ) as any[];
+      inventory = inv || [];
+    } catch(e) {}
+
+    let suppliers: any[] = [];
+    try {
+      const [sups] = await db.query(
+        `SELECT id, name, email, phone FROM suppliers 
+         WHERE name LIKE ? OR email LIKE ? OR id LIKE ? LIMIT 6`,
+        [like, like, like]
+      ) as any[];
+      suppliers = sups || [];
+    } catch(e) {}
+
+    res.json({
+      customers,
+      invoices,
+      quotations,
+      workOrders,
+      inventory,
+      suppliers
+    });
+  } catch (error: any) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SYSTEM NOTIFICATIONS API
+// ==========================
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const list: any[] = [];
+
+    // 1. Overdue Invoices
+    try {
+      const [overdueInvoices] = await db.query(
+        `SELECT id, invoiceNo, total, paidAmount, dueDate, customerId, leadId 
+         FROM invoices 
+         WHERE status NOT IN ('paid', 'draft') AND dueDate IS NOT NULL AND dueDate < NOW()
+         ORDER BY dueDate ASC LIMIT 6`
+      ) as any[];
+      
+      for (const inv of (overdueInvoices || [])) {
+        const due = Math.max(0, Number(inv.total || 0) - Number(inv.paidAmount || 0));
+        const days = Math.max(1, Math.ceil((Date.now() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
+        list.push({
+          id: `overdue-inv-${inv.id}`,
+          type: 'invoice',
+          severity: 'error',
+          title: `Overdue Invoice: ${inv.invoiceNo || inv.id}`,
+          message: `Overdue by ${days} days · Rs. ${due.toLocaleString()} pending settlement`,
+          time: `${days}d ago`,
+          link: '/finance/invoices',
+          timestamp: new Date(inv.dueDate).getTime()
+        });
+      }
+    } catch(e) {}
+
+    // 2. Low Stock Alerts
+    try {
+      const [lowStock] = await db.query(
+        `SELECT id, sku, name, quantity, minQty, reorderLevel 
+         FROM inventory 
+         WHERE quantity <= COALESCE(minQty, reorderLevel, 5)
+         ORDER BY quantity ASC LIMIT 6`
+      ) as any[];
+      
+      for (const item of (lowStock || [])) {
+        list.push({
+          id: `low-stock-${item.id}`,
+          type: 'inventory',
+          severity: 'warning',
+          title: `Low Stock: ${item.name || item.sku}`,
+          message: `Only ${item.quantity || 0} left in stock (Min required: ${item.minQty || item.reorderLevel || 5})`,
+          time: 'Action required',
+          link: '/inventory',
+          timestamp: Date.now() - 3600000
+        });
+      }
+    } catch(e) {}
+
+    // 3. Pending Credit Approvals
+    try {
+      const [pendingCredit] = await db.query(
+        `SELECT id, name, company, pendingCreditLimit 
+         FROM customers 
+         WHERE creditLimitStatus = 'pending' LIMIT 5`
+      ) as any[];
+      
+      for (const c of (pendingCredit || [])) {
+        list.push({
+          id: `credit-${c.id}`,
+          type: 'approval',
+          severity: 'info',
+          title: `Credit Approval: ${c.company || c.name}`,
+          message: `Customer requested credit limit of Rs. ${Number(c.pendingCreditLimit || 0).toLocaleString()}`,
+          time: 'Pending review',
+          link: `/crm/customers/${c.id}`,
+          timestamp: Date.now() - 7200000
+        });
+      }
+    } catch(e) {}
+
+    // 4. Pending Work Orders
+    try {
+      const [wos] = await db.query(
+        `SELECT id, orderNo, title, status, customer, createdAt 
+         FROM work_orders 
+         WHERE status IN ('pending', 'in_progress', 'scheduled')
+         ORDER BY createdAt DESC LIMIT 5`
+      ) as any[];
+      
+      for (const wo of (wos || [])) {
+        list.push({
+          id: `wo-${wo.id}`,
+          type: 'production',
+          severity: wo.status === 'pending' ? 'warning' : 'info',
+          title: `Work Order: ${wo.orderNo || wo.id}`,
+          message: `${wo.title || 'Job in production'} · Customer: ${wo.customer || 'General'}`,
+          time: 'Active',
+          link: '/production',
+          timestamp: wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now()
+        });
+      }
+    } catch(e) {}
+
+    // Sort by timestamp desc
+    list.sort((a, b) => b.timestamp - a.timestamp);
+
+    res.json(list);
+  } catch (error: any) {
+    console.error('Notifications error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
   // SYSTEM STATS ROUTE
   // ==========================
@@ -4725,6 +5162,52 @@ async function runStartupMigrations() {
     try { await db.query(s); } catch (e) {}
   }
 
+  // Ensure Roles & Core Tables
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS roles (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description VARCHAR(255) DEFAULT NULL,
+        permissions TEXT NOT NULL,
+        isSystem TINYINT(1) DEFAULT 0,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+
+    const [roleRows]: any = await db.query('SELECT COUNT(*) as count FROM roles');
+    if (roleRows && roleRows[0]?.count === 0) {
+      const ALL_PERMS = [
+        'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
+        'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+        'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
+        'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.invoices.delete', 'finance.payments.record',
+        'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create', 'finance.reports.view',
+        'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit', 'production.work_orders.delete',
+        'production.machining.manage', 'production.planning.view', 'production.qc.manage',
+        'inventory.items.view', 'inventory.items.create', 'inventory.items.edit', 'inventory.items.delete', 'inventory.ledger.manage', 'inventory.customer_grn.manage', 'inventory.gatepass.manage',
+        'purchasing.suppliers.view', 'purchasing.suppliers.manage', 'purchasing.mr.manage', 'purchasing.po.manage', 'purchasing.grn.manage', 'purchasing.bills.manage',
+        'admin.users.manage', 'admin.roles.manage', 'admin.approvals.manage', 'admin.settings.manage', 'admin.database.backup'
+      ];
+
+      const defaultRoles = [
+        { id: 'admin', name: 'Administrator', description: 'Full unconstrained access to all system functions and configurations', permissions: JSON.stringify(ALL_PERMS), isSystem: 1 },
+        { id: 'manager', name: 'General Manager', description: 'Operational management across CRM, Production, Finance and Approvals', permissions: JSON.stringify(ALL_PERMS.filter(p => !p.startsWith('admin.database'))), isSystem: 1 },
+        { id: 'sales', name: 'Sales Executive', description: 'Customer relations, quotations generation, and invoicing view', permissions: JSON.stringify(['crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.credit.request', 'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage', 'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.print', 'finance.invoices.view', 'inventory.items.view']), isSystem: 1 },
+        { id: 'finance', name: 'Finance & Accounts Officer', description: 'Billing, invoice management, customer payment receipts, and banking ledger', permissions: JSON.stringify(['crm.customers.view', 'quotations.view', 'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.payments.record', 'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create', 'finance.reports.view', 'purchasing.bills.manage']), isSystem: 1 },
+        { id: 'production', name: 'Production Supervisor', description: 'Work order job tracking, scheduling, machining operations and QC inspection', permissions: JSON.stringify(['production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit', 'production.machining.manage', 'production.planning.view', 'production.qc.manage', 'inventory.items.view', 'inventory.ledger.manage', 'inventory.gatepass.manage']), isSystem: 1 },
+        { id: 'inventory', name: 'Inventory & Store Keeper', description: 'Stock management, material receipt, stock ledger entries, and gate pass issue', permissions: JSON.stringify(['inventory.items.view', 'inventory.items.create', 'inventory.items.edit', 'inventory.ledger.manage', 'inventory.customer_grn.manage', 'inventory.gatepass.manage', 'purchasing.suppliers.view', 'purchasing.mr.manage', 'purchasing.grn.manage']), isSystem: 1 },
+        { id: 'user', name: 'Standard User', description: 'Basic view-only access across core business modules', permissions: JSON.stringify(['crm.customers.view', 'quotations.view', 'finance.invoices.view', 'production.work_orders.view', 'inventory.items.view']), isSystem: 1 }
+      ];
+
+      for (const r of defaultRoles) {
+        await db.query('INSERT IGNORE INTO roles (id, name, description, permissions, isSystem, createdAt) VALUES (?, ?, ?, ?, ?, NOW())', [r.id, r.name, r.description, r.permissions, r.isSystem]);
+      }
+    }
+  } catch (e) {
+    console.error('Error verifying roles table during startup:', e);
+  }
 
   try {
     const [allPos]: any = await db.query('SELECT id FROM purchase_orders');
@@ -4732,6 +5215,19 @@ async function runStartupMigrations() {
       await syncPOBillingStatus(allPos.map((p: any) => p.id));
     }
   } catch (e) {}
+
+  // Run full database health diagnostic check
+  try {
+    const [tables]: any = await db.query('SHOW TABLES');
+    const [rolesCount]: any = await db.query('SELECT COUNT(*) as count FROM roles');
+    const [usersCount]: any = await db.query('SELECT COUNT(*) as count FROM users');
+    const [custCount]: any = await db.query('SELECT COUNT(*) as count FROM customers');
+    const [invCount]: any = await db.query('SELECT COUNT(*) as count FROM invoices');
+    console.log(`[DB HEALTH] Database connection verified successfully!`);
+    console.log(`[DB HEALTH] Tables: ${tables.length} | Roles: ${rolesCount[0]?.count || 0} | Users: ${usersCount[0]?.count || 0} | Customers: ${custCount[0]?.count || 0} | Invoices: ${invCount[0]?.count || 0}`);
+  } catch (e: any) {
+    console.error('[DB HEALTH] Verification warning:', e.message);
+  }
 }
 
 app.listen(PORT, async () => {

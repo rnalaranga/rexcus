@@ -132,6 +132,7 @@ function AppRoutes() {
 
           {/* Admin */}
           <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/roles" element={<UserManagement initialTab="roles" />} />
           <Route path="/admin/approvals" element={<Approvals />} />
           <Route path="/admin/settings" element={<Settings />} />
 
