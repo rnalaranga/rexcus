@@ -95,9 +95,15 @@ export const Quotations: React.FC = () => {
     const advanceAmount = (total * percent) / 100;
     
     try {
+      const cust = customers.find((c: any) => c.id === group.leadId);
+      const lead = leads.find((l: any) => l.id === group.leadId);
+      const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
+
       const payload = {
         id: `INV-${Date.now().toString().slice(-6)}`,
         quotationId: latestMain.id,
+        quotationNo: group.quoNo,
+        customerId: custId,
         leadId: group.leadId || 'WALK-IN',
         date: new Date().toISOString().slice(0, 19).replace('T', ' '),
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' '),

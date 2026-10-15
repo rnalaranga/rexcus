@@ -821,4 +821,40 @@ INSERT IGNORE INTO `roles` (`id`, `name`, `description`, `permissions`, `isSyste
 ('inventory', 'Inventory & Store Keeper', 'Stock management, material receipt, stock ledger entries, and gate pass issue', '["inventory.items.view","inventory.items.create","inventory.items.edit","inventory.ledger.manage","inventory.customer_grn.manage","inventory.gatepass.manage","purchasing.suppliers.view","purchasing.mr.manage","purchasing.grn.manage"]', 1, NOW()),
 ('user', 'Standard User', 'Basic view-only access across core business modules', '["crm.customers.view","quotations.view","finance.invoices.view","production.work_orders.view","inventory.items.view"]', 1, NOW());
 
+-- Additional schema patches for production, QC, search and inventory
+ALTER TABLE work_order_operations ADD COLUMN stepNumber INT DEFAULT 1;
+ALTER TABLE work_order_operations ADD COLUMN machineId VARCHAR(50) DEFAULT NULL;
+ALTER TABLE work_order_operations ADD COLUMN employeeId VARCHAR(50) DEFAULT NULL;
+ALTER TABLE work_order_operations ADD COLUMN plannedHours DECIMAL(10,2) DEFAULT 0.00;
+ALTER TABLE work_order_operations ADD COLUMN scheduledStart DATETIME DEFAULT NULL;
+ALTER TABLE work_order_operations ADD COLUMN scheduledEnd DATETIME DEFAULT NULL;
+ALTER TABLE work_order_operations ADD COLUMN isLocked TINYINT(1) DEFAULT 0;
+
+ALTER TABLE work_orders ADD COLUMN customerId VARCHAR(50) DEFAULT NULL;
+ALTER TABLE work_orders ADD COLUMN customer VARCHAR(255) DEFAULT NULL;
+ALTER TABLE work_orders ADD COLUMN orderNo VARCHAR(100) DEFAULT NULL;
+ALTER TABLE work_orders ADD COLUMN plannedStartDate DATETIME DEFAULT NULL;
+ALTER TABLE work_orders ADD COLUMN attachments LONGTEXT DEFAULT NULL;
+
+ALTER TABLE inventory ADD COLUMN category VARCHAR(100) DEFAULT NULL;
+ALTER TABLE inventory ADD COLUMN boms LONGTEXT DEFAULT NULL;
+ALTER TABLE inventory ADD COLUMN imageUrl LONGTEXT DEFAULT NULL;
+ALTER TABLE inventory ADD COLUMN drawingsUrl TEXT DEFAULT NULL;
+ALTER TABLE inventory ADD COLUMN minQty INT DEFAULT 0;
+
+ALTER TABLE quotations ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL;
+
+ALTER TABLE employee_machines ADD COLUMN createdAt DATETIME DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE skills ADD COLUMN description TEXT DEFAULT NULL;
+
+ALTER TABLE qc_inspections ADD COLUMN inspectedBy VARCHAR(100) DEFAULT NULL;
+ALTER TABLE qc_inspections ADD COLUMN status VARCHAR(50) DEFAULT 'Pass';
+ALTER TABLE qc_inspections ADD COLUMN defectReason TEXT DEFAULT NULL;
+ALTER TABLE qc_inspections ADD COLUMN notes TEXT DEFAULT NULL;
+
+ALTER TABLE rework_logs ADD COLUMN qcId VARCHAR(50) DEFAULT NULL;
+ALTER TABLE rework_logs ADD COLUMN status VARCHAR(50) DEFAULT 'Pending';
+
+
 
