@@ -22,11 +22,13 @@ export const VariableSettings: React.FC = () => {
   const [groqKey, setGroqKey] = useState('');
   const [showGroqKey, setShowGroqKey] = useState(false);
   const [groqModel, setGroqModel] = useState('llama-3.3-70b-versatile');
+  const [availableGroqModels, setAvailableGroqModels] = useState<string[]>([]);
 
   // OpenAI credentials & model
   const [openAiKey, setOpenAiKey] = useState('');
   const [showOpenAiKey, setShowOpenAiKey] = useState(false);
-  const [openAiModel, setOpenAiModel] = useState('gpt-6-luna');
+  const [openAiModel, setOpenAiModel] = useState('gpt-4o-mini');
+  const [availableOpenAiModels, setAvailableOpenAiModels] = useState<string[]>([]);
 
   const [aiEnabled, setAiEnabled] = useState(true);
   const [systemInstructions, setSystemInstructions] = useState('');
@@ -42,6 +44,24 @@ export const VariableSettings: React.FC = () => {
   const [testingKey, setTestingKey] = useState(false);
   const [keyTestResult, setKeyTestResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Background fetch live models from configured backend keys
+  useEffect(() => {
+    const fetchLiveModels = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/ai/models`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.models) && data.models.length > 0) {
+          if (data.provider === 'groq') {
+            setAvailableGroqModels(data.models);
+          } else {
+            setAvailableOpenAiModels(data.models);
+          }
+        }
+      } catch (err) {}
+    };
+    fetchLiveModels();
+  }, []);
 
   // Sync settings when loaded
   useEffect(() => {
@@ -92,7 +112,20 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
       const data = await res.json();
       if (res.ok && data.success) {
         setKeyTestResult({ success: true, msg: data.message || `${providerName} API key verified! Connection established.` });
-        toast(`${providerName} connection verified successfully!`, 'success');
+        if (Array.isArray(data.models) && data.models.length > 0) {
+          if (provider === 'groq') {
+            setAvailableGroqModels(data.models);
+            if (!data.models.includes(groqModel) && data.recommendedModel) {
+              setGroqModel(data.recommendedModel);
+            }
+          } else {
+            setAvailableOpenAiModels(data.models);
+            if (!data.models.includes(openAiModel) && data.recommendedModel) {
+              setOpenAiModel(data.recommendedModel);
+            }
+          }
+        }
+        toast(`${providerName} connection verified successfully! Click Save below to persist.`, 'success');
       } else {
         setKeyTestResult({ success: false, msg: data.error || `Failed to authenticate with ${providerName}.` });
         toast(data.error || 'Invalid API key or unauthorized', 'error');
@@ -295,6 +328,16 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 </div>
               </div>
 
+              {/* Key format warning if user pasted an OpenAI key */}
+              {groqKey.trim().startsWith('sk-') && (
+                <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0 text-amber-500" />
+                  <span>
+                    Notice: This key starts with <code className="font-bold bg-amber-500/20 px-1 py-0.5 rounded">sk-</code>, which looks like an OpenAI key. Groq Cloud API keys begin with <code className="font-bold bg-amber-500/20 px-1 py-0.5 rounded">gsk_</code>.
+                  </span>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <input
@@ -357,13 +400,13 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   <Cpu size={14} className="text-amber-500" />
                   Groq Model Engine
                 </label>
-                <span className="text-[10px] font-mono text-muted">Active: <span className="font-bold text-primary">{groqModel}</span></span>
+                <span className="text-[10px] font-mono text-muted">Active: <span className="font-bold text-amber-600 dark:text-amber-400">{groqModel}</span></span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {/* Option 1: Meta Llama 3.3 70B */}
                 <label
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     groqModel === 'llama-3.3-70b-versatile'
                       ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
@@ -371,16 +414,16 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1.5">
-                        <Zap size={14} className="text-amber-500" />
-                        llama-3.3-70b-versatile
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Zap size={13} className="text-amber-500" />
+                        llama-3.3-70b
                       </span>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-                        Recommended (70B)
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                        Top Choice
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Meta's flagship 70B parameter open-weights model. State-of-the-art reasoning, fluent Sinhala/English, and highly accurate ERP database function calling.
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Meta's flagship 70B model. State-of-the-art reasoning, fluent Sinhala/English, and ERP tool calling.
                     </p>
                   </div>
                   <input
@@ -393,9 +436,73 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 2: Meta Llama 3.1 8B */}
+                {/* Option 2: OpenAI GPT OSS 120B */}
                 <label
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'openai/gpt-oss-120b'
+                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Cpu size={13} className="text-amber-500" />
+                        gpt-oss-120b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        120B Deep
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Massive 120B parameter model hosted on Groq LPU with blazing fast inference.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="openai/gpt-oss-120b"
+                    checked={groqModel === 'openai/gpt-oss-120b'}
+                    onChange={e => setGroqModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 3: OpenAI GPT OSS 20B */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'openai/gpt-oss-20b'
+                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Zap size={13} className="text-amber-500" />
+                        gpt-oss-20b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        1,000 t/s
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      High-throughput reasoning model running at up to 1,000 tokens per second.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="openai/gpt-oss-20b"
+                    checked={groqModel === 'openai/gpt-oss-20b'}
+                    onChange={e => setGroqModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 4: Meta Llama 3.1 8B */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     groqModel === 'llama-3.1-8b-instant'
                       ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
@@ -403,13 +510,13 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono">llama-3.1-8b-instant</span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        Ultra-Fast (8B)
+                      <span className="font-bold text-xs text-primary font-mono">llama-3.1-8b</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        Instant (8B)
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Lightweight 8B parameter model for instant responses. Fast for simple inquiries and status checks.
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Compact 8B model for rapid responses and lightweight questions.
                     </p>
                   </div>
                   <input
@@ -423,6 +530,39 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 </label>
               </div>
 
+              {/* Live Discovered Models from User's Account */}
+              {availableGroqModels.length > 0 && (
+                <div className="p-3 rounded-xl bg-surface border border-theme-subtle space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-secondary flex items-center gap-1.5">
+                      <CheckCircle2 size={13} className="text-emerald-500" />
+                      Live Models Detected on Your Groq Account ({availableGroqModels.length}):
+                    </span>
+                    <span className="text-[10px] text-muted">Click any model to select</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                    {availableGroqModels.map((m) => {
+                      const isSelected = groqModel === m;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setGroqModel(m)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-amber-500 text-white font-bold shadow-xs'
+                              : 'bg-surface2 hover:bg-surface2/80 text-primary border border-theme-subtle'
+                          }`}
+                        >
+                          {isSelected && <CheckCircle2 size={11} />}
+                          {m}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Custom Groq Model Input */}
               <div className="pt-1 flex items-center gap-2">
                 <span className="text-[11px] text-muted shrink-0 font-medium">Or custom Groq model:</span>
@@ -430,8 +570,8 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   type="text"
                   value={groqModel}
                   onChange={e => setGroqModel(e.target.value)}
-                  placeholder="e.g. llama-3.3-70b-versatile, llama-3.1-70b-versatile"
-                  className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 w-72"
+                  placeholder="e.g. llama-3.3-70b-versatile, openai/gpt-oss-120b"
+                  className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 w-80"
                 />
               </div>
             </div>
@@ -466,6 +606,16 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   </a>
                 </div>
               </div>
+
+              {/* Key format warning if user pasted a Groq key */}
+              {openAiKey.trim().startsWith('gsk_') && (
+                <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-800 dark:text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0 text-rose-500" />
+                  <span>
+                    Notice: This key starts with <code className="font-bold bg-rose-500/20 px-1 py-0.5 rounded">gsk_</code>, which is a Groq key. OpenAI API keys begin with <code className="font-bold bg-rose-500/20 px-1 py-0.5 rounded">sk-</code>.
+                  </span>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -529,59 +679,30 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   <Cpu size={14} className="text-rose-600" />
                   OpenAI Model Engine
                 </label>
-                <span className="text-[10px] font-mono text-muted">Active: <span className="font-bold text-primary">{openAiModel}</span></span>
+                <span className="text-[10px] font-mono text-muted">Active: <span className="font-bold text-rose-600 dark:text-rose-400">{openAiModel}</span></span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {/* Option 1: GPT-6 Luna */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Option 1: GPT-4o Mini */}
                 <label
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    openAiModel === 'gpt-6-luna'
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    openAiModel === 'gpt-4o-mini'
                       ? 'bg-rose-500/10 border-rose-500 shadow-sm shadow-rose-500/20'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1.5">
-                        <Sparkles size={13} className="text-rose-500" />
-                        GPT-6 Luna
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Zap size={13} className="text-emerald-500" />
+                        gpt-4o-mini
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 border border-rose-500/30">
-                        Flagship Engine
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Next-gen autonomous reasoning engine. High-speed database function calling across all ERP manufacturing, inventory, accounts & sales modules.
-                    </p>
-                  </div>
-                  <input
-                    type="radio"
-                    name="openai_model"
-                    value="gpt-6-luna"
-                    checked={openAiModel === 'gpt-6-luna'}
-                    onChange={e => setOpenAiModel(e.target.value)}
-                    className="sr-only"
-                  />
-                </label>
-
-                {/* Option 2: GPT-4o Mini */}
-                <label
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    openAiModel === 'gpt-4o-mini'
-                      ? 'bg-emerald-500/10 border-emerald-500 shadow-sm shadow-emerald-500/20'
-                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono">gpt-4o-mini</span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                        Fast & Efficient
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                        Recommended
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Ultra-fast response time, highly accurate tool calling for ERP database queries, lowest latency.
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Fastest response time, highly accurate tool calling for ERP database queries, lowest latency.
                     </p>
                   </div>
                   <input
@@ -594,23 +715,26 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 3: GPT-4o */}
+                {/* Option 2: GPT-4o */}
                 <label
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     openAiModel === 'gpt-4o'
-                      ? 'bg-purple-500/10 border-purple-500 shadow-sm shadow-purple-500/20'
+                      ? 'bg-rose-500/10 border-rose-500 shadow-sm shadow-rose-500/20'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono">gpt-4o</span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Cpu size={13} className="text-purple-500" />
+                        gpt-4o
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20">
                         Deep Reasoning
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Complex analytical abilities for deep financial auditing, comprehensive forecasting, and large reports.
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Complex analytical reasoning for deep financial audits, comprehensive forecasting, and large reports.
                     </p>
                   </div>
                   <input
@@ -622,7 +746,101 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     className="sr-only"
                   />
                 </label>
+
+                {/* Option 3: GPT-4 Turbo */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    openAiModel === 'gpt-4-turbo'
+                      ? 'bg-rose-500/10 border-rose-500 shadow-sm shadow-rose-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono">gpt-4-turbo</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        High Capacity
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      High context capacity and multi-step tool execution.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="openai_model"
+                    value="gpt-4-turbo"
+                    checked={openAiModel === 'gpt-4-turbo'}
+                    onChange={e => setOpenAiModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 4: GPT-6 Luna */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    openAiModel === 'gpt-6-luna'
+                      ? 'bg-rose-500/10 border-rose-500 shadow-sm shadow-rose-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Sparkles size={13} className="text-rose-500" />
+                        gpt-6-luna
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 border border-rose-500/30">
+                        Next-Gen
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Future reasoning preview engine with auto-fallback to gpt-4o-mini if unavailable.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="openai_model"
+                    value="gpt-6-luna"
+                    checked={openAiModel === 'gpt-6-luna'}
+                    onChange={e => setOpenAiModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
               </div>
+
+              {/* Live Discovered Models from OpenAI Account */}
+              {availableOpenAiModels.length > 0 && (
+                <div className="p-3 rounded-xl bg-surface border border-theme-subtle space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-secondary flex items-center gap-1.5">
+                      <CheckCircle2 size={13} className="text-emerald-500" />
+                      Live Models Detected on Your OpenAI Account ({availableOpenAiModels.length}):
+                    </span>
+                    <span className="text-[10px] text-muted">Click any model to select</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                    {availableOpenAiModels.map((m) => {
+                      const isSelected = openAiModel === m;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setOpenAiModel(m)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-rose-500 text-white font-bold shadow-xs'
+                              : 'bg-surface2 hover:bg-surface2/80 text-primary border border-theme-subtle'
+                          }`}
+                        >
+                          {isSelected && <CheckCircle2 size={11} />}
+                          {m}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Custom Model Input */}
               <div className="pt-1 flex items-center gap-2">
@@ -631,8 +849,8 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   type="text"
                   value={openAiModel}
                   onChange={e => setOpenAiModel(e.target.value)}
-                  placeholder="e.g. gpt-6-luna, gpt-4o, o3-mini"
-                  className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500/20 w-64"
+                  placeholder="e.g. gpt-4o-mini, gpt-4o, o3-mini"
+                  className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500/20 w-80"
                 />
               </div>
             </div>

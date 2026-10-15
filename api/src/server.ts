@@ -5844,6 +5844,102 @@ async function executeAITool(name: string, args: any) {
   }
 }
 
+/**
+ * Helper to dynamically fetch live models from Groq or OpenAI
+ */
+async function fetchProviderModels(provider: string, apiKey: string): Promise<string[]> {
+  try {
+    const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+    const endpoint = isGroq ? 'https://api.groq.com/openai/v1/models' : 'https://api.openai.com/v1/models';
+    const res = await fetch(endpoint, {
+      headers: { 'Authorization': `Bearer ${apiKey.trim()}` }
+    });
+    if (!res.ok) {
+      console.warn(`[Rex AI] Failed to fetch models list from ${provider}: HTTP ${res.status}`);
+      return [];
+    }
+    const data: any = await res.json();
+    if (Array.isArray(data.data)) {
+      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard'];
+      const chatModels = data.data
+        .map((m: any) => m.id)
+        .filter((id: string) => {
+          const lower = id.toLowerCase();
+          return !nonChatKeywords.some(kw => lower.includes(kw));
+        });
+      return chatModels;
+    }
+    return [];
+  } catch (err: any) {
+    console.error(`[Rex AI] Error fetching models from ${provider}:`, err.message);
+    return [];
+  }
+}
+
+/**
+ * Helper to select the best available model from a list of live models
+ */
+function selectBestModel(availableModels: string[], isGroq: boolean): string {
+  if (!availableModels || availableModels.length === 0) {
+    return isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
+  }
+
+  if (isGroq) {
+    // 1. Meta Llama 3.3 70B
+    const llama33_70b = availableModels.find(m => m.includes('llama-3.3-70b'));
+    if (llama33_70b) return llama33_70b;
+
+    // 2. Meta Llama 3.1 70B
+    const llama31_70b = availableModels.find(m => m.includes('llama-3.1-70b'));
+    if (llama31_70b) return llama31_70b;
+
+    // 3. OpenAI GPT OSS 120B
+    const gptOss120 = availableModels.find(m => m.includes('gpt-oss-120b'));
+    if (gptOss120) return gptOss120;
+
+    // 4. OpenAI GPT OSS 20B
+    const gptOss20 = availableModels.find(m => m.includes('gpt-oss-20b'));
+    if (gptOss20) return gptOss20;
+
+    // 5. Any other 70b model
+    const any70b = availableModels.find(m => m.toLowerCase().includes('70b'));
+    if (any70b) return any70b;
+
+    // 6. Meta Llama 3.1 8B instant / Llama 3 8B
+    const llama8b = availableModels.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
+    if (llama8b) return llama8b;
+
+    // 7. Any other Llama model
+    const anyLlama = availableModels.find(m => m.toLowerCase().includes('llama'));
+    if (anyLlama) return anyLlama;
+
+    // 8. Qwen models
+    const qwen = availableModels.find(m => m.toLowerCase().includes('qwen'));
+    if (qwen) return qwen;
+
+    // 9. Mixtral
+    const mixtral = availableModels.find(m => m.toLowerCase().includes('mixtral'));
+    if (mixtral) return mixtral;
+
+    return availableModels[0];
+  } else {
+    // Priority order for OpenAI models:
+    const gpt4oMini = availableModels.find(m => m === 'gpt-4o-mini');
+    if (gpt4oMini) return gpt4oMini;
+
+    const gpt4o = availableModels.find(m => m === 'gpt-4o');
+    if (gpt4o) return gpt4o;
+
+    const gpt4Turbo = availableModels.find(m => m.includes('gpt-4-turbo'));
+    if (gpt4Turbo) return gpt4Turbo;
+
+    const gpt35 = availableModels.find(m => m.includes('gpt-3.5-turbo'));
+    if (gpt35) return gpt35;
+
+    return availableModels[0] || 'gpt-4o-mini';
+  }
+}
+
 // Endpoint to test AI API Key connection (Groq Cloud or OpenAI)
 app.post('/api/ai/test-key', async (req, res) => {
   try {
@@ -5866,9 +5962,65 @@ app.post('/api/ai/test-key', async (req, res) => {
         error: errData.error?.message || `Invalid API key or unauthorized by ${providerLabel}.` 
       });
     }
-    res.json({ success: true, message: `${providerLabel} API Key verified successfully! Connection established.` });
+
+    const data: any = await response.json();
+    const allModels: string[] = Array.isArray(data.data) ? data.data.map((m: any) => m.id) : [];
+    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard'];
+    const chatModels = allModels.filter((id: string) => {
+      const lower = id.toLowerCase();
+      return !nonChatKeywords.some(kw => lower.includes(kw));
+    });
+
+    const recommendedModel = selectBestModel(chatModels, isGroq);
+
+    res.json({ 
+      success: true, 
+      message: `${providerLabel} API Key verified successfully! Connection established with ${chatModels.length} active models.`,
+      models: chatModels,
+      recommendedModel
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message || 'Connection test failed.' });
+  }
+});
+
+// Endpoint to fetch currently accessible models based on saved settings
+app.get('/api/ai/models', async (req, res) => {
+  try {
+    const [settingsRows]: any = await db.query(
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
+    );
+    const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
+    let provider = (settingsMap.ai_provider || 'groq').trim();
+    const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
+    const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+
+    let apiKey = provider === 'groq' ? groqKey : openAiKey;
+    if (!apiKey && groqKey) {
+      provider = 'groq';
+      apiKey = groqKey;
+    } else if (!apiKey && openAiKey) {
+      provider = 'openai';
+      apiKey = openAiKey;
+    }
+
+    if (!apiKey) {
+      return res.json({ success: false, error: 'No API key configured in settings.' });
+    }
+
+    const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+    const models = await fetchProviderModels(provider, apiKey);
+    const recommendedModel = selectBestModel(models, isGroq);
+
+    res.json({
+      success: true,
+      provider,
+      currentModel: isGroq ? (settingsMap.groq_model || recommendedModel) : (settingsMap.openai_model || recommendedModel),
+      recommendedModel,
+      models
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5895,18 +6047,27 @@ app.post('/api/ai/chat', async (req, res) => {
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
     let provider = (settingsMap.ai_provider || 'groq').trim();
 
+    // Auto-detect provider if user entered a Groq key (starts with gsk_) or OpenAI key (starts with sk-)
     let apiKey = '';
     if (provider === 'groq') {
-      apiKey = groqKey || (openAiKey.startsWith('gsk_') ? openAiKey : '');
+      apiKey = groqKey;
       if (!apiKey && openAiKey) {
-        provider = 'openai';
-        apiKey = openAiKey;
+        if (openAiKey.startsWith('gsk_')) {
+          apiKey = openAiKey;
+        } else {
+          provider = 'openai';
+          apiKey = openAiKey;
+        }
       }
     } else {
-      apiKey = openAiKey || (groqKey.startsWith('sk-') ? groqKey : '');
+      apiKey = openAiKey;
       if (!apiKey && groqKey) {
-        provider = 'groq';
-        apiKey = groqKey;
+        if (groqKey.startsWith('sk-')) {
+          apiKey = groqKey;
+        } else {
+          provider = 'groq';
+          apiKey = groqKey;
+        }
       }
     }
 
@@ -5918,14 +6079,16 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
-    const isGroq = provider === 'groq';
+    const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
     const endpointUrl = isGroq 
       ? 'https://api.groq.com/openai/v1/chat/completions' 
       : 'https://api.openai.com/v1/chat/completions';
 
     let activeModelName = isGroq
       ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
-      : (settingsMap.openai_model || 'gpt-6-luna').trim();
+      : (settingsMap.openai_model || 'gpt-4o-mini').trim();
+
+    console.log(`[Rex AI Chat] Request initiated. Provider: ${provider}, Model: ${activeModelName}, Key: ${apiKey.slice(0, 6)}...`);
 
     const systemPrompt = settingsMap.openai_system_instructions || 
       `You are Rex AI, an advanced, highly intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
@@ -5948,43 +6111,56 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     const conversation: any[] = [systemMessage, ...messages.slice(-10)];
 
-    // Initial Request to AI Engine with Function Calling tools
-    let aiRes = await fetch(endpointUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: activeModelName,
-        messages: conversation,
-        tools: AI_TOOLS,
-        tool_choice: 'auto',
+    // Helper for chat completions
+    const callCompletion = async (model: string, msgs: any[], tools?: any[]) => {
+      const bodyPayload: any = {
+        model,
+        messages: msgs,
         temperature: 0.3
-      })
-    });
+      };
+      if (tools && tools.length > 0) {
+        bodyPayload.tools = tools;
+        bodyPayload.tool_choice = 'auto';
+      }
+      return fetch(endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(bodyPayload)
+      });
+    };
+
+    let aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
 
     if (!aiRes.ok) {
       const errJson: any = await aiRes.json().catch(() => ({}));
-      // If model not found, fallback gracefully
-      if (errJson.error?.code === 'model_not_found' || errJson.error?.message?.toLowerCase().includes('does not exist')) {
-        const fallbackModel = isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
-        console.warn(`[Rex AI Engine] Model '${activeModelName}' not recognized by ${provider}. Auto-routing to fallback '${fallbackModel}'.`);
-        activeModelName = fallbackModel;
-        aiRes = await fetch(endpointUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: activeModelName,
-            messages: conversation,
-            tools: AI_TOOLS,
-            tool_choice: 'auto',
-            temperature: 0.3
-          })
-        });
+      const errMsg = (errJson.error?.message || '').toLowerCase();
+      const isModelNotFound = 
+        aiRes.status === 404 || 
+        errJson.error?.code === 'model_not_found' || 
+        errJson.error?.code === 'model_decommissioned' ||
+        errMsg.includes('does not exist') || 
+        errMsg.includes('not have access') ||
+        errMsg.includes('deprecated') ||
+        errMsg.includes('decommissioned');
+
+      if (isModelNotFound) {
+        console.warn(`[Rex AI Engine] Model '${activeModelName}' not accessible (${errMsg}). Querying ${provider} live model list...`);
+        const liveModels = await fetchProviderModels(provider, apiKey);
+        console.log(`[Rex AI Engine] Live models available for this key:`, liveModels);
+        const resolvedModel = selectBestModel(liveModels, isGroq);
+        console.log(`[Rex AI Engine] Dynamically routing to verified model: '${resolvedModel}'`);
+        activeModelName = resolvedModel;
+
+        // Asynchronously update DB settings with the verified working model
+        db.query(
+          "INSERT INTO settings (id, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val=?",
+          [isGroq ? 'groq_model' : 'openai_model', activeModelName, activeModelName]
+        ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
+
+        aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
       }
 
       if (!aiRes.ok) {
@@ -6025,38 +6201,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       }
 
       // Follow-up request to synthesize final answer with the real DB data
-      let followUpRes = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: activeModelName,
-          messages: conversation,
-          temperature: 0.3
-        })
-      });
-
-      if (!followUpRes.ok) {
-        const errJson: any = await followUpRes.json().catch(() => ({}));
-        if (errJson.error?.code === 'model_not_found' || errJson.error?.message?.toLowerCase().includes('does not exist')) {
-          const fallbackModel = isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
-          activeModelName = fallbackModel;
-          followUpRes = await fetch(endpointUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: activeModelName,
-              messages: conversation,
-              temperature: 0.3
-            })
-          });
-        }
-      }
+      let followUpRes = await callCompletion(activeModelName, conversation);
 
       if (!followUpRes.ok) {
         const errJson: any = await followUpRes.json().catch(() => ({}));
@@ -6087,4 +6232,20 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Run AI Diagnostics on Server Boot
+(async () => {
+  try {
+    const [rows]: any = await db.query(
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
+    );
+    const map = rows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
+    const prov = map.ai_provider || 'groq';
+    const key = (prov === 'groq' ? map.groq_api_key : map.openai_api_key) || map.groq_api_key || map.openai_api_key || '';
+    const activeModel = prov === 'groq' ? (map.groq_model || 'llama-3.3-70b-versatile') : (map.openai_model || 'gpt-4o-mini');
+    console.log(`[Rex AI] Provider: ${prov} | Model: ${activeModel} | Key: ${key ? key.slice(0, 7) + '...' : 'Not configured'}`);
+  } catch(e: any) {
+    console.error('[Rex AI] Diagnostic error:', e.message);
+  }
+})();
 
