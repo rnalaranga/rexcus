@@ -37,7 +37,18 @@ export const InvoiceBuilder: React.FC = () => {
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [taxEnabled, setTaxEnabled] = useState(true);
-  const [taxProfileId, setTaxProfileId] = useState('');
+  const [taxProfileId, setTaxProfileId] = useState('tp_opt2_sscl_absorbed_vat_sep');
+
+  useEffect(() => {
+    if (taxProfiles && taxProfiles.length > 0) {
+      const currentValid = taxProfiles.some((p: any) => p.id === taxProfileId);
+      if (!currentValid) {
+        const opt2 = taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
+        if (opt2) setTaxProfileId(opt2.id);
+        else setTaxProfileId(taxProfiles[0].id);
+      }
+    }
+  }, [taxProfiles]);
   
   // Keep for DB compat if needed, but we'll store taxProfileId explicitly
   const taxType = 'profile';
@@ -233,6 +244,7 @@ export const InvoiceBuilder: React.FC = () => {
         id: cleanDocNo, 
         invoiceNo: cleanDocNo, 
         customerId, 
+        leadId: customerId, 
         attention, 
         date, 
         dueDate: dueDate || null, 

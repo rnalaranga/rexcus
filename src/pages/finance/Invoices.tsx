@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink } from 'lucide-react'
+import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
-import { useInvoices, useLeads, useCustomers } from '@/hooks/useData'
+import { useInvoices, useLeads, useCustomers, useQuotations } from '@/hooks/useData'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
@@ -19,6 +19,7 @@ export const Invoices: React.FC = () => {
   const { data: invoices, loading, refetch } = useInvoices()
   const { data: leads } = useLeads()
   const { data: customers } = useCustomers()
+  const { data: quotations } = useQuotations()
   const { data: taxProfiles } = useTaxProfiles()
   const { settings } = useSettings()
   
@@ -168,109 +169,433 @@ export const Invoices: React.FC = () => {
     setSubmitting(false)
   }
 
+  const getCustomerInfo = (inv: any) => {
+    if (!inv) return { id: '', name: 'Unknown Customer', company: 'Unknown Company' };
+    const custId = inv.customerId || inv.leadId;
+
+    // 1. Direct match in customers
+    if (custId && customers && customers.length > 0) {
+      const match = customers.find((c: any) => c.id === custId);
+      if (match) {
+        return {
+          id: match.id,
+          name: match.name || match.company || 'Customer',
+          company: match.company || match.name || '',
+          email: match.email || '',
+          phone: match.phone || ''
+        };
+      }
+    }
+
+    // 2. Direct match in leads
+    if (custId && leads && leads.length > 0) {
+      const match = leads.find((l: any) => l.id === custId);
+      if (match) {
+        return {
+          id: match.id,
+          name: match.name || match.company || 'Lead',
+          company: match.company || match.name || '',
+          email: match.email || '',
+          phone: match.phone || ''
+        };
+      }
+    }
+
+    // 3. Data from server query join
+    if (inv.customerCompany || inv.customerName) {
+      return {
+        id: custId || '',
+        name: inv.customerName || inv.customerCompany || '',
+        company: inv.customerCompany || inv.customerName || '',
+        email: inv.customerEmail || '',
+        phone: inv.customerPhone || ''
+      };
+    }
+
+    // 4. Linked quotation lookup
+    const qId = inv.quotationNo || inv.quotationId;
+    if (qId && quotations && quotations.length > 0) {
+      const quo = quotations.find((q: any) => q.id === qId || q.quotationNo === qId);
+      if (quo) {
+        if (quo.leadId) {
+          const cust = customers?.find((c: any) => c.id === quo.leadId);
+          if (cust) {
+            return {
+              id: cust.id,
+              name: cust.name || cust.company || '',
+              company: cust.company || cust.name || '',
+              email: cust.email || '',
+              phone: cust.phone || ''
+            };
+          }
+          const lead = leads?.find((l: any) => l.id === quo.leadId);
+          if (lead) {
+            return {
+              id: lead.id,
+              name: lead.name || lead.company || '',
+              company: lead.company || lead.name || '',
+              email: lead.email || '',
+              phone: lead.phone || ''
+            };
+          }
+        }
+        if (quo.leadCompany || quo.leadName) {
+          return {
+            id: quo.leadId || '',
+            name: quo.leadName || quo.leadCompany || '',
+            company: quo.leadCompany || quo.leadName || ''
+          };
+        }
+        try {
+          const parsed = JSON.parse(quo.data || '{}');
+          if (parsed.customerName || parsed.customerCompany) {
+            return {
+              id: quo.leadId || '',
+              name: parsed.customerName || parsed.customerCompany || '',
+              company: parsed.customerCompany || parsed.customerName || ''
+            };
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 5. Attention field
+    if (inv.attention && inv.attention.trim()) {
+      return {
+        id: custId || '',
+        name: inv.attention.trim(),
+        company: inv.attention.trim()
+      };
+    }
+
+    // 6. Alphanumeric ID fallback
+    if (custId && custId !== 'WALK-IN') {
+      return {
+        id: custId,
+        name: custId,
+        company: custId
+      };
+    }
+
+    return {
+      id: '',
+      name: 'Walk-in / Direct Customer',
+      company: 'Walk-in Customer'
+    };
+  };
+
+  const getInvoicePaymentInfo = (inv: any) => {
+    const total = Number(inv.total !== undefined ? inv.total : (inv.amount || 0));
+    const paid = Number(inv.paidAmount !== undefined && inv.paidAmount !== null 
+      ? inv.paidAmount 
+      : parsePayments(inv.payments).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+    );
+    const due = Math.max(0, total - paid);
+    const isSettled = inv.status?.toLowerCase() === 'paid' || (due <= 0.001 && total > 0);
+    
+    let isOverdue = inv.status?.toLowerCase() === 'overdue';
+    let overdueDays = 0;
+    if (inv.dueDate && !isSettled) {
+      const dueTime = new Date(inv.dueDate).getTime();
+      const nowTime = new Date().getTime();
+      if (!isNaN(dueTime) && dueTime < nowTime) {
+        isOverdue = true;
+        overdueDays = Math.max(1, Math.ceil((nowTime - dueTime) / (1000 * 60 * 60 * 24)));
+      }
+    }
+    
+    const paidPercent = total > 0 ? Math.min(100, Math.max(0, (paid / total) * 100)) : (isSettled ? 100 : 0);
+
+    return {
+      total,
+      paid,
+      due,
+      isSettled,
+      isOverdue,
+      overdueDays,
+      paidPercent
+    };
+  };
+
+  const customerDuesMap = React.useMemo(() => {
+    const map: Record<string, { totalDue: number, unpaidCount: number }> = {};
+    if (!Array.isArray(invoices)) return map;
+
+    invoices.forEach(inv => {
+      const total = Number(inv.total !== undefined ? inv.total : (inv.amount || 0));
+      const paid = Number(inv.paidAmount !== undefined && inv.paidAmount !== null 
+        ? inv.paidAmount 
+        : parsePayments(inv.payments).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+      );
+      const due = Math.max(0, total - paid);
+      const isPaid = inv.status?.toLowerCase() === 'paid' || (due <= 0.001 && total > 0);
+
+      if (!isPaid && due > 0.01) {
+        const cust = getCustomerInfo(inv);
+        const keys = [inv.customerId, inv.leadId, cust.id, cust.company, cust.name].filter(Boolean);
+        keys.forEach(k => {
+          if (!map[k]) map[k] = { totalDue: 0, unpaidCount: 0 };
+          map[k].totalDue += due;
+          map[k].unpaidCount += 1;
+        });
+      }
+    });
+    return map;
+  }, [invoices, customers, leads, quotations]);
+
   const filteredInvoices = invoices.filter(inv => {
-    const lead = leads.find((l: any) => l.id === inv.leadId)
-    const searchMatch = inv.id.toLowerCase().includes(search.toLowerCase()) || 
-                       (lead && (lead.name.toLowerCase().includes(search.toLowerCase()) || lead.company.toLowerCase().includes(search.toLowerCase())))
-    const statusMatch = statusFilter === 'all' || inv.status === statusFilter
-    return searchMatch && statusMatch
-  })
+    const cust = getCustomerInfo(inv);
+    const pay = getInvoicePaymentInfo(inv);
+    
+    const q = search.toLowerCase();
+    const searchMatch = !search || 
+      inv.id?.toLowerCase().includes(q) || 
+      (inv.invoiceNo && inv.invoiceNo.toLowerCase().includes(q)) ||
+      (inv.quotationId && inv.quotationId.toLowerCase().includes(q)) ||
+      (inv.quotationNo && inv.quotationNo.toLowerCase().includes(q)) ||
+      (inv.poNo && inv.poNo.toLowerCase().includes(q)) ||
+      (inv.orderNo && inv.orderNo.toLowerCase().includes(q)) ||
+      (inv.attention && inv.attention.toLowerCase().includes(q)) ||
+      (cust.name && cust.name.toLowerCase().includes(q)) ||
+      (cust.company && cust.company.toLowerCase().includes(q));
+
+    let statusMatch = true;
+    if (statusFilter !== 'all') {
+      const invStatus = (inv.status || '').toLowerCase();
+      if (statusFilter === 'unpaid') {
+        statusMatch = !pay.isSettled && invStatus !== 'draft';
+      } else if (statusFilter === 'paid') {
+        statusMatch = pay.isSettled || invStatus === 'paid';
+      } else if (statusFilter === 'overdue') {
+        statusMatch = pay.isOverdue || invStatus === 'overdue';
+      } else {
+        statusMatch = invStatus === statusFilter.toLowerCase();
+      }
+    }
+
+    return searchMatch && statusMatch;
+  });
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'draft': return <Badge variant="default">Draft</Badge>
-      case 'sent': return <Badge variant="info">Sent</Badge>
-      case 'paid': return <Badge variant="success">Paid</Badge>
-      case 'overdue': return <Badge variant="error">Overdue</Badge>
-      default: return <Badge variant="default">{status}</Badge>
+    const s = (status || '').toLowerCase();
+    switch (s) {
+      case 'draft': return <Badge variant="default">Draft</Badge>;
+      case 'sent': return <Badge variant="info">Sent</Badge>;
+      case 'paid': return <Badge variant="success">Paid</Badge>;
+      case 'overdue': return <Badge variant="error">Overdue</Badge>;
+      case 'unpaid': return <Badge variant="warning">Unpaid</Badge>;
+      case 'partial': case 'partially paid': return <Badge variant="warning">Partial</Badge>;
+      default: return <Badge variant="default">{status}</Badge>;
     }
-  }
+  };
 
   const columns: Column<any>[] = [
     {
-      key: 'id', header: 'Invoice #',
+      key: 'id', header: 'Invoice #', sortable: true,
       render: (val: any, item) => (
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-500">
+          <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 flex-shrink-0">
             <FileText size={16} />
           </div>
           <div>
-            <div className="font-bold text-primary cursor-pointer hover:text-blue-500" onClick={() => setViewInvoice(item)}>
-              {val}
+            <div className="font-bold text-primary cursor-pointer hover:text-blue-500 flex items-center gap-1.5" onClick={() => setViewInvoice(item)}>
+              <span>{val}</span>
             </div>
-            <div className="text-[10px] text-muted">Quote: {item.quotationId}</div>
+            {(item.quotationId || item.quotationNo) && (
+              <div className="text-[10px] text-muted font-mono">
+                Quote: {item.quotationNo || item.quotationId}
+              </div>
+            )}
+            {item.poNo && (
+              <div className="text-[9px] text-muted">
+                PO: {item.poNo}
+              </div>
+            )}
           </div>
         </div>
       )
     },
     {
-      key: 'leadId', header: 'Customer',
-      render: (val: any) => {
-        const lead = leads.find((l: any) => l.id === val)
-        return lead ? (
-          <div>
-            <div className="font-semibold text-secondary">{lead.name}</div>
-            <div className="text-[10px] text-muted">{lead.company}</div>
+      key: 'customer', header: 'Customer',
+      render: (_, item) => {
+        const cust = getCustomerInfo(item);
+        const custKey = cust.id || cust.company || cust.name;
+        const dues = custKey ? customerDuesMap[custKey] : null;
+        const showContact = cust.name && cust.company && cust.name.trim().toLowerCase() !== cust.company.trim().toLowerCase();
+        
+        return (
+          <div className="max-w-[240px]">
+            <div 
+              className="font-semibold text-primary truncate hover:text-blue-500 cursor-pointer text-sm" 
+              onClick={() => cust.id ? navigate(`/crm/customers/${cust.id}`) : setViewInvoice(item)}
+              title={cust.company || cust.name}
+            >
+              {cust.company || cust.name}
+            </div>
+            {showContact && (
+              <div className="text-[11px] text-secondary truncate mt-0.5" title={cust.name}>
+                {cust.name}
+              </div>
+            )}
+            {item.attention && item.attention !== cust.name && item.attention !== cust.company && (
+              <div className="text-[10px] text-muted truncate">
+                Attn: {item.attention}
+              </div>
+            )}
+            {dues && dues.totalDue > 0 && (
+              <div className="mt-1 flex items-center gap-1">
+                <span 
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                  title={`Customer total pending balance: ${formatCurrency(dues.totalDue)} across ${dues.unpaidCount} invoice(s)`}
+                >
+                  <AlertCircle size={10} className="flex-shrink-0" />
+                  <span>Cust. Due: {formatCurrency(dues.totalDue)}</span>
+                </span>
+              </div>
+            )}
           </div>
-        ) : <span className="text-muted">Unknown</span>
+        );
       }
     },
     {
-      key: 'date', header: 'Date',
-      render: (val: any) => (
+      key: 'date', header: 'Date', sortable: true,
+      render: (val: any, item) => {
+        const pay = getInvoicePaymentInfo(item);
+        return (
+          <div>
+            <div className="text-secondary text-xs">{val ? new Date(val).toLocaleDateString() : '—'}</div>
+            {item.dueDate ? (
+              <div className={`text-[10px] flex items-center gap-1 mt-0.5 ${pay.isOverdue ? 'text-rose-500 font-semibold' : 'text-muted'}`}>
+                <Clock size={10} />
+                <span>Due: {new Date(item.dueDate).toLocaleDateString()}</span>
+              </div>
+            ) : (
+              <div className="text-[10px] text-muted">{val ? relativeTime(val) : ''}</div>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      key: 'total', header: 'Amount', sortable: true,
+      render: (val: any, item) => (
         <div>
-          <div className="text-secondary text-xs">{new Date(val).toLocaleDateString()}</div>
-          <div className="text-[10px] text-muted">{relativeTime(val)}</div>
+          <span className="font-mono font-semibold text-primary text-sm">
+            {formatCurrency(Number(val || item.amount || 0))}
+          </span>
+          {Number(item.taxAmount || item.tax || 0) > 0 && (
+            <div className="text-[10px] text-muted font-mono">
+              Tax: {formatCurrency(Number(item.taxAmount || item.tax || 0))}
+            </div>
+          )}
         </div>
       )
     },
     {
-      key: 'total', header: 'Amount',
-      render: (val: any) => <span className="font-mono font-semibold text-primary">{formatCurrency(Number(val))}</span>
+      key: 'dueSnapshot', header: 'Payment & Due Snapshot',
+      render: (_, item) => {
+        const pay = getInvoicePaymentInfo(item);
+        
+        if (pay.isSettled) {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 w-fit">
+                <CheckCircle size={12} /> Settled
+              </span>
+              <span className="text-[10px] text-muted font-mono">
+                Paid: {formatCurrency(pay.paid || pay.total)}
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex flex-col gap-1 min-w-[160px] max-w-[210px]">
+            {/* Due badge */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-bold border ${
+                pay.isOverdue 
+                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30' 
+                  : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+              }`}>
+                <span className="text-[9px] uppercase tracking-wider font-sans opacity-75">Due:</span>
+                <span>{formatCurrency(pay.due)}</span>
+              </span>
+              {pay.isOverdue && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 flex items-center gap-0.5">
+                  <AlertTriangle size={9} /> {pay.overdueDays}d Late
+                </span>
+              )}
+            </div>
+
+            {/* Paid breakdown & mini progress bar */}
+            <div className="flex items-center justify-between text-[10px] text-muted font-mono">
+              <span>Paid: {formatCurrency(pay.paid)}</span>
+              <span>{pay.paidPercent.toFixed(0)}%</span>
+            </div>
+            <div className="w-full bg-theme-subtle/40 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-300 ${
+                  pay.isOverdue ? 'bg-rose-500' : pay.paid > 0 ? 'bg-amber-500' : 'bg-blue-500/30'
+                }`} 
+                style={{ width: `${Math.max(pay.paidPercent, 4)}%` }} 
+              />
+            </div>
+          </div>
+        );
+      }
     },
     {
-      key: 'status', header: 'Status',
+      key: 'status', header: 'Status', sortable: true,
       render: (val: any) => getStatusBadge(val)
     },
     {
       key: 'actions', header: '',
       render: (_, item) => (
         <div className="flex gap-2 justify-end">
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setViewInvoice(item)}>
+          <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs font-medium" onClick={() => setViewInvoice(item)}>
             View
           </Button>
-          <button onClick={() => setDeleteTarget(item.id)} className="p-1.5 text-muted hover:text-red-500 rounded transition-colors">
+          <button 
+            onClick={() => setDeleteTarget(item.id)} 
+            className="p-1.5 text-muted hover:text-red-500 rounded transition-colors"
+            title="Delete Invoice"
+          >
             <Trash2 size={14} />
           </button>
         </div>
       )
     }
-  ]
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">Invoices</h1>
-          <p className="text-sm text-secondary mt-1">Manage billing and payments for your generated quotes.</p>
+          <p className="text-sm text-secondary mt-1">Manage billing, payments, and view real-time settlement snapshots.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="primary" icon={Plus} onClick={() => navigate('/finance/invoices/new')}>Create Invoice</Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-4 bg-surface/50 p-2 rounded-lg border border-theme-subtle">
-        {['all', 'draft', 'sent', 'paid', 'overdue'].map(s => (
+      <div className="flex items-center gap-2 bg-surface/50 p-2 rounded-lg border border-theme-subtle overflow-x-auto">
+        {['all', 'unpaid', 'paid', 'overdue', 'draft', 'sent'].map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider ${statusFilter === s ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider ${
+              statusFilter === s 
+                ? 'bg-surface border border-theme-subtle text-primary shadow-sm' 
+                : 'text-muted hover:text-secondary'
+            }`}
           >
             {s}
           </button>
         ))}
         <div className="flex-1" />
-        <SearchBar value={search} onChange={setSearch} placeholder="Search invoices..." className="w-64" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search invoices, customer, quote, PO..." className="w-72" />
       </div>
 
       <GlassCard className="p-0 overflow-hidden">
@@ -302,7 +627,7 @@ export const Invoices: React.FC = () => {
                 dispatchNo={viewInvoice.dispatchNo || ''}
                 orderNo={viewInvoice.orderNo || ''}
                 poNo={viewInvoice.poNo || ''}
-                customer={customers?.find((c: any) => c.id === viewInvoice.customerId) || leads?.find((l: any) => l.id === viewInvoice.customerId || l.id === viewInvoice.leadId) || { name: 'Unknown Customer', company: 'Unknown Company' }}
+                customer={getCustomerInfo(viewInvoice)}
                 customerVat={viewInvoice.customerVat || ''}
                 items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ 
                   reference: i.reference || '',

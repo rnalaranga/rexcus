@@ -209,7 +209,18 @@ export const QuotationBuilder: React.FC = () => {
   const [currency, setCurrency] = useState('LKR')
   const { data: taxProfiles } = useTaxProfiles()
   const [taxEnabled, setTaxEnabled] = useState(true)
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('')
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep')
+
+  useEffect(() => {
+    if (taxProfiles && taxProfiles.length > 0) {
+      const currentValid = taxProfiles.some((p: any) => p.id === selectedProfileId);
+      if (!currentValid) {
+        const opt2 = taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
+        if (opt2) setSelectedProfileId(opt2.id);
+        else setSelectedProfileId(taxProfiles[0].id);
+      }
+    }
+  }, [taxProfiles]);
   
   const lead = customers?.find(c => c.id === leadId) || leads?.find(l => l.id === leadId)
   
@@ -796,7 +807,7 @@ export const QuotationBuilder: React.FC = () => {
     if (snap.customerName) setCustomerName(snap.customerName)
     if (snap.customerAddress || snap.address) setCustomerAddress(snap.customerAddress || snap.address)
     setTaxEnabled(snap.taxEnabled ?? true)
-    setSelectedProfileId(snap.selectedProfileId || '')
+    setSelectedProfileId(snap.selectedProfileId || 'tp_opt2_sscl_absorbed_vat_sep')
     setJobItems(snap.jobItems || [])
     setAttachments(snap.attachments || [])
     

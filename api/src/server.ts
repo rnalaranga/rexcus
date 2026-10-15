@@ -2819,17 +2819,37 @@ app.get('/api/invoices/next-number', async (req, res) => {
 
 app.get('/api/invoices', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM invoices ORDER BY date DESC');
+    const [rows] = await db.query(`
+      SELECT i.*, 
+             COALESCE(c.name, l.name) AS customerName, 
+             COALESCE(c.company, l.company) AS customerCompany,
+             c.email AS customerEmail,
+             c.phone AS customerPhone
+      FROM invoices i
+      LEFT JOIN customers c ON (i.customerId = c.id OR (i.customerId IS NULL AND i.leadId = c.id))
+      LEFT JOIN leads l ON (i.leadId = l.id OR (i.leadId IS NULL AND i.customerId = l.id))
+      ORDER BY i.date DESC
+    `);
     res.json(rows);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+    try {
+      const [rows] = await db.query('SELECT * FROM invoices ORDER BY date DESC');
+      res.json(rows);
+    } catch (err2) {
+      console.error(err2);
+      res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+    }
   }
 });
 
 app.post('/api/invoices', async (req, res) => {
   try {
     const data = { ...req.body };
+    if (data.customerId && !data.leadId) {
+      data.leadId = data.customerId;
+    } else if (data.leadId && !data.customerId) {
+      data.customerId = data.leadId;
+    }
     if (data.invoiceNo) {
       data.invoiceNo = data.invoiceNo.trim().replace(/\s+/g, '');
     } else {
