@@ -592,7 +592,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
           {activeTab === 'info' && (
             <div className="space-y-6 animate-fade-in">
               {/* Header Showcase Banner */}
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-rex-950 via-surface to-surface border border-theme-subtle p-5 shadow-sm">
+              <div className="relative overflow-hidden rounded-2xl bg-surface border border-theme-subtle p-5 shadow-xs">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-rex-600/10 border border-rex-500/20 flex items-center justify-center flex-shrink-0 text-rex-500 shadow-inner">
