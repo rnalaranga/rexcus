@@ -922,6 +922,11 @@ async function runDatabaseSync() {
     } catch (err) {}
   }
 
+  // Auto-migrate groq_model if set to rate-limited preview models (e.g. gpt-oss with 8k TPM limit)
+  try {
+    await db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model' AND (val LIKE '%gpt-oss%' OR val = 'llama-3.1-8b-instant' OR val IS NULL OR val = '')");
+  } catch (err) {}
+
   // 9. Auto-sync billing status on all POs
   try {
     const [allPos]: any = await db.query('SELECT id FROM purchase_orders');
@@ -5885,41 +5890,41 @@ function selectBestModel(availableModels: string[], isGroq: boolean): string {
   }
 
   if (isGroq) {
-    // 1. Meta Llama 3.3 70B
+    // 1. Meta Llama 3.3 70B (Top choice, high TPM limits, production ready)
     const llama33_70b = availableModels.find(m => m.includes('llama-3.3-70b'));
     if (llama33_70b) return llama33_70b;
 
     // 2. Meta Llama 3.1 70B
-    const llama31_70b = availableModels.find(m => m.includes('llama-3.1-70b'));
+    const llama31_70b = availableModels.find(m => m.includes('llama-3.1-70b') && !m.includes('instant'));
     if (llama31_70b) return llama31_70b;
 
-    // 3. OpenAI GPT OSS 120B
-    const gptOss120 = availableModels.find(m => m.includes('gpt-oss-120b'));
-    if (gptOss120) return gptOss120;
-
-    // 4. OpenAI GPT OSS 20B
-    const gptOss20 = availableModels.find(m => m.includes('gpt-oss-20b'));
-    if (gptOss20) return gptOss20;
-
-    // 5. Any other 70b model
-    const any70b = availableModels.find(m => m.toLowerCase().includes('70b'));
-    if (any70b) return any70b;
-
-    // 6. Meta Llama 3.1 8B instant / Llama 3 8B
+    // 3. Meta Llama 3.1 8B instant / Llama 3 8B
     const llama8b = availableModels.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
     if (llama8b) return llama8b;
 
+    // 4. Any other non-preview 70b model
+    const any70b = availableModels.find(m => m.toLowerCase().includes('70b') && !m.includes('gpt-oss'));
+    if (any70b) return any70b;
+
+    // 5. Mixtral
+    const mixtral = availableModels.find(m => m.toLowerCase().includes('mixtral'));
+    if (mixtral) return mixtral;
+
+    // 6. Gemma
+    const gemma = availableModels.find(m => m.toLowerCase().includes('gemma'));
+    if (gemma) return gemma;
+
     // 7. Any other Llama model
-    const anyLlama = availableModels.find(m => m.toLowerCase().includes('llama'));
+    const anyLlama = availableModels.find(m => m.toLowerCase().includes('llama') && !m.includes('guard'));
     if (anyLlama) return anyLlama;
 
     // 8. Qwen models
     const qwen = availableModels.find(m => m.toLowerCase().includes('qwen'));
     if (qwen) return qwen;
 
-    // 9. Mixtral
-    const mixtral = availableModels.find(m => m.toLowerCase().includes('mixtral'));
-    if (mixtral) return mixtral;
+    // 9. Any non-gpt-oss model (gpt-oss models are strictly limited to 8k TPM on Groq free tier)
+    const nonGptOss = availableModels.find(m => !m.includes('gpt-oss') && !m.includes('guard') && !m.includes('whisper'));
+    if (nonGptOss) return nonGptOss;
 
     return availableModels[0];
   } else {
@@ -6088,6 +6093,13 @@ app.post('/api/ai/chat', async (req, res) => {
       ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
       : (settingsMap.openai_model || 'gpt-4o-mini').trim();
 
+    // Auto-migrate from rate-limited experimental models (like gpt-oss-120b with 8k TPM limit) to llama-3.3-70b-versatile
+    if (isGroq && (activeModelName.includes('gpt-oss') || activeModelName === 'llama-3.1-8b-instant' || !activeModelName)) {
+      console.log(`[Rex AI Chat] Sanitizing active model from '${activeModelName}' to high-capacity 'llama-3.3-70b-versatile'`);
+      activeModelName = 'llama-3.3-70b-versatile';
+      db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+    }
+
     console.log(`[Rex AI Chat] Request initiated. Provider: ${provider}, Model: ${activeModelName}, Key: ${apiKey.slice(0, 6)}...`);
 
     const systemPrompt = settingsMap.openai_system_instructions || 
@@ -6135,32 +6147,63 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
     let aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
 
     if (!aiRes.ok) {
-      const errJson: any = await aiRes.json().catch(() => ({}));
-      const errMsg = (errJson.error?.message || '').toLowerCase();
-      const isModelNotFound = 
-        aiRes.status === 404 || 
-        errJson.error?.code === 'model_not_found' || 
-        errJson.error?.code === 'model_decommissioned' ||
-        errMsg.includes('does not exist') || 
-        errMsg.includes('not have access') ||
-        errMsg.includes('deprecated') ||
-        errMsg.includes('decommissioned');
+      let errJson: any = await aiRes.json().catch(() => ({}));
+      let errMsg = (errJson.error?.message || '').toLowerCase();
 
-      if (isModelNotFound) {
-        console.warn(`[Rex AI Engine] Model '${activeModelName}' not accessible (${errMsg}). Querying ${provider} live model list...`);
-        const liveModels = await fetchProviderModels(provider, apiKey);
-        console.log(`[Rex AI Engine] Live models available for this key:`, liveModels);
-        const resolvedModel = selectBestModel(liveModels, isGroq);
-        console.log(`[Rex AI Engine] Dynamically routing to verified model: '${resolvedModel}'`);
-        activeModelName = resolvedModel;
+      // Check for Rate Limit (HTTP 429 / TPM limit)
+      const isRateLimited = 
+        aiRes.status === 429 || 
+        errJson.error?.code === 'rate_limit_exceeded' || 
+        errMsg.includes('rate limit') || 
+        errMsg.includes('tokens per minute') ||
+        errMsg.includes('tpm');
 
-        // Asynchronously update DB settings with the verified working model
-        db.query(
-          "INSERT INTO settings (id, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val=?",
-          [isGroq ? 'groq_model' : 'openai_model', activeModelName, activeModelName]
-        ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
+      if (isRateLimited) {
+        console.warn(`[Rex AI Engine] Rate limit encountered on '${activeModelName}' (${errMsg}).`);
+        if (activeModelName !== 'llama-3.3-70b-versatile') {
+          console.log(`[Rex AI Engine] Auto-switching from rate-limited model '${activeModelName}' to 'llama-3.3-70b-versatile'...`);
+          activeModelName = 'llama-3.3-70b-versatile';
+          db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+        } else {
+          const waitMatch = errMsg.match(/try again in ([0-9.]+)\s*s/i);
+          const waitSecs = waitMatch ? parseFloat(waitMatch[1]) : 2;
+          if (waitSecs <= 6) {
+            console.log(`[Rex AI Engine] Waiting ${waitSecs}s for rate limit reset...`);
+            await new Promise(r => setTimeout(r, Math.ceil(waitSecs * 1000) + 300));
+            aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          }
+        }
+      }
 
-        aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+      if (!aiRes.ok) {
+        errJson = await aiRes.json().catch(() => errJson);
+        errMsg = (errJson.error?.message || '').toLowerCase();
+        const isModelNotFound = 
+          aiRes.status === 404 || 
+          errJson.error?.code === 'model_not_found' || 
+          errJson.error?.code === 'model_decommissioned' ||
+          errMsg.includes('does not exist') || 
+          errMsg.includes('not have access') ||
+          errMsg.includes('deprecated') ||
+          errMsg.includes('decommissioned');
+
+        if (isModelNotFound) {
+          console.warn(`[Rex AI Engine] Model '${activeModelName}' not accessible (${errMsg}). Querying ${provider} live model list...`);
+          const liveModels = await fetchProviderModels(provider, apiKey);
+          console.log(`[Rex AI Engine] Live models available for this key:`, liveModels);
+          const resolvedModel = selectBestModel(liveModels, isGroq);
+          console.log(`[Rex AI Engine] Dynamically routing to verified model: '${resolvedModel}'`);
+          activeModelName = resolvedModel;
+
+          // Asynchronously update DB settings with the verified working model
+          db.query(
+            "INSERT INTO settings (id, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val=?",
+            [isGroq ? 'groq_model' : 'openai_model', activeModelName, activeModelName]
+          ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
+
+          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+        }
       }
 
       if (!aiRes.ok) {
@@ -6207,17 +6250,36 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       let followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
 
       if (!followUpRes.ok) {
-        const errJson: any = await followUpRes.json().catch(() => ({}));
-        const errMsg = (errJson.error?.message || '').toLowerCase();
+        let errJson: any = await followUpRes.json().catch(() => ({}));
+        let errMsg = (errJson.error?.message || '').toLowerCase();
+
+        // Check for rate limit during tool follow-up synthesis
+        if (followUpRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tokens per minute') || errMsg.includes('tpm')) {
+          console.warn(`[Rex AI] Rate limit on follow-up turn (${errMsg}). Auto-switching to llama-3.3-70b-versatile...`);
+          if (activeModelName !== 'llama-3.3-70b-versatile') {
+            activeModelName = 'llama-3.3-70b-versatile';
+            db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+          }
+          const waitMatch = errMsg.match(/try again in ([0-9.]+)\s*s/i);
+          const waitSecs = waitMatch ? parseFloat(waitMatch[1]) : 2;
+          if (waitSecs <= 6) {
+            await new Promise(r => setTimeout(r, Math.ceil(waitSecs * 1000) + 300));
+          }
+          followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+        }
 
         // If Groq complains about tool_choice or tool use, retry gracefully
-        if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed')) {
-          console.warn(`[Rex AI] Groq tool_choice warning detected. Retrying synthesis without tool constraint...`);
-          conversation.push({
-            role: 'user',
-            content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
-          });
-          followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+        if (!followUpRes.ok) {
+          errJson = await followUpRes.json().catch(() => errJson);
+          errMsg = (errJson.error?.message || '').toLowerCase();
+          if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed')) {
+            console.warn(`[Rex AI] Groq tool_choice warning detected. Retrying synthesis without tool constraint...`);
+            conversation.push({
+              role: 'user',
+              content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
+            });
+            followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          }
         }
 
         if (!followUpRes.ok) {
@@ -6245,6 +6307,167 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
     });
   } catch (error: any) {
     console.error('AI chat endpoint error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to generate professional Customer Quotation Description using Groq / OpenAI
+app.post('/api/ai/generate-quotation-description', async (req, res) => {
+  try {
+    const {
+      partTitle,
+      rawDescription,
+      materials,
+      operations,
+      dimensions,
+      customerName,
+      quantity
+    } = req.body;
+
+    const [settingsRows]: any = await db.query(
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'ai_enabled')"
+    );
+    const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
+
+    if (settingsMap.ai_enabled === 'false') {
+      return res.status(403).json({ success: false, error: 'AI Assistant is currently disabled in settings.' });
+    }
+
+    const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
+    const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+    let provider = (settingsMap.ai_provider || 'groq').trim();
+
+    let apiKey = provider === 'groq' ? groqKey : openAiKey;
+    if (!apiKey && groqKey) {
+      provider = 'groq';
+      apiKey = groqKey;
+    } else if (!apiKey && openAiKey) {
+      provider = 'openai';
+      apiKey = openAiKey;
+    }
+
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'AI API Key is not configured. Please add a free Groq Cloud API Key in Variable Settings.'
+      });
+    }
+
+    const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+    const endpointUrl = isGroq 
+      ? 'https://api.groq.com/openai/v1/chat/completions' 
+      : 'https://api.openai.com/v1/chat/completions';
+
+    let activeModelName = isGroq
+      ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
+      : (settingsMap.openai_model || 'gpt-4o-mini').trim();
+
+    if (isGroq && (activeModelName.includes('gpt-oss') || activeModelName === 'llama-3.1-8b-instant' || !activeModelName)) {
+      activeModelName = 'llama-3.3-70b-versatile';
+    }
+
+    const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
+
+Generate an executive, professional, and clear Customer Quotation Line Item Description / Scope of Work for an official commercial proposal.
+
+Component & Manufacturing Details:
+- Item / Part Name: ${partTitle || 'Custom Precision Engineering Component'}
+- Raw Description / Job Scope: ${rawDescription || 'Precision fabrication and machining'}
+- Materials / Metallurgy: ${materials || 'High-grade certified engineering alloy / steel'}
+- Machining & Operations: ${operations || 'Precision CNC Turning, Milling, Drilling, and Surface Finishing'}
+- Dimensions / Specifications: ${dimensions || 'As per approved engineering drawing / sample'}
+- Customer / Company: ${customerName || 'Valued Customer'}
+- Quantity: ${quantity || '1'}
+
+Requirements:
+1. Format as a clean, polished engineering proposal line item.
+2. Structure:
+   - Line 1: Primary Title (e.g. "Precision Fabrication & CNC Machining of [Part Name]")
+   - Bullet points:
+     • Raw Material: (exact or specified high-grade material)
+     • Scope of Operations: (key machining/fabrication processes)
+     • Tolerances & Quality: (e.g. "Precision machined to ISO standard tolerances; 100% QA dimensional inspection prior to dispatch")
+     • Finishing / Treatment: (e.g. Deburred, anti-corrosion protective coating, and industrial packaging)
+3. Total length should be concise and neat (4 to 6 lines max) so it looks beautiful on printed quotation PDFs.
+4. Output ONLY the quotation description text. Do NOT use markdown code blocks (\`\`\`). Do NOT include conversational filler like "Here is your description".`;
+
+    let aiRes = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: activeModelName,
+        messages: [
+          { role: 'system', content: 'You are an industrial engineering quotation writer. You output only direct quotation descriptions.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2
+      })
+    });
+
+    if (!aiRes.ok) {
+      let errJson: any = await aiRes.json().catch(() => ({}));
+      let errMsg = (errJson.error?.message || '').toLowerCase();
+      if (aiRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tpm')) {
+        activeModelName = 'llama-3.3-70b-versatile';
+        aiRes = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: activeModelName,
+            messages: [
+              { role: 'system', content: 'You are an industrial engineering quotation writer. You output only direct quotation descriptions.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.2
+          })
+        });
+      }
+      if (!aiRes.ok && (errJson.error?.code === 'model_not_found' || errMsg.includes('does not exist'))) {
+        const liveModels = await fetchProviderModels(provider, apiKey);
+        activeModelName = selectBestModel(liveModels, isGroq);
+        aiRes = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: activeModelName,
+            messages: [
+              { role: 'system', content: 'You are an industrial engineering quotation writer. You output only direct quotation descriptions.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.2
+          })
+        });
+      }
+
+      if (!aiRes.ok) {
+        const fallbackErr: any = await aiRes.json().catch(() => errJson);
+        return res.status(aiRes.status).json({
+          success: false,
+          error: fallbackErr.error?.message || 'Failed generating description'
+        });
+      }
+    }
+
+    const aiData: any = await aiRes.json();
+    let description = aiData.choices?.[0]?.message?.content || '';
+    description = description.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '').trim();
+
+    return res.json({
+      success: true,
+      description,
+      model: activeModelName
+    });
+  } catch (error: any) {
+    console.error('AI quotation description error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

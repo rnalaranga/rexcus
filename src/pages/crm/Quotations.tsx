@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -768,6 +768,81 @@ export const Quotations: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Quotation Versions */}
+              {group.main && group.main.length > 0 && (
+                <div className="px-4 py-3 bg-surface/50 border-t border-theme-subtle/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      <History size={12} className="text-rex-500" />
+                      Quotation Versions ({group.main.length})
+                    </span>
+                    {group.main.length > 1 && (
+                      <span className="text-[10px] text-muted italic">Click trash icon to delete specific versions</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.main.map((v: any) => {
+                      const isLatest = v.id === latestMain?.id;
+                      return (
+                        <div 
+                          key={v.id} 
+                          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-xs transition-all shadow-xs ${
+                            isLatest 
+                              ? 'bg-rex-500/10 border-rex-500/30 text-primary' 
+                              : 'bg-surface2/60 border-theme-subtle/40 text-secondary hover:border-theme-subtle'
+                          }`}
+                        >
+                          <span className="font-bold font-mono">v{v.version}</span>
+                          {isLatest && (
+                            <span className="text-[9px] font-bold bg-green-500/20 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                              Active
+                            </span>
+                          )}
+                          <span className="text-[11px] font-mono text-muted">{formatCurrency(Number(v.totalAmount || 0))}</span>
+                          <span className="text-[10px] text-muted">{formatDate(v.date)}</span>
+                          
+                          <div className="flex items-center gap-1 ml-1 pl-2 border-l border-theme-subtle/50">
+                            <button
+                              onClick={() => setPreviewData({ quotation: v, type: 'main', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                              className="p-1 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
+                              title={`View Version v${v.version}`}
+                            >
+                              <Eye size={12} />
+                            </button>
+                            <button
+                              onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${v.id}`)}
+                              className="p-1 text-primary hover:bg-surface rounded transition-colors"
+                              title={`Edit Version v${v.version}`}
+                            >
+                              <FileEdit size={12} />
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const ok = await showConfirm(
+                                  `Are you sure you want to delete Version v${v.version} of quotation ${group.quoNo}? This action cannot be undone.`,
+                                  'Delete Quotation Version',
+                                  { confirmLabel: 'Delete Version' }
+                                );
+                                if (ok) {
+                                  await deleteQuotation(v.id);
+                                  toast(`Version v${v.version} deleted successfully`, 'success');
+                                  refetch();
+                                }
+                              }}
+                              className="p-1 text-red-500/70 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                              title={`Delete Version v${v.version}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </GlassCard>
 
           )

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -13,8 +13,9 @@ import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
-import { createQuotation, fetchQuotations, updateQuotation, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
+import { createQuotation, fetchQuotations, updateQuotation, deleteQuotation, generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
+import { useDialog } from '@/components/ui/DialogProvider'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -198,6 +199,11 @@ export const QuotationBuilder: React.FC = () => {
   const [templateSaveDesc, setTemplateSaveDesc] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const navigate = useNavigate()
+  const { showConfirm } = useDialog()
+  const [useAiPolish, setUseAiPolish] = useState(true)
+  const [isGeneratingQuote, setIsGeneratingQuote] = useState(false)
+  const [polishingItemId, setPolishingItemId] = useState<number | null>(null)
+  const [isPolishingAll, setIsPolishingAll] = useState(false)
   
   const { data: leads, loading } = useLeads()
   const { data: customers } = useCustomers()
@@ -923,29 +929,41 @@ export const QuotationBuilder: React.FC = () => {
     setTimeout(() => setToast(null), 3500)
   }, [])
 
-  const autoGenerateCustomerQuote = () => {
+  const autoGenerateCustomerQuote = async () => {
     const margin = Number(marginInput);
     if (isNaN(margin) || margin < 0) {
       showToast('error', 'Invalid margin percentage!');
       return;
     }
-    
-    const newCustItems = boms.map((b, idx) => {
-        const autoMatTotal = b.autoMats.reduce((s, m) => s + Number(m.platePrice) + Number(m.shaftPrice), 0)
-        const manualMatTotal = b.manualMats.reduce((s, m) => s + Number(m.qty) * Number(m.unitPrice), 0)
+
+    const validBoms = boms.filter(b => {
+      const autoMatTotal = b.autoMats.reduce((s, m) => s + Number(m.platePrice) + Number(m.shaftPrice), 0);
+      const manualMatTotal = b.manualMats.reduce((s, m) => s + Number(m.qty) * Number(m.unitPrice), 0);
+      let machCost = 0;
+      if (b.procState) {
+        machCost = Object.values(b.procState).reduce((s, p) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
+      }
+      return (autoMatTotal + manualMatTotal + machCost) > 0;
+    });
+
+    if (validBoms.length === 0) {
+      showToast('error', 'No BOMs have cost > 0 to generate a quote.');
+      return;
+    }
+
+    setIsGeneratingQuote(true);
+    try {
+      const newCustItems = await Promise.all(validBoms.map(async (b, idx) => {
+        const autoMatTotal = b.autoMats.reduce((s, m) => s + Number(m.platePrice) + Number(m.shaftPrice), 0);
+        const manualMatTotal = b.manualMats.reduce((s, m) => s + Number(m.qty) * Number(m.unitPrice), 0);
         let machCost = 0;
         if (b.procState) {
-            machCost = Object.values(b.procState).reduce((s, p) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0)
+          machCost = Object.values(b.procState).reduce((s, p) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
         }
         
         const cost = autoMatTotal + manualMatTotal + machCost;
-        if (cost <= 0) return null;
-        
         const targetTotal = cost * (1 + (margin / 100));
-        
-        const matTypes = [...b.autoMats.map(m => m.type || m.shape || m.material), ...b.manualMats.map(m => m.material)].filter(Boolean);
-        const uniqueMats = Array.from(new Set(matTypes)).join(', ');
-        
+
         let finalDesc = b.title.startsWith('BOM Part ') 
             ? 'Custom Fabrication & Manufacturing' 
             : `Fabrication and Supply of ${b.title}`;
@@ -953,24 +971,139 @@ export const QuotationBuilder: React.FC = () => {
         if (b.description) {
             finalDesc += `\n\nScope of Work:\n${b.description}`;
         }
-        
-        return {
-            id: Date.now() + idx,
-            desc: finalDesc,
-            qty: 1,
-            unitPrice: Math.round(targetTotal),
-            note: ''
-        }
-    }).filter(Boolean) as { id: number; desc: string; qty: number; unitPrice: number; note: string }[];
 
-    if (newCustItems.length === 0) {
-        showToast('error', 'No BOMs have cost > 0 to generate a quote.');
-        return;
+        if (useAiPolish) {
+          try {
+            const matTypes = [...b.autoMats.map((m: any) => m.type || m.shape || m.material), ...b.manualMats.map((m: any) => m.material)].filter(Boolean);
+            const operations = b.procState ? Object.keys(b.procState).filter(k => (Number(b.procState[k]?.quoHr || 0) > 0 || Number(b.procState[k]?.estHr || 0) > 0)) : [];
+            const dimensions = b.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
+
+            const aiDesc = await generateQuotationDescription({
+              partTitle: b.title,
+              rawDescription: b.description || finalDesc,
+              materials: matTypes,
+              operations,
+              dimensions,
+              customerName: customerName || lead?.company || lead?.name || '',
+              quantity: jobQty || 1
+            });
+            if (aiDesc) {
+              finalDesc = aiDesc;
+            }
+          } catch (e) {
+            console.warn('AI Polish fallback to standard desc:', e);
+          }
+        }
+
+        return {
+          id: Date.now() + idx,
+          desc: finalDesc,
+          qty: 1,
+          unitPrice: Math.round(targetTotal),
+          note: ''
+        };
+      }));
+
+      setCustItems(newCustItems);
+      setShowMarginModal(false);
+      showToast('success', `✨ Generated ${newCustItems.length} quote item(s)${useAiPolish ? ' with Groq AI descriptions' : ''}!`);
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed generating quote');
+    } finally {
+      setIsGeneratingQuote(false);
+    }
+  };
+
+  const handleAiPolishItem = async (itemId: number) => {
+    const item = custItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    const matchingBom = boms.find(b => 
+      (b.title && item.desc.toLowerCase().includes(b.title.toLowerCase())) ||
+      (b.description && item.desc.toLowerCase().includes(b.description.toLowerCase()))
+    ) || boms[0];
+
+    const materials = matchingBom 
+      ? [...matchingBom.autoMats.map((m: any) => m.material || m.type || m.shape), ...matchingBom.manualMats.map((m: any) => m.material)].filter(Boolean)
+      : [];
+
+    const operations = matchingBom?.procState 
+      ? Object.keys(matchingBom.procState).filter(k => (Number(matchingBom.procState[k]?.quoHr || 0) > 0 || Number(matchingBom.procState[k]?.estHr || 0) > 0))
+      : [];
+
+    const dimensions = matchingBom?.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
+
+    setPolishingItemId(itemId);
+    try {
+      showToast('success', '✨ Enhancing with Groq Llama 3.3...');
+      const enrichedDesc = await generateQuotationDescription({
+        partTitle: matchingBom?.title || item.desc.split('\n')[0] || 'Precision Component',
+        rawDescription: item.desc,
+        materials,
+        operations,
+        dimensions,
+        customerName: customerName || lead?.company || lead?.name || '',
+        quantity: item.qty || 1
+      });
+
+      if (enrichedDesc) {
+        updateCustItem(itemId, 'desc', enrichedDesc);
+        showToast('success', '✨ Description enhanced with Groq AI!');
+      }
+    } catch (err: any) {
+      showToast('error', err.message || 'AI generation failed');
+    } finally {
+      setPolishingItemId(null);
+    }
+  };
+
+  const handleAiPolishAll = async () => {
+    if (custItems.length === 0) {
+      showToast('error', 'No quotation line items to polish.');
+      return;
     }
 
-    setCustItems(newCustItems);
-    setShowMarginModal(false);
-    showToast('success', `✨ Auto-generated Customer Quote with ${margin}% margin!`);
+    setIsPolishingAll(true);
+    showToast('success', '✨ Polishing all quotation descriptions with Groq AI...');
+    try {
+      const updated = await Promise.all(custItems.map(async (item, idx) => {
+        const matchingBom = boms[idx] || boms.find(b => 
+          (b.title && item.desc.toLowerCase().includes(b.title.toLowerCase()))
+        );
+
+        const materials = matchingBom 
+          ? [...matchingBom.autoMats.map((m: any) => m.material || m.type || m.shape), ...matchingBom.manualMats.map((m: any) => m.material)].filter(Boolean)
+          : [];
+
+        const operations = matchingBom?.procState 
+          ? Object.keys(matchingBom.procState).filter(k => (Number(matchingBom.procState[k]?.quoHr || 0) > 0 || Number(matchingBom.procState[k]?.estHr || 0) > 0))
+          : [];
+
+        const dimensions = matchingBom?.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
+
+        try {
+          const enriched = await generateQuotationDescription({
+            partTitle: matchingBom?.title || item.desc.split('\n')[0] || `Precision Engineering Item ${idx + 1}`,
+            rawDescription: item.desc,
+            materials,
+            operations,
+            dimensions,
+            customerName: customerName || lead?.company || lead?.name || '',
+            quantity: item.qty || 1
+          });
+          return { ...item, desc: enriched || item.desc };
+        } catch {
+          return item;
+        }
+      }));
+
+      setCustItems(updated);
+      showToast('success', `✨ Successfully polished ${updated.length} line items with Groq AI!`);
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed polishing descriptions');
+    } finally {
+      setIsPolishingAll(false);
+    }
   };
 
   const handleOpenMarginModal = () => {
@@ -1066,6 +1199,26 @@ export const QuotationBuilder: React.FC = () => {
       showToast('error', 'Failed to load version')
     }
   }
+
+  const handleDeleteVersion = async (v: any) => {
+    const ok = await showConfirm(
+      `Are you sure you want to delete Version v${v.version} of this quotation? This action cannot be undone.`,
+      'Delete Quotation Version',
+      { confirmLabel: 'Delete Version' }
+    );
+    if (!ok) return;
+
+    try {
+      await deleteQuotation(v.id);
+      showToast('success', `Version v${v.version} deleted successfully`);
+      if (currentId === v.id) {
+        setCurrentId(null);
+      }
+      await loadVersions();
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to delete quotation version');
+    }
+  };
 
   const [showPreview, setShowPreview] = useState(false)
   const [showTemplatesModal, setShowTemplatesModal] = useState(false)
@@ -1447,10 +1600,19 @@ export const QuotationBuilder: React.FC = () => {
                       {v.date ? String(v.date).slice(0,10) : ''} · {formatCurrency(v.totalAmount || 0)}
                     </div>
                   </div>
-                  <button onClick={() => handleLoadVersion(v)}
-                    className="flex items-center gap-1 px-2 py-1 bg-rex-500/10 text-rex-500 rounded-lg hover:bg-rex-500/20 transition-colors text-[11px] font-semibold">
-                    <RotateCcw size={11} /> Load
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleLoadVersion(v)}
+                      className="flex items-center gap-1 px-2 py-1 bg-rex-500/10 text-rex-500 rounded-lg hover:bg-rex-500/20 transition-colors text-[11px] font-semibold">
+                      <RotateCcw size={11} /> Load
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteVersion(v)}
+                      className="p-1 text-muted/60 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                      title={`Delete Version v${v.version}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2159,6 +2321,16 @@ export const QuotationBuilder: React.FC = () => {
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      icon={isPolishingAll ? Loader2 : Sparkles} 
+                      onClick={handleAiPolishAll} 
+                      disabled={isPolishingAll || custItems.length === 0}
+                      className="text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 font-bold border border-purple-500/20 h-7 text-[11px]"
+                    >
+                      {isPolishingAll ? 'Polishing...' : '✨ AI Polish All'}
+                    </Button>
                     <Button variant="ghost" size="sm" icon={Wand2} onClick={handleOpenMarginModal} className="text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 font-bold border border-purple-500/20 h-7 text-[11px]">✨ Auto-Gen</Button>
                     <Button variant="primary" size="sm" icon={Plus} onClick={addCustItem} className="h-7 text-[11px]">Add Line</Button>
                   </div>
@@ -2180,14 +2352,32 @@ export const QuotationBuilder: React.FC = () => {
                       {custItems.map((item, i) => (
                         <tr key={item.id} className="border-b border-theme-subtle/10 hover:bg-surface/30 transition-colors group">
                           <td className="px-4 py-2 text-xs font-mono text-muted text-center">{i + 1}</td>
-                          <td className="p-0">
-                            <textarea 
-                              value={item.desc} 
-                              onChange={e => updateCustItem(item.id, 'desc', e.target.value)} 
-                              placeholder="Item / service description..." 
-                              className="w-full bg-transparent outline-none text-[11px] font-medium resize-y min-h-[70px] p-2 leading-relaxed block border border-transparent hover:border-theme-subtle/30 focus:border-primary/40 focus:bg-surface rounded"
-                              rows={item.desc.split('\n').length > 1 ? Math.min(item.desc.split('\n').length, 8) : 1}
-                            />
+                          <td className="p-1">
+                            <div className="relative group/desc">
+                              <textarea 
+                                value={item.desc} 
+                                onChange={e => updateCustItem(item.id, 'desc', e.target.value)} 
+                                placeholder="Item / service description..." 
+                                className="w-full bg-transparent outline-none text-[11px] font-medium resize-y min-h-[70px] p-2 leading-relaxed block border border-transparent hover:border-theme-subtle/30 focus:border-primary/40 focus:bg-surface rounded pr-24"
+                                rows={item.desc.split('\n').length > 1 ? Math.min(item.desc.split('\n').length, 8) : 2}
+                              />
+                              <div className="absolute top-1.5 right-1.5 flex items-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAiPolishItem(item.id)}
+                                  disabled={polishingItemId === item.id}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-all opacity-80 group-hover/desc:opacity-100 disabled:opacity-50"
+                                  title="Enhance this description using Groq Llama 3.3 AI"
+                                >
+                                  {polishingItemId === item.id ? (
+                                    <Loader2 size={11} className="animate-spin text-purple-600" />
+                                  ) : (
+                                    <Sparkles size={11} className="text-purple-600" />
+                                  )}
+                                  <span>{polishingItemId === item.id ? 'Polishing...' : 'AI Polish'}</span>
+                                </button>
+                              </div>
+                            </div>
                           </td>
                           <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={item.qty} onChange={e => updateCustItem(item.id, 'qty', Number(e.target.value))} className={tableInputClass + " group-hover:bg-transparent"} /></td>
                           <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={item.unitPrice} onChange={e => updateCustItem(item.id, 'unitPrice', Number(e.target.value))} className={tableInputClass + " group-hover:bg-transparent"} /></td>
@@ -2626,7 +2816,7 @@ export const QuotationBuilder: React.FC = () => {
       <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation" size="sm">
         <div className="p-5 space-y-4">
           <p className="text-xs text-secondary leading-relaxed bg-purple-500/10 text-purple-600 p-3 rounded-xl border border-purple-500/20 font-medium">
-            The system will calculate the target price using your BOM Costing and generate one line item per BOM.
+            The system will calculate the target price using your BOM Costing and generate professional quotation line items powered by Groq Meta Llama 3.3.
           </p>
           <div>
             <label className="block text-xs font-bold text-secondary mb-1.5">Desired Profit Margin (%)</label>
@@ -2639,10 +2829,40 @@ export const QuotationBuilder: React.FC = () => {
               autoFocus
             />
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-colors">
+            <input 
+              type="checkbox" 
+              checked={useAiPolish} 
+              onChange={e => setUseAiPolish(e.target.checked)}
+              className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4" 
+            />
+            <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
+              <Sparkles size={13} className="text-purple-500" />
+              Generate executive descriptions with Groq AI (Llama 3.3)
+            </span>
+          </label>
           
           <div className="flex justify-end gap-3 pt-2 border-t border-theme-subtle mt-4">
-            <Button variant="ghost" onClick={() => setShowMarginModal(false)}>Cancel</Button>
-            <Button variant="primary" onClick={autoGenerateCustomerQuote} className="bg-gradient-to-r from-purple-500 to-indigo-500 border-0 text-white shadow-lg shadow-purple-500/30">Generate Quote</Button>
+            <Button variant="ghost" onClick={() => setShowMarginModal(false)} disabled={isGeneratingQuote}>Cancel</Button>
+            <Button 
+              variant="primary" 
+              onClick={autoGenerateCustomerQuote} 
+              disabled={isGeneratingQuote}
+              className="bg-gradient-to-r from-purple-500 to-indigo-500 border-0 text-white shadow-lg shadow-purple-500/30 flex items-center gap-2"
+            >
+              {isGeneratingQuote ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Generating with Groq AI...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} />
+                  Generate Quote
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </Modal>

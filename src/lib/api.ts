@@ -172,6 +172,31 @@ export const deleteQuotation = async (id: string) => {
   return res.json();
 };
 
+export const generateQuotationDescription = async (payload: {
+  partTitle?: string;
+  rawDescription?: string;
+  materials?: string | string[];
+  operations?: string | string[];
+  dimensions?: string;
+  customerName?: string;
+  quantity?: number | string;
+}): Promise<string> => {
+  const formattedPayload = {
+    ...payload,
+    materials: Array.isArray(payload.materials) ? payload.materials.join(', ') : payload.materials,
+    operations: Array.isArray(payload.operations) ? payload.operations.join(', ') : payload.operations,
+    quantity: payload.quantity ? Number(payload.quantity) : 1
+  };
+  const res = await fetch(`${API_URL}/ai/generate-quotation-description`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(formattedPayload)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed generating AI description');
+  return data.description || '';
+};
+
 // -- CUSTOMER GRNS --
 export const fetchAllCustomerGRNs = async () => {
   const res = await fetch(`${API_URL}/crm/grns`);

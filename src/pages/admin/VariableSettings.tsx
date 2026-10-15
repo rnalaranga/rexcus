@@ -68,7 +68,13 @@ export const VariableSettings: React.FC = () => {
     if (settings && Object.keys(settings).length > 0) {
       if (settings.ai_provider) setProvider(settings.ai_provider as 'groq' | 'openai');
       if (settings.groq_api_key) setGroqKey(settings.groq_api_key);
-      if (settings.groq_model) setGroqModel(settings.groq_model);
+      if (settings.groq_model) {
+        if (settings.groq_model.includes('gpt-oss') || settings.groq_model === 'llama-3.1-8b-instant') {
+          setGroqModel('llama-3.3-70b-versatile');
+        } else {
+          setGroqModel(settings.groq_model);
+        }
+      }
       if (settings.openai_api_key) setOpenAiKey(settings.openai_api_key);
       if (settings.openai_model) setOpenAiModel(settings.openai_model);
       if (settings.ai_enabled !== undefined) setAiEnabled(settings.ai_enabled !== 'false');
@@ -436,7 +442,71 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 2: OpenAI GPT OSS 120B */}
+                {/* Option 2: Meta Llama 3.1 8B Instant */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'llama-3.1-8b-instant'
+                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Zap size={13} className="text-amber-500" />
+                        llama-3.1-8b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        High Speed
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Ultra-fast 8B model with generous rate limits, perfect for quick data lookups.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="llama-3.1-8b-instant"
+                    checked={groqModel === 'llama-3.1-8b-instant'}
+                    onChange={e => setGroqModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 3: Mixtral 8x7B */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'mixtral-8x7b-32768'
+                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Cpu size={13} className="text-amber-500" />
+                        mixtral-8x7b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        32K Context
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Mixture-of-Experts architecture with 32,768 context window and high token limits.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="mixtral-8x7b-32768"
+                    checked={groqModel === 'mixtral-8x7b-32768'}
+                    onChange={e => setGroqModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 4: OpenAI GPT OSS 120B */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     groqModel === 'openai/gpt-oss-120b'
@@ -450,12 +520,12 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                         <Cpu size={13} className="text-amber-500" />
                         gpt-oss-120b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        120B Deep
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                        8K TPM Limit
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Massive 120B parameter model hosted on Groq LPU with blazing fast inference.
+                      Experimental 120B preview model. Note: Free tier has strict 8,000 TPM limit.
                     </p>
                   </div>
                   <input
@@ -463,67 +533,6 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     name="groq_model"
                     value="openai/gpt-oss-120b"
                     checked={groqModel === 'openai/gpt-oss-120b'}
-                    onChange={e => setGroqModel(e.target.value)}
-                    className="sr-only"
-                  />
-                </label>
-
-                {/* Option 3: OpenAI GPT OSS 20B */}
-                <label
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'openai/gpt-oss-20b'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
-                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
-                        <Zap size={13} className="text-amber-500" />
-                        gpt-oss-20b
-                      </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        1,000 t/s
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      High-throughput reasoning model running at up to 1,000 tokens per second.
-                    </p>
-                  </div>
-                  <input
-                    type="radio"
-                    name="groq_model"
-                    value="openai/gpt-oss-20b"
-                    checked={groqModel === 'openai/gpt-oss-20b'}
-                    onChange={e => setGroqModel(e.target.value)}
-                    className="sr-only"
-                  />
-                </label>
-
-                {/* Option 4: Meta Llama 3.1 8B */}
-                <label
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'llama-3.1-8b-instant'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
-                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono">llama-3.1-8b</span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        Instant (8B)
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Compact 8B model for rapid responses and lightweight questions.
-                    </p>
-                  </div>
-                  <input
-                    type="radio"
-                    name="groq_model"
-                    value="llama-3.1-8b-instant"
-                    checked={groqModel === 'llama-3.1-8b-instant'}
                     onChange={e => setGroqModel(e.target.value)}
                     className="sr-only"
                   />
