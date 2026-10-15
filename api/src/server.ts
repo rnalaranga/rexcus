@@ -6175,7 +6175,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     const aiData: any = await aiRes.json();
     const choice = aiData.choices?.[0];
-    const responseMsg = choice?.message;
+    let responseMsg = choice?.message;
 
     if (!responseMsg) {
       return res.status(500).json({ success: false, error: `Empty response from ${provider}` });
