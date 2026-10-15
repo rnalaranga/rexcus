@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -400,11 +400,11 @@ export const QuotationBuilder: React.FC = () => {
       setTinNo(cust.svat || cust.tin || cust.brNumber || '');
       if (cust.paymentTerms) {
         setCustTerms(cust.paymentTerms);
-      } else {
+      } else if (!custTerms) {
         let terms = '';
         if (cust.requiresAdvance) terms = 'Advance required. ';
         if (cust.creditDays > 0) terms += `${cust.creditDays} days credit.`;
-        setCustTerms(terms.trim());
+        if (terms.trim()) setCustTerms(terms.trim());
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
 
@@ -428,11 +428,11 @@ export const QuotationBuilder: React.FC = () => {
         setTinNo(cust.svat || cust.tin || cust.brNumber || leadItem.svat || leadItem.tin || '');
         if (cust.paymentTerms) {
           setCustTerms(cust.paymentTerms);
-        } else {
+        } else if (!custTerms) {
           let terms = '';
           if (cust.requiresAdvance) terms = 'Advance required. ';
           if (cust.creditDays > 0) terms += `${cust.creditDays} days credit.`;
-          setCustTerms(terms.trim());
+          if (terms.trim()) setCustTerms(terms.trim());
         }
         if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
 
@@ -669,6 +669,36 @@ export const QuotationBuilder: React.FC = () => {
     }
   }, [custTerms, termsPresets]);
 
+  // Quotation Bank Details (loaded from Settings)
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [bankDetailId, setBankDetailId] = useState<string>('');
+  const selectedBank = useMemo(() => {
+    if (bankDetailId === 'none') return null;
+    return bankAccounts.find(b => b.id === bankDetailId) || null;
+  }, [bankDetailId, bankAccounts]);
+
+  useEffect(() => {
+    let banks: any[] = [];
+    if (settings?.company_bank_details) {
+      try {
+        const parsed = typeof settings.company_bank_details === 'string'
+          ? JSON.parse(settings.company_bank_details)
+          : settings.company_bank_details;
+        if (Array.isArray(parsed) && parsed.length > 0) banks = parsed;
+      } catch (e) {}
+    }
+    if (banks.length === 0) {
+      banks = [
+        { id: 'bank_hnb', bankName: 'Hatton National Bank', branchName: 'Negombo', accountName: 'Rex Industries (Pvt) Ltd', accountNumber: '011010078028', swiftCode: 'HNBLLKLX', isDefault: true }
+      ];
+    }
+    setBankAccounts(banks);
+    if (!bankDetailId) {
+      const def = banks.find((b: any) => b.isDefault) || banks[0];
+      if (def) setBankDetailId(def.id);
+    }
+  }, [settings?.company_bank_details]);
+
   // --- Calculations ---
   
   let totalMaterialCost = 0;
@@ -786,9 +816,12 @@ export const QuotationBuilder: React.FC = () => {
     }
     
     setCustItems(snap.custItems || [])
-    setCustTerms(snap.custTerms || '')
-    setCustValidity(snap.custValidity || '30 Days')
-    setCustDelivery(snap.custDelivery || '')
+    setCustTerms(snap.custTerms || snap.terms || snap.paymentTerms || '')
+    setCustValidity(snap.custValidity || snap.validity || '30 Days')
+    setCustDelivery(snap.custDelivery || snap.delivery || snap.deliveryTerms || '')
+    if (snap.selectedTermsPresetId) setSelectedTermsPresetId(snap.selectedTermsPresetId);
+    if (snap.bankDetailId !== undefined) setBankDetailId(snap.bankDetailId);
+    else if (snap.bankDetails === 'none') setBankDetailId('none');
     setCustDiscount(snap.custDiscount !== undefined ? snap.custDiscount : 0)
     setCustDiscountType(snap.custDiscountType || 'percent')
     setCustDiscountAmount(snap.custDiscountAmount !== undefined ? snap.custDiscountAmount : (snap.custTotals?.discount !== undefined ? snap.custTotals.discount : 0))
@@ -817,6 +850,9 @@ export const QuotationBuilder: React.FC = () => {
         boms,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
         custDiscountType, custDiscountAmount,
+        selectedTermsPresetId,
+        bankDetailId: bankDetailId || null,
+        bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         selectedProfile, custSscl, custVat, jobSscl, jobVat
@@ -954,6 +990,9 @@ export const QuotationBuilder: React.FC = () => {
         boms: bomsWithTotals,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
         custDiscountType, custDiscountAmount,
+        selectedTermsPresetId,
+        bankDetailId: bankDetailId || null,
+        bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
@@ -1525,10 +1564,40 @@ export const QuotationBuilder: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] text-muted mb-1.5">Delivery Terms</label>
-                  <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)}
-                    placeholder="e.g. Ex-works" className={docInputClass} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Validity</label>
+                    <input type="text" value={custValidity} onChange={e => setCustValidity(e.target.value)}
+                      placeholder="e.g. 30 Days" className={docInputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Delivery Terms</label>
+                    <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)}
+                      placeholder="e.g. Ex-works" className={docInputClass} />
+                  </div>
+                </div>
+
+                {/* Bank Account for Remittance */}
+                <div className="bg-surface2/60 border border-theme-subtle/60 rounded-xl p-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-primary flex items-center gap-1 uppercase tracking-wider">
+                      <Landmark size={12} className="text-rex-500" />
+                      Remittance Bank Account
+                    </label>
+                    <span className="text-[9px] text-muted">From Settings</span>
+                  </div>
+                  <select
+                    value={bankDetailId}
+                    onChange={e => setBankDetailId(e.target.value)}
+                    className={docInputClass + " bg-surface font-medium text-xs"}
+                  >
+                    {bankAccounts.map((b: any) => (
+                      <option key={b.id} value={b.id}>
+                        {b.bankName} — A/C {b.accountNumber} ({b.branchName || 'Main'}{b.isDefault ? ' · Default' : ''})
+                      </option>
+                    ))}
+                    <option value="none">— Do Not Show Bank Details on Quotation —</option>
+                  </select>
                 </div>
               </div>
 
@@ -2034,6 +2103,41 @@ export const QuotationBuilder: React.FC = () => {
                     <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)} placeholder="e.g. 3-4 weeks" className={docInputClass + " bg-surface"} />
                   </div>
                 </div>
+
+                {/* Bank Account for Remittance */}
+                <div className="bg-surface2/60 border border-theme-subtle/60 rounded-xl p-3 mt-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Landmark size={15} className="text-rex-500" />
+                      <div>
+                        <span className="text-xs font-bold text-primary block">Remittance Bank Account</span>
+                        <span className="text-[10px] text-muted">Select bank account to display on quotation print/PDF</span>
+                      </div>
+                    </div>
+                    <div className="w-full sm:w-80">
+                      <select
+                        value={bankDetailId}
+                        onChange={e => setBankDetailId(e.target.value)}
+                        className="w-full bg-surface border border-theme-subtle rounded-lg px-2.5 py-1.5 text-xs text-primary focus:border-rex-500 outline-none font-medium"
+                      >
+                        {bankAccounts.map((b: any) => (
+                          <option key={b.id} value={b.id}>
+                            {b.bankName} — A/C {b.accountNumber} ({b.branchName || 'Main'}{b.isDefault ? ' · Default' : ''})
+                          </option>
+                        ))}
+                        <option value="none">— Do Not Show Bank Details on Quotation —</option>
+                      </select>
+                    </div>
+                  </div>
+                  {selectedBank && (
+                    <div className="mt-2 pt-2 border-t border-theme-subtle/40 text-[11px] text-muted flex flex-wrap items-center justify-between gap-2 px-1">
+                      <span><strong>A/C Name:</strong> {selectedBank.accountName}</span>
+                      <span><strong>A/C No:</strong> <span className="font-mono font-bold text-primary">{selectedBank.accountNumber}</span></span>
+                      <span><strong>Branch:</strong> {selectedBank.branchName || '-'}</span>
+                      {selectedBank.swiftCode && <span><strong>SWIFT:</strong> <span className="font-mono">{selectedBank.swiftCode}</span></span>}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             
@@ -2260,7 +2364,8 @@ export const QuotationBuilder: React.FC = () => {
                            custItems, custDiscount, custDiscountType, custDiscountAmount, boms,
                            custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                            jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
-                           custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+                           custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+                           bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
                         }}
                         type="main"
                         lead={currentEntity || lead}
@@ -2316,7 +2421,8 @@ export const QuotationBuilder: React.FC = () => {
                custItems, custDiscount, custDiscountType, custDiscountAmount, boms,
                custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
-               custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+               custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+               bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
             }}
             type="main"
             lead={currentEntity || lead}

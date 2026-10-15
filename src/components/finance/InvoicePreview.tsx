@@ -147,12 +147,13 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
   if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
   if (dispatchNo) infoItems.push({ label: 'Dispatch No.', value: String(dispatchNo) });
-  if (notes && String(notes).trim()) {
-    const trimmedNotes = String(notes).trim();
-    const isPaymentWord = /^(credit|cash|cheque|bank\s*transfer|advance)$/i.test(trimmedNotes);
-    infoItems.push({ 
-      label: isPaymentWord ? 'Payment Terms' : 'Notes / Remarks', 
-      value: trimmedNotes 
+  // Determine Payment Terms value (prefer notes if given, else modeOfPayment)
+  const explicitTerms = notes && String(notes).trim();
+
+  if (explicitTerms) {
+    infoItems.push({
+      label: 'Payment Terms',
+      value: explicitTerms
     });
   }
 
@@ -164,6 +165,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       if (colonIdx > -1) {
         const rawLbl = part.slice(0, colonIdx).trim();
         const rawVal = part.slice(colonIdx + 1).trim();
+        if (!rawVal) continue; // skip empty like "PO No: "
+        const isTermsLabel = /payment\s*terms/i.test(rawLbl);
+        const hasPaymentTerms = infoItems.some(it => /payment\s*terms/i.test(it.label));
+        if (isTermsLabel && hasPaymentTerms) {
+          continue;
+        }
         const exists = infoItems.some(it => 
           it.label.toLowerCase() === rawLbl.toLowerCase() || 
           it.value.toLowerCase() === rawVal.toLowerCase()
@@ -172,9 +179,13 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           infoItems.push({ label: rawLbl, value: rawVal });
         }
       } else {
+        const isPaymentWord = /^(credit|cash|cheque|bank\s*transfer|advance)$/i.test(part);
+        const hasPaymentTerms = infoItems.some(it => /payment\s*terms/i.test(it.label));
+        if (isPaymentWord && hasPaymentTerms) {
+          continue;
+        }
         const exists = infoItems.some(it => it.value.toLowerCase() === part.toLowerCase());
         if (!exists) {
-          const isPaymentWord = /^(credit|cash|cheque|bank\s*transfer|advance)$/i.test(part);
           infoItems.push({ 
             label: isPaymentWord ? 'Payment Terms' : 'Remarks', 
             value: part 
@@ -182,6 +193,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         }
       }
     }
+  }
+
+  // If still no payment terms in infoItems, add the default payment terms / mode
+  if (!infoItems.some(it => /payment\s*terms/i.test(it.label))) {
+    infoItems.push({
+      label: 'Payment Terms',
+      value: modeOfPayment || 'Credit'
+    });
   }
 
   const paymentModeDisplay = modeOfPayment || 'Credit';
@@ -235,17 +254,42 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   let activeBank: any = null;
   if (bankDetails && bankDetails !== 'none') {
     if (typeof bankDetails === 'string') {
-      try { activeBank = JSON.parse(bankDetails); } catch (e) {}
+      try { 
+        activeBank = JSON.parse(bankDetails); 
+      } catch (e) {
+        // bankDetails might be an ID string like 'bank_hnb'
+      }
     } else if (typeof bankDetails === 'object') {
       activeBank = bankDetails;
     }
-  } else if (bankDetails !== 'none' && company?.company_bank_details) {
-    try {
-      const parsed = JSON.parse(company.company_bank_details);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        activeBank = parsed.find((b: any) => b.isDefault) || parsed[0];
-      }
-    } catch (e) {}
+  }
+
+  if (!activeBank && bankDetails !== 'none') {
+    const rawBankSettings = company?.company_bank_details;
+    if (rawBankSettings) {
+      try {
+        const parsed = typeof rawBankSettings === 'string' ? JSON.parse(rawBankSettings) : rawBankSettings;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (typeof bankDetails === 'string' && bankDetails) {
+            activeBank = parsed.find((b: any) => b.id === bankDetails);
+          }
+          if (!activeBank) {
+            activeBank = parsed.find((b: any) => b.isDefault) || parsed[0];
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // Fallback to legacy default if no settings exist and not explicitly set to 'none'
+  if (!activeBank && bankDetails !== 'none') {
+    activeBank = {
+      bankName: company?.bankName || company?.companyBankName || 'Hatton National Bank',
+      branchName: 'Negombo',
+      accountName: company?.name || company?.company_name || 'Rex Industries (Pvt) Ltd',
+      accountNumber: company?.accountNo || company?.companyAccountNo || '011010078028',
+      swiftCode: 'HNBLLKLX'
+    };
   }
 
     // Check whether tax1 (SSCL) and tax2 (VAT) are hidden (absorbed) or shown separately

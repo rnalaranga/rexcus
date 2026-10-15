@@ -13,6 +13,7 @@ import { useTaxes, useTaxProfiles } from '@/hooks/useFinance';
 import { createInvoice } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager';
 
 export { toWords, formatGazetteDate, TEMPLATES, InvoicePreview } from '@/components/finance/InvoicePreview';
 import { InvoicePreview, toWords, formatGazetteDate, TEMPLATES } from '@/components/finance/InvoicePreview';
@@ -55,10 +56,45 @@ export const InvoiceBuilder: React.FC = () => {
   const [customerVat, setCustomerVat] = useState('');
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [bankDetailId, setBankDetailId] = useState<string>('');
+  const [termsPresets, setTermsPresets] = useState<QuotationTermsPreset[]>(DEFAULT_TERMS_PRESETS);
+  const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
   const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
 
   const selectedCustomer = customers.find(c => c.id === customerId);
   const selectedBank = bankDetailId === 'none' ? null : (bankAccounts.find(b => b.id === bankDetailId) || null);
+
+  const handleSelectTermsPreset = (presetId: string) => {
+    setSelectedTermsPresetId(presetId);
+    if (!presetId) return;
+    const preset = termsPresets.find(p => p.id === presetId);
+    if (preset) {
+      if (preset.paymentTerms) setNotes(preset.paymentTerms);
+      if (/advance/i.test(preset.paymentTerms)) setModeOfPayment('Advance');
+      else if (/credit/i.test(preset.paymentTerms)) setModeOfPayment('Credit');
+      else if (/cod|delivery against invoice|cash/i.test(preset.paymentTerms)) setModeOfPayment('Cash');
+      else if (/cheque/i.test(preset.paymentTerms)) setModeOfPayment('Cheque');
+      else if (/bank\s*transfer/i.test(preset.paymentTerms)) setModeOfPayment('Bank Transfer');
+    }
+  };
+
+  useEffect(() => {
+    if (!notes && termsPresets.length > 0) {
+      const def = termsPresets.find(p => p.isDefault) || termsPresets[0];
+      if (def) {
+        setSelectedTermsPresetId(def.id);
+        if (def.paymentTerms) setNotes(def.paymentTerms);
+      }
+    }
+  }, [termsPresets]);
+
+  useEffect(() => {
+    if (notes && termsPresets.length > 0) {
+      const matched = termsPresets.find(p => p.paymentTerms?.trim().toLowerCase() === notes.trim().toLowerCase());
+      if (matched && matched.id !== selectedTermsPresetId) {
+        setSelectedTermsPresetId(matched.id);
+      }
+    }
+  }, [notes, termsPresets]);
 
   const customerOptions = customers.map(c => ({ value: c.id, label: c.company || c.name, group: c.segment || 'Customers', extra: c.email || '' }));
   const itemOptions = inventory.map(i => ({ value: i.id, label: `${i.sku} - ${i.name}`, group: i.category || 'Products', extra: `Stock: ${i.qtyOnHand}` }));
@@ -83,6 +119,13 @@ export const InvoiceBuilder: React.FC = () => {
         setBankAccounts(banks);
         const def = banks.find((b: any) => b.isDefault) || banks[0];
         if (def) setBankDetailId(def.id);
+
+        if (s.quotation_terms_presets) {
+          try {
+            const parsed = JSON.parse(s.quotation_terms_presets);
+            if (Array.isArray(parsed) && parsed.length > 0) setTermsPresets(parsed);
+          } catch(e) {}
+        }
 
         setCompany({ 
           name: s.company_name || s.companyName || s.name || 'Rex Industries (Pvt) Ltd', 
@@ -126,6 +169,14 @@ export const InvoiceBuilder: React.FC = () => {
       const days = Number(selectedCustomer.creditDays) || 0;
       setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
       setCustomerVat(selectedCustomer.vat || '');
+      if (selectedCustomer.paymentTerms) {
+        setNotes(selectedCustomer.paymentTerms);
+        if (/advance/i.test(selectedCustomer.paymentTerms)) setModeOfPayment('Advance');
+        else if (/credit/i.test(selectedCustomer.paymentTerms)) setModeOfPayment('Credit');
+      } else if (days > 0 && !notes) {
+        setNotes(`${days} days credit`);
+        setModeOfPayment('Credit');
+      }
     } else {
       setCustomerVat('');
     }
@@ -599,9 +650,48 @@ export const InvoiceBuilder: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="border-t border-theme-subtle pt-2 mt-1">
-                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Notes / Terms</label>
-                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={`${docInputClass} resize-none`} placeholder="Payment terms, delivery, etc." />
+                <div className="border-t border-theme-subtle pt-2 mt-1 space-y-2">
+                  <div className="bg-surface2/40 border border-theme-subtle/60 rounded-lg p-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-bold text-primary flex items-center gap-1 uppercase tracking-wider">
+                        <FileText size={12} className="text-blue-500" />
+                        Terms & Conditions Preset
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/admin/settings')}
+                        className="text-[9px] text-blue-500 hover:underline font-semibold"
+                      >
+                        + Manage Presets
+                      </button>
+                    </div>
+                    <select
+                      value={selectedTermsPresetId}
+                      onChange={e => handleSelectTermsPreset(e.target.value)}
+                      className={`${docInputClass} font-medium text-xs`}
+                    >
+                      <option value="">-- Choose Preset (Payment & Delivery Terms) --</option>
+                      {termsPresets.map((tp: any) => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.name} ({tp.validity || tp.paymentTerms}) {tp.isDefault ? '★ (Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-bold text-muted uppercase">Payment Terms / Notes</label>
+                      {notes && <span className="text-[9px] text-emerald-500 font-semibold">Active on Invoice</span>}
+                    </div>
+                    <textarea 
+                      value={notes} 
+                      onChange={e => setNotes(e.target.value)} 
+                      rows={2} 
+                      className={`${docInputClass} resize-none font-medium`} 
+                      placeholder="e.g. 30 days from date of delivery / 50% Advance with confirmed PO" 
+                    />
+                  </div>
                 </div>
               </div>
             </GlassCard>

@@ -74,9 +74,49 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
     multiplier = 1;
   }
   
-  const custTerms = data.custTerms || ''
-  const custValidity = data.custValidity || ''
-  const custDelivery = data.custDelivery || ''
+  const custTerms = data.custTerms || data.terms || data.paymentTerms || ''
+  const custValidity = data.custValidity || data.validity || ''
+  const custDelivery = data.custDelivery || data.delivery || data.deliveryTerms || ''
+
+  // Resolve Bank Details for Quotation
+  let activeBank: any = null;
+  const rawBankDetails = data.bankDetails;
+  const bankDetailId = data.bankDetailId;
+
+  if (rawBankDetails && rawBankDetails !== 'none') {
+    if (typeof rawBankDetails === 'string') {
+      try { activeBank = JSON.parse(rawBankDetails); } catch (e) {}
+    } else if (typeof rawBankDetails === 'object') {
+      activeBank = rawBankDetails;
+    }
+  }
+
+  if (!activeBank && rawBankDetails !== 'none') {
+    const rawBankSettings = settings?.company_bank_details;
+    if (rawBankSettings) {
+      try {
+        const parsed = typeof rawBankSettings === 'string' ? JSON.parse(rawBankSettings) : rawBankSettings;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (bankDetailId) {
+            activeBank = parsed.find((b: any) => b.id === bankDetailId) || null;
+          }
+          if (!activeBank && rawBankDetails !== 'none') {
+            activeBank = parsed.find((b: any) => b.isDefault) || parsed[0];
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // Fallback to legacy default if no settings exist and not explicitly set to 'none'
+  if (!activeBank && rawBankDetails !== 'none') {
+    activeBank = {
+      accountName: settings?.company_name || 'REX INDUSTRIES (PVT) LTD',
+      accountNumber: '011010078028',
+      bankName: 'HATTON NATIONAL BANK',
+      branchName: 'NEGOMBO'
+    };
+  }
 
   return (
     <>
@@ -360,47 +400,62 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   </tr>
                 </tbody>
               </table>
-              <div className="mt-4 font-bold underline mb-1">BANK DETAILS</div>
-              <table className="w-full">
-                <tbody>
-                  <tr>
-                    <td className="w-24 align-top">A/C NAME</td>
-                    <td className="align-top font-bold">
-                      <div className="flex items-start">
-                        <span className="mr-1.5 shrink-0">:</span>
-                        <span className="flex-1">REX INDUSTRIES (PVT) LTD</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="w-24 align-top">A/C NO</td>
-                    <td className="align-top">
-                      <div className="flex items-start">
-                        <span className="mr-1.5 shrink-0">:</span>
-                        <span className="flex-1">011010078028</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="w-24 align-top">BANK</td>
-                    <td className="align-top">
-                      <div className="flex items-start">
-                        <span className="mr-1.5 shrink-0">:</span>
-                        <span className="flex-1">HATTON NATIONAL BANK</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="w-24 align-top">BRANCH</td>
-                    <td className="align-top">
-                      <div className="flex items-start">
-                        <span className="mr-1.5 shrink-0">:</span>
-                        <span className="flex-1">NEGOMBO</span>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {activeBank && (
+                <>
+                  <div className="mt-4 font-bold underline mb-1">BANK DETAILS</div>
+                  <table className="w-full">
+                    <tbody>
+                      <tr>
+                        <td className="w-24 align-top">A/C NAME</td>
+                        <td className="align-top font-bold">
+                          <div className="flex items-start">
+                            <span className="mr-1.5 shrink-0">:</span>
+                            <span className="flex-1 uppercase">{activeBank.accountName || settings?.company_name || 'REX INDUSTRIES (PVT) LTD'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-24 align-top">A/C NO</td>
+                        <td className="align-top font-bold">
+                          <div className="flex items-start">
+                            <span className="mr-1.5 shrink-0">:</span>
+                            <span className="flex-1 font-mono">{activeBank.accountNumber}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-24 align-top">BANK</td>
+                        <td className="align-top">
+                          <div className="flex items-start">
+                            <span className="mr-1.5 shrink-0">:</span>
+                            <span className="flex-1 uppercase">{activeBank.bankName}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="w-24 align-top">BRANCH</td>
+                        <td className="align-top">
+                          <div className="flex items-start">
+                            <span className="mr-1.5 shrink-0">:</span>
+                            <span className="flex-1 uppercase">{activeBank.branchName || '-'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {activeBank.swiftCode && (
+                        <tr>
+                          <td className="w-24 align-top">SWIFT</td>
+                          <td className="align-top">
+                            <div className="flex items-start">
+                              <span className="mr-1.5 shrink-0">:</span>
+                              <span className="flex-1 font-mono">{activeBank.swiftCode}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
             
             <div className="w-1/2 p-3 flex flex-col justify-end text-[11px]">

@@ -635,6 +635,8 @@ app.post('/api/settings/fix-db', async (req, res) => {
       "ALTER TABLE invoices ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
       "ALTER TABLE invoices ADD COLUMN modeOfPayment VARCHAR(100) DEFAULT 'Credit'",
       "ALTER TABLE invoices ADD COLUMN additionalInfo TEXT DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN bankDetailId VARCHAR(50) DEFAULT NULL",
+      "ALTER TABLE invoices ADD COLUMN bankDetails TEXT DEFAULT NULL",
       "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
       "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
       "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
