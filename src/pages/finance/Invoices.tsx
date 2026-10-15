@@ -9,7 +9,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
 import { useInvoices, useLeads, useCustomers, useQuotations } from '@/hooks/useData'
-import { useTaxProfiles } from '@/hooks/useFinance'
+import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -21,17 +21,21 @@ export const Invoices: React.FC = () => {
   const { data: customers } = useCustomers()
   const { data: quotations } = useQuotations()
   const { data: taxProfiles } = useTaxProfiles()
+  const { data: accounts } = useAccounts()
   const { settings } = useSettings()
   
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [customerFilter, setCustomerFilter] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [viewInvoice, setViewInvoice] = useState<any>(null)
   
   const [toast, setToast] = useState<{type: 'success'|'error', msg: string} | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [paymentData, setPaymentData] = useState({ amount: '', method: 'Cash', reference: '' })
+  const [paymentData, setPaymentData] = useState({ amount: '', method: 'Cash', accountId: '', reference: '' })
   
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newInvoiceData, setNewInvoiceData] = useState({
@@ -120,7 +124,7 @@ export const Invoices: React.FC = () => {
       refetch();
       showToast('success', 'Payment recorded successfully');
       setShowPaymentModal(false);
-      setPaymentData({ amount: '', method: 'Cash', reference: '' });
+      setPaymentData({ amount: '', method: 'Cash', accountId: '', reference: '' });
     } catch (e: any) {
       console.error('Record payment error:', e);
       showToast('error', e.message || 'Failed to record payment');
@@ -366,6 +370,8 @@ export const Invoices: React.FC = () => {
         statusMatch = !pay.isSettled && invStatus !== 'draft';
       } else if (statusFilter === 'paid') {
         statusMatch = pay.isSettled || invStatus === 'paid';
+      } else if (statusFilter === 'partial') {
+        statusMatch = pay.paid > 0 && !pay.isSettled;
       } else if (statusFilter === 'overdue') {
         statusMatch = pay.isOverdue || invStatus === 'overdue';
       } else {
@@ -373,7 +379,21 @@ export const Invoices: React.FC = () => {
       }
     }
 
-    return searchMatch && statusMatch;
+    let customerMatch = true;
+    if (customerFilter !== 'all') {
+      customerMatch = inv.customerId === customerFilter || inv.leadId === customerFilter || cust.id === customerFilter;
+    }
+
+    let dateMatch = true;
+    const invDate = (inv.date || '').slice(0, 10);
+    if (startDate && invDate) {
+      dateMatch = dateMatch && invDate >= startDate;
+    }
+    if (endDate && invDate) {
+      dateMatch = dateMatch && invDate <= endDate;
+    }
+
+    return searchMatch && statusMatch && customerMatch && dateMatch;
   });
 
   const getStatusBadge = (status: string) => {
@@ -580,23 +600,113 @@ export const Invoices: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 bg-surface/50 p-2 rounded-lg border border-theme-subtle overflow-x-auto">
-        {['all', 'unpaid', 'paid', 'overdue', 'draft', 'sent'].map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider ${
-              statusFilter === s 
-                ? 'bg-surface border border-theme-subtle text-primary shadow-sm' 
-                : 'text-muted hover:text-secondary'
-            }`}
-          >
-            {s}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <SearchBar value={search} onChange={setSearch} placeholder="Search invoices, customer, quote, PO..." className="w-72" />
-      </div>
+      {/* Comprehensive Filter Toolbar */}
+      <GlassCard className="p-3 space-y-3">
+        {/* Row 1: Status Tabs & Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            {['all', 'unpaid', 'partial', 'paid', 'overdue', 'draft', 'sent'].map(s => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider shrink-0 ${
+                  statusFilter === s 
+                    ? 'bg-rex-500/10 border border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold shadow-xs' 
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
+                }`}
+              >
+                {s === 'partial' ? 'Partially Paid' : s}
+              </button>
+            ))}
+          </div>
+
+          <SearchBar 
+            value={search} 
+            onChange={setSearch} 
+            placeholder="Search invoices, customer, quote, PO..." 
+            className="w-full sm:w-80" 
+          />
+        </div>
+
+        {/* Row 2: Customer Filter, Date Range Picker & Clear All */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-theme-subtle text-xs">
+          <div className="flex items-center gap-1.5">
+            <Filter size={13} className="text-muted shrink-0" />
+            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">Customer:</span>
+            <select
+              value={customerFilter}
+              onChange={e => setCustomerFilter(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded px-2.5 py-1 text-primary text-xs focus:border-rex-500 outline-none max-w-[200px]"
+            >
+              <option value="all">All Customers ({customers.length})</option>
+              {customers.map((c: any) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} {c.company ? `(${c.company})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">From:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+            />
+            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">To:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = String(now.getMonth() + 1).padStart(2, '0');
+                setStartDate(`${y}-${m}-01`);
+                setEndDate(now.toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                setStartDate(past.toISOString().slice(0, 10));
+                setEndDate(now.toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+            >
+              Last 30 Days
+            </button>
+            {(statusFilter !== 'all' || customerFilter !== 'all' || startDate || endDate || search) && (
+              <button
+                onClick={() => {
+                  setStatusFilter('all');
+                  setCustomerFilter('all');
+                  setStartDate('');
+                  setEndDate('');
+                  setSearch('');
+                }}
+                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded font-semibold text-[11px] transition-colors ml-1"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
+      </GlassCard>
 
       <GlassCard className="p-0 overflow-hidden">
         {loading ? (
@@ -858,6 +968,23 @@ export const Invoices: React.FC = () => {
                 <option>Bank Transfer</option>
                 <option>Cheque</option>
                 <option>Card</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Deposit To (Bank / Cash Account)</label>
+              <select 
+                value={paymentData.accountId}
+                onChange={e => setPaymentData({ ...paymentData, accountId: e.target.value })}
+                className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+              >
+                <option value="">Default Account (Auto match {paymentData.method})</option>
+                {accounts
+                  .filter(a => a.type === 'Asset' && (a.subtype === 'Bank' || a.subtype === 'Cash' || a.name?.toLowerCase().includes('bank') || a.name?.toLowerCase().includes('cash')))
+                  .map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.code ? `[${a.code}] ` : ''}{a.name} ({a.subtype || 'Asset'} - Rs. {Number(a.balance || 0).toLocaleString()})
+                    </option>
+                  ))}
               </select>
             </div>
             <div>

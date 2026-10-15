@@ -37,7 +37,6 @@ export const RexAIAssistant: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = localStorage.getItem('rex_ai_chat_history');
@@ -64,9 +63,15 @@ export const RexAIAssistant: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  const hasApiKey = Boolean(settings.openai_api_key && settings.openai_api_key.trim().length > 0);
+  const activeProvider = settings.ai_provider || 'groq';
+  const activeModel = activeProvider === 'groq' 
+    ? (settings.groq_model || 'llama-3.3-70b-versatile') 
+    : (settings.openai_model || 'gpt-6-luna');
+  const hasApiKey = Boolean(
+    (settings.groq_api_key && settings.groq_api_key.trim().length > 0) ||
+    (settings.openai_api_key && settings.openai_api_key.trim().length > 0)
+  );
   const isAiEnabled = settings.ai_enabled !== 'false';
-  const activeModel = settings.openai_model || 'gpt-6-luna';
 
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
@@ -115,7 +120,7 @@ export const RexAIAssistant: React.FC = () => {
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `⚠️ **OpenAI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ OpenAI API Key එක ඇතුළත් කරන්න. ඉන්පසු සියලු මිල ගණන් සහ ERP දත්ත සජීවීව ලබාගත හැක.`,
+            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Groq Cloud API Key** එක (Meta Llama 3.3 70B සඳහා) හෝ OpenAI Key එකක් ඇතුළත් කරන්න. ක්‍රෙඩිට් කාඩ් කිසිවක් අවශ්‍ය නැත, ක්ෂණිකව සියලු මිල ගණන් සහ ERP දත්ත සජීවීව විමසිය හැක!`,
             timestamp: new Date()
           }
         ]);
@@ -168,23 +173,19 @@ export const RexAIAssistant: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
           style={{
             borderTopLeftRadius: '9999px',
             borderBottomLeftRadius: '9999px',
             borderTopRightRadius: '0px',
             borderBottomRightRadius: '0px'
           }}
-          className={`fixed right-0 bottom-24 z-50 flex items-center h-[54px] cursor-pointer
+          className="fixed right-0 bottom-24 z-50 flex items-center h-[54px] cursor-pointer
+            w-[52px] hover:w-[255px]
             bg-zinc-950/90 dark:bg-zinc-900/90 
             backdrop-blur-xl 
             border-y border-l border-rose-500/50 hover:border-rose-500 
-            transition-all duration-300 ease-out group overflow-hidden select-none
-            ${isHovered 
-              ? 'w-[255px] shadow-[-8px_0_35px_0_rgba(225,29,72,0.65)]' 
-              : 'w-[52px] shadow-[-4px_0_22px_0_rgba(225,29,72,0.4)]'
-            }`}
+            shadow-[-4px_0_22px_0_rgba(225,29,72,0.4)] hover:shadow-[-8px_0_35px_0_rgba(225,29,72,0.65)]
+            transition-all duration-300 ease-out group overflow-hidden select-none"
           title="Rex AI Agent - Real-Time ERP Intelligence"
         >
           {/* Ambient Glowing Gradient Background */}
@@ -229,11 +230,12 @@ export const RexAIAssistant: React.FC = () => {
             </div>
           </div>
 
-          {/* Expandable Content Container (Reveals smoothly on hover) */}
+          {/* Expandable Content Container (Reveals smoothly on hover via pure CSS group-hover) */}
           <div 
-            className={`flex items-center gap-2.5 overflow-hidden transition-all duration-300 ease-out whitespace-nowrap ${
-              isHovered ? 'max-w-[195px] opacity-100 pr-3.5' : 'max-w-0 opacity-0 pr-0'
-            }`}
+            className="flex items-center gap-2.5 overflow-hidden whitespace-nowrap 
+              max-w-0 opacity-0 pr-0 
+              group-hover:max-w-[195px] group-hover:opacity-100 group-hover:pr-3.5 
+              transition-all duration-300 ease-out"
           >
             {/* Brand Text and Subtitle */}
             <div className="flex flex-col text-left">
@@ -257,6 +259,14 @@ export const RexAIAssistant: React.FC = () => {
             <Sparkles size={14} className="text-amber-300 animate-pulse ml-auto shrink-0 group-hover:scale-125 transition-transform" />
           </div>
         </button>
+      )}
+
+      {/* Backdrop for easy click outside to close */}
+      {isOpen && (
+        <div 
+          onClick={() => setIsOpen(false)}
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[90] transition-opacity animate-fade-in"
+        />
       )}
 
       {/* Slide-Over Drawer / Panel with Glassmorphism & Rounded Corners */}
@@ -291,9 +301,13 @@ export const RexAIAssistant: React.FC = () => {
                   </span>
                   <span 
                     style={{ borderRadius: '9999px' }}
-                    className="text-[9px] font-mono font-bold bg-rose-500/10 text-rose-600 px-2 py-0.5 rounded-full border border-rose-500/20"
+                    className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                      activeProvider === 'groq'
+                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                        : 'bg-rose-500/10 text-rose-600 border-rose-500/20'
+                    }`}
                   >
-                    {activeModel}
+                    {activeProvider === 'groq' ? `⚡ ${activeModel} (Groq Free)` : `🧠 ${activeModel}`}
                   </span>
                 </div>
                 <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5">

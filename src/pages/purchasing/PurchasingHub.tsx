@@ -23,6 +23,10 @@ export const PurchasingHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('po');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [supplierFilter, setSupplierFilter] = useState('all');
+  const [grnSourceFilter, setGrnSourceFilter] = useState<'all' | 'vendor' | 'sample'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const navigate = useNavigate();
 
   const { data: mrs, loading: loadingMRs } = useMaterialRequests();
@@ -93,9 +97,45 @@ export const PurchasingHub: React.FC = () => {
 
   const filtered = currentData.filter((item: any) => {
     const term = search.toLowerCase();
-    const matchSearch = [item.id, item.supplierId, getSupplierName(item.supplierId), item.status, item.requestedBy, item.invoiceNo].some(v => v?.toLowerCase().includes(term));
-    const matchStatus = statusFilter === 'all' || item.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchSearch = !search || [
+      item.id, 
+      item.supplierId, 
+      getSupplierName(item.supplierId), 
+      item.status, 
+      item.requestedBy, 
+      item.invoiceNo,
+      item.quoNo,
+      item.customerName,
+      item.leadName,
+      item.vehicleNo
+    ].some(v => v?.toLowerCase().includes(term));
+
+    const matchStatus = statusFilter === 'all' || item.status?.toLowerCase() === statusFilter.toLowerCase();
+
+    let matchSupplier = true;
+    if (supplierFilter !== 'all') {
+      matchSupplier = item.supplierId === supplierFilter;
+    }
+
+    let matchGrnSource = true;
+    if (activeTab === 'grn' && grnSourceFilter !== 'all') {
+      if (grnSourceFilter === 'sample') {
+        matchGrnSource = Boolean(item.isCustomerSample);
+      } else if (grnSourceFilter === 'vendor') {
+        matchGrnSource = !item.isCustomerSample;
+      }
+    }
+
+    let matchDate = true;
+    const itemDate = (item.date || item.createdAt || item.receivedAt || '').slice(0, 10);
+    if (startDate && itemDate) {
+      matchDate = matchDate && itemDate >= startDate;
+    }
+    if (endDate && itemDate) {
+      matchDate = matchDate && itemDate <= endDate;
+    }
+
+    return matchSearch && matchStatus && matchSupplier && matchGrnSource && matchDate;
   });
 
   const generateColumns = (): Column<any>[] => {
@@ -455,33 +495,167 @@ export const PurchasingHub: React.FC = () => {
         </div>
       </div>
 
-      <GlassCard className="p-2 flex items-center gap-2 flex-wrap">
-        <SearchBar placeholder="Search ID, Vendor, Invoice..." value={search} onChange={setSearch} className="w-80" />
-        <div className="w-px h-6 bg-theme-subtle mx-2" />
-        
-        <span className="text-xs text-muted flex items-center gap-1.5"><Filter size={12} /> Type:</span>
-        {(['po', 'mr', 'grn', 'bill'] as Tab[]).map(t => (
-          <button 
-            key={t} 
-            onClick={() => { setActiveTab(t); setStatusFilter('all'); }} 
-            className={`px-2.5 py-1 text-xs border transition-colors ${activeTab === t ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}
-          >
-            {t.toUpperCase()}
-          </button>
-        ))}
+      {/* Comprehensive Filter Toolbar */}
+      <GlassCard className="p-3 space-y-3">
+        {/* Row 1: Type Tabs & Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <span className="text-xs text-muted flex items-center gap-1.5 font-bold uppercase tracking-wider mr-1">
+              <Filter size={12} /> Module:
+            </span>
+            {(['po', 'mr', 'grn', 'bill'] as Tab[]).map(t => (
+              <button 
+                key={t} 
+                onClick={() => { setActiveTab(t); setStatusFilter('all'); setGrnSourceFilter('all'); }} 
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider shrink-0 ${
+                  activeTab === t 
+                    ? 'bg-rex-500/10 border border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold shadow-xs' 
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
+                }`}
+              >
+                {t === 'grn' ? 'GRN Receipts' : t.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
-        <div className="w-px h-6 bg-theme-subtle mx-2" />
-        
-        <span className="text-xs text-muted flex items-center gap-1.5"><Filter size={12} /> Status:</span>
-        {getStatusOptions().map(s => (
-          <button 
-            key={s} 
-            onClick={() => setStatusFilter(s)} 
-            className={`px-2.5 py-1 text-xs border transition-colors ${statusFilter === s ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}
-          >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
+          <SearchBar 
+            placeholder={`Search ${activeTab.toUpperCase()}, ID, Vendor, Ref...`} 
+            value={search} 
+            onChange={setSearch} 
+            className="w-full sm:w-80" 
+          />
+        </div>
+
+        {/* Row 2: Status, Source (if GRN), Supplier dropdown, Date Range, Clear */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-theme-subtle text-xs">
+          {/* Status Pills */}
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+            <span className="text-[11px] font-bold text-muted uppercase tracking-wider mr-1">Status:</span>
+            {getStatusOptions().map(s => (
+              <button 
+                key={s} 
+                onClick={() => setStatusFilter(s)} 
+                className={`px-2.5 py-1 text-xs border rounded transition-colors shrink-0 ${
+                  statusFilter === s 
+                    ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold' 
+                    : 'bg-surface border-theme text-secondary hover:border-rex-500/30'
+                }`}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1).replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+
+          {/* GRN Source Toggle (Vendor vs Sample) */}
+          {activeTab === 'grn' && (
+            <>
+              <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-bold text-muted uppercase tracking-wider mr-1">Source:</span>
+                {[
+                  { id: 'all', label: 'All GRN' },
+                  { id: 'vendor', label: 'Vendor Delivery' },
+                  { id: 'sample', label: 'Customer Sample' }
+                ].map(src => (
+                  <button
+                    key={src.id}
+                    onClick={() => setGrnSourceFilter(src.id as any)}
+                    className={`px-2 py-1 text-xs border rounded transition-colors ${
+                      grnSourceFilter === src.id
+                        ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold'
+                        : 'bg-surface border-theme text-secondary hover:border-rex-500/30'
+                    }`}
+                  >
+                    {src.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Supplier Dropdown (for PO, GRN, Bill) */}
+          {activeTab !== 'mr' && (
+            <>
+              <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Vendor:</span>
+                <select
+                  value={supplierFilter}
+                  onChange={e => setSupplierFilter(e.target.value)}
+                  className="bg-surface border border-theme-subtle rounded px-2.5 py-1 text-primary text-xs focus:border-rex-500 outline-none max-w-[180px]"
+                >
+                  <option value="all">All Vendors ({suppliers.length})</option>
+                  {suppliers.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* Date Range */}
+          <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">From:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+            />
+            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">To:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+            />
+          </div>
+
+          {/* Quick Presets & Clear */}
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = String(now.getMonth() + 1).padStart(2, '0');
+                setStartDate(`${y}-${m}-01`);
+                setEndDate(now.toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                setStartDate(past.toISOString().slice(0, 10));
+                setEndDate(now.toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+            >
+              Last 30 Days
+            </button>
+            {(statusFilter !== 'all' || supplierFilter !== 'all' || grnSourceFilter !== 'all' || startDate || endDate || search) && (
+              <button
+                onClick={() => {
+                  setStatusFilter('all');
+                  setSupplierFilter('all');
+                  setGrnSourceFilter('all');
+                  setStartDate('');
+                  setEndDate('');
+                  setSearch('');
+                }}
+                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded font-semibold text-[11px] transition-colors ml-1"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
       </GlassCard>
 
       <GlassCard className="overflow-hidden">

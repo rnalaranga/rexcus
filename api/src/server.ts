@@ -907,6 +907,8 @@ async function runDatabaseSync() {
     `INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]')`,
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
     "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-6-luna') ON DUPLICATE KEY UPDATE val=VALUES(val)",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'groq')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('groq_model', 'llama-3.3-70b-versatile')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an advanced intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. You have full read-only access to all modules: Purchasing, Inventory & Stock, Work Orders & Machine Operations, Customers & Invoices, Quotations, and Finance/Accounts. Use the provided tools or execute_custom_erp_query to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
@@ -3568,12 +3570,49 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       }
     }
     
+    // Resolve Deposit Account (Bank / Cash)
+    let depositAccountId = payment.accountId || null;
+    let depositAccountName = '';
+    try {
+      if (depositAccountId) {
+        const [acc]: any = await db.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [depositAccountId]);
+        if (acc && acc.length > 0) {
+          depositAccountId = acc[0].id;
+          depositAccountName = acc[0].name;
+        }
+      }
+      if (!depositAccountId) {
+        const isBank = (payment.method || '').toLowerCase().includes('bank') || (payment.method || '').toLowerCase().includes('cheque') || (payment.method || '').toLowerCase().includes('card');
+        const searchSubtype = isBank ? 'Bank' : 'Cash';
+        const [found]: any = await db.query(
+          'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" ORDER BY CASE WHEN subtype = ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END LIMIT 1',
+          [searchSubtype, `%${searchSubtype}%`, searchSubtype, `%${searchSubtype}%`]
+        );
+        if (found && found.length > 0) {
+          depositAccountId = found[0].id;
+          depositAccountName = found[0].name;
+        } else {
+          const fallbackId = isBank ? 'acc_1050' : 'acc_1000';
+          const fallbackName = isBank ? 'Bank Account' : 'Cash and Equivalents';
+          await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, ?, ?, "Asset", ?, 0, NOW())', [
+            fallbackId, isBank ? '1050' : '1000', fallbackName, searchSubtype
+          ]);
+          depositAccountId = fallbackId;
+          depositAccountName = fallbackName;
+        }
+      }
+    } catch (e) {
+      console.error('Resolve deposit account error:', e);
+    }
+
     // Add new payment record
     const newPayment = {
       id: `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       date: pDate,
       amount: paymentAmount,
       method: payment.method || 'Cash',
+      accountId: depositAccountId || null,
+      accountName: depositAccountName || null,
       reference: payment.reference || ''
     };
     
@@ -3591,47 +3630,64 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       invoice.id
     ]);
 
-    // Auto GL: Accrual Basis - Record Payment (Debit Cash, Credit AR)
+    // Auto GL: Ensure Accounts Receivable, Sales Account, and Cash/Bank are properly balanced
     try {
-      let [cashAcc]: any = await db.query(
-        'SELECT id FROM chart_of_accounts WHERE (subtype IN ("Bank", "Cash") OR name LIKE "%Cash%" OR name LIKE "%Bank%") AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1'
-      );
       let [arAcc]: any = await db.query(
         'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Accounts Receivable%" OR name LIKE "%Receivable%") AND type = "Asset" LIMIT 1'
       );
-      
-      if (!cashAcc || cashAcc.length === 0) {
-        const cashId = 'acc_1000';
-        await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1000", "Cash and Equivalents", "Asset", "Cash", 0, NOW())', [cashId]);
-        cashAcc = [{ id: cashId }];
-      }
       if (!arAcc || arAcc.length === 0) {
         const arId = 'acc_1500';
         await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', [arId]);
         arAcc = [{ id: arId }];
       }
-      
-      if (cashAcc && cashAcc.length > 0 && arAcc && arAcc.length > 0) {
+
+      // Check if invoice had an initial GL recognition (Sales / AR); if missing, create it so Sales Account reflects the revenue!
+      const [existingJe]: any = await db.query('SELECT id FROM journal_entries WHERE reference = ? OR reference = ? LIMIT 1', [invoice.invoiceNo, invoice.id]);
+      if (!existingJe || existingJe.length === 0) {
+        const [salesAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Sales%" OR name LIKE "%Revenue%") AND type = "Revenue" LIMIT 1');
+        if (salesAcc && salesAcc.length > 0 && arAcc && arAcc.length > 0) {
+          const invJeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 100);
+          const invTotal = invoiceTotal > 0 ? invoiceTotal : paymentAmount;
+          await db.query('INSERT INTO journal_entries SET ?', {
+            id: invJeId,
+            date: invoice.date || pDate,
+            reference: invoice.invoiceNo || invoice.id,
+            description: `Auto GL: Invoice Sales Recognition (${invoice.invoiceNo || invoice.id})`,
+            totalAmount: invTotal
+          });
+          const customerPartyId = invoice.customerId || invoice.leadId || null;
+          const invLines = [
+            ['JL-' + Date.now().toString().slice(-5) + 'A', invJeId, arAcc[0].id, invTotal, 0, customerPartyId, 'Customer'],
+            ['JL-' + Date.now().toString().slice(-5) + 'B', invJeId, salesAcc[0].id, 0, invTotal, customerPartyId, 'Customer']
+          ];
+          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [invLines]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, arAcc[0].id]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, salesAcc[0].id]);
+        }
+      }
+
+      // Record Payment: Debit Bank/Cash Account, Credit Accounts Receivable
+      if (depositAccountId && arAcc && arAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 100);
         
         await db.query('INSERT INTO journal_entries SET ?', {
           id: jeId,
           date: pDate,
           reference: newPayment.id,
-          description: `Auto GL: Invoice Payment Received (${invoice.invoiceNo || invoice.id})`,
+          description: `Auto GL: Invoice Payment Received (${invoice.invoiceNo || invoice.id}) -> ${depositAccountName || 'Bank/Cash'}`,
           totalAmount: paymentAmount
         });
         
         const customerPartyId = invoice.customerId || invoice.leadId || null;
         const lines = [
-          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, cashAcc[0].id, paymentAmount, 0, null, null],
+          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, depositAccountId, paymentAmount, 0, null, null],
           ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, paymentAmount, customerPartyId, 'Customer']
         ];
         
         await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
         
-        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [paymentAmount, cashAcc[0].id]);
-        await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [paymentAmount, arAcc[0].id]); // Credit AR reduces asset balance
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [paymentAmount, depositAccountId]);
+        await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [paymentAmount, arAcc[0].id]);
       }
     } catch (e) {
       console.error('Auto GL Payment Error:', e);
@@ -5788,38 +5844,42 @@ async function executeAITool(name: string, args: any) {
   }
 }
 
-// Endpoint to test OpenAI API Key connection
+// Endpoint to test AI API Key connection (Groq Cloud or OpenAI)
 app.post('/api/ai/test-key', async (req, res) => {
   try {
-    const { apiKey } = req.body;
+    const { apiKey, provider } = req.body;
     const testKey = (apiKey || '').trim();
     if (!testKey) {
-      return res.status(400).json({ success: false, error: 'OpenAI API key is required.' });
+      return res.status(400).json({ success: false, error: 'API key is required.' });
     }
-    const response = await fetch('https://api.openai.com/v1/models', {
+    const isGroq = provider === 'groq' || testKey.startsWith('gsk_');
+    const endpoint = isGroq ? 'https://api.groq.com/openai/v1/models' : 'https://api.openai.com/v1/models';
+    const providerLabel = isGroq ? 'Groq Cloud (Meta Llama)' : 'OpenAI';
+
+    const response = await fetch(endpoint, {
       headers: { 'Authorization': `Bearer ${testKey}` }
     });
     if (!response.ok) {
       const errData: any = await response.json().catch(() => ({}));
       return res.status(400).json({ 
         success: false, 
-        error: errData.error?.message || 'Invalid API key or unauthorized by OpenAI.' 
+        error: errData.error?.message || `Invalid API key or unauthorized by ${providerLabel}.` 
       });
     }
-    res.json({ success: true, message: 'OpenAI API Key verified successfully! Connection established.' });
+    res.json({ success: true, message: `${providerLabel} API Key verified successfully! Connection established.` });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message || 'Connection test failed.' });
   }
 });
 
-// Primary AI Chat Completion endpoint with Tools / Function Calling
+// Primary AI Chat Completion endpoint with Tools / Function Calling (Groq & OpenAI)
 app.post('/api/ai/chat', async (req, res) => {
   try {
     const { messages = [] } = req.body;
 
     // 1. Retrieve AI Settings from Database
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('openai_api_key', 'openai_model', 'openai_system_instructions', 'ai_enabled')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'openai_system_instructions', 'ai_enabled')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
 
@@ -5831,16 +5891,42 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
-    const apiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+    const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
+    const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+    let provider = (settingsMap.ai_provider || 'groq').trim();
+
+    let apiKey = '';
+    if (provider === 'groq') {
+      apiKey = groqKey || (openAiKey.startsWith('gsk_') ? openAiKey : '');
+      if (!apiKey && openAiKey) {
+        provider = 'openai';
+        apiKey = openAiKey;
+      }
+    } else {
+      apiKey = openAiKey || (groqKey.startsWith('sk-') ? groqKey : '');
+      if (!apiKey && groqKey) {
+        provider = 'groq';
+        apiKey = groqKey;
+      }
+    }
+
     if (!apiKey) {
       return res.json({
         success: false,
         missingKey: true,
-        reply: 'OpenAI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ OpenAI API Key එක ඇතුළත් කර Save කරන්න.'
+        reply: 'AI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Groq Cloud API Key** (Meta Llama 3.3 70B සඳහා) හෝ OpenAI Key එකක් ඇතුළත් කර Save කරන්න.'
       });
     }
 
-    const model = (settingsMap.openai_model || 'gpt-6-luna').trim();
+    const isGroq = provider === 'groq';
+    const endpointUrl = isGroq 
+      ? 'https://api.groq.com/openai/v1/chat/completions' 
+      : 'https://api.openai.com/v1/chat/completions';
+
+    let activeModelName = isGroq
+      ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
+      : (settingsMap.openai_model || 'gpt-6-luna').trim();
+
     const systemPrompt = settingsMap.openai_system_instructions || 
       `You are Rex AI, an advanced, highly intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
 You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
@@ -5862,9 +5948,8 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     const conversation: any[] = [systemMessage, ...messages.slice(-10)];
 
-    // Initial Request to OpenAI with Function Calling tools (handles gpt-6-luna and custom models)
-    let activeModelName = model;
-    let aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Initial Request to AI Engine with Function Calling tools
+    let aiRes = await fetch(endpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5881,11 +5966,12 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     if (!aiRes.ok) {
       const errJson: any = await aiRes.json().catch(() => ({}));
-      // If custom/preview model is not yet registered on this specific OpenAI key, fallback gracefully to gpt-4o-mini
+      // If model not found, fallback gracefully
       if (errJson.error?.code === 'model_not_found' || errJson.error?.message?.toLowerCase().includes('does not exist')) {
-        console.warn(`[Rex AI Engine] Model '${activeModelName}' not recognized by provider. Auto-routing to fallback 'gpt-4o-mini' for completion.`);
-        activeModelName = 'gpt-4o-mini';
-        aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        const fallbackModel = isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
+        console.warn(`[Rex AI Engine] Model '${activeModelName}' not recognized by ${provider}. Auto-routing to fallback '${fallbackModel}'.`);
+        activeModelName = fallbackModel;
+        aiRes = await fetch(endpointUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -5903,10 +5989,10 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
       if (!aiRes.ok) {
         const fallbackErr: any = await aiRes.json().catch(() => errJson);
-        console.error('OpenAI Error:', fallbackErr);
+        console.error(`${provider} AI Error:`, fallbackErr);
         return res.status(aiRes.status).json({
           success: false,
-          error: fallbackErr.error?.message || 'OpenAI API request failed'
+          error: fallbackErr.error?.message || `${provider} API request failed`
         });
       }
     }
@@ -5916,7 +6002,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
     const responseMsg = choice?.message;
 
     if (!responseMsg) {
-      return res.status(500).json({ success: false, error: 'Empty response from OpenAI' });
+      return res.status(500).json({ success: false, error: `Empty response from ${provider}` });
     }
 
     // Process Tool Calls if model requested ERP data
@@ -5938,8 +6024,8 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         });
       }
 
-      // Follow-up request to OpenAI to synthesize final answer with the real DB data
-      let followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Follow-up request to synthesize final answer with the real DB data
+      let followUpRes = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -5955,8 +6041,9 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       if (!followUpRes.ok) {
         const errJson: any = await followUpRes.json().catch(() => ({}));
         if (errJson.error?.code === 'model_not_found' || errJson.error?.message?.toLowerCase().includes('does not exist')) {
-          activeModelName = 'gpt-4o-mini';
-          followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          const fallbackModel = isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
+          activeModelName = fallbackModel;
+          followUpRes = await fetch(endpointUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -5984,14 +6071,16 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       return res.json({
         success: true,
         reply: finalReply,
-        model
+        model: activeModelName,
+        provider
       });
     }
 
     return res.json({
       success: true,
       reply: responseMsg.content || '',
-      model
+      model: activeModelName,
+      provider
     });
   } catch (error: any) {
     console.error('AI chat endpoint error:', error);

@@ -647,6 +647,8 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
       {showRoleModal && (
         <Modal 
           isOpen 
+          size="2xl"
+          className="max-w-6xl w-full"
           title={roleForm.isEdit ? `Configure Role: ${roleForm.name}` : 'Create New User Role'} 
           onClose={() => setShowRoleModal(false)}
         >
@@ -768,7 +770,7 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                     </div>
 
                     {/* Granular Permission Options (Tick Boxes) */}
-                    <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                       {module.permissions.map(perm => {
                         const isChecked = roleForm.permissions.includes(perm.id);
 
