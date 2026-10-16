@@ -21,7 +21,7 @@ export const VariableSettings: React.FC = () => {
   // Groq credentials & model
   const [groqKey, setGroqKey] = useState('');
   const [showGroqKey, setShowGroqKey] = useState(false);
-  const [groqModel, setGroqModel] = useState('llama-3.3-70b-versatile');
+  const [groqModel, setGroqModel] = useState('llama-3.1-8b-instant');
   const [availableGroqModels, setAvailableGroqModels] = useState<string[]>([]);
 
   // OpenAI credentials & model
@@ -69,14 +69,20 @@ export const VariableSettings: React.FC = () => {
       if (settings.ai_provider) setProvider(settings.ai_provider as 'groq' | 'openai');
       if (settings.groq_api_key) setGroqKey(settings.groq_api_key);
       if (settings.groq_model) {
-        if (settings.groq_model.includes('gpt-oss') || settings.groq_model === 'llama-3.1-8b-instant') {
-          setGroqModel('llama-3.3-70b-versatile');
+        if (settings.groq_model.includes('gpt-oss')) {
+          setGroqModel('llama-3.1-8b-instant');
         } else {
           setGroqModel(settings.groq_model);
         }
       }
       if (settings.openai_api_key) setOpenAiKey(settings.openai_api_key);
-      if (settings.openai_model) setOpenAiModel(settings.openai_model);
+      if (settings.openai_model) {
+        if (settings.openai_model.includes('luna')) {
+          setOpenAiModel('gpt-4o-mini');
+        } else {
+          setOpenAiModel(settings.openai_model);
+        }
+      }
       if (settings.ai_enabled !== undefined) setAiEnabled(settings.ai_enabled !== 'false');
       if (settings.openai_system_instructions) {
         setSystemInstructions(settings.openai_system_instructions);
@@ -410,39 +416,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Option 1: Meta Llama 3.3 70B */}
-                <label
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'llama-3.3-70b-versatile'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
-                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
-                        <Zap size={13} className="text-amber-500" />
-                        llama-3.3-70b
-                      </span>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-                        Top Choice
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Meta's flagship 70B model. State-of-the-art reasoning, fluent Sinhala/English, and ERP tool calling.
-                    </p>
-                  </div>
-                  <input
-                    type="radio"
-                    name="groq_model"
-                    value="llama-3.3-70b-versatile"
-                    checked={groqModel === 'llama-3.3-70b-versatile'}
-                    onChange={e => setGroqModel(e.target.value)}
-                    className="sr-only"
-                  />
-                </label>
-
-                {/* Option 2: Meta Llama 3.1 8B Instant */}
+                {/* Option 1: Meta Llama 3.1 8B Instant (Universal / Recommended) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     groqModel === 'llama-3.1-8b-instant'
@@ -456,12 +430,12 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                         <Zap size={13} className="text-amber-500" />
                         llama-3.1-8b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        High Speed
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                        Recommended
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Ultra-fast 8B model with generous rate limits, perfect for quick data lookups.
+                      Universal on all Groq tiers. Ultra-fast (~560 tps), generous rate limits, and zero access errors.
                     </p>
                   </div>
                   <input
@@ -469,6 +443,38 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     name="groq_model"
                     value="llama-3.1-8b-instant"
                     checked={groqModel === 'llama-3.1-8b-instant'}
+                    onChange={e => setGroqModel(e.target.value)}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 2: Meta Llama 3.3 70B */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'llama-3.3-70b-versatile'
+                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Cpu size={13} className="text-amber-500" />
+                        llama-3.3-70b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
+                        70B Reasoning
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Flagship 70B model. State-of-the-art complex reasoning (requires account access on Groq).
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="llama-3.3-70b-versatile"
+                    checked={groqModel === 'llama-3.3-70b-versatile'}
                     onChange={e => setGroqModel(e.target.value)}
                     className="sr-only"
                   />

@@ -139,8 +139,8 @@ export const RexAIAssistant: React.FC = () => {
 
   const activeProvider = settings.ai_provider || 'groq';
   const activeModel = activeProvider === 'groq' 
-    ? (settings.groq_model || 'llama-3.3-70b-versatile') 
-    : (settings.openai_model || 'gpt-6-luna');
+    ? (settings.groq_model || 'llama-3.1-8b-instant') 
+    : (settings.openai_model || 'gpt-4o-mini');
   const hasApiKey = Boolean(
     (settings.groq_api_key && settings.groq_api_key.trim().length > 0) ||
     (settings.openai_api_key && settings.openai_api_key.trim().length > 0)
@@ -196,17 +196,19 @@ export const RexAIAssistant: React.FC = () => {
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Groq Cloud API Key** එක (Meta Llama 3.3 70B සඳහා) හෝ OpenAI Key එකක් ඇතුළත් කරන්න. ක්‍රෙඩිට් කාඩ් කිසිවක් අවශ්‍ය නැත, ක්ෂණිකව සියලු මිල ගණන් සහ ERP දත්ත සජීවීව විමසිය හැක!`,
+            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Groq Cloud API Key** එකක් (Meta Llama 3.1 8B Instant සඳහා) හෝ OpenAI Key එකක් ඇතුළත් කර Save කරන්න. ක්ෂණිකව සියලු මිල ගණන් සහ ERP දත්ත සජීවීව විමසිය හැක!`,
             timestamp: new Date()
           }
         ]);
       } else {
+        const errorText = data.error || 'Failed to process request.';
+        const isModelIssue = errorText.toLowerCase().includes('model') || errorText.toLowerCase().includes('does not exist');
         setMessages(prev => [
           ...prev,
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `❌ **Error:** ${data.error || 'Failed to process request.'}`,
+            content: `❌ **Error:** ${errorText}${isModelIssue ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් Groq Model එක **llama-3.1-8b** ලෙස තෝරා **Save Settings** ඔබන්න.' : ''}`,
             timestamp: new Date()
           }
         ]);
