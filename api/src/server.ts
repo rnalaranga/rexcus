@@ -5850,7 +5850,12 @@ const AI_TOOLS = [
       description: "Retrieves live financial overview including bank balances, cash in hand, total sales revenue, total expenses, and recent journal entries.",
       parameters: {
         type: "object",
-        properties: {}
+        properties: {
+          scope: {
+            type: "string",
+            description: "Optional scope filter e.g. 'all', 'today', 'this_month'"
+          }
+        }
       }
     }
   },
@@ -5877,7 +5882,12 @@ const AI_TOOLS = [
       description: "Returns the schema and available columns across all ERP tables (Inventory, Quotations, Invoices, Customers, Suppliers, Production, Machineries, QC, Accounts, HR, Gate Passes) to assist in crafting accurate SQL queries.",
       parameters: {
         type: "object",
-        properties: {}
+        properties: {
+          tableName: {
+            type: "string",
+            description: "Optional specific table name to inspect or 'all'"
+          }
+        }
       }
     }
   },
@@ -6593,6 +6603,8 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     const conversation: any[] = [systemMessage, ...messages.slice(-10)];
 
+    const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+
     // Helper for chat completions
     const callCompletion = async (model: string, msgs: any[], tools?: any[]) => {
       const bodyPayload: any = {
@@ -6608,7 +6620,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${cleanApiKey}`
         },
         body: JSON.stringify(bodyPayload)
       });
@@ -6619,7 +6631,20 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     if (!aiRes.ok) {
       let errJson: any = await aiRes.json().catch(() => ({}));
-      let errMsg = (errJson.error?.message || '').toLowerCase();
+      let errMsg = extractApiErrorMessage(errJson).toLowerCase();
+
+      // If initial tool-enabled request failed with 400 (e.g. strict schema rejection by Gemini or tool format issue), retry immediately without tools
+      if (aiRes.status === 400 || errMsg.includes('tool') || errMsg.includes('argument') || errMsg.includes('schema') || errMsg.includes('function')) {
+        console.warn(`[Rex AI Engine] Tool or schema rejection on '${activeModelName}' (HTTP ${aiRes.status}: ${errMsg}). Retrying without tools...`);
+        aiRes = await callCompletion(activeModelName, conversation);
+        if (aiRes.ok) {
+          errJson = {};
+          errMsg = '';
+        } else {
+          errJson = await aiRes.json().catch(() => ({}));
+          errMsg = extractApiErrorMessage(errJson).toLowerCase();
+        }
+      }
 
       // Check for Rate Limit (HTTP 429 / TPM limit)
       const isRateLimited = 
@@ -6635,7 +6660,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
         if (activeModelName.includes('gpt-oss')) {
           console.log(`[Rex AI Engine] Model '${activeModelName}' has strict 8k TPM limit. Auto-migrating to high-capacity model...`);
-          const liveModels = await fetchProviderModels(provider, apiKey);
+          const liveModels = await fetchProviderModels(provider, cleanApiKey);
           const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
           if (resolvedModel && resolvedModel !== activeModelName) {
             activeModelName = resolvedModel;
@@ -6645,7 +6670,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
           }
         } else {
           const waitMatch = errMsg.match(/try again in ([0-9.]+)\s*s/i);
-          const waitSecs = waitMatch ? parseFloat(waitMatch[1]) : 2;
+          const waitSecs = (waitMatch && waitMatch[1]) ? parseFloat(waitMatch[1]) : 2;
           if (waitSecs <= 4) {
             console.log(`[Rex AI Engine] Waiting ${waitSecs}s for rate limit reset...`);
             await new Promise(r => setTimeout(r, Math.ceil(waitSecs * 1000) + 300));
@@ -6654,7 +6679,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
           if (!aiRes.ok) {
             console.log(`[Rex AI Engine] Looking for alternative model due to rate limit...`);
-            const liveModels = await fetchProviderModels(provider, apiKey);
+            const liveModels = await fetchProviderModels(provider, cleanApiKey);
             const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
             if (resolvedModel && resolvedModel !== activeModelName) {
               console.log(`[Rex AI Engine] Auto-switching from rate-limited model '${activeModelName}' to available alternative '${resolvedModel}'...`);
@@ -6668,8 +6693,10 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       }
 
       if (!aiRes.ok) {
-        errJson = await aiRes.json().catch(() => errJson);
-        errMsg = (errJson.error?.message || '').toLowerCase();
+        if (!errMsg) {
+          errJson = await aiRes.json().catch(() => errJson);
+          errMsg = extractApiErrorMessage(errJson).toLowerCase();
+        }
         const isModelNotFound = 
           aiRes.status === 404 || 
           errJson.error?.code === 'model_not_found' || 
@@ -6682,7 +6709,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         if (isModelNotFound) {
           failedModelsList.push(activeModelName);
           console.warn(`[Rex AI Engine] Model '${activeModelName}' not accessible (${errMsg}). Querying ${provider} live model list...`);
-          const liveModels = await fetchProviderModels(provider, apiKey);
+          const liveModels = await fetchProviderModels(provider, cleanApiKey);
           console.log(`[Rex AI Engine] Live models available for this key:`, liveModels);
           const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
           console.log(`[Rex AI Engine] Dynamically routing to verified alternative model: '${resolvedModel}'`);
@@ -6706,8 +6733,6 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
       // Check for Tool Calling not supported error
       if (!aiRes.ok) {
-        errJson = await aiRes.json().catch(() => errJson);
-        errMsg = (errJson.error?.message || '').toLowerCase();
         const isToolUnsupported = 
           errMsg.includes('tool calling is not supported') || 
           errMsg.includes('tool use is not supported') || 
@@ -6734,7 +6759,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         const lowerRaw = rawErr.toLowerCase();
         if (lowerRaw.includes('does not exist') || lowerRaw.includes('not have access') || lowerRaw.includes('not found') || lowerRaw.includes('model')) {
           userFriendlyMsg = `${provLabel} Model Access Error ('${activeModelName}'): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ ${provLabel} API Key එක ඇතුළත් කර 'Test Connection' ඔබා Save කරන්න.`;
-        } else if (lowerRaw.includes('invalid api key') || lowerRaw.includes('unauthorized') || lowerRaw.includes('valid api key') || lowerRaw.includes('invalid_argument') || lowerRaw.includes('unauthenticated') || aiRes.status === 401 || aiRes.status === 400) {
+        } else if (lowerRaw.includes('invalid api key') || lowerRaw.includes('unauthorized') || lowerRaw.includes('valid api key') || lowerRaw.includes('unauthenticated') || aiRes.status === 401) {
           userFriendlyMsg = `${provLabel} API Key Error (${rawErr}). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ නිවැරදි ${provLabel} API Key එක ඇතුළත් කර Save කරන්න.`;
         }
         return res.json({
