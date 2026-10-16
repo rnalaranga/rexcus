@@ -40,6 +40,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(data.user);
           localStorage.setItem('user', JSON.stringify(data.user));
         }
+      } else if (res.status === 401) {
+        // Token is expired or invalid
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setToken(null);
+        setUser(null);
       }
     } catch (e) {
       // Ignore background refresh failure
