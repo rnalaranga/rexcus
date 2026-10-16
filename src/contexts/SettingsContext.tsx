@@ -13,14 +13,17 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`}/settings`)
-      .then(res => res.json())
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
+      .then(async res => {
+        if (!res.ok) return {};
+        return res.json().catch(() => ({}));
+      })
       .then(data => {
-        setSettings(data);
+        if (data && typeof data === 'object') setSettings(data);
         setLoading(false);
       })
       .catch(err => {
-        console.error('Failed to fetch settings', err);
+        console.warn('Failed to fetch settings', err);
         setLoading(false);
       });
   }, []);

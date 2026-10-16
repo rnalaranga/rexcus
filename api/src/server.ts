@@ -3659,7 +3659,7 @@ app.put('/api/invoices/:id', async (req, res) => {
   }
 });
 
-app.delete(['/api/invoices', '/api/invoices/:id', '/api/invoices/*'], async (req, res) => {
+const handleInvoiceDelete = async (req: any, res: any) => {
   try {
     const rawId = req.query.id || req.body?.id || req.params.id || req.params[0];
     const id = decodeURIComponent(String(rawId || '')).trim();
@@ -3750,7 +3750,11 @@ app.delete(['/api/invoices', '/api/invoices/:id', '/api/invoices/*'], async (req
     console.error('Invoice deletion error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
-});
+};
+
+app.delete('/api/invoices', handleInvoiceDelete);
+app.delete('/api/invoices/:id', handleInvoiceDelete);
+app.delete(/^\/api\/invoices\/(.+)$/, handleInvoiceDelete);
 
 app.post('/api/invoices/:id/payments', async (req, res) => {
   try {
