@@ -5856,13 +5856,13 @@ const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_item_purchase_prices",
-      description: "Searches inventory items, linked suppliers in inventory, and historical purchase orders to find standard purchase price (unitCost), selling price, quantity, linked suppliers, and past purchase rates paid to suppliers. Also returns registered system suppliers.",
+      description: "Searches inventory items to find Selling Price (unitPrice), Standard Purchase/Cost Price (unitCost), available warehouse stock, SKU, and linked suppliers. Always call this tool when asked about prices, costs, or suppliers of any product, material, or SKU.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Item name, material, plate, shaft, fastener, or SKU to search for, e.g. 'EN8', 'Hydraulic Cylinder', 'Bearing 205', 'MS Plate', 'Sample Item'"
+            description: "Item name, product, material, or SKU to search for, e.g. 'Sample Item', 'Bearing 205', 'EN8 Shaft', 'SKU-001'"
           }
         },
         required: ["query"]
@@ -5997,22 +5997,7 @@ const AI_TOOLS = [
       }
     }
   },
-  {
-    type: "function",
-    function: {
-      name: "get_erp_database_schema",
-      description: "Returns the schema and available columns across all ERP tables (Inventory, Quotations, Invoices, Customers, Suppliers, Production, Machineries, QC, Accounts, HR, Gate Passes) to assist in crafting accurate SQL queries.",
-      parameters: {
-        type: "object",
-        properties: {
-          tableName: {
-            type: "string",
-            description: "Optional specific table name to inspect or 'all'"
-          }
-        }
-      }
-    }
-  },
+
   {
     type: "function",
     function: {
@@ -6049,18 +6034,73 @@ const AI_TOOLS = [
   }
 ];
 
+function cleanItemSearchTerm(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/[?.,!/\\;:'"()\[\]{}]/g, ' ')
+    .replace(/\b(price|pricing|prices|cost|costs|rate|rates|mila|ganan|kiyada|eka|what|whats|is|the|of|for|please|tell|show|search|find|stock|qty|quantity|thiyenawada|thiyeda|in|item|items|give|me)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanCustomerSearchTerm(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/[?.,!/\\;:'"()\[\]{}]/g, ' ')
+    .replace(/\b(outstanding|due|dues|balance|amount|amounts|invoices|invoice|bills|bill|overdue|payment|payments|credit|lkr|rs|kiyada|gana|total|summary|details|detail|pvt|ltd|what|whats|is|the|of|for|please|tell|show)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function executeAITool(name: string, args: any) {
   try {
     if (name === "get_item_purchase_prices") {
       const rawQ = (args.query || '').trim();
-      const q = `%${rawQ}%`;
-      const [inv]: any = await db.query(
+      const cleanedQ = cleanItemSearchTerm(rawQ);
+      const searchTarget = cleanedQ || rawQ;
+      const q = `%${searchTarget}%`;
+
+      // Multi-strategy search:
+      // Strategy 1: Exact / phrase LIKE match
+      let [inv]: any = await db.query(
         `SELECT id, name, sku, unitCost as standardPurchasePrice, unitPrice as sellingPrice, quantity, uom, location, category, suppliers
          FROM inventory 
          WHERE name LIKE ? OR sku LIKE ? OR category LIKE ? 
-         ORDER BY (name = ?) DESC LIMIT 8`,
-        [q, q, q, rawQ]
+         ORDER BY (name = ?) DESC, (sku = ?) DESC LIMIT 10`,
+        [q, q, q, searchTarget, searchTarget]
       );
+
+      // Strategy 2: Multi-token match (AND)
+      if ((!inv || inv.length === 0) && searchTarget.length > 2) {
+        const tokens = searchTarget.split(' ').filter((t: string) => t.length >= 2);
+        if (tokens.length > 0) {
+          const conditions = tokens.map(() => '(name LIKE ? OR sku LIKE ? OR category LIKE ?)').join(' AND ');
+          const params: any[] = [];
+          tokens.forEach((t: string) => params.push(`%${t}%`, `%${t}%`, `%${t}%`));
+          const [tokenRows]: any = await db.query(
+            `SELECT id, name, sku, unitCost as standardPurchasePrice, unitPrice as sellingPrice, quantity, uom, location, category, suppliers
+             FROM inventory WHERE ${conditions} LIMIT 10`,
+            params
+          );
+          inv = tokenRows;
+        }
+      }
+
+      // Strategy 3: Fuzzy token match (OR)
+      if ((!inv || inv.length === 0) && searchTarget.length > 2) {
+        const tokens = searchTarget.split(' ').filter((t: string) => t.length >= 2);
+        if (tokens.length > 0) {
+          const conditions = tokens.map(() => '(name LIKE ? OR sku LIKE ? OR category LIKE ?)').join(' OR ');
+          const params: any[] = [];
+          tokens.forEach((t: string) => params.push(`%${t}%`, `%${t}%`, `%${t}%`));
+          const [fuzzyRows]: any = await db.query(
+            `SELECT id, name, sku, unitCost as standardPurchasePrice, unitPrice as sellingPrice, quantity, uom, location, category, suppliers
+             FROM inventory WHERE ${conditions} LIMIT 10`,
+            params
+          );
+          inv = fuzzyRows;
+        }
+      }
 
       const parsedInv = (inv || []).map((item: any) => {
         let linkedSuppliers: string[] = [];
@@ -6078,7 +6118,7 @@ async function executeAITool(name: string, args: any) {
         };
       });
 
-      const [pos]: any = await db.query(
+      let [pos]: any = await db.query(
         `SELECT poi.material, poi.qty, poi.unitCost as actualPurchaseRate, poi.notes,
                 po.id as poNumber, s.name as supplierName, s.phone as supplierPhone,
                 po.date as orderDate, po.status as poStatus
@@ -6089,6 +6129,27 @@ async function executeAITool(name: string, args: any) {
          ORDER BY po.date DESC LIMIT 8`,
         [q, q]
       );
+
+      if ((!pos || pos.length === 0) && searchTarget.length > 2) {
+        const tokens = searchTarget.split(' ').filter((t: string) => t.length >= 2);
+        if (tokens.length > 0) {
+          const poConditions = tokens.map(() => '(poi.material LIKE ? OR poi.notes LIKE ?)').join(' OR ');
+          const poParams: any[] = [];
+          tokens.forEach((t: string) => poParams.push(`%${t}%`, `%${t}%`));
+          const [fuzzyPOs]: any = await db.query(
+            `SELECT poi.material, poi.qty, poi.unitCost as actualPurchaseRate, poi.notes,
+                    po.id as poNumber, s.name as supplierName, s.phone as supplierPhone,
+                    po.date as orderDate, po.status as poStatus
+             FROM po_items poi
+             JOIN purchase_orders po ON poi.poId = po.id
+             LEFT JOIN suppliers s ON po.supplierId = s.id
+             WHERE ${poConditions}
+             ORDER BY po.date DESC LIMIT 8`,
+            poParams
+          );
+          pos = fuzzyPOs;
+        }
+      }
 
       // Also retrieve all active registered suppliers in the ERP for complete context
       const [allSuppliers]: any = await db.query(
@@ -6106,8 +6167,12 @@ async function executeAITool(name: string, args: any) {
                         COALESCE(reorderLevel, minQty, 5) as minReorderLevel
                  FROM inventory WHERE 1=1 `;
       const params: any[] = [];
-      if (args.query && args.query.trim()) {
-        const q = `%${args.query.trim()}%`;
+      const rawQ = (args.query || '').trim();
+      const cleanedQ = cleanItemSearchTerm(rawQ);
+      const searchTarget = cleanedQ || rawQ;
+
+      if (searchTarget) {
+        const q = `%${searchTarget}%`;
         sql += `AND (name LIKE ? OR sku LIKE ? OR category LIKE ?) `;
         params.push(q, q, q);
       }
@@ -6115,18 +6180,54 @@ async function executeAITool(name: string, args: any) {
         sql += `AND quantity <= COALESCE(reorderLevel, minQty, 5) `;
       }
       sql += `ORDER BY quantity ASC LIMIT 20`;
-      const [rows]: any = await db.query(sql, params);
+      let [rows]: any = await db.query(sql, params);
+
+      if ((!rows || rows.length === 0) && searchTarget.length > 2) {
+        const tokens = searchTarget.split(' ').filter((t: string) => t.length >= 2);
+        if (tokens.length > 0) {
+          const conditions = tokens.map(() => '(name LIKE ? OR sku LIKE ? OR category LIKE ?)').join(' OR ');
+          const tParams: any[] = [];
+          tokens.forEach((t: string) => tParams.push(`%${t}%`, `%${t}%`, `%${t}%`));
+          let fSql = `SELECT id, name, sku, quantity, uom, location, category, unitCost, unitPrice as sellingPrice, 
+                             COALESCE(reorderLevel, minQty, 5) as minReorderLevel
+                      FROM inventory WHERE (${conditions}) `;
+          if (args.lowStockOnly) {
+            fSql += `AND quantity <= COALESCE(reorderLevel, minQty, 5) `;
+          }
+          fSql += `ORDER BY quantity ASC LIMIT 20`;
+          const [fuzzyStock]: any = await db.query(fSql, tParams);
+          rows = fuzzyStock;
+        }
+      }
       return { count: rows.length, stockItems: rows };
     } else if (name === "get_customer_finance_summary") {
+      const rawC = (args.customerName || '').trim();
+      const cleanedC = cleanCustomerSearchTerm(rawC);
+      const searchTarget = cleanedC || rawC;
+      const q = `%${searchTarget}%`;
+
       let custSql = `SELECT id, name, company, phone, email, creditLimit, creditDays, contacts FROM customers WHERE 1=1 `;
       const custParams: any[] = [];
-      if (args.customerName && args.customerName.trim()) {
-        const q = `%${args.customerName.trim()}%`;
+      if (searchTarget) {
         custSql += `AND (name LIKE ? OR company LIKE ? OR contacts LIKE ?) `;
         custParams.push(q, q, q);
       }
       custSql += `LIMIT 8`;
-      const [customers]: any = await db.query(custSql, custParams);
+      let [customers]: any = await db.query(custSql, custParams);
+
+      if ((!customers || customers.length === 0) && searchTarget.length > 2) {
+        const tokens = searchTarget.split(' ').filter((t: string) => t.length >= 2);
+        if (tokens.length > 0) {
+          const conditions = tokens.map(() => '(name LIKE ? OR company LIKE ? OR contacts LIKE ?)').join(' OR ');
+          const tParams: any[] = [];
+          tokens.forEach((t: string) => tParams.push(`%${t}%`, `%${t}%`, `%${t}%`));
+          const [fuzzyCust]: any = await db.query(
+            `SELECT id, name, company, phone, email, creditLimit, creditDays, contacts FROM customers WHERE ${conditions} LIMIT 8`,
+            tParams
+          );
+          customers = fuzzyCust;
+        }
+      }
 
       let invSql = `SELECT i.id, i.quotationNo, c.name as customerName, c.company as customerCompany,
                            i.date, i.dueDate, i.subtotal, i.tax, i.total, i.status
@@ -6134,8 +6235,7 @@ async function executeAITool(name: string, args: any) {
                     LEFT JOIN customers c ON i.customerId = c.id
                     WHERE i.status != 'paid' `;
       const invParams: any[] = [];
-      if (args.customerName && args.customerName.trim()) {
-        const q = `%${args.customerName.trim()}%`;
+      if (searchTarget) {
         invSql += `AND (c.name LIKE ? OR c.company LIKE ?) `;
         invParams.push(q, q);
       }
@@ -6143,7 +6243,28 @@ async function executeAITool(name: string, args: any) {
         invSql += `AND i.dueDate < NOW() `;
       }
       invSql += `ORDER BY i.dueDate ASC LIMIT 15`;
-      const [invoices]: any = await db.query(invSql, invParams);
+      let [invoices]: any = await db.query(invSql, invParams);
+
+      if ((!invoices || invoices.length === 0) && searchTarget.length > 2) {
+        const tokens = searchTarget.split(' ').filter((t: string) => t.length >= 2);
+        if (tokens.length > 0) {
+          const conditions = tokens.map(() => '(c.name LIKE ? OR c.company LIKE ?)').join(' OR ');
+          const tParams: any[] = [];
+          tokens.forEach((t: string) => tParams.push(`%${t}%`, `%${t}%`));
+          let fInvSql = `SELECT i.id, i.quotationNo, c.name as customerName, c.company as customerCompany,
+                                i.date, i.dueDate, i.subtotal, i.tax, i.total, i.status
+                         FROM invoices i
+                         LEFT JOIN customers c ON i.customerId = c.id
+                         WHERE i.status != 'paid' AND (${conditions}) `;
+          if (args.overdueOnly) {
+            fInvSql += `AND i.dueDate < NOW() `;
+          }
+          fInvSql += `ORDER BY i.dueDate ASC LIMIT 15`;
+          const [fuzzyInvoices]: any = await db.query(fInvSql, tParams);
+          invoices = fuzzyInvoices;
+        }
+      }
+
       const totalDue = invoices.reduce((sum: number, r: any) => sum + Number(r.total || 0), 0);
 
       return {
@@ -6757,25 +6878,39 @@ app.post('/api/ai/chat', async (req, res) => {
 
     console.log(`[Rex AI Chat] Request initiated. Provider: ${provider}, Model: ${activeModelName}, Key: ${apiKey.slice(0, 6)}...`);
 
-    const systemPrompt = settingsMap.openai_system_instructions || 
-      `You are Rex AI, an advanced, highly intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
+    const baseSystemPrompt = `You are Rex AI, the official, highly intelligent real-time ERP AI assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
 You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
-You have complete, live read-only access to the entire Rex ERP database across all modules:
-- Purchasing & Suppliers: All registered vendors in 'suppliers' (name, contactPerson, phone, email, paymentTerms), past Purchase Orders ('purchase_orders' & 'po_items'), Material Requests, GRNs, and Bills
-- Inventory: Standard Purchase Cost (unitCost), Selling Prices (unitPrice), Physical Stock, Low Stock alerts, Storage Locations, BOMs, and Linked Suppliers ('inventory.suppliers' JSON array)
-- Production & Shop Floor: Work Orders, Job card status, Operations routing, Planned hours, CNC/Lathe/Milling Machine schedules, and Assigned operators
-- CRM & Sales: Customers, Credit limits, Outstanding Dues, Overdue Invoices, Quotations, and Approval statuses
-- Finance & Accounting: Bank Balances, Cash in Hand, Chart of Accounts, Revenues, Expenses, and Journal entries
-- Machineries & Quality Control: Machine operational status, hourly rates, QC Inspections, Defect reasons, and Pass/Fail statistics
-When asked about ANY detail in the business, always invoke the appropriate specialized tool or use 'execute_custom_erp_query' to retrieve the live facts directly from the database.
-All currency values are in Sri Lankan Rupees (LKR / Rs.).
-Be direct, helpful, polite, and structure your responses with clean markdown tables and bullet points.
+You have complete, live real-time read-only access to the entire Rex ERP database (MySQL):
 
-CRITICAL RULES FOR REASONING AND TOOL CALLS:
-1. You HAVE real-time read-only live database access. NEVER say "If I were connected to the live database" or "As an AI I cannot check real-time data".
-2. NEVER output raw SQL queries (like 'SELECT ...') directly to the user as text! When you need database data, you MUST call 'execute_custom_erp_query' or the specialized tool function.
-3. Provide ONLY your final, professional answer to the user in fluent Sinhala/Singlish or English. Never output internal thought processes, planning notes, translation steps, or scratchpad text.
-4. When asked about suppliers for an item, check both 'linkedSuppliers' in the item's inventory record, past purchase orders ('historicalPurchasesFromSuppliers'), and the registered suppliers master list ('allRegisteredSuppliersInERP'). If an item does not have a specific supplier linked yet, explain that the item itself hasn't been assigned a supplier yet, but list the registered suppliers available in the ERP so the user has full clarity.`;
+LIVE DATABASE TABLE STRUCTURE:
+- inventory: id, name, sku, category, unitCost (Purchase/Cost Price in Rs.), unitPrice (Selling Price in Rs.), quantity (physical warehouse stock), uom, location (rack/shelf/bin), reorderLevel, suppliers (JSON array of supplier names)
+- customers: id, name, company, phone, email, address, creditLimit, creditDays, status
+- invoices: id, invoiceNo, quotationNo, customerId, date, dueDate, total, subtotal, taxAmount, paidAmount, status ('unpaid', 'partially_paid', 'paid')
+- purchase_orders: id, supplierId, date, expectedDate, totalAmount, status ('draft', 'sent', 'received', 'cancelled')
+- po_items: id, poId, material, qty, unitCost, notes
+- suppliers: id, name, contactPerson, contactName, phone, email, address, paymentTerms, status
+- quotations: id, quotationNo, leadId, date, totalAmount, status ('Draft', 'Pending Approval', 'Approved', 'Sent', 'Rejected')
+- work_orders: id, orderNo, customer, productName, qty, status, priority, targetDeliveryDate, plannedStartDate
+- work_order_operations: id, workOrderId, operationName, stepNumber, machineId, employeeId, plannedHours, status
+- machineries: id, code, name, category, status, hourlyRate
+- employees: id, code, name, designation, department, phone, status
+- qc_inspections: id, workOrderId, inspectedBy, status ('Pass', 'Fail', 'Rework'), defectReason, notes
+- chart_of_accounts: id, code, name, type ('Asset', 'Liability', 'Equity', 'Revenue', 'Expense'), subtype ('Bank', 'Cash', ...), balance
+
+CRITICAL OPERATIONAL RULES:
+1. LIVE DATABASE ACCESS: You HAVE live database access through your function calling tools. NEVER say "If I were connected to the database" or "As an AI I cannot check real-time data". You MUST call the specialized tool (e.g. 'get_item_purchase_prices', 'check_inventory_stock', 'get_customer_finance_summary', 'get_supplier_history', etc.) or 'execute_custom_erp_query'.
+2. ITEM PRICES & VALUES: In Rex ERP, items have TWO prices:
+   • Selling Price (විකුණුම් මිල): 'unitPrice' (or 'sellingPrice') - Price charged to customers
+   • Purchase / Cost Price (ගැනුම් මිල / පිරිවැය): 'unitCost' (or 'standardPurchasePrice') - Cost to buy or produce
+   When asked for the price of ANY item or product, ALWAYS clearly state BOTH prices in Sri Lankan Rupees (Rs. / LKR), along with current stock quantity and SKU.
+3. NEVER DUMP SCHEMA: NEVER output raw table schemas, column listings, or database structure dumps to the user. Users are business managers and factory operators who only want answers about their actual products, prices, and orders.
+4. NEVER OUTPUT RAW SQL TO USERS: Never output "SELECT * FROM..." or explain how to query SQL. Query the tool silently and provide the final answer in natural language.
+5. ACCURATE SUPPLIER INFORMATION: When asked about suppliers for an item, check linkedSuppliers in the inventory record, historical purchases from suppliers, and the registered suppliers master list. If an item has no supplier linked yet, state clearly that it is not yet linked and list the active suppliers in the ERP.
+6. LANGUAGE: Respond in the exact language style used by the user (Sinhala, Singlish, or English). Keep tone respectful, direct, and professional with clean markdown tables and emoji bullet points.`;
+
+    const systemPrompt = settingsMap.openai_system_instructions && settingsMap.openai_system_instructions.trim()
+      ? `${baseSystemPrompt}\n\nADDITIONAL ADMIN INSTRUCTIONS:\n${settingsMap.openai_system_instructions.trim()}`
+      : baseSystemPrompt;
 
     const systemMessage = {
       role: 'system',
@@ -6983,7 +7118,20 @@ CRITICAL RULES FOR REASONING AND TOOL CALLS:
       return res.json({ success: false, error: `Empty response from ${provider}` });
     }
 
-    // Auto-intercept if model printed a raw SQL query or hallucinated database refusal instead of calling a tool (common with smaller 8B models like Llama 3.1)
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user')?.content || '';
+    const lastUserLower = lastUserMsg.toLowerCase();
+    const isAskingPriceOrStock = /\b(price|pricing|prices|cost|costs|rate|rates|mila|ganan|kiyada|stock|stocks|supplier|suppliers|sample|inventory)\b/i.test(lastUserLower);
+
+    const isSchemaDump = (text: string) => {
+      if (!text) return false;
+      const lower = text.toLowerCase();
+      return (
+        (lower.includes('erp database schema') || lower.includes('database schema') || (lower.includes('table') && lower.includes('key columns'))) &&
+        (lower.includes('inventory') || lower.includes('quotations') || lower.includes('invoices') || lower.includes('key takeaways') || lower.includes('specific data from any table'))
+      );
+    };
+
+    // Auto-intercept if model printed a raw SQL query, schema dump, or hallucinated database refusal instead of calling a tool
     if (!responseMsg.tool_calls || responseMsg.tool_calls.length === 0) {
       const contentText = (responseMsg.content || '').trim();
       const sqlMatch = contentText.match(/\b(SELECT\s+[\s\S]+?\bFROM\b[\s\S]+?)(?:;|\n\n|```|$)/i);
@@ -7001,6 +7149,38 @@ CRITICAL RULES FOR REASONING AND TOOL CALLS:
         conversation.push({
           role: 'user',
           content: `Live database query execution results: ${JSON.stringify(toolResult)}. Based on these results, please provide your final direct answer to the user in fluent Sinhala/Singlish or English.`
+        });
+        const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
+        if (autoSynthRes && autoSynthRes.ok) {
+          const autoData = await autoSynthRes.json().catch(() => ({}));
+          if (autoData.choices?.[0]?.message) {
+            responseMsg = autoData.choices[0].message;
+          }
+        }
+      } else if (isSchemaDump(contentText)) {
+        console.log(`[Rex AI Engine] Intercepted raw schema dump in response. Auto-retrieving live ERP records for: "${lastUserMsg}"...`);
+        const itemSearch = cleanItemSearchTerm(lastUserMsg);
+        const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
+        conversation.push({ role: 'assistant', content: responseMsg.content });
+        conversation.push({
+          role: 'user',
+          content: `Real-time database records for "${lastUserMsg}": ${JSON.stringify(toolResult)}. DO NOT dump database schema or table columns. Directly state the Selling Price (unitPrice), Purchase/Cost Price (unitCost), and warehouse stock to the user in fluent Sinhala/Singlish or English.`
+        });
+        const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
+        if (autoSynthRes && autoSynthRes.ok) {
+          const autoData = await autoSynthRes.json().catch(() => ({}));
+          if (autoData.choices?.[0]?.message) {
+            responseMsg = autoData.choices[0].message;
+          }
+        }
+      } else if (isAskingPriceOrStock && (contentText.includes('If I were connected') || contentText.includes('cannot check real-time') || !/\b(Rs\.?|LKR|\d+[\d,]*\.\d{2})\b/i.test(contentText))) {
+        console.log(`[Rex AI Engine] Detected unfulfilled price/stock query. Auto-executing get_item_purchase_prices for: "${lastUserMsg}"...`);
+        const itemSearch = cleanItemSearchTerm(lastUserMsg);
+        const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
+        conversation.push({ role: 'assistant', content: responseMsg.content });
+        conversation.push({
+          role: 'user',
+          content: `Live database results for item lookup: ${JSON.stringify(toolResult)}. Please state the exact Selling Price (unitPrice), Purchase/Cost Price (unitCost), and current warehouse stock directly to the user in fluent Sinhala/English.`
         });
         const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
         if (autoSynthRes && autoSynthRes.ok) {
@@ -7048,10 +7228,10 @@ CRITICAL RULES FOR REASONING AND TOOL CALLS:
         });
       }
 
-      // Follow-up request with tools so the model can process tool results and synthesize answer
+      // Follow-up request: do not pass tools so model is forced to synthesize natural language answer
       let followUpRes: any = null;
       try {
-        followUpRes = await callCompletion(activeModelName, conversation, turns === 1 ? AI_TOOLS : undefined);
+        followUpRes = await callCompletion(activeModelName, conversation, undefined);
       } catch (err: any) {
         console.warn(`[Rex AI] Follow-up turn timed out or failed on '${activeModelName}':`, err.message);
         conversation.push({
@@ -7074,7 +7254,7 @@ CRITICAL RULES FOR REASONING AND TOOL CALLS:
             activeModelName = resolvedModel;
             const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
             db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
-            followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS).catch(() => null);
+            followUpRes = await callCompletion(activeModelName, conversation, undefined).catch(() => null);
           }
         }
 
@@ -7108,6 +7288,17 @@ CRITICAL RULES FOR REASONING AND TOOL CALLS:
     // Clean accidental chain-of-thought scratchpad leaked by Gemini
     finalReply = finalReply.replace(/^The query returned[\s\S]*?as requested\.\s*/i, '').trim();
     finalReply = finalReply.replace(/^["'].*?->\s*["'].*?["']\.?\s*/i, '').trim();
+
+    // Final safety net: If finalReply somehow contains a schema dump, recover with direct inventory pricing
+    if (isSchemaDump(finalReply)) {
+      console.warn(`[Rex AI Engine] Final reply contained schema dump. Auto-generating direct inventory response...`);
+      const itemSearch = cleanItemSearchTerm(lastUserMsg);
+      const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
+      const matched = toolResult.matchedInventory?.[0];
+      if (matched) {
+        finalReply = `📦 **${matched.name}** (SKU: \`${matched.sku}\`)\n\n• **විකුණුම් මිල (Selling Price):** Rs. ${Number(matched.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **ගැනුම් / පිරිවැය මිල (Purchase Cost):** Rs. ${Number(matched.standardPurchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **දැනට පවතින තොගය (Current Stock):** ${matched.quantity} ${matched.uom || 'units'}\n• **ගබඩා ස්ථානය (Location):** ${matched.location || 'Store A'}`;
+      }
+    }
 
     return res.json({
       success: true,
