@@ -922,9 +922,9 @@ export const QuotationBuilder: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [showMarginModal, setShowMarginModal] = useState(false)
-  const [marginType, setMarginType] = useState<'percentage' | 'fixed'>('percentage')
-  const [marginInput, setMarginInput] = useState('35')
-  const [fixedMarginInput, setFixedMarginInput] = useState('')
+  const [marginPctInput, setMarginPctInput] = useState('35')
+  const [marginAmtInput, setMarginAmtInput] = useState('')
+  const [lastEditedMargin, setLastEditedMargin] = useState<'percent' | 'amount'>('percent')
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     setToast({ type, msg })
@@ -956,20 +956,41 @@ export const QuotationBuilder: React.FC = () => {
     }, 0);
   }, [validBomsForQuote]);
 
-  const autoGenerateCustomerQuote = async () => {
-    let marginPct = 0;
-    let fixedVal = 0;
+  // Synchronized bidirectional handlers:
+  const handleMarginPctChange = (val: string) => {
+    setMarginPctInput(val);
+    setLastEditedMargin('percent');
+    const num = Number(val);
+    if (!isNaN(num) && totalValidBomCost > 0 && val.trim() !== '') {
+      setMarginAmtInput(Math.round(totalValidBomCost * (num / 100)).toString());
+    } else if (val.trim() === '') {
+      setMarginAmtInput('');
+    }
+  };
 
-    if (marginType === 'percentage') {
-      marginPct = Number(marginInput);
-      if (isNaN(marginPct) || marginPct < 0) {
-        showToast('error', 'Please enter a valid profit margin percentage!');
+  const handleMarginAmtChange = (val: string) => {
+    setMarginAmtInput(val);
+    setLastEditedMargin('amount');
+    const num = Number(val);
+    if (!isNaN(num) && totalValidBomCost > 0 && val.trim() !== '') {
+      setMarginPctInput(((num / totalValidBomCost) * 100).toFixed(1));
+    } else if (val.trim() === '') {
+      setMarginPctInput('');
+    }
+  };
+
+  const autoGenerateCustomerQuote = async () => {
+    const pct = Number(marginPctInput);
+    const amt = Number(marginAmtInput);
+
+    if (lastEditedMargin === 'percent') {
+      if (isNaN(pct) || pct < 0) {
+        showToast('error', 'Please enter a valid margin percentage!');
         return;
       }
     } else {
-      fixedVal = Number(fixedMarginInput);
-      if (isNaN(fixedVal) || fixedVal < 0) {
-        showToast('error', 'Please enter a valid fixed profit margin amount (Rs.)!');
+      if (isNaN(amt) || amt < 0) {
+        showToast('error', 'Please enter a valid fixed profit amount in Rs.!');
         return;
       }
     }
@@ -978,6 +999,10 @@ export const QuotationBuilder: React.FC = () => {
       showToast('error', 'No BOMs have cost > 0 to generate a quote.');
       return;
     }
+
+    const profitVal = lastEditedMargin === 'amount' && !isNaN(amt) && amt >= 0
+      ? amt 
+      : (totalValidBomCost * ((Number(marginPctInput) || 0) / 100));
 
     setIsGeneratingQuote(true);
     try {
@@ -990,16 +1015,11 @@ export const QuotationBuilder: React.FC = () => {
         }
         
         const cost = autoMatTotal + manualMatTotal + machCost;
-        let targetTotal = cost;
-        if (marginType === 'percentage') {
-          targetTotal = cost * (1 + (marginPct / 100));
-        } else {
-          // Distribute fixed profit proportionally across BOMs based on their cost ratio
-          const itemProfit = totalValidBomCost > 0 
-            ? (cost / totalValidBomCost) * fixedVal 
-            : (fixedVal / validBomsForQuote.length);
-          targetTotal = cost + itemProfit;
-        }
+        // Distribute fixed profit proportionally across BOMs based on their cost ratio
+        const itemProfit = totalValidBomCost > 0 
+          ? (cost / totalValidBomCost) * profitVal 
+          : (profitVal / validBomsForQuote.length);
+        const targetTotal = cost + itemProfit;
 
         // Clean customer-facing baseline description (strictly avoiding internal machining/materials)
         let finalDesc = b.title.startsWith('BOM Part ') 
@@ -1041,10 +1061,8 @@ export const QuotationBuilder: React.FC = () => {
 
       setCustItems(newCustItems);
       setShowMarginModal(false);
-      const marginSummary = marginType === 'percentage' 
-        ? `${marginPct}% margin` 
-        : `Rs. ${fixedVal.toLocaleString()} fixed margin`;
-      showToast('success', `✨ Generated ${newCustItems.length} quote item(s) with ${marginSummary}${useAiPolish ? ' and AI descriptions' : ''}!`);
+      const effectivePct = totalValidBomCost > 0 ? ((profitVal / totalValidBomCost) * 100).toFixed(1) : '0';
+      showToast('success', `✨ Generated ${newCustItems.length} quote item(s) with Rs. ${Math.round(profitVal).toLocaleString()} (${effectivePct}%) profit${useAiPolish ? ' and AI descriptions' : ''}!`);
     } catch (err: any) {
       showToast('error', err.message || 'Failed generating quote');
     } finally {
@@ -1133,8 +1151,9 @@ export const QuotationBuilder: React.FC = () => {
        showToast('error', 'Please complete the Job Costing (Material/Machining) first to generate a price!');
        return;
     }
-    if (!fixedMarginInput && totalValidBomCost > 0) {
-      setFixedMarginInput(Math.round(totalValidBomCost * (Number(marginInput || 35) / 100)).toString());
+    const initialPct = Number(marginPctInput) || 35;
+    if (totalValidBomCost > 0) {
+      setMarginAmtInput(Math.round(totalValidBomCost * (initialPct / 100)).toString());
     }
     setShowMarginModal(true);
   };
@@ -2834,77 +2853,46 @@ export const QuotationBuilder: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation" size="md">
+      <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation & Profit Margin" size="md">
         <div className="p-5 space-y-4">
           <p className="text-xs text-secondary leading-relaxed bg-purple-500/10 text-purple-600 dark:text-purple-400 p-3 rounded-xl border border-purple-500/20 font-medium">
             Calculate target selling prices from your BOM Costing and generate clean, executive commercial descriptions powered by Groq Meta Llama 3.3.
           </p>
 
-          {/* Mode Selector Tabs */}
-          <div>
-            <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">Select Profit Margin Mode</label>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-surface2 rounded-xl border border-theme-subtle">
-              <button
-                type="button"
-                onClick={() => setMarginType('percentage')}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  marginType === 'percentage'
-                    ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-500'
-                    : 'text-muted hover:text-primary hover:bg-surface'
-                }`}
-              >
-                <Percent size={14} />
-                <span>Percentage Margin (%)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMarginType('fixed');
-                  if (!fixedMarginInput && totalValidBomCost > 0) {
-                    setFixedMarginInput(Math.round(totalValidBomCost * ((Number(marginInput) || 35) / 100)).toString());
-                  }
-                }}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  marginType === 'fixed'
-                    ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-500'
-                    : 'text-muted hover:text-primary hover:bg-surface'
-                }`}
-              >
-                <Coins size={14} />
-                <span>Fixed Profit Value (Rs.)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Input field based on selected mode */}
-          {marginType === 'percentage' ? (
-            <div className="space-y-2">
+          {/* Dual Inputs Grid: Both Percentage and Fixed Rupee Value visible and synced */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 rounded-xl bg-surface2/60 border border-theme-subtle">
+            {/* Input 1: Profit Margin Percentage (%) */}
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-secondary">Desired Profit Margin (%)</label>
-                <span className="text-[11px] text-muted">Adds percentage markup on BOM cost</span>
+                <label className="text-xs font-bold text-primary flex items-center gap-1.5">
+                  <Percent size={13} className="text-purple-500" />
+                  Profit Margin (%)
+                </label>
+                <span className="text-[10px] text-muted">Percentage</span>
               </div>
               <div className="relative">
                 <input 
                   type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
-                  className="w-full input-base font-bold text-xl pr-10 py-2.5" 
-                  value={marginInput} 
-                  onChange={e => setMarginInput(e.target.value)} 
+                  className={`w-full input-base font-bold text-lg pr-9 py-2 bg-surface transition-all ${
+                    lastEditedMargin === 'percent' ? 'border-purple-500 ring-2 ring-purple-500/20' : ''
+                  }`}
+                  value={marginPctInput} 
+                  onChange={e => handleMarginPctChange(e.target.value)} 
                   placeholder="e.g. 35"
                   autoFocus
                 />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-muted text-base">%</span>
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-muted text-sm">%</span>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                <span className="text-[10px] text-muted font-medium mr-1">Presets:</span>
+              {/* Presets for % */}
+              <div className="flex items-center gap-1 flex-wrap pt-0.5">
                 {[15, 20, 25, 30, 35, 40, 50].map(pct => (
                   <button
                     key={pct}
                     type="button"
-                    onClick={() => setMarginInput(pct.toString())}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all ${
-                      Number(marginInput) === pct 
-                        ? 'bg-purple-500/20 text-purple-600 border-purple-500/40 ring-1 ring-purple-500/30 font-black' 
+                    onClick={() => handleMarginPctChange(pct.toString())}
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all ${
+                      Number(marginPctInput) === pct 
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-sm' 
                         : 'bg-surface hover:bg-surface2 text-muted border-theme-subtle hover:text-primary'
                     }`}
                   >
@@ -2913,53 +2901,56 @@ export const QuotationBuilder: React.FC = () => {
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="space-y-2">
+
+            {/* Input 2: Fixed Profit Amount (Rs.) */}
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-secondary">Desired Fixed Profit Amount (Rs.)</label>
-                <span className="text-[11px] text-muted">Adds fixed profit to total BOM cost</span>
+                <label className="text-xs font-bold text-primary flex items-center gap-1.5">
+                  <Coins size={13} className="text-emerald-500" />
+                  Fixed Profit Amount (Rs.)
+                </label>
+                <span className="text-[10px] text-muted">Fixed Rupees (ඉලක්කමෙන්)</span>
               </div>
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-muted text-sm font-mono">Rs.</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-muted text-xs font-mono">Rs.</span>
                 <input 
                   type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
-                  className="w-full input-base font-bold text-xl pl-12 pr-4 py-2.5 font-mono" 
-                  value={fixedMarginInput} 
-                  onChange={e => setFixedMarginInput(e.target.value)} 
+                  className={`w-full input-base font-bold text-lg pl-9 pr-3 py-2 bg-surface font-mono transition-all ${
+                    lastEditedMargin === 'amount' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : ''
+                  }`}
+                  value={marginAmtInput} 
+                  onChange={e => handleMarginAmtChange(e.target.value)} 
                   placeholder={totalValidBomCost > 0 ? (totalValidBomCost * 0.35).toFixed(0) : "e.g. 50000"}
-                  autoFocus
                 />
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                <span className="text-[10px] text-muted font-medium mr-1">Quick Add:</span>
+              {/* Presets for Rs. */}
+              <div className="flex items-center gap-1 flex-wrap pt-0.5">
                 {[10000, 25000, 50000, 100000, 250000].map(val => (
                   <button
                     key={val}
                     type="button"
-                    onClick={() => setFixedMarginInput(val.toString())}
-                    className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-lg border transition-all ${
-                      Number(fixedMarginInput) === val 
-                        ? 'bg-purple-500/20 text-purple-600 border-purple-500/40 ring-1 ring-purple-500/30 font-black' 
+                    onClick={() => handleMarginAmtChange(val.toString())}
+                    className={`px-2 py-0.5 text-[10px] font-mono font-bold rounded border transition-all ${
+                      Number(marginAmtInput) === val 
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
                         : 'bg-surface hover:bg-surface2 text-muted border-theme-subtle hover:text-primary'
                     }`}
                   >
-                    +Rs. {(val / 1000).toFixed(0)}k
+                    +{(val / 1000).toFixed(0)}k
                   </button>
                 ))}
               </div>
             </div>
-          )}
+          </div>
 
           {/* Live Pricing Breakdown Card */}
           {(() => {
             const previewCost = totalValidBomCost;
-            const currentMarginPct = marginType === 'percentage' 
-              ? (Number(marginInput) || 0) 
-              : (previewCost > 0 ? ((Number(fixedMarginInput) || 0) / previewCost) * 100 : 0);
-            const currentProfitAmount = marginType === 'percentage' 
-              ? previewCost * ((Number(marginInput) || 0) / 100) 
-              : (Number(fixedMarginInput) || 0);
-            const currentSellingPrice = previewCost + currentProfitAmount;
+            const pct = Number(marginPctInput) || 0;
+            const amt = Number(marginAmtInput) || 0;
+            const currentProfit = lastEditedMargin === 'amount' ? amt : (previewCost * (pct / 100));
+            const currentSellingPrice = previewCost + currentProfit;
+            const effectivePct = previewCost > 0 ? (currentProfit / previewCost) * 100 : 0;
 
             return (
               <div className="p-3.5 rounded-xl bg-surface2/70 border border-theme-subtle space-y-2 text-xs">
@@ -2970,13 +2961,13 @@ export const QuotationBuilder: React.FC = () => {
                 <div className="flex justify-between items-center text-muted">
                   <span>Calculated Profit Margin:</span>
                   <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                    +Rs. {currentProfitAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    <span className="text-[11px] ml-1.5 font-semibold text-muted font-sans">({currentMarginPct.toFixed(1)}%)</span>
+                    +Rs. {Math.round(currentProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-[11px] ml-1.5 font-semibold text-muted font-sans">({effectivePct.toFixed(1)}%)</span>
                   </span>
                 </div>
                 <div className="pt-2 border-t border-theme-subtle/50 flex justify-between items-center font-bold">
                   <span className="text-primary text-sm">Target Customer Selling Price:</span>
-                  <span className="font-mono text-base text-purple-600 dark:text-purple-400">Rs. {currentSellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="font-mono text-base text-purple-600 dark:text-purple-400">Rs. {Math.round(currentSellingPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
             );
