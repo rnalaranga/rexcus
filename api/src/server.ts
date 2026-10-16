@@ -6616,7 +6616,11 @@ You have complete, live read-only access to the entire Rex ERP database across a
 When asked about ANY detail in the business, always invoke the appropriate specialized tool or use 'execute_custom_erp_query' to retrieve the live facts directly from the database.
 All currency values are in Sri Lankan Rupees (LKR / Rs.).
 Be direct, helpful, polite, and structure your responses with clean markdown tables and bullet points.
-CRITICAL INSTRUCTION: Provide ONLY your final, professional answer to the user in fluent Sinhala/Singlish or English. Never output internal thought processes, planning notes, translation steps, or scratchpad text.`;
+
+CRITICAL RULES FOR REASONING AND TOOL CALLS:
+1. You HAVE real-time read-only live database access. NEVER say "If I were connected to the live database" or "As an AI I cannot check real-time data".
+2. NEVER output raw SQL queries (like 'SELECT ...') directly to the user as text! When you need database data, you MUST call 'execute_custom_erp_query' or the specialized tool function.
+3. Provide ONLY your final, professional answer to the user in fluent Sinhala/Singlish or English. Never output internal thought processes, planning notes, translation steps, or scratchpad text.`;
 
     const systemMessage = {
       role: 'system',
@@ -6822,6 +6826,49 @@ CRITICAL INSTRUCTION: Provide ONLY your final, professional answer to the user i
 
     if (!responseMsg) {
       return res.json({ success: false, error: `Empty response from ${provider}` });
+    }
+
+    // Auto-intercept if model printed a raw SQL query or hallucinated database refusal instead of calling a tool (common with smaller 8B models like Llama 3.1)
+    if (!responseMsg.tool_calls || responseMsg.tool_calls.length === 0) {
+      const contentText = (responseMsg.content || '').trim();
+      const sqlMatch = contentText.match(/\b(SELECT\s+[\s\S]+?\bFROM\b[\s\S]+?)(?:;|\n\n|```|$)/i);
+      const isSqlOnly = sqlMatch && (
+        contentText.toUpperCase().startsWith('SELECT') ||
+        contentText.includes('```sql') ||
+        contentText.length < 350
+      );
+
+      if (isSqlOnly && sqlMatch) {
+        const queryToExec = sqlMatch[1].replace(/```sql|```/gi, '').trim();
+        console.log(`[Rex AI Engine] Intercepted raw SQL query in model text: "${queryToExec}". Auto-executing on database...`);
+        const toolResult = await executeAITool('execute_custom_erp_query', { query: queryToExec });
+        conversation.push({ role: 'assistant', content: responseMsg.content });
+        conversation.push({
+          role: 'user',
+          content: `Live database query execution results: ${JSON.stringify(toolResult)}. Based on these results, please provide your final direct answer to the user in fluent Sinhala/Singlish or English.`
+        });
+        const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
+        if (autoSynthRes && autoSynthRes.ok) {
+          const autoData = await autoSynthRes.json().catch(() => ({}));
+          if (autoData.choices?.[0]?.message) {
+            responseMsg = autoData.choices[0].message;
+          }
+        }
+      } else if (contentText.includes('If I were connected') || contentText.includes('As an AI assistant, I need to query') || contentText.includes('I cannot directly access')) {
+        console.log(`[Rex AI Engine] Model hallucinated refusal to query live DB. Re-prompting for tool execution...`);
+        conversation.push({ role: 'assistant', content: responseMsg.content });
+        conversation.push({
+          role: 'user',
+          content: 'You DO have live database access. Please invoke execute_custom_erp_query or the appropriate specialized tool now to retrieve the exact data and answer my question.'
+        });
+        const retryRes = await callCompletion(activeModelName, conversation, AI_TOOLS).catch(() => null);
+        if (retryRes && retryRes.ok) {
+          const retryData = await retryRes.json().catch(() => ({}));
+          if (retryData.choices?.[0]?.message) {
+            responseMsg = retryData.choices[0].message;
+          }
+        }
+      }
     }
 
     // Process Tool Calls if model requested ERP data
