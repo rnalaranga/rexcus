@@ -6228,7 +6228,7 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
     }
     const data: any = await res.json();
     if (Array.isArray(data.data)) {
-      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa', '2.5', 'preview'];
+      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa', '2.5', 'preview', 'lite'];
       const chatModels = data.data
         .map((m: any) => (m.id || '').replace(/^models\//, ''))
         .filter((id: string) => {
@@ -6264,7 +6264,7 @@ function normalizeModelName(modelName: string, provider: string): string {
   }
   let m = modelName.trim().toLowerCase().replace(/^models\//, '');
   if (provider === 'gemini') {
-    if (m.includes('2.5') || m.includes('preview')) {
+    if (m.includes('2.5') || m.includes('preview') || m.includes('lite')) {
       return 'gemini-1.5-flash';
     }
     if (m === 'flash' || m === '1.5-flash' || m === 'gemini-flash' || m === 'gemini-1.5-flash-latest' || m === 'gemini-1.5-flash') {
@@ -6312,7 +6312,7 @@ function selectBestModel(availableModels: string[], provider: string, failedMode
   if (provider === 'gemini') {
     const validCandidates = candidates.filter(m => {
       const l = m.toLowerCase();
-      return !l.includes('2.5') && !l.includes('preview') && !l.includes('discontinued') && !l.includes('deprecated');
+      return !l.includes('2.5') && !l.includes('preview') && !l.includes('lite') && !l.includes('discontinued') && !l.includes('deprecated');
     });
 
     if (validCandidates.length === 0) {
@@ -6428,7 +6428,7 @@ app.post('/api/ai/test-key', async (req, res) => {
 
     const data: any = await response.json();
     const allModels: string[] = Array.isArray(data.data) ? data.data.map((m: any) => (m.id || '').replace(/^models\//, '')) : [];
-    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa', '2.5', 'preview'];
+    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa', '2.5', 'preview', 'lite'];
     let chatModels = allModels.filter((id: string) => {
       const lower = id.toLowerCase();
       return !nonChatKeywords.some(kw => lower.includes(kw));
@@ -6587,7 +6587,7 @@ app.post('/api/ai/chat', async (req, res) => {
     let activeModelName = '';
     if (isGemini) {
       activeModelName = normalizeModelName((settingsMap.gemini_model || 'gemini-1.5-flash').trim(), 'gemini');
-      if (activeModelName.includes('2.5') || activeModelName.includes('preview') || !activeModelName) {
+      if (activeModelName.includes('2.5') || activeModelName.includes('preview') || activeModelName.includes('lite') || !activeModelName) {
         activeModelName = 'gemini-1.5-flash';
         db.query("UPDATE settings SET val = 'gemini-1.5-flash' WHERE id = 'gemini_model'").catch(() => {});
       }
@@ -6615,7 +6615,8 @@ You have complete, live read-only access to the entire Rex ERP database across a
 - Machineries & Quality Control: Machine operational status, hourly rates, QC Inspections, Defect reasons, and Pass/Fail statistics
 When asked about ANY detail in the business, always invoke the appropriate specialized tool or use 'execute_custom_erp_query' to retrieve the live facts directly from the database.
 All currency values are in Sri Lankan Rupees (LKR / Rs.).
-Be direct, helpful, polite, and structure your responses with clean markdown tables and bullet points.`;
+Be direct, helpful, polite, and structure your responses with clean markdown tables and bullet points.
+CRITICAL INSTRUCTION: Provide ONLY your final, professional answer to the user in fluent Sinhala/Singlish or English. Never output internal thought processes, planning notes, translation steps, or scratchpad text.`;
 
     const systemMessage = {
       role: 'system',
@@ -6626,12 +6627,12 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
     const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
 
-    // Helper for chat completions
+    // Helper for chat completions with timeout safety
     const callCompletion = async (model: string, msgs: any[], tools?: any[]) => {
       const bodyPayload: any = {
         model,
         messages: msgs,
-        temperature: 0.3
+        temperature: 0.2
       };
       if (tools && tools.length > 0) {
         bodyPayload.tools = tools;
@@ -6643,15 +6644,23 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${cleanApiKey}`
         },
-        body: JSON.stringify(bodyPayload)
+        body: JSON.stringify(bodyPayload),
+        signal: AbortSignal.timeout(24000)
       });
     };
 
     const failedModelsList: string[] = [];
-    let aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+    let aiRes: any = null;
+    try {
+      aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+    } catch (e: any) {
+      console.warn(`[Rex AI Engine] Initial call timed out or failed on '${activeModelName}':`, e.message);
+      // Fallback to gemini-1.5-flash without tools
+      aiRes = await callCompletion('gemini-1.5-flash', conversation).catch(() => null);
+    }
 
-    if (!aiRes.ok) {
-      let errJson: any = await aiRes.json().catch(() => ({}));
+    if (!aiRes || !aiRes.ok) {
+      let errJson: any = aiRes ? await aiRes.json().catch(() => ({})) : {};
       let errMsg = extractApiErrorMessage(errJson).toLowerCase();
 
       // If initial tool-enabled request failed with 400 (e.g. strict schema rejection by Gemini or tool format issue), retry immediately without tools
@@ -6667,11 +6676,17 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         }
       }
 
-      // Check for Rate Limit (HTTP 429 / TPM limit)
+      // Check for Rate Limit or High Demand / Spikes (HTTP 429 / 503 / TPM limit)
       const isRateLimited = 
-        aiRes.status === 429 || 
-        errJson.error?.code === 'rate_limit_exceeded' || 
+        aiRes?.status === 429 || 
+        aiRes?.status === 503 || 
+        errJson?.error?.code === 'rate_limit_exceeded' || 
         errMsg.includes('rate limit') || 
+        errMsg.includes('high demand') || 
+        errMsg.includes('spikes in demand') || 
+        errMsg.includes('temporarily') || 
+        errMsg.includes('overloaded') || 
+        errMsg.includes('capacity') || 
         errMsg.includes('tokens per minute') ||
         errMsg.includes('tpm');
 
@@ -6832,40 +6847,46 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       }
 
       // Follow-up request with tools so the model can process tool results and synthesize answer
-      let followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+      let followUpRes: any = null;
+      try {
+        followUpRes = await callCompletion(activeModelName, conversation, turns === 1 ? AI_TOOLS : undefined);
+      } catch (err: any) {
+        console.warn(`[Rex AI] Follow-up turn timed out or failed on '${activeModelName}':`, err.message);
+        conversation.push({
+          role: 'user',
+          content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
+        });
+        followUpRes = await callCompletion('gemini-1.5-flash', conversation).catch(() => null);
+      }
 
-      if (!followUpRes.ok) {
-        let errJson: any = await followUpRes.json().catch(() => ({}));
+      if (!followUpRes || !followUpRes.ok) {
+        let errJson: any = followUpRes ? await followUpRes.json().catch(() => ({})) : {};
         let errMsg = extractApiErrorMessage(errJson).toLowerCase();
 
-        if (followUpRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tokens per minute') || errMsg.includes('tpm')) {
-          console.warn(`[Rex AI] Rate limit on follow-up turn (${errMsg}).`);
-          const liveModels = await fetchProviderModels(provider, apiKey);
+        if (followUpRes?.status === 429 || followUpRes?.status === 503 || errMsg.includes('rate limit') || errMsg.includes('high demand') || errMsg.includes('spikes in demand')) {
+          console.warn(`[Rex AI] High demand or rate limit on follow-up turn (${errMsg}).`);
+          const liveModels = await fetchProviderModels(provider, cleanApiKey);
           const resolvedModel = selectBestModel(liveModels, provider, [activeModelName]);
           if (resolvedModel && resolvedModel !== activeModelName) {
             console.log(`[Rex AI Engine] Auto-switching follow-up from '${activeModelName}' to '${resolvedModel}'...`);
             activeModelName = resolvedModel;
             const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
             db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
-            followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+            followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS).catch(() => null);
           }
         }
 
-        if (!followUpRes.ok) {
-          errJson = await followUpRes.json().catch(() => errJson);
-          errMsg = extractApiErrorMessage(errJson).toLowerCase();
-          if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed') || errMsg.includes('tool')) {
-            console.warn(`[Rex AI] Tool followup warning detected. Retrying synthesis without tool constraint...`);
-            conversation.push({
-              role: 'user',
-              content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
-            });
-            followUpRes = await callCompletion(activeModelName, conversation);
-          }
+        if (!followUpRes || !followUpRes.ok) {
+          console.warn(`[Rex AI] Retrying synthesis without tool constraint...`);
+          conversation.push({
+            role: 'user',
+            content: 'Please summarize and format the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
+          });
+          followUpRes = await callCompletion(activeModelName, conversation).catch(() => null);
         }
 
-        if (!followUpRes.ok) {
-          const finalErr: any = await followUpRes.json().catch(() => errJson);
+        if (!followUpRes || !followUpRes.ok) {
+          const finalErr: any = followUpRes ? await followUpRes.json().catch(() => ({})) : {};
           return res.json({
             success: false,
             error: extractApiErrorMessage(finalErr) || 'Failed generating final answer'
@@ -6881,9 +6902,14 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       }
     }
 
+    let finalReply = responseMsg?.content || 'No response generated.';
+    // Clean accidental chain-of-thought scratchpad leaked by Gemini
+    finalReply = finalReply.replace(/^The query returned[\s\S]*?as requested\.\s*/i, '').trim();
+    finalReply = finalReply.replace(/^["'].*?->\s*["'].*?["']\.?\s*/i, '').trim();
+
     return res.json({
       success: true,
-      reply: responseMsg?.content || 'No response generated.',
+      reply: finalReply,
       model: activeModelName,
       provider
     });
