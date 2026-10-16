@@ -251,8 +251,22 @@ export const fetchStockLedger = async (inventoryId: string) => {
   return res.json();
 };
 
+export const fetchFullStockLedger = async () => {
+  const res = await fetch(`${API_URL}/inventory/ledger/all`);
+  return res.json();
+};
+
 export const addStockLedgerEntry = async (inventoryId: string, data: any) => {
   const res = await fetch(`${API_URL}/inventory/${inventoryId}/ledger`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const reconcileStock = async (data: { inventoryId: string; physicalCount: number; notes?: string; user?: string; reference?: string }) => {
+  const res = await fetch(`${API_URL}/inventory/reconcile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)

@@ -899,7 +899,15 @@ async function runDatabaseSync() {
     "ALTER TABLE qc_inspections ADD COLUMN defectReason TEXT DEFAULT NULL",
     "ALTER TABLE qc_inspections ADD COLUMN notes TEXT DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN qcId VARCHAR(50) DEFAULT NULL",
-    "ALTER TABLE rework_logs ADD COLUMN status VARCHAR(50) DEFAULT 'Pending'"
+    "ALTER TABLE rework_logs ADD COLUMN status VARCHAR(50) DEFAULT 'Pending'",
+    "ALTER TABLE stock_ledger ADD COLUMN balance DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE stock_ledger ADD COLUMN unitCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE stock_ledger ADD COLUMN totalCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE stock_ledger ADD COLUMN user VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE stock_ledger ADD COLUMN batchNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE stock_ledger ADD COLUMN location VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN assetDetails LONGTEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN subCategory VARCHAR(100) DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -2216,18 +2224,32 @@ app.delete('/api/inventory/:id', async (req, res) => {
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
-// -- STOCK LEDGER --
+// -- STOCK LEDGER & MOVEMENTS --
+app.get('/api/inventory/ledger/all', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT l.*, i.name as materialName, i.sku, i.uom as unit, i.type as itemType, i.category as itemCategory
+      FROM stock_ledger l 
+      JOIN inventory i ON l.inventoryId = i.id 
+      ORDER BY l.date DESC 
+      LIMIT 300
+    `);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
 app.get('/api/inventory/:id/ledger', async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await db.query('SELECT * FROM stock_ledger WHERE inventoryId = ? ORDER BY date DESC', [id]);
+    const [rows] = await db.query('SELECT * FROM stock_ledger WHERE inventoryId = ? ORDER BY date DESC LIMIT 200', [id]);
     res.json(rows);
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
-
 
 app.get('/api/inventory/ledger/wo/:woId', async (req, res) => {
   try {
@@ -2236,7 +2258,7 @@ app.get('/api/inventory/ledger/wo/:woId', async (req, res) => {
       [req.params.woId]
     );
     res.json(rows);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -2246,28 +2268,88 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     
-    const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [id]);
-    const currentQty = invRows.length ? Number(invRows[0].quantity || 0) : 0;
+    const [invRows]: any = await db.query('SELECT quantity, unitCost, location, name FROM inventory WHERE id = ?', [id]);
+    if (!invRows.length) return res.status(404).json({ error: 'Item not found' });
+    
+    const currentQty = Number(invRows[0].quantity || 0);
     const qtyVal = Number(data.qty) || 0;
-    const newBalance = data.type === 'OUT' ? currentQty - qtyVal : currentQty + qtyVal;
+    const unitCost = Number(data.unitCost !== undefined ? data.unitCost : (invRows[0].unitCost || 0));
+    const typeUpper = String(data.type || 'IN').toUpperCase();
+
+    let newBalance = currentQty;
+    if (typeUpper === 'OUT' || typeUpper === 'SCRAP' || typeUpper === 'DISPATCH') {
+      newBalance = currentQty - qtyVal;
+    } else if (typeUpper === 'ADJUSTMENT' || typeUpper === 'RECONCILE') {
+      newBalance = data.targetBalance !== undefined ? Number(data.targetBalance) : (data.isNegative ? currentQty - qtyVal : currentQty + qtyVal);
+    } else if (typeUpper === 'TRANSFER') {
+      newBalance = currentQty; // Location change only
+    } else {
+      newBalance = currentQty + qtyVal;
+    }
+
+    const totalCost = Number(data.totalCost || (qtyVal * unitCost));
 
     const entry = {
-      id: 'LGR-' + Date.now().toString().slice(-5),
+      id: 'LGR-' + Date.now().toString().slice(-6),
       inventoryId: id,
       date: data.date || new Date().toISOString().slice(0, 19).replace('T', ' '),
-      type: data.type,
+      type: typeUpper,
       qty: qtyVal,
+      balance: newBalance,
+      unitCost,
+      totalCost,
+      user: data.user || 'Admin',
+      batchNo: data.batchNo || '',
+      location: data.location || invRows[0].location || '',
       reference: data.reference || '',
       notes: data.notes || ''
     };
     
     await db.query('INSERT INTO stock_ledger SET ?', entry);
-    await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newBalance, id]);
+    await db.query('UPDATE inventory SET quantity = ?, location = COALESCE(?, location) WHERE id = ?', [newBalance, data.location || null, id]);
     
-    res.json({ success: true, entry });
-  } catch (error) {
-    console.error(error);
+    res.json({ success: true, entry, newBalance });
+  } catch (error: any) {
+    console.error('Stock ledger entry error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.post('/api/inventory/reconcile', async (req, res) => {
+  try {
+    const { inventoryId, physicalCount, notes, user, reference } = req.body;
+    if (!inventoryId) return res.status(400).json({ error: 'Item ID is required' });
+
+    const [invRows]: any = await db.query('SELECT quantity, unitCost, location, name FROM inventory WHERE id = ?', [inventoryId]);
+    if (!invRows.length) return res.status(404).json({ error: 'Item not found' });
+
+    const currentQty = Number(invRows[0].quantity || 0);
+    const targetCount = Number(physicalCount || 0);
+    const diff = targetCount - currentQty;
+    const unitCost = Number(invRows[0].unitCost || 0);
+
+    const entry = {
+      id: 'LGR-ADJ-' + Date.now().toString().slice(-6),
+      inventoryId,
+      date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      type: diff >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
+      qty: Math.abs(diff),
+      balance: targetCount,
+      unitCost,
+      totalCost: Math.abs(diff) * unitCost,
+      user: user || 'Store Auditor',
+      location: invRows[0].location || '',
+      reference: reference || 'Physical Cycle Count Audit',
+      notes: notes || `Reconciled from ${currentQty} to ${targetCount} (Variance: ${diff > 0 ? '+' : ''}${diff})`
+    };
+
+    await db.query('INSERT INTO stock_ledger SET ?', entry);
+    await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [targetCount, inventoryId]);
+
+    res.json({ success: true, entry, targetCount, variance: diff });
+  } catch (error: any) {
+    console.error('Stock reconciliation error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -16,9 +16,11 @@ import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView'
 import { GatePassPrintView } from '@/components/GatePassPrintView'
 import { FinishedProductModal } from './FinishedProductModal'
 import { FinishedGoodsOrdersView } from './FinishedGoodsOrdersView'
+import { AssetRegistryHub } from '@/components/inventory/AssetRegistryHub'
+import { StockLedgerHub } from '@/components/inventory/StockLedgerHub'
 import html2pdf from 'html2pdf.js'
 
-type TabType = 'all' | 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample'
+type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'all'
 
 const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpdate: () => void }) => {
   const { data: ledger, loading, refetch } = useStockLedger(inventoryId)
@@ -111,7 +113,8 @@ export const Inventory: React.FC = () => {
   const [sampleSearchQuery, setSampleSearchQuery] = useState('')
   const { settings } = useSettings()
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<TabType>('all')
+  const [activeTab, setActiveTab] = useState<TabType>('raw_material')
+  const [ledgerModalItem, setLedgerModalItem] = useState<any | null>(null)
   const [search, setSearch] = useState('')
   const [grns, setGrns] = useState<any[]>([])
   const [gatePasses, setGatePasses] = useState<any[]>([])
@@ -266,10 +269,42 @@ export const Inventory: React.FC = () => {
   const isItemFinishedProduct = (type: string) => type === 'finished_product' || type === 'product'
 
   const filteredData = inventory.filter(item => {
-    const matchesTab = activeTab === 'all' || 
-      (activeTab === 'finished_product' ? isItemFinishedProduct(item.type) : item.type === activeTab)
-    return matchesTab && (item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku && item.sku.toLowerCase().includes(search.toLowerCase())))
-  })
+    let matchesTab = true;
+    if (activeTab === 'raw_material') {
+      matchesTab = item.type === 'raw_material' || (!isItemFinishedProduct(item.type) && item.type !== 'company_asset' && item.type !== 'service');
+    } else if (activeTab === 'finished_product') {
+      matchesTab = isItemFinishedProduct(item.type);
+    } else if (activeTab === 'company_asset') {
+      matchesTab = item.type === 'company_asset';
+    } else if (activeTab === 'service') {
+      matchesTab = item.type === 'service';
+    } else if (activeTab === 'all') {
+      matchesTab = true;
+    }
+
+    const q = search.toLowerCase().trim();
+    const matchesSearch = !q || 
+      (item.name && item.name.toLowerCase().includes(q)) || 
+      (item.sku && item.sku.toLowerCase().includes(q)) ||
+      (item.location && item.location.toLowerCase().includes(q)) ||
+      (item.category && item.category.toLowerCase().includes(q));
+
+    return matchesTab && matchesSearch;
+  });
+
+  const handleSaveAsset = async (assetData: any) => {
+    if (assetData.id && inventory.some((i: any) => i.id === assetData.id)) {
+      await updateInventoryItem(assetData.id, assetData);
+    } else {
+      await createInventoryItem(assetData);
+    }
+    refetch();
+  };
+
+  const handleDeleteAsset = async (id: string) => {
+    await deleteInventoryItem(id);
+    refetch();
+  };
 
   const handleOpenForm = (item?: any) => {
     if (item) {
@@ -431,7 +466,18 @@ export const Inventory: React.FC = () => {
       key: 'id',
       render: (_, item) => (
         <div className="flex justify-end gap-2">
+          {item.type !== 'service' && item.type !== 'company_asset' && (
+            <button
+              type="button"
+              onClick={() => setLedgerModalItem(item)}
+              className="p-1 hover:bg-rex-500/10 rounded text-muted hover:text-rex-600 transition-colors"
+              title="View Stock Ledger & Movements"
+            >
+              <Layers size={14}/>
+            </button>
+          )}
           <button 
+            type="button"
             onClick={() => {
               if (item.type === 'finished_product') {
                 setSelectedFinishedProduct(item)
@@ -574,6 +620,14 @@ export const Inventory: React.FC = () => {
       key: 'id',
       render: (_: any, item: any) => (
         <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => setLedgerModalItem(item)}
+            className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-rex-600 transition-colors"
+            title="Stock Movement Ledger"
+          >
+            <Layers size={14}/>
+          </button>
           <Button
             variant="ghost"
             size="sm"
@@ -1344,14 +1398,26 @@ export const Inventory: React.FC = () => {
               ? 'Customer Samples & Gate Passes' 
               : activeTab === 'finished_product'
               ? 'Finished Goods: Products & Orders'
-              : 'Inventory & Services'}
+              : activeTab === 'company_asset'
+              ? 'Company Asset Registry & Maintenance'
+              : activeTab === 'service'
+              ? 'Service Offerings & Billing Rates'
+              : activeTab === 'stock_ledger'
+              ? 'Warehouse Stock Movement & Audit Ledger'
+              : 'Raw Materials & Parts Inventory'}
           </h1>
           <p className="text-sm text-secondary mt-1">
             {activeTab === 'customer_sample' 
               ? 'Track customer sample parts, linked quotation details, and manage outward return gate passes.' 
               : activeTab === 'finished_product'
               ? 'Manage manufactured ready-made products, quotation-grade BOM rollups, CAD drawings, and customer orders.'
-              : 'Manage products, raw materials, and service offerings.'}
+              : activeTab === 'company_asset'
+              ? 'Official company asset register, machine tagging, capital investment, depreciation tracking, and custody.'
+              : activeTab === 'service'
+              ? 'Manage service offerings, hourly machining labor rates, fabrication charges, and standard billing units.'
+              : activeTab === 'stock_ledger'
+              ? 'Complete warehouse stock movement audit trail, receipt/dispatch logs, cycle count reconciliation, and valuations.'
+              : 'Manage raw materials, steel bars, plates, hydraulic fittings, reorder thresholds, and bin locations.'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1372,10 +1438,13 @@ export const Inventory: React.FC = () => {
                 Add Ready-Made Product
               </Button>
             </div>
-          ) : (
+          ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : (
             <>
+              <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
               <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
-              <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>Add New Item</Button>
+              <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>
+                {activeTab === 'service' ? 'Add Service' : 'Add Raw Material'}
+              </Button>
             </>
           )}
         </div>
@@ -1386,12 +1455,12 @@ export const Inventory: React.FC = () => {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle overflow-x-auto max-w-full">
             {[
-              { id: 'all', label: 'All Items' },
-              { id: 'raw_material', label: 'Raw Materials' },
+              { id: 'raw_material', label: `Raw Materials (${inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length})` },
               { id: 'finished_product', label: `Finished Products (${inventory.filter(i => isItemFinishedProduct(i.type)).length})` },
-              { id: 'company_asset', label: 'Company Assets' },
-              { id: 'service', label: 'Services' },
-              { id: 'customer_sample', label: `Customer Samples (${grns.length})` }
+              { id: 'company_asset', label: `Company Assets (${inventory.filter(i => i.type === 'company_asset').length})` },
+              { id: 'service', label: `Services (${inventory.filter(i => i.type === 'service').length})` },
+              { id: 'customer_sample', label: `Customer Samples (${grns.length})` },
+              { id: 'stock_ledger', label: 'Stock Movement & Ledger' }
             ].map(t => (
               <button 
                 key={t.id}
@@ -1481,7 +1550,22 @@ export const Inventory: React.FC = () => {
         )}
       </div>
 
-      {activeTab === 'finished_product' && finishedSubTab === 'orders' ? (
+      {activeTab === 'company_asset' ? (
+        <AssetRegistryHub
+          assets={inventory.filter(i => i.type === 'company_asset')}
+          loading={loading}
+          onSaveAsset={handleSaveAsset}
+          onDeleteAsset={handleDeleteAsset}
+          onRefresh={refetch}
+          showToast={showToast}
+        />
+      ) : activeTab === 'stock_ledger' ? (
+        <StockLedgerHub
+          inventoryList={inventory}
+          showToast={showToast}
+          onUpdateInventory={refetch}
+        />
+      ) : activeTab === 'finished_product' && finishedSubTab === 'orders' ? (
         <FinishedGoodsOrdersView
           onRefreshProducts={refetch}
           onOpenProductBOM={(prod) => {
@@ -1490,37 +1574,102 @@ export const Inventory: React.FC = () => {
           }}
         />
       ) : (
-        <GlassCard className="p-0 overflow-hidden">
-          {activeTab === 'customer_sample' ? (
-            sampleSubTab === 'samples' ? (
+        <div className="space-y-4">
+          {/* Quick Raw Material Metrics if in raw_material tab */}
+          {activeTab === 'raw_material' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <GlassCard className="p-3 border-l-4 border-l-emerald-500">
+                <span className="text-[10px] uppercase font-bold text-muted tracking-wider block">Raw Material Parts</span>
+                <div className="text-xl font-black text-primary mt-1">
+                  {inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length}
+                </div>
+                <span className="text-[10px] text-muted">Active material catalog</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-blue-500">
+                <span className="text-[10px] uppercase font-bold text-muted tracking-wider block">Total Stock Valuation</span>
+                <div className="text-lg font-bold font-mono text-primary mt-1">
+                  {formatCurrency(
+                    inventory
+                      .filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service'))
+                      .reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitCost || 0)), 0)
+                  )}
+                </div>
+                <span className="text-[10px] text-muted">Acquisition value in hand</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-amber-500">
+                <span className="text-[10px] uppercase font-bold text-muted tracking-wider block">Low Stock Alerts</span>
+                <div className="text-lg font-bold text-amber-500 mt-1">
+                  {inventory
+                    .filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service'))
+                    .filter(i => Number(i.quantity || 0) <= Number(i.reorderLevel || 0) && Number(i.quantity || 0) > 0).length} Items
+                </div>
+                <span className="text-[10px] text-muted">At or below reorder level</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-red-500">
+                <span className="text-[10px] uppercase font-bold text-muted tracking-wider block">Zero Stock / Depleted</span>
+                <div className="text-lg font-bold text-red-500 mt-1">
+                  {inventory
+                    .filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service'))
+                    .filter(i => Number(i.quantity || 0) <= 0).length} Items
+                </div>
+                <span className="text-[10px] text-muted">Requires procurement</span>
+              </GlassCard>
+            </div>
+          )}
+
+          <GlassCard className="p-0 overflow-hidden">
+            {activeTab === 'customer_sample' ? (
+              sampleSubTab === 'samples' ? (
+                <DataTable 
+                  columns={customerSampleColumns} 
+                  data={filteredGrns} 
+                  keyExtractor={(item: any) => item.id} 
+                  pagination 
+                  itemsPerPage={50} 
+                />
+              ) : (
+                <DataTable 
+                  columns={gatePassColumns} 
+                  data={filteredGatePasses} 
+                  keyExtractor={(item: any) => item.id} 
+                  pagination 
+                  itemsPerPage={50} 
+                />
+              )
+            ) : activeTab === 'finished_product' ? (
               <DataTable 
-                columns={customerSampleColumns} 
-                data={filteredGrns} 
+                columns={finishedProductColumns} 
+                data={filteredData} 
                 keyExtractor={(item: any) => item.id} 
                 pagination 
                 itemsPerPage={50} 
               />
             ) : (
-              <DataTable 
-                columns={gatePassColumns} 
-                data={filteredGatePasses} 
-                keyExtractor={(item: any) => item.id} 
-                pagination 
-                itemsPerPage={50} 
-              />
-            )
-          ) : activeTab === 'finished_product' ? (
-            <DataTable 
-              columns={finishedProductColumns} 
-              data={filteredData} 
-              keyExtractor={(item: any) => item.id} 
-              pagination 
-              itemsPerPage={50} 
-            />
-          ) : (
-            <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
-          )}
-        </GlassCard>
+              <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} pagination itemsPerPage={50} />
+            )}
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Individual Item Stock Ledger Modal */}
+      {ledgerModalItem && (
+        <Modal
+          isOpen={!!ledgerModalItem}
+          onClose={() => setLedgerModalItem(null)}
+          title={`Stock Movement & Audit Ledger: ${ledgerModalItem.name}`}
+          className="max-w-5xl"
+        >
+          <StockLedgerHub
+            selectedInventoryItem={ledgerModalItem}
+            inventoryList={inventory}
+            onClose={() => setLedgerModalItem(null)}
+            onUpdateInventory={refetch}
+            showToast={showToast}
+          />
+        </Modal>
       )}
 
       {/* Toast Notification */}
