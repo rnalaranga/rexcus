@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Activity, Scale, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List } from 'lucide-react'
+import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -1440,10 +1440,9 @@ export const Inventory: React.FC = () => {
             </div>
           ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : (
             <>
-              <Button variant="ghost" size="sm" icon={Download} onClick={() => setShowImport(true)} className="h-9 text-xs">
-                Import CSV
-              </Button>
-              <Button variant="primary" size="sm" icon={Plus} onClick={() => handleOpenForm()} className="h-9 text-xs font-semibold">
+              <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
+              <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
+              <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>
                 {activeTab === 'service' ? 'Add Service' : 'Add Raw Material'}
               </Button>
             </>
@@ -1454,89 +1453,21 @@ export const Inventory: React.FC = () => {
       {/* Tabs & Controls */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-1.5 p-1.5 bg-slate-100/90 dark:bg-slate-900/70 backdrop-blur-md rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-x-auto max-w-full custom-scrollbar">
+          <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle overflow-x-auto max-w-full">
             {[
-              { 
-                id: 'raw_material' as TabType, 
-                label: 'Raw Materials', 
-                count: inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length,
-                icon: Layers,
-                accent: 'emerald'
-              },
-              { 
-                id: 'finished_product' as TabType, 
-                label: 'Finished Products', 
-                count: inventory.filter(i => isItemFinishedProduct(i.type)).length,
-                icon: Package,
-                accent: 'blue'
-              },
-              { 
-                id: 'company_asset' as TabType, 
-                label: 'Company Assets', 
-                count: inventory.filter(i => i.type === 'company_asset').length,
-                icon: Briefcase,
-                accent: 'amber'
-              },
-              { 
-                id: 'service' as TabType, 
-                label: 'Services', 
-                count: inventory.filter(i => i.type === 'service').length,
-                icon: Wrench,
-                accent: 'purple'
-              },
-              { 
-                id: 'customer_sample' as TabType, 
-                label: 'Customer Samples', 
-                count: grns.length,
-                icon: FileText,
-                accent: 'cyan'
-              },
-              { 
-                id: 'stock_ledger' as TabType, 
-                label: 'Stock Ledger', 
-                icon: Activity,
-                accent: 'rex'
-              }
-            ].map(t => {
-              const Icon = t.icon;
-              const isActive = activeTab === t.id;
-              return (
-                <button 
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveTab(t.id)}
-                  className={`group relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all duration-200 whitespace-nowrap cursor-pointer select-none ${
-                    isActive 
-                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-md border border-slate-200/90 dark:border-slate-700 font-bold scale-[1.01]' 
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-800/40 font-medium'
-                  }`}
-                >
-                  <span className={`p-1 rounded-lg transition-colors ${
-                    isActive 
-                      ? 'bg-rex-600/10 text-rex-600 dark:bg-rex-500/20 dark:text-rex-400' 
-                      : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'
-                  }`}>
-                    <Icon size={14} />
-                  </span>
-
-                  <span className="tracking-tight">{t.label}</span>
-
-                  {t.count !== undefined && (
-                    <span className={`px-2 py-0.5 text-[10px] font-bold font-mono rounded-full transition-all ${
-                      isActive 
-                        ? 'bg-rex-600 text-white dark:bg-rex-600 shadow-sm' 
-                        : 'bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-slate-300/80'
-                    }`}>
-                      {t.count}
-                    </span>
-                  )}
-
-                  {isActive && (
-                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-rex-600 dark:bg-rex-500 rounded-full" />
-                  )}
-                </button>
-              );
-            })}
+              { id: 'raw_material', label: `Raw Materials (${inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length})` },
+              { id: 'finished_product', label: `Finished Products (${inventory.filter(i => isItemFinishedProduct(i.type)).length})` },
+              { id: 'company_asset', label: `Company Assets (${inventory.filter(i => i.type === 'company_asset').length})` },
+              { id: 'service', label: `Services (${inventory.filter(i => i.type === 'service').length})` },
+              { id: 'customer_sample', label: `Customer Samples (${grns.length})` },
+              { id: 'stock_ledger', label: 'Stock Movement & Ledger' }
+            ].map(t => (
+              <button 
+                key={t.id}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
+                onClick={() => setActiveTab(t.id as TabType)}
+              >{t.label}</button>
+            ))}
           </div>
 
           <div className="flex items-center gap-3 flex-1 justify-end">
