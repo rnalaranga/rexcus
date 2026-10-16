@@ -196,19 +196,22 @@ export const RexAIAssistant: React.FC = () => {
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Groq Cloud API Key** එකක් (Meta Llama 3.1 8B Instant සඳහා) හෝ OpenAI Key එකක් ඇතුළත් කර Save කරන්න. ක්ෂණිකව සියලු මිල ගණන් සහ ERP දත්ත සජීවීව විමසිය හැක!`,
+            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ නොමිලේ **Groq Cloud API Key** එක (\`gsk_...\`) ඇතුළත් කර **Test Connection** ඔබා Save කරන්න.\n\n*(අනෙක් පරිගණකයේ සිට Git Pull කළ විට local database එක sync නොවන බැවින්, මෙම PC එකෙහි API Key එක එක්වරක් Save කරගත යුතුය).*`,
             timestamp: new Date()
           }
         ]);
       } else {
         const errorText = data.error || 'Failed to process request.';
-        const isModelIssue = errorText.toLowerCase().includes('model') || errorText.toLowerCase().includes('does not exist');
+        const isKeyOrModelIssue = errorText.toLowerCase().includes('model') || errorText.toLowerCase().includes('does not exist') || errorText.toLowerCase().includes('key') || errorText.toLowerCase().includes('access');
+        const solutionMsg = isKeyOrModelIssue 
+          ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Groq Cloud API Key** එක (gsk_...) ඇතුළත් කර **Test Connection** ඔබන්න. (එවිට නොමිලේ අධිවේගී Llama 3.1 8B Instant මාදිලිය සහ Key එක ස්වයංක්‍රීයව Save වේ).'
+          : '';
         setMessages(prev => [
           ...prev,
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `❌ **Error:** ${errorText}${isModelIssue ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Groq Cloud API Key** එක (gsk_...) ඇතුළත් කර **Test Connection** ඔබන්න. (එවිට Key එක සහ ක්‍රියාකාරී Models ස්වයංක්‍රීයව Save වේ).' : ''}`,
+            content: `❌ **Error:** ${errorText}${solutionMsg}`,
             timestamp: new Date()
           }
         ]);

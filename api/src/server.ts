@@ -5996,18 +5996,18 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
  * Helper to normalize common shorthand model names entered by users (e.g. 8b, 70b)
  */
 function normalizeModelName(modelName: string, isGroq: boolean): string {
-  if (!modelName) return isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
+  if (!modelName) return isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
   const m = modelName.trim().toLowerCase();
   if (isGroq) {
-    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
+    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b' || m.includes('8b-instant')) {
       return 'llama-3.1-8b-instant';
     }
     if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b' || m === 'llama3-70b' || m === 'llama3.3-70b' || m === 'llama-3.1-70b') {
-      return 'llama-3.3-70b-versatile';
+      return 'llama-3.1-8b-instant';
     }
-    // Any models that lack native tool support on Groq normalized to production llama-3.3-70b-versatile
+    // Any models that lack native tool support on Groq normalized to production llama-3.1-8b-instant
     if (m.includes('gpt-oss') || m.includes('mixtral') || m.includes('guard') || m.includes('gemma') || m.includes('qwen') || m.includes('whisper')) {
-      return 'llama-3.3-70b-versatile';
+      return 'llama-3.1-8b-instant';
     }
   } else {
     if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
@@ -6025,10 +6025,10 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
 
   if (candidates.length === 0) {
     if (isGroq) {
-      if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
       if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
+      if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
       if (!isFailed('llama-3.1-70b-versatile')) return 'llama-3.1-70b-versatile';
-      return 'llama-3.3-70b-versatile';
+      return 'llama-3.1-8b-instant';
     } else {
       if (!isFailed('gpt-4o-mini')) return 'gpt-4o-mini';
       if (!isFailed('gpt-4o')) return 'gpt-4o';
@@ -6037,13 +6037,13 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
   }
 
   if (isGroq) {
-    // 1. Meta Llama 3.3 70B (Primary recommended production model - 128k context, high token limits, native function calling)
-    const llama33_70b = candidates.find(m => m.includes('llama-3.3-70b'));
-    if (llama33_70b) return llama33_70b;
-
-    // 2. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, native function calling)
+    // 1. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, 30,000 TPM limit, 100% Free on all tiers, native function calling)
     const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
     if (llama8b) return llama8b;
+
+    // 2. Meta Llama 3.3 70B (If supported / available on account)
+    const llama33_70b = candidates.find(m => m.includes('llama-3.3-70b'));
+    if (llama33_70b) return llama33_70b;
 
     // 3. Meta Llama 3.1 70B (Native function calling)
     const llama31_70b = candidates.find(m => m.includes('llama-3.1-70b') && !m.includes('instant'));
@@ -6057,7 +6057,7 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
     const anyLlama = candidates.find(m => m.toLowerCase().includes('llama-3') && !m.includes('guard') && !m.includes('vision'));
     if (anyLlama) return anyLlama;
 
-    return 'llama-3.3-70b-versatile';
+    return candidates[0] || 'llama-3.1-8b-instant';
   } else {
     // Priority order for OpenAI models:
     const gpt4oMini = candidates.find(m => m === 'gpt-4o-mini' || m.includes('gpt-4o-mini'));
@@ -6222,7 +6222,7 @@ app.post('/api/ai/chat', async (req, res) => {
 
     let activeModelName = normalizeModelName(
       isGroq
-        ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
+        ? (settingsMap.groq_model || 'llama-3.1-8b-instant').trim()
         : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
       isGroq
     );
@@ -6230,14 +6230,14 @@ app.post('/api/ai/chat', async (req, res) => {
     // For Groq, proactively ensure activeModelName is a tool-supported model
     if (isGroq) {
       const isKnownToolModel = 
-        activeModelName.includes('llama-3.3-70b') || 
         activeModelName.includes('llama-3.1-8b') || 
+        activeModelName.includes('llama-3.3-70b') || 
         activeModelName.includes('llama-3.1-70b') || 
         activeModelName.includes('tool-use');
       if (!isKnownToolModel) {
-        console.log(`[Rex AI Chat] Sanitizing non-tool model '${activeModelName}' -> 'llama-3.3-70b-versatile'`);
-        activeModelName = 'llama-3.3-70b-versatile';
-        db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+        console.log(`[Rex AI Chat] Sanitizing non-tool model '${activeModelName}' -> 'llama-3.1-8b-instant'`);
+        activeModelName = 'llama-3.1-8b-instant';
+        db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
       }
     }
 
@@ -6370,7 +6370,12 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
             [isGroq ? 'groq_model' : 'openai_model', activeModelName, activeModelName]
           ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
 
-          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          // If still failing and model wasn't llama-3.1-8b-instant, try llama-3.1-8b-instant explicitly
+          if (!aiRes.ok && isGroq && activeModelName !== 'llama-3.1-8b-instant') {
+            activeModelName = 'llama-3.1-8b-instant';
+            db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
+            aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          }
         }
       }
 
@@ -6385,17 +6390,10 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
         if (isToolUnsupported) {
           failedModelsList.push(activeModelName);
-          console.warn(`[Rex AI Engine] Model '${activeModelName}' does not support tools (${errMsg}). Auto-migrating to 'llama-3.3-70b-versatile'...`);
-          activeModelName = 'llama-3.3-70b-versatile';
-          db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+          console.warn(`[Rex AI Engine] Model '${activeModelName}' does not support tools (${errMsg}). Auto-migrating to 'llama-3.1-8b-instant'...`);
+          activeModelName = 'llama-3.1-8b-instant';
+          db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
           aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
-
-          // If that still fails, try llama-3.1-8b-instant
-          if (!aiRes.ok) {
-            activeModelName = 'llama-3.1-8b-instant';
-            db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
-            aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
-          }
 
           // If tools still fail, retry WITHOUT tools so user ALWAYS gets a successful answer
           if (!aiRes.ok) {
@@ -6405,6 +6403,13 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         }
       }
 
+      // Safe conversational fallback without tools if tool calls failed
+      if (!aiRes.ok && isGroq) {
+        console.warn(`[Rex AI Engine] Retrying with llama-3.1-8b-instant without tools as safe conversational fallback...`);
+        activeModelName = 'llama-3.1-8b-instant';
+        aiRes = await callCompletion(activeModelName, conversation);
+      }
+
       if (!aiRes.ok) {
         const fallbackErr: any = await aiRes.json().catch(() => errJson);
         console.error(`${provider} AI Error:`, fallbackErr);
@@ -6412,6 +6417,8 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         let userFriendlyMsg = rawErr;
         if (rawErr.toLowerCase().includes('does not exist') || rawErr.toLowerCase().includes('not have access')) {
           userFriendlyMsg = `Groq API Key හෝ Model access දෝෂයකි ('${activeModelName}'). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබේ Groq API Key එක (gsk_...) ඇතුළත් කර 'Test Connection' ඔබා Live Verified Models වලින් එකක් තෝරා Save කරන්න.`;
+        } else if (rawErr.toLowerCase().includes('invalid api key') || rawErr.toLowerCase().includes('unauthorized') || aiRes.status === 401) {
+          userFriendlyMsg = `Groq API Key එක වලංගු නැත (Invalid API Key). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබේ නිවැරදි Groq Cloud API Key එක (gsk_...) ඇතුළත් කර Test Connection ඔබන්න.`;
         }
         return res.status(aiRes.status || 500).json({
           success: false,
@@ -6563,13 +6570,13 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
 
     let activeModelName = normalizeModelName(
       isGroq
-        ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
+        ? (settingsMap.groq_model || 'llama-3.1-8b-instant').trim()
         : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
       isGroq
     );
 
-    if (isGroq && activeModelName.includes('gpt-oss')) {
-      activeModelName = 'llama-3.3-70b-versatile';
+    if (isGroq && (activeModelName.includes('gpt-oss') || activeModelName.includes('llama-3.3-70b-versatile'))) {
+      activeModelName = 'llama-3.1-8b-instant';
     }
 
     const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision manufacturing, hydraulics, and metal fabrication company.
@@ -6682,7 +6689,7 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
     const map = rows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
     const prov = map.ai_provider || 'groq';
     const key = (prov === 'groq' ? map.groq_api_key : map.openai_api_key) || map.groq_api_key || map.openai_api_key || '';
-    const activeModel = prov === 'groq' ? (map.groq_model || 'llama-3.3-70b-versatile') : (map.openai_model || 'gpt-4o-mini');
+    const activeModel = prov === 'groq' ? (map.groq_model || 'llama-3.1-8b-instant') : (map.openai_model || 'gpt-4o-mini');
     console.log(`[Rex AI] Provider: ${prov} | Model: ${activeModel} | Key: ${key ? key.slice(0, 7) + '...' : 'Not configured'}`);
   } catch(e: any) {
     console.error('[Rex AI] Diagnostic error:', e.message);
