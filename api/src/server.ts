@@ -6572,30 +6572,24 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
       activeModelName = 'llama-3.3-70b-versatile';
     }
 
-    const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
+    const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision manufacturing, hydraulics, and metal fabrication company.
 
-Generate an executive, professional, and clear Customer Quotation Line Item Description / Scope of Work for an official commercial proposal.
+Generate an executive, professional, and clear Customer Quotation Line Item Description for an official commercial proposal.
 
-Component & Manufacturing Details:
+Context:
 - Item / Part Name: ${partTitle || 'Custom Precision Engineering Component'}
-- Raw Description / Job Scope: ${rawDescription || 'Precision fabrication and machining'}
-- Materials / Metallurgy: ${materials || 'High-grade certified engineering alloy / steel'}
-- Machining & Operations: ${operations || 'Precision CNC Turning, Milling, Drilling, and Surface Finishing'}
+- Job Scope / Notes: ${rawDescription || 'Precision manufacturing and supply'}
 - Dimensions / Specifications: ${dimensions || 'As per approved engineering drawing / sample'}
 - Customer / Company: ${customerName || 'Valued Customer'}
 - Quantity: ${quantity || '1'}
 
-Requirements:
-1. Format as a clean, polished engineering proposal line item.
-2. Structure:
-   - Line 1: Primary Title (e.g. "Precision Fabrication & CNC Machining of [Part Name]")
-   - Bullet points:
-     • Raw Material: (exact or specified high-grade material)
-     • Scope of Operations: (key machining/fabrication processes)
-     • Tolerances & Quality: (e.g. "Precision machined to ISO standard tolerances; 100% QA dimensional inspection prior to dispatch")
-     • Finishing / Treatment: (e.g. Deburred, anti-corrosion protective coating, and industrial packaging)
-3. Total length should be concise and neat (4 to 6 lines max) so it looks beautiful on printed quotation PDFs.
-4. Output ONLY the quotation description text. Do NOT use markdown code blocks (\`\`\`). Do NOT include conversational filler like "Here is your description".`;
+STRICT CONFIDENTIALITY & FORMATTING RULES:
+1. Provide ONLY a clean, high-level, executive commercial description of the product or service.
+2. DO NOT mention internal machining processes or operations (DO NOT mention Turning, Milling, Boring, Grinding, CNC, Lathe, Welding, machine hours, or shop floor operations).
+3. DO NOT list raw materials or metallurgy breakdown (DO NOT mention Mild Steel, EN8, SS304, aluminum plate, rod, bar, or specific raw material stock).
+4. Focus on customer value: professional manufacturing, engineering standard compliance, precision tolerances, protective surface finish/treatment, and final QA inspection ready for delivery/installation.
+5. Format as a clean, concise paragraph (2 to 3 neat lines max, e.g. "Fabrication and precision supply of [Part Title] engineered to approved technical specifications and ISO quality standards. Completed with protective surface treatment and full dimensional inspection ready for installation.").
+6. Output ONLY the quotation description text. Do NOT use markdown code blocks (\`\`\`). Do NOT include conversational filler like "Here is your description".`;
 
     let aiRes = await fetch(endpointUrl, {
       method: 'POST',

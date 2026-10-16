@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2, Percent, Coins } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -922,67 +922,102 @@ export const QuotationBuilder: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [showMarginModal, setShowMarginModal] = useState(false)
+  const [marginType, setMarginType] = useState<'percentage' | 'fixed'>('percentage')
   const [marginInput, setMarginInput] = useState('35')
+  const [fixedMarginInput, setFixedMarginInput] = useState('')
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     setToast({ type, msg })
     setTimeout(() => setToast(null), 3500)
   }, [])
 
-  const autoGenerateCustomerQuote = async () => {
-    const margin = Number(marginInput);
-    if (isNaN(margin) || margin < 0) {
-      showToast('error', 'Invalid margin percentage!');
-      return;
-    }
-
-    const validBoms = boms.filter(b => {
-      const autoMatTotal = b.autoMats.reduce((s, m) => s + Number(m.platePrice) + Number(m.shaftPrice), 0);
-      const manualMatTotal = b.manualMats.reduce((s, m) => s + Number(m.qty) * Number(m.unitPrice), 0);
+  // Calculate valid BOMs with non-zero costing
+  const validBomsForQuote = useMemo(() => {
+    return boms.filter(b => {
+      const autoMatTotal = b.autoMats.reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
+      const manualMatTotal = b.manualMats.reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
       let machCost = 0;
       if (b.procState) {
-        machCost = Object.values(b.procState).reduce((s, p) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
+        machCost = Object.values(b.procState).reduce((s: number, p: any) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
       }
       return (autoMatTotal + manualMatTotal + machCost) > 0;
     });
+  }, [boms]);
 
-    if (validBoms.length === 0) {
+  const totalValidBomCost = useMemo(() => {
+    return validBomsForQuote.reduce((sum, b) => {
+      const autoMatTotal = b.autoMats.reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
+      const manualMatTotal = b.manualMats.reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
+      let machCost = 0;
+      if (b.procState) {
+        machCost = Object.values(b.procState).reduce((s: number, p: any) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
+      }
+      return sum + (autoMatTotal + manualMatTotal + machCost);
+    }, 0);
+  }, [validBomsForQuote]);
+
+  const autoGenerateCustomerQuote = async () => {
+    let marginPct = 0;
+    let fixedVal = 0;
+
+    if (marginType === 'percentage') {
+      marginPct = Number(marginInput);
+      if (isNaN(marginPct) || marginPct < 0) {
+        showToast('error', 'Please enter a valid profit margin percentage!');
+        return;
+      }
+    } else {
+      fixedVal = Number(fixedMarginInput);
+      if (isNaN(fixedVal) || fixedVal < 0) {
+        showToast('error', 'Please enter a valid fixed profit margin amount (Rs.)!');
+        return;
+      }
+    }
+
+    if (validBomsForQuote.length === 0) {
       showToast('error', 'No BOMs have cost > 0 to generate a quote.');
       return;
     }
 
     setIsGeneratingQuote(true);
     try {
-      const newCustItems = await Promise.all(validBoms.map(async (b, idx) => {
-        const autoMatTotal = b.autoMats.reduce((s, m) => s + Number(m.platePrice) + Number(m.shaftPrice), 0);
-        const manualMatTotal = b.manualMats.reduce((s, m) => s + Number(m.qty) * Number(m.unitPrice), 0);
+      const newCustItems = await Promise.all(validBomsForQuote.map(async (b, idx) => {
+        const autoMatTotal = b.autoMats.reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
+        const manualMatTotal = b.manualMats.reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
         let machCost = 0;
         if (b.procState) {
-          machCost = Object.values(b.procState).reduce((s, p) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
+          machCost = Object.values(b.procState).reduce((s: number, p: any) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
         }
         
         const cost = autoMatTotal + manualMatTotal + machCost;
-        const targetTotal = cost * (1 + (margin / 100));
+        let targetTotal = cost;
+        if (marginType === 'percentage') {
+          targetTotal = cost * (1 + (marginPct / 100));
+        } else {
+          // Distribute fixed profit proportionally across BOMs based on their cost ratio
+          const itemProfit = totalValidBomCost > 0 
+            ? (cost / totalValidBomCost) * fixedVal 
+            : (fixedVal / validBomsForQuote.length);
+          targetTotal = cost + itemProfit;
+        }
 
+        // Clean customer-facing baseline description (strictly avoiding internal machining/materials)
         let finalDesc = b.title.startsWith('BOM Part ') 
-            ? 'Custom Fabrication & Manufacturing' 
+            ? 'Custom Precision Component' 
             : `Fabrication and Supply of ${b.title}`;
             
-        if (b.description) {
-            finalDesc += `\n\nScope of Work:\n${b.description}`;
+        if (b.description && !b.description.toLowerCase().includes('turning') && !b.description.toLowerCase().includes('milling') && !b.description.toLowerCase().includes('plate') && !b.description.toLowerCase().includes('rod')) {
+            finalDesc += `\n${b.description}`;
         }
 
         if (useAiPolish) {
           try {
-            const matTypes = [...b.autoMats.map((m: any) => m.type || m.shape || m.material), ...b.manualMats.map((m: any) => m.material)].filter(Boolean);
-            const operations = b.procState ? Object.keys(b.procState).filter(k => (Number(b.procState[k]?.quoHr || 0) > 0 || Number(b.procState[k]?.estHr || 0) > 0)) : [];
             const dimensions = b.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
 
+            // Customer quotation description: strictly no internal operations or raw materials passed
             const aiDesc = await generateQuotationDescription({
               partTitle: b.title,
               rawDescription: b.description || finalDesc,
-              materials: matTypes,
-              operations,
               dimensions,
               customerName: customerName || lead?.company || lead?.name || '',
               quantity: jobQty || 1
@@ -1006,7 +1041,10 @@ export const QuotationBuilder: React.FC = () => {
 
       setCustItems(newCustItems);
       setShowMarginModal(false);
-      showToast('success', `✨ Generated ${newCustItems.length} quote item(s)${useAiPolish ? ' with Groq AI descriptions' : ''}!`);
+      const marginSummary = marginType === 'percentage' 
+        ? `${marginPct}% margin` 
+        : `Rs. ${fixedVal.toLocaleString()} fixed margin`;
+      showToast('success', `✨ Generated ${newCustItems.length} quote item(s) with ${marginSummary}${useAiPolish ? ' and AI descriptions' : ''}!`);
     } catch (err: any) {
       showToast('error', err.message || 'Failed generating quote');
     } finally {
@@ -1023,24 +1061,14 @@ export const QuotationBuilder: React.FC = () => {
       (b.description && item.desc.toLowerCase().includes(b.description.toLowerCase()))
     ) || boms[0];
 
-    const materials = matchingBom 
-      ? [...matchingBom.autoMats.map((m: any) => m.material || m.type || m.shape), ...matchingBom.manualMats.map((m: any) => m.material)].filter(Boolean)
-      : [];
-
-    const operations = matchingBom?.procState 
-      ? Object.keys(matchingBom.procState).filter(k => (Number(matchingBom.procState[k]?.quoHr || 0) > 0 || Number(matchingBom.procState[k]?.estHr || 0) > 0))
-      : [];
-
     const dimensions = matchingBom?.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
 
     setPolishingItemId(itemId);
     try {
-      showToast('success', '✨ Enhancing with Groq Llama 3.3...');
+      showToast('success', '✨ Enhancing description with Groq Llama 3.3...');
       const enrichedDesc = await generateQuotationDescription({
         partTitle: matchingBom?.title || item.desc.split('\n')[0] || 'Precision Component',
         rawDescription: item.desc,
-        materials,
-        operations,
         dimensions,
         customerName: customerName || lead?.company || lead?.name || '',
         quantity: item.qty || 1
@@ -1071,22 +1099,12 @@ export const QuotationBuilder: React.FC = () => {
           (b.title && item.desc.toLowerCase().includes(b.title.toLowerCase()))
         );
 
-        const materials = matchingBom 
-          ? [...matchingBom.autoMats.map((m: any) => m.material || m.type || m.shape), ...matchingBom.manualMats.map((m: any) => m.material)].filter(Boolean)
-          : [];
-
-        const operations = matchingBom?.procState 
-          ? Object.keys(matchingBom.procState).filter(k => (Number(matchingBom.procState[k]?.quoHr || 0) > 0 || Number(matchingBom.procState[k]?.estHr || 0) > 0))
-          : [];
-
         const dimensions = matchingBom?.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
 
         try {
           const enriched = await generateQuotationDescription({
             partTitle: matchingBom?.title || item.desc.split('\n')[0] || `Precision Engineering Item ${idx + 1}`,
             rawDescription: item.desc,
-            materials,
-            operations,
             dimensions,
             customerName: customerName || lead?.company || lead?.name || '',
             quantity: item.qty || 1
@@ -1114,6 +1132,9 @@ export const QuotationBuilder: React.FC = () => {
     if ((totalMaterialCost + totalMachiningCost) === 0) {
        showToast('error', 'Please complete the Job Costing (Material/Machining) first to generate a price!');
        return;
+    }
+    if (!fixedMarginInput && totalValidBomCost > 0) {
+      setFixedMarginInput(Math.round(totalValidBomCost * (Number(marginInput || 35) / 100)).toString());
     }
     setShowMarginModal(true);
   };
@@ -2813,43 +2834,179 @@ export const QuotationBuilder: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation" size="sm">
+      <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation" size="md">
         <div className="p-5 space-y-4">
-          <p className="text-xs text-secondary leading-relaxed bg-purple-500/10 text-purple-600 p-3 rounded-xl border border-purple-500/20 font-medium">
-            The system will calculate the target price using your BOM Costing and generate professional quotation line items powered by Groq Meta Llama 3.3.
+          <p className="text-xs text-secondary leading-relaxed bg-purple-500/10 text-purple-600 dark:text-purple-400 p-3 rounded-xl border border-purple-500/20 font-medium">
+            Calculate target selling prices from your BOM Costing and generate clean, executive commercial descriptions powered by Groq Meta Llama 3.3.
           </p>
+
+          {/* Mode Selector Tabs */}
           <div>
-            <label className="block text-xs font-bold text-secondary mb-1.5">Desired Profit Margin (%)</label>
-            <input 
-              type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
-              className="w-full input-base font-bold text-lg" 
-              value={marginInput} 
-              onChange={e => setMarginInput(e.target.value)} 
-              placeholder="e.g. 35"
-              autoFocus
-            />
+            <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">Select Profit Margin Mode</label>
+            <div className="grid grid-cols-2 gap-2 p-1 bg-surface2 rounded-xl border border-theme-subtle">
+              <button
+                type="button"
+                onClick={() => setMarginType('percentage')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  marginType === 'percentage'
+                    ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-500'
+                    : 'text-muted hover:text-primary hover:bg-surface'
+                }`}
+              >
+                <Percent size={14} />
+                <span>Percentage Margin (%)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMarginType('fixed');
+                  if (!fixedMarginInput && totalValidBomCost > 0) {
+                    setFixedMarginInput(Math.round(totalValidBomCost * ((Number(marginInput) || 35) / 100)).toString());
+                  }
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  marginType === 'fixed'
+                    ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-500'
+                    : 'text-muted hover:text-primary hover:bg-surface'
+                }`}
+              >
+                <Coins size={14} />
+                <span>Fixed Profit Value (Rs.)</span>
+              </button>
+            </div>
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-colors">
+          {/* Input field based on selected mode */}
+          {marginType === 'percentage' ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-secondary">Desired Profit Margin (%)</label>
+                <span className="text-[11px] text-muted">Adds percentage markup on BOM cost</span>
+              </div>
+              <div className="relative">
+                <input 
+                  type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+                  className="w-full input-base font-bold text-xl pr-10 py-2.5" 
+                  value={marginInput} 
+                  onChange={e => setMarginInput(e.target.value)} 
+                  placeholder="e.g. 35"
+                  autoFocus
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-muted text-base">%</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] text-muted font-medium mr-1">Presets:</span>
+                {[15, 20, 25, 30, 35, 40, 50].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setMarginInput(pct.toString())}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all ${
+                      Number(marginInput) === pct 
+                        ? 'bg-purple-500/20 text-purple-600 border-purple-500/40 ring-1 ring-purple-500/30 font-black' 
+                        : 'bg-surface hover:bg-surface2 text-muted border-theme-subtle hover:text-primary'
+                    }`}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-secondary">Desired Fixed Profit Amount (Rs.)</label>
+                <span className="text-[11px] text-muted">Adds fixed profit to total BOM cost</span>
+              </div>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-muted text-sm font-mono">Rs.</span>
+                <input 
+                  type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+                  className="w-full input-base font-bold text-xl pl-12 pr-4 py-2.5 font-mono" 
+                  value={fixedMarginInput} 
+                  onChange={e => setFixedMarginInput(e.target.value)} 
+                  placeholder={totalValidBomCost > 0 ? (totalValidBomCost * 0.35).toFixed(0) : "e.g. 50000"}
+                  autoFocus
+                />
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] text-muted font-medium mr-1">Quick Add:</span>
+                {[10000, 25000, 50000, 100000, 250000].map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setFixedMarginInput(val.toString())}
+                    className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-lg border transition-all ${
+                      Number(fixedMarginInput) === val 
+                        ? 'bg-purple-500/20 text-purple-600 border-purple-500/40 ring-1 ring-purple-500/30 font-black' 
+                        : 'bg-surface hover:bg-surface2 text-muted border-theme-subtle hover:text-primary'
+                    }`}
+                  >
+                    +Rs. {(val / 1000).toFixed(0)}k
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Live Pricing Breakdown Card */}
+          {(() => {
+            const previewCost = totalValidBomCost;
+            const currentMarginPct = marginType === 'percentage' 
+              ? (Number(marginInput) || 0) 
+              : (previewCost > 0 ? ((Number(fixedMarginInput) || 0) / previewCost) * 100 : 0);
+            const currentProfitAmount = marginType === 'percentage' 
+              ? previewCost * ((Number(marginInput) || 0) / 100) 
+              : (Number(fixedMarginInput) || 0);
+            const currentSellingPrice = previewCost + currentProfitAmount;
+
+            return (
+              <div className="p-3.5 rounded-xl bg-surface2/70 border border-theme-subtle space-y-2 text-xs">
+                <div className="flex justify-between items-center text-muted">
+                  <span>Base BOM Manufacturing Cost:</span>
+                  <span className="font-mono font-bold text-primary">Rs. {previewCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center text-muted">
+                  <span>Calculated Profit Margin:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    +Rs. {currentProfitAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-[11px] ml-1.5 font-semibold text-muted font-sans">({currentMarginPct.toFixed(1)}%)</span>
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-theme-subtle/50 flex justify-between items-center font-bold">
+                  <span className="text-primary text-sm">Target Customer Selling Price:</span>
+                  <span className="font-mono text-base text-purple-600 dark:text-purple-400">Rs. {currentSellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-colors">
             <input 
               type="checkbox" 
               checked={useAiPolish} 
               onChange={e => setUseAiPolish(e.target.checked)}
-              className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4" 
+              className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 mt-0.5" 
             />
-            <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
-              <Sparkles size={13} className="text-purple-500" />
-              Generate executive descriptions with Groq AI (Llama 3.3)
-            </span>
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-primary flex items-center gap-1.5">
+                <Sparkles size={13} className="text-purple-500" />
+                Generate clean executive descriptions with Groq AI (Llama 3.3)
+              </span>
+              <p className="text-[11px] text-muted leading-tight">
+                Strict client confidentiality: Internal machining operations and raw materials used are omitted.
+              </p>
+            </div>
           </label>
           
-          <div className="flex justify-end gap-3 pt-2 border-t border-theme-subtle mt-4">
+          <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
             <Button variant="ghost" onClick={() => setShowMarginModal(false)} disabled={isGeneratingQuote}>Cancel</Button>
             <Button 
               variant="primary" 
               onClick={autoGenerateCustomerQuote} 
               disabled={isGeneratingQuote}
-              className="bg-gradient-to-r from-purple-500 to-indigo-500 border-0 text-white shadow-lg shadow-purple-500/30 flex items-center gap-2"
+              className="bg-gradient-to-r from-purple-500 to-indigo-500 border-0 text-white shadow-lg shadow-purple-500/30 flex items-center gap-2 px-5"
             >
               {isGeneratingQuote ? (
                 <>
