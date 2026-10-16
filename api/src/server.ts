@@ -6228,9 +6228,9 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
     }
     const data: any = await res.json();
     if (Array.isArray(data.data)) {
-      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa'];
+      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa', '2.5', 'preview'];
       const chatModels = data.data
-        .map((m: any) => m.id)
+        .map((m: any) => (m.id || '').replace(/^models\//, ''))
         .filter((id: string) => {
           const lower = id.toLowerCase();
           return !nonChatKeywords.some(kw => lower.includes(kw));
@@ -6262,17 +6262,21 @@ function normalizeModelName(modelName: string, provider: string): string {
     if (provider === 'groq') return 'llama-3.1-8b-instant';
     return 'gpt-4o-mini';
   }
-  const m = modelName.trim().toLowerCase();
+  let m = modelName.trim().toLowerCase().replace(/^models\//, '');
   if (provider === 'gemini') {
-    if (m === 'flash' || m === '1.5-flash' || m === 'gemini-flash' || m === 'gemini-1.5-flash-latest') {
+    if (m.includes('2.5') || m.includes('preview')) {
       return 'gemini-1.5-flash';
     }
-    if (m === '2.0-flash' || m === '2-flash' || m === 'gemini-2.0' || m === 'gemini-2.0-flash-exp') {
+    if (m === 'flash' || m === '1.5-flash' || m === 'gemini-flash' || m === 'gemini-1.5-flash-latest' || m === 'gemini-1.5-flash') {
+      return 'gemini-1.5-flash';
+    }
+    if (m === '2.0-flash' || m === '2-flash' || m === 'gemini-2.0' || m === 'gemini-2.0-flash-exp' || m === 'gemini-2.0-flash') {
       return 'gemini-2.0-flash';
     }
-    if (m === 'pro' || m === '1.5-pro' || m === 'gemini-pro') {
+    if (m === 'pro' || m === '1.5-pro' || m === 'gemini-pro' || m === 'gemini-1.5-pro') {
       return 'gemini-1.5-pro';
     }
+    return m;
   } else if (provider === 'groq') {
     if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
       return 'llama-3.1-8b-instant';
@@ -6287,36 +6291,49 @@ function normalizeModelName(modelName: string, provider: string): string {
     if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
     if (m === '4o' || m === 'gpt4o') return 'gpt-4o';
   }
-  return modelName.trim();
+  return m;
 }
 
 /**
  * Helper to select the best available model from a list of live models
  */
 function selectBestModel(availableModels: string[], provider: string, failedModels: string[] = []): string {
-  const isFailed = (name: string) => failedModels.some(f => f.toLowerCase() === name.toLowerCase());
-  const candidates = (availableModels || []).filter(m => !isFailed(m));
+  const isFailed = (name: string) => {
+    const clean = name.toLowerCase().replace(/^models\//, '');
+    return failedModels.some(f => {
+      const cleanF = f.toLowerCase().replace(/^models\//, '');
+      return cleanF === clean;
+    });
+  };
+  const candidates = (availableModels || [])
+    .map(m => m.replace(/^models\//, ''))
+    .filter(m => !isFailed(m));
 
   if (provider === 'gemini') {
-    if (candidates.length === 0) {
+    const validCandidates = candidates.filter(m => {
+      const l = m.toLowerCase();
+      return !l.includes('2.5') && !l.includes('preview') && !l.includes('discontinued') && !l.includes('deprecated');
+    });
+
+    if (validCandidates.length === 0) {
       if (!isFailed('gemini-1.5-flash')) return 'gemini-1.5-flash';
       if (!isFailed('gemini-2.0-flash')) return 'gemini-2.0-flash';
       if (!isFailed('gemini-1.5-pro')) return 'gemini-1.5-pro';
       return 'gemini-1.5-flash';
     }
     // 1. Gemini 1.5 Flash (Super fast, 1M context, reliable free tier)
-    const flash15 = candidates.find(m => m === 'gemini-1.5-flash' || m.includes('1.5-flash'));
+    const flash15 = validCandidates.find(m => m === 'gemini-1.5-flash' || m.includes('1.5-flash'));
     if (flash15) return flash15;
 
     // 2. Gemini 2.0 Flash
-    const flash20 = candidates.find(m => m === 'gemini-2.0-flash' || m.includes('2.0-flash'));
+    const flash20 = validCandidates.find(m => m === 'gemini-2.0-flash' || m.includes('2.0-flash'));
     if (flash20) return flash20;
 
     // 3. Gemini 1.5 Pro
-    const pro15 = candidates.find(m => m === 'gemini-1.5-pro' || m.includes('1.5-pro'));
+    const pro15 = validCandidates.find(m => m === 'gemini-1.5-pro' || m.includes('1.5-pro'));
     if (pro15) return pro15;
 
-    return candidates[0] || 'gemini-1.5-flash';
+    return validCandidates[0] || 'gemini-1.5-flash';
   }
 
   if (candidates.length === 0) {
@@ -6410,8 +6427,8 @@ app.post('/api/ai/test-key', async (req, res) => {
     }
 
     const data: any = await response.json();
-    const allModels: string[] = Array.isArray(data.data) ? data.data.map((m: any) => m.id) : [];
-    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa'];
+    const allModels: string[] = Array.isArray(data.data) ? data.data.map((m: any) => (m.id || '').replace(/^models\//, '')) : [];
+    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa', '2.5', 'preview'];
     let chatModels = allModels.filter((id: string) => {
       const lower = id.toLowerCase();
       return !nonChatKeywords.some(kw => lower.includes(kw));
@@ -6472,8 +6489,8 @@ app.get('/api/ai/models', async (req, res) => {
     const models = await fetchProviderModels(provider, apiKey);
     const recommendedModel = selectBestModel(models, provider);
     const currentModel = provider === 'gemini' 
-      ? (settingsMap.gemini_model || recommendedModel)
-      : (provider === 'groq' ? (settingsMap.groq_model || recommendedModel) : (settingsMap.openai_model || recommendedModel));
+      ? normalizeModelName(settingsMap.gemini_model || recommendedModel, 'gemini')
+      : (provider === 'groq' ? normalizeModelName(settingsMap.groq_model || recommendedModel, 'groq') : normalizeModelName(settingsMap.openai_model || recommendedModel, 'openai'));
 
     res.json({
       success: true,
@@ -6570,6 +6587,10 @@ app.post('/api/ai/chat', async (req, res) => {
     let activeModelName = '';
     if (isGemini) {
       activeModelName = normalizeModelName((settingsMap.gemini_model || 'gemini-1.5-flash').trim(), 'gemini');
+      if (activeModelName.includes('2.5') || activeModelName.includes('preview') || !activeModelName) {
+        activeModelName = 'gemini-1.5-flash';
+        db.query("UPDATE settings SET val = 'gemini-1.5-flash' WHERE id = 'gemini_model'").catch(() => {});
+      }
     } else if (isGroq) {
       activeModelName = normalizeModelName((settingsMap.groq_model || 'llama-3.1-8b-instant').trim(), 'groq');
     } else {
@@ -6699,15 +6720,25 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         }
         const isModelNotFound = 
           aiRes.status === 404 || 
+          aiRes.status === 400 ||
           errJson.error?.code === 'model_not_found' || 
           errJson.error?.code === 'model_decommissioned' ||
           errMsg.includes('does not exist') || 
           errMsg.includes('not have access') ||
+          errMsg.includes('no longer available') ||
+          errMsg.includes('not available') ||
+          errMsg.includes('update your code') ||
+          errMsg.includes('is no longer') ||
           errMsg.includes('deprecated') ||
           errMsg.includes('decommissioned');
 
         if (isModelNotFound) {
           failedModelsList.push(activeModelName);
+          failedModelsList.push(activeModelName.replace(/^models\//, ''));
+          failedModelsList.push('models/' + activeModelName.replace(/^models\//, ''));
+          if (activeModelName.includes('2.5')) {
+            failedModelsList.push('models/gemini-2.5-pro', 'gemini-2.5-pro');
+          }
           console.warn(`[Rex AI Engine] Model '${activeModelName}' not accessible (${errMsg}). Querying ${provider} live model list...`);
           const liveModels = await fetchProviderModels(provider, cleanApiKey);
           console.log(`[Rex AI Engine] Live models available for this key:`, liveModels);

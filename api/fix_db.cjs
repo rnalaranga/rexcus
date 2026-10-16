@@ -532,7 +532,7 @@ async function run() {
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{\"id\":\"bank_hnb\",\"bankName\":\"Hatton National Bank\",\"branchName\":\"Negombo\",\"accountName\":\"Rex Industries (Pvt) Ltd\",\"accountNumber\":\"011010078028\",\"swiftCode\":\"HNBLLKLX\",\"isDefault\":true}]')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{\"id\":\"tc_std_30d\",\"name\":\"Standard 30 Days Credit\",\"paymentTerms\":\"30 days from date of delivery\",\"validity\":\"30 Days\",\"delivery\":\"2-3 weeks from confirmed PO\",\"isDefault\":true},{\"id\":\"tc_50_adv\",\"name\":\"50% Advance + Balance on Delivery\",\"paymentTerms\":\"50% Advance with confirmed PO, balance 50% upon delivery\",\"validity\":\"14 Days\",\"delivery\":\"10-15 working days\",\"isDefault\":false},{\"id\":\"tc_cod\",\"name\":\"Immediate Payment on Delivery (COD)\",\"paymentTerms\":\"100% on delivery against invoice\",\"validity\":\"30 Days\",\"delivery\":\"3-5 working days / Ex-stock\",\"isDefault\":false},{\"id\":\"tc_milestone\",\"name\":\"Progressive Milestone Payment\",\"paymentTerms\":\"30% Advance, 40% on dispatch, 30% after installation & sign-off\",\"validity\":\"30 Days\",\"delivery\":\"4-6 weeks from approved drawings\",\"isDefault\":false}]')",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('gemini_model', 'gemini-1.5-flash')",
+    "INSERT INTO settings (id, val) VALUES ('gemini_model', 'gemini-1.5-flash') ON DUPLICATE KEY UPDATE val=IF(val LIKE '%2.5%' OR val LIKE '%preview%' OR val LIKE 'models/%', 'gemini-1.5-flash', val)",
     "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini') ON DUPLICATE KEY UPDATE val=VALUES(val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'gemini')",
     "INSERT INTO settings (id, val) VALUES ('groq_model', 'llama-3.1-8b-instant') ON DUPLICATE KEY UPDATE val=IF(val LIKE '%gpt-oss%' OR val LIKE '%llama-3.3-70b-versatile%', 'llama-3.1-8b-instant', val)",
@@ -591,10 +591,13 @@ async function run() {
         headers: { 'Authorization': `Bearer ${activeGeminiKey}` }
       });
       if (geminiRes.ok) {
-        const gData = await geminiRes.json();
-        const availableIds = (gData.data || []).map(m => m.id);
+        const availableIds = (gData.data || [])
+          .map(m => (m.id || '').replace(/^models\//, ''))
+          .filter(id => !id.includes('2.5') && !id.includes('preview') && !id.includes('whisper') && !id.includes('embedding'));
         console.log(`[fix_db] ✅ Google Gemini API Key verified! (${availableIds.length} models accessible on this account)`);
-        const chosenModel = availableIds.includes('gemini-1.5-flash') ? 'gemini-1.5-flash' : (availableIds[0] || 'gemini-1.5-flash');
+        const chosenModel = availableIds.find(m => m === 'gemini-1.5-flash' || m.includes('1.5-flash')) || 
+                            availableIds.find(m => m === 'gemini-2.0-flash' || m.includes('2.0-flash')) || 
+                            'gemini-1.5-flash';
         console.log(`[fix_db] 🎯 Auto-configured best live Gemini model: '${chosenModel}'\n`);
         await conn.query("INSERT INTO settings (id, val) VALUES ('gemini_model', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [chosenModel]);
       } else {
