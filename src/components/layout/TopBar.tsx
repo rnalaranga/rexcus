@@ -4,7 +4,7 @@ import {
   Bell, Search, ChevronRight, Sun, Moon, X,
   CheckCircle2, TrendingUp, AlertCircle, AlertTriangle, Star, Banknote,
   Users, FileText, Package, Wrench, Truck, Building2, CheckCheck, Clock,
-  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield
+  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import { useTheme } from '@/store/theme'
@@ -19,6 +19,7 @@ const breadcrumbMap: Record<string, string> = {
   '/crm/contacts':    'Contacts',
   '/crm/followups':   'Follow-ups',
   '/inventory':       'Stock & Finished Goods',
+  '/inventory/suppliers': 'Suppliers',
   '/purchasing':      'Purchasing & GRN',
   '/purchasing/suppliers': 'Suppliers',
   '/production':      'Production & Work Orders',
@@ -46,9 +47,11 @@ const QUICK_PAGES: QuickPage[] = [
   { title: 'Invoices', path: '/finance/invoices', category: 'Finance', desc: 'Invoices, payments, and settlements', icon: FileText },
   { title: 'Quotations', path: '/crm/quotations', category: 'CRM', desc: 'Create and track customer quotes', icon: FileText },
   { title: 'Customers', path: '/crm/customers', category: 'CRM', desc: 'Directory, credit limits & accounts', icon: Users },
+  { title: 'Contact Directory', path: '/crm/contacts', category: 'CRM', desc: 'All customer contacts & decision makers', icon: Contact2 },
+  { title: 'Leads & Inquiries', path: '/crm/leads', category: 'CRM', desc: 'Manage incoming leads & pipeline', icon: TrendingUp },
   { title: 'Stock & Inventory', path: '/inventory', category: 'Inventory', desc: 'Raw materials and finished goods', icon: Package },
+  { title: 'Suppliers & Vendors', path: '/inventory/suppliers', category: 'Purchasing', desc: 'Supplier database & ledger', icon: Truck },
   { title: 'Production Jobs', path: '/production', category: 'Production', desc: 'Work orders and machine planning', icon: Wrench },
-  { title: 'Suppliers & Vendors', path: '/purchasing/suppliers', category: 'Purchasing', desc: 'Supplier database & ledger', icon: Truck },
   { title: 'Purchasing & GRN', path: '/purchasing', category: 'Purchasing', desc: 'Purchase orders, bills & GRNs', icon: Truck },
   { title: 'Banking & Cash', path: '/finance/banking', category: 'Finance', desc: 'Bank accounts and statement feeds', icon: Banknote },
   { title: 'General Accounting', path: '/finance/accounting', category: 'Finance', desc: 'Chart of accounts and journals', icon: Building2 },
@@ -81,6 +84,7 @@ export const TopBar: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<{
     customers?: any[]
+    contacts?: any[]
     invoices?: any[]
     quotations?: any[]
     workOrders?: any[]
@@ -216,6 +220,7 @@ export const TopBar: React.FC = () => {
 
   const totalResultsCount =
     (searchResults.customers?.length || 0) +
+    (searchResults.contacts?.length || 0) +
     (searchResults.invoices?.length || 0) +
     (searchResults.quotations?.length || 0) +
     (searchResults.workOrders?.length || 0) +
@@ -421,6 +426,38 @@ export const TopBar: React.FC = () => {
                   </div>
                 )}
 
+                {/* 2b. Contacts */}
+                {searchResults.contacts && searchResults.contacts.length > 0 && (
+                  <div className="p-2">
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
+                      <span>Contacts ({searchResults.contacts.length})</span>
+                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/crm/contacts')}>View All</span>
+                    </p>
+                    <div className="space-y-1">
+                      {searchResults.contacts.map((contact: any) => (
+                        <div
+                          key={contact.id}
+                          onClick={() => handleSelectResult(contact.customerId ? `/crm/customers/${contact.customerId}` : '/crm/contacts')}
+                          className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                              {(contact.name || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-primary truncate">{contact.name}</p>
+                              <p className="text-[10px] text-muted truncate">
+                                {contact.role} · {contact.company || contact.email || contact.phone || ''}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono text-muted flex-shrink-0 ml-2">Contact →</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* 3. Invoices */}
                 {searchResults.invoices && searchResults.invoices.length > 0 && (
                   <div className="p-2">
@@ -566,12 +603,15 @@ export const TopBar: React.FC = () => {
                 {/* 7. Suppliers */}
                 {searchResults.suppliers && searchResults.suppliers.length > 0 && (
                   <div className="p-2">
-                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted">Suppliers</p>
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
+                      <span>Suppliers ({searchResults.suppliers.length})</span>
+                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/inventory/suppliers')}>View All</span>
+                    </p>
                     <div className="space-y-1">
                       {searchResults.suppliers.map(sup => (
                         <div
                           key={sup.id}
-                          onClick={() => handleSelectResult('/purchasing/suppliers')}
+                          onClick={() => handleSelectResult(`/inventory/suppliers/${sup.id}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">

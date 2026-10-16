@@ -89,18 +89,30 @@ function AppRoutes() {
           <Route path="/crm/quotations" element={<Quotations />} />
           <Route path="/crm/quotations/new/:leadId?" element={<QuotationBuilder />} />
 
-          {/* Inventory */}
+          {/* Direct Navigation & CRM Aliases */}
+          <Route path="/customers" element={<Navigate to="/crm/customers" replace />} />
+          <Route path="/customers/:id" element={<CustomerDetail />} />
+          <Route path="/contacts" element={<Navigate to="/crm/contacts" replace />} />
+          <Route path="/leads" element={<Navigate to="/crm/leads" replace />} />
+          <Route path="/deals" element={<Navigate to="/crm/deals" replace />} />
+          <Route path="/quotations" element={<Navigate to="/crm/quotations" replace />} />
+
+          {/* Inventory & Purchasing */}
           <Route path="/inventory" element={<Inventory />} />
-            <Route path="/purchasing" element={<PurchasingHub />} />
-            <Route path="/purchasing/po-builder" element={<POBuilder />} />
-            <Route path="/purchasing/mr-builder" element={<MRBuilder />} />
-            <Route path="/purchasing/mr-builder/:id" element={<MRBuilder />} />
-            <Route path="/purchasing/po-builder/:id" element={<POBuilder />} />
-            <Route path="/purchasing/grn-builder" element={<GRNBuilder />} />
-            <Route path="/purchasing/grn-builder/:id" element={<GRNBuilder />} />
-            <Route path="/purchasing/bill-builder" element={<BillBuilder />} />
           <Route path="/inventory/suppliers" element={<Suppliers />} />
           <Route path="/inventory/suppliers/:id" element={<SupplierDetail />} />
+          <Route path="/purchasing" element={<PurchasingHub />} />
+          <Route path="/purchasing/suppliers" element={<Suppliers />} />
+          <Route path="/purchasing/suppliers/:id" element={<SupplierDetail />} />
+          <Route path="/suppliers" element={<Navigate to="/inventory/suppliers" replace />} />
+          <Route path="/suppliers/:id" element={<SupplierDetail />} />
+          <Route path="/purchasing/po-builder" element={<POBuilder />} />
+          <Route path="/purchasing/mr-builder" element={<MRBuilder />} />
+          <Route path="/purchasing/mr-builder/:id" element={<MRBuilder />} />
+          <Route path="/purchasing/po-builder/:id" element={<POBuilder />} />
+          <Route path="/purchasing/grn-builder" element={<GRNBuilder />} />
+          <Route path="/purchasing/grn-builder/:id" element={<GRNBuilder />} />
+          <Route path="/purchasing/bill-builder" element={<BillBuilder />} />
 
           {/* Finance */}
           <Route path="/finance/invoices" element={<Invoices />} />
@@ -112,8 +124,9 @@ function AppRoutes() {
           <Route path="/hr/employees" element={<Employees />} />
           <Route path="/hr/skills" element={<Skills />} />
           <Route path="/hr/report" element={<LaborReport />} />
-          <Route path="/sales" element={<ComingSoon module="Sales & Orders" />} />
+          <Route path="/invoices" element={<Navigate to="/finance/invoices" replace />} />
           <Route path="/finance" element={<AccountingHub />} />
+          <Route path="/finance/accounting" element={<AccountingHub />} />
             <Route path="/finance/journal-builder" element={<JournalBuilder />} />
             <Route path="/finance/reports" element={<FinancialReports />} />
             <Route path="/finance/expense-builder" element={<ExpenseBuilder />} />
