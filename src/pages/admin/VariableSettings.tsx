@@ -124,20 +124,33 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
       const data = await res.json();
       if (res.ok && data.success) {
         setKeyTestResult({ success: true, msg: data.message || `${providerName} API key verified! Connection established.` });
+        let newGroqModel = groqModel;
+        let newOpenAiModel = openAiModel;
         if (Array.isArray(data.models) && data.models.length > 0) {
           if (provider === 'groq') {
             setAvailableGroqModels(data.models);
             if (!data.models.includes(groqModel) && data.recommendedModel) {
+              newGroqModel = data.recommendedModel;
               setGroqModel(data.recommendedModel);
             }
           } else {
             setAvailableOpenAiModels(data.models);
             if (!data.models.includes(openAiModel) && data.recommendedModel) {
+              newOpenAiModel = data.recommendedModel;
               setOpenAiModel(data.recommendedModel);
             }
           }
         }
-        toast(`${providerName} connection verified successfully! Click Save below to persist.`, 'success');
+        // Auto-save verified key to backend immediately so the assistant works right away
+        await updateSettings({
+          ai_provider: provider,
+          groq_api_key: provider === 'groq' ? keyToTest.trim() : groqKey.trim(),
+          groq_model: newGroqModel,
+          openai_api_key: provider === 'openai' ? keyToTest.trim() : openAiKey.trim(),
+          openai_model: newOpenAiModel,
+          ai_enabled: 'true'
+        });
+        toast(`${providerName} verified and saved successfully!`, 'success');
       } else {
         setKeyTestResult({ success: false, msg: data.error || `Failed to authenticate with ${providerName}.` });
         toast(data.error || 'Invalid API key or unauthorized', 'error');
@@ -154,10 +167,21 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Normalize model name (e.g. shorthand 8b -> llama-3.1-8b-instant)
+      let cleanGroq = groqModel.trim().toLowerCase();
+      let normalizedGroqModel = groqModel.trim();
+      if (cleanGroq === '8b' || cleanGroq === 'llama-8b' || cleanGroq === 'llama-3-8b' || cleanGroq === 'llama-3.1-8b' || cleanGroq === 'llama3.1-8b') {
+        normalizedGroqModel = 'llama-3.1-8b-instant';
+        setGroqModel('llama-3.1-8b-instant');
+      } else if (cleanGroq === '70b' || cleanGroq === 'llama-70b' || cleanGroq === 'llama-3-70b' || cleanGroq === 'llama-3.3-70b') {
+        normalizedGroqModel = 'llama-3.3-70b-versatile';
+        setGroqModel('llama-3.3-70b-versatile');
+      }
+
       await updateSettings({
         ai_provider: provider,
         groq_api_key: groqKey.trim(),
-        groq_model: groqModel,
+        groq_model: normalizedGroqModel,
         openai_api_key: openAiKey.trim(),
         openai_model: openAiModel,
         openai_system_instructions: systemInstructions,
@@ -585,7 +609,15 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   type="text"
                   value={groqModel}
                   onChange={e => setGroqModel(e.target.value)}
-                  placeholder="e.g. llama-3.3-70b-versatile, openai/gpt-oss-120b"
+                  onBlur={() => {
+                    const m = groqModel.trim().toLowerCase();
+                    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3.1-8b') {
+                      setGroqModel('llama-3.1-8b-instant');
+                    } else if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b') {
+                      setGroqModel('llama-3.3-70b-versatile');
+                    }
+                  }}
+                  placeholder="e.g. llama-3.1-8b-instant, llama-3.3-70b-versatile"
                   className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 w-80"
                 />
               </div>

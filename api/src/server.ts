@@ -5883,6 +5883,32 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
 }
 
 /**
+ * Helper to normalize common shorthand model names entered by users (e.g. 8b, 70b)
+ */
+function normalizeModelName(modelName: string, isGroq: boolean): string {
+  if (!modelName) return isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
+  const m = modelName.trim().toLowerCase();
+  if (isGroq) {
+    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
+      return 'llama-3.1-8b-instant';
+    }
+    if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b' || m === 'llama3-70b' || m === 'llama3.3-70b' || m === 'llama-3.1-70b') {
+      return 'llama-3.3-70b-versatile';
+    }
+    if (m.includes('mixtral') && !m.includes('32768')) {
+      return 'mixtral-8x7b-32768';
+    }
+    if (m.includes('gpt-oss') && !m.includes('/')) {
+      return 'openai/gpt-oss-120b';
+    }
+  } else {
+    if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
+    if (m === '4o' || m === 'gpt4o') return 'gpt-4o';
+  }
+  return modelName.trim();
+}
+
+/**
  * Helper to select the best available model from a list of live models
  */
 function selectBestModel(availableModels: string[], isGroq: boolean, failedModels: string[] = []): string {
@@ -6101,9 +6127,12 @@ app.post('/api/ai/chat', async (req, res) => {
       ? 'https://api.groq.com/openai/v1/chat/completions' 
       : 'https://api.openai.com/v1/chat/completions';
 
-    let activeModelName = isGroq
-      ? (settingsMap.groq_model || 'llama-3.1-8b-instant').trim()
-      : (settingsMap.openai_model || 'gpt-4o-mini').trim();
+    let activeModelName = normalizeModelName(
+      isGroq
+        ? (settingsMap.groq_model || 'llama-3.1-8b-instant').trim()
+        : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
+      isGroq
+    );
 
     // Auto-migrate from rate-limited experimental models (like gpt-oss-120b with 8k TPM limit) or legacy non-existent models (like gpt-6-luna)
     if (isGroq && activeModelName.includes('gpt-oss')) {
@@ -6237,7 +6266,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         const rawErr = fallbackErr.error?.message || `${provider} API request failed`;
         let userFriendlyMsg = rawErr;
         if (rawErr.toLowerCase().includes('does not exist') || rawErr.toLowerCase().includes('not have access')) {
-          userFriendlyMsg = `Model access error: '${activeModelName}' Groq Cloud එකෙහි ලබාගත නොහැක. කරුණාකර Admin > Variable Settings වෙතින් 'llama-3.1-8b-instant' තෝරා Save කරන්න.`;
+          userFriendlyMsg = `Groq API Key හෝ Model access දෝෂයකි ('${activeModelName}'). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබේ Groq API Key එක (gsk_...) ඇතුළත් කර 'Test Connection' ඔබා Live Verified Models වලින් එකක් තෝරා Save කරන්න.`;
         }
         return res.status(aiRes.status || 500).json({
           success: false,

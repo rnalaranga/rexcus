@@ -208,7 +208,7 @@ export const RexAIAssistant: React.FC = () => {
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `❌ **Error:** ${errorText}${isModelIssue ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් Groq Model එක **llama-3.1-8b** ලෙස තෝරා **Save Settings** ඔබන්න.' : ''}`,
+            content: `❌ **Error:** ${errorText}${isModelIssue ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Groq Cloud API Key** එක (gsk_...) ඇතුළත් කර **Test Connection** ඔබන්න. (එවිට Key එක සහ ක්‍රියාකාරී Models ස්වයංක්‍රීයව Save වේ).' : ''}`,
             timestamp: new Date()
           }
         ]);
