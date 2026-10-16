@@ -263,6 +263,9 @@ app.get('/api/settings', async (req, res) => {
   try {
     const [rows]: any = await db.query('SELECT id, val FROM settings');
     const settingsObj = rows.reduce((acc: any, row: any) => ({ ...acc, [row.id]: row.val }), {});
+    if (settingsObj.groq_model && settingsObj.groq_model.includes('8b')) {
+      settingsObj.groq_model = 'llama-3.3-70b-versatile';
+    }
     res.json(settingsObj);
   } catch (error) {
     console.error(error);
@@ -6553,8 +6556,8 @@ function normalizeModelName(modelName: string, provider: string): string {
     }
     return m;
   } else if (provider === 'groq') {
-    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
-      return 'llama-3.1-8b-instant';
+    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b' || m === 'llama-3.1-8b-instant') {
+      return 'llama-3.3-70b-versatile';
     }
     if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b' || m === 'llama3-70b' || m === 'llama3.3-70b' || m === 'llama-3.3-70b-versatile') {
       return 'llama-3.3-70b-versatile';
@@ -6562,6 +6565,7 @@ function normalizeModelName(modelName: string, provider: string): string {
     if (m === 'llama-3.1-70b' || m === 'llama-3.1-70b-versatile') {
       return 'llama-3.1-70b-versatile';
     }
+    return m || 'llama-3.3-70b-versatile';
   } else {
     if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
     if (m === '4o' || m === 'gpt4o') return 'gpt-4o';
@@ -6613,10 +6617,11 @@ function selectBestModel(availableModels: string[], provider: string, failedMode
 
   if (candidates.length === 0) {
     if (provider === 'groq') {
-      if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
       if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
       if (!isFailed('llama-3.1-70b-versatile')) return 'llama-3.1-70b-versatile';
-      return 'llama-3.1-8b-instant';
+      if (!isFailed('llama3-70b-8192')) return 'llama3-70b-8192';
+      if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
+      return 'llama-3.3-70b-versatile';
     } else {
       if (!isFailed('gpt-4o-mini')) return 'gpt-4o-mini';
       if (!isFailed('gpt-4o')) return 'gpt-4o';
@@ -6625,27 +6630,31 @@ function selectBestModel(availableModels: string[], provider: string, failedMode
   }
 
   if (provider === 'groq') {
-    // 1. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, 30,000 TPM limit, 100% Free on all tiers, native function calling)
-    const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
-    if (llama8b) return llama8b;
-
-    // 2. Meta Llama 3.3 70B (If supported / available on account)
+    // 1. Meta Llama 3.3 70B (State of the art reasoning, 70B parameters, perfect multilingual & native function calling)
     const llama33_70b = candidates.find(m => m.includes('llama-3.3-70b'));
     if (llama33_70b) return llama33_70b;
 
-    // 3. Meta Llama 3.1 70B (Native function calling)
+    // 2. Meta Llama 3.1 70B (Native function calling & 128k context)
     const llama31_70b = candidates.find(m => m.includes('llama-3.1-70b') && !m.includes('instant'));
     if (llama31_70b) return llama31_70b;
+
+    // 3. Meta Llama 3 70B
+    const llama3_70b = candidates.find(m => m.includes('llama3-70b') || m.includes('llama-3-70b'));
+    if (llama3_70b) return llama3_70b;
 
     // 4. Any dedicated tool-use model
     const toolUse = candidates.find(m => m.includes('tool-use'));
     if (toolUse) return toolUse;
 
-    // 5. Any Llama 3 instruct model (excluding guard/vision)
+    // 5. Meta Llama 3.1 8B instant (Fallback for lightweight queries)
+    const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
+    if (llama8b) return llama8b;
+
+    // 6. Any Llama 3 instruct model (excluding guard/vision)
     const anyLlama = candidates.find(m => m.toLowerCase().includes('llama-3') && !m.includes('guard') && !m.includes('vision'));
     if (anyLlama) return anyLlama;
 
-    return candidates[0] || 'llama-3.1-8b-instant';
+    return candidates[0] || 'llama-3.3-70b-versatile';
   } else {
     // Priority order for OpenAI models:
     const gpt4oMini = candidates.find(m => m === 'gpt-4o-mini' || m.includes('gpt-4o-mini'));
@@ -6867,7 +6876,12 @@ app.post('/api/ai/chat', async (req, res) => {
         db.query("UPDATE settings SET val = 'gemini-1.5-flash' WHERE id = 'gemini_model'").catch(() => {});
       }
     } else if (isGroq) {
-      activeModelName = normalizeModelName((settingsMap.groq_model || 'llama-3.1-8b-instant').trim(), 'groq');
+      activeModelName = normalizeModelName((settingsMap.groq_model || 'llama-3.3-70b-versatile').trim(), 'groq');
+      // If setting is 8b or empty, upgrade immediately to 70b-versatile to eliminate token repetition loops on Sinhala/English
+      if (activeModelName.includes('8b') || !activeModelName) {
+        activeModelName = 'llama-3.3-70b-versatile';
+        db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+      }
     } else {
       activeModelName = normalizeModelName((settingsMap.openai_model || 'gpt-4o-mini').trim(), 'openai');
       if (activeModelName.includes('luna') || !activeModelName) {
@@ -6879,7 +6893,7 @@ app.post('/api/ai/chat', async (req, res) => {
     console.log(`[Rex AI Chat] Request initiated. Provider: ${provider}, Model: ${activeModelName}, Key: ${apiKey.slice(0, 6)}...`);
 
     const baseSystemPrompt = `You are Rex AI, the official, highly intelligent real-time ERP AI assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
-You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
+You answer questions accurately in the exact language the user speaks.
 You have complete, live real-time read-only access to the entire Rex ERP database (MySQL):
 
 LIVE DATABASE TABLE STRUCTURE:
@@ -6906,7 +6920,11 @@ CRITICAL OPERATIONAL RULES:
 3. NEVER DUMP SCHEMA: NEVER output raw table schemas, column listings, or database structure dumps to the user. Users are business managers and factory operators who only want answers about their actual products, prices, and orders.
 4. NEVER OUTPUT RAW SQL TO USERS: Never output "SELECT * FROM..." or explain how to query SQL. Query the tool silently and provide the final answer in natural language.
 5. ACCURATE SUPPLIER INFORMATION: When asked about suppliers for an item, check linkedSuppliers in the inventory record, historical purchases from suppliers, and the registered suppliers master list. If an item has no supplier linked yet, state clearly that it is not yet linked and list the active suppliers in the ERP.
-6. LANGUAGE: Respond in the exact language style used by the user (Sinhala, Singlish, or English). Keep tone respectful, direct, and professional with clean markdown tables and emoji bullet points.`;
+6. STRICT LANGUAGE CONSISTENCY & NATURAL TONE:
+   • If the user's message is in ENGLISH (e.g. "sample item price please?", "show me unpaid invoices", "what is the stock"), you MUST answer entirely in fluent, professional ENGLISH. NEVER answer in Sinhala or transcribe English into broken Sinhala characters!
+   • If the user asks in SINGLISH (Latin script Sinhala, e.g. "sample item eke mila kiyada", "stock eka pennanna", "machan"), answer in clean, natural Singlish or English.
+   • If the user asks in SINHALA SCRIPT (Unicode, e.g. "භාණ්ඩයේ මිල කීයද?"), answer in clear, grammatically sound Sinhala script.
+   • NEVER output random repeated syllables (like repeating words over and over). Always output clear, well-formatted markdown tables and bullet points.`;
 
     const systemPrompt = settingsMap.openai_system_instructions && settingsMap.openai_system_instructions.trim()
       ? `${baseSystemPrompt}\n\nADDITIONAL ADMIN INSTRUCTIONS:\n${settingsMap.openai_system_instructions.trim()}`
@@ -6921,13 +6939,18 @@ CRITICAL OPERATIONAL RULES:
 
     const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
 
-    // Helper for chat completions with timeout safety
+    // Helper for chat completions with timeout safety and repetition penalty
     const callCompletion = async (model: string, msgs: any[], tools?: any[]) => {
       const bodyPayload: any = {
         model,
         messages: msgs,
-        temperature: 0.2
+        temperature: 0.3,
+        max_tokens: 1500
       };
+      if (!isGemini) {
+        bodyPayload.frequency_penalty = 0.5;
+        bodyPayload.presence_penalty = 0.2;
+      }
       if (tools && tools.length > 0) {
         bodyPayload.tools = tools;
         bodyPayload.tool_choice = 'auto';
@@ -7122,6 +7145,38 @@ CRITICAL OPERATIONAL RULES:
     const lastUserLower = lastUserMsg.toLowerCase();
     const isAskingPriceOrStock = /\b(price|pricing|prices|cost|costs|rate|rates|mila|ganan|kiyada|stock|stocks|supplier|suppliers|sample|inventory)\b/i.test(lastUserLower);
 
+    const isEnglishPrompt = (text: string) => {
+      if (!text) return true;
+      const hasSinhalaScript = /[\u0D80-\u0DFF]/.test(text);
+      if (hasSinhalaScript) return false;
+      const lower = text.toLowerCase();
+      const singlishMarkers = ['kiyada', 'gana', 'ganan', 'thiyenawa', 'thiyeda', 'pennanna', 'karanna', 'meke', 'machan', 'kohomada', 'dapan', 'one', 'monawada', 'danata', 'mokakda'];
+      const isSinglish = singlishMarkers.some(m => new RegExp(`\\b${m}\\b`, 'i').test(lower));
+      return !isSinglish;
+    };
+
+    const hasTokenRepetitionLoop = (text: string): boolean => {
+      if (!text || text.length < 25) return false;
+      // 1. Check for single word or token repeated 4+ times consecutively (e.g. "කෙන් කෙන් කෙන් කෙන්")
+      if (/\b(\S+)(?:\s+\1){3,}\b/u.test(text)) return true;
+      // 2. Check for multi-word or phrase repeated 3+ times consecutively
+      if (/(\b.{3,25}\b)(?:\s*\1){2,}/u.test(text)) return true;
+      // 3. Check for any 2-15 character sequence repeating 4+ times consecutively without spaces
+      if (/(.{2,15}?)\1{3,}/u.test(text)) return true;
+      // 4. Token frequency ratio check: if top repeating word makes up > 30% of total words in a text longer than 15 words
+      const words = text.split(/\s+/).filter(w => w.length > 1);
+      if (words.length > 15) {
+        const counts: Record<string, number> = {};
+        for (const w of words) {
+          counts[w] = (counts[w] || 0) + 1;
+          if (counts[w] > 6 && (counts[w] / words.length) > 0.3) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
     const isSchemaDump = (text: string) => {
       if (!text) return false;
       const lower = text.toLowerCase();
@@ -7157,14 +7212,15 @@ CRITICAL OPERATIONAL RULES:
             responseMsg = autoData.choices[0].message;
           }
         }
-      } else if (isSchemaDump(contentText)) {
-        console.log(`[Rex AI Engine] Intercepted raw schema dump in response. Auto-retrieving live ERP records for: "${lastUserMsg}"...`);
+      } else if (isSchemaDump(contentText) || hasTokenRepetitionLoop(contentText)) {
+        console.log(`[Rex AI Engine] Intercepted schema dump or repetition loop in response. Auto-retrieving live ERP records for: "${lastUserMsg}"...`);
         const itemSearch = cleanItemSearchTerm(lastUserMsg);
         const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
+        const userSpeaksEng = isEnglishPrompt(lastUserMsg);
         conversation.push({ role: 'assistant', content: responseMsg.content });
         conversation.push({
           role: 'user',
-          content: `Real-time database records for "${lastUserMsg}": ${JSON.stringify(toolResult)}. DO NOT dump database schema or table columns. Directly state the Selling Price (unitPrice), Purchase/Cost Price (unitCost), and warehouse stock to the user in fluent Sinhala/Singlish or English.`
+          content: `Real-time database records for "${lastUserMsg}": ${JSON.stringify(toolResult)}. DO NOT dump database schema and do NOT repeat syllables. Directly state the Selling Price (unitPrice), Purchase/Cost Price (unitCost), and warehouse stock to the user in fluent ${userSpeaksEng ? 'ENGLISH' : 'Sinhala/Singlish'}.`
         });
         const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
         if (autoSynthRes && autoSynthRes.ok) {
@@ -7177,10 +7233,11 @@ CRITICAL OPERATIONAL RULES:
         console.log(`[Rex AI Engine] Detected unfulfilled price/stock query. Auto-executing get_item_purchase_prices for: "${lastUserMsg}"...`);
         const itemSearch = cleanItemSearchTerm(lastUserMsg);
         const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
+        const userSpeaksEng = isEnglishPrompt(lastUserMsg);
         conversation.push({ role: 'assistant', content: responseMsg.content });
         conversation.push({
           role: 'user',
-          content: `Live database results for item lookup: ${JSON.stringify(toolResult)}. Please state the exact Selling Price (unitPrice), Purchase/Cost Price (unitCost), and current warehouse stock directly to the user in fluent Sinhala/English.`
+          content: `Live database results for item lookup: ${JSON.stringify(toolResult)}. Please state the exact Selling Price (unitPrice), Purchase/Cost Price (unitCost), and current warehouse stock directly to the user in fluent ${userSpeaksEng ? 'ENGLISH' : 'Sinhala/English'}.`
         });
         const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
         if (autoSynthRes && autoSynthRes.ok) {
@@ -7289,14 +7346,19 @@ CRITICAL OPERATIONAL RULES:
     finalReply = finalReply.replace(/^The query returned[\s\S]*?as requested\.\s*/i, '').trim();
     finalReply = finalReply.replace(/^["'].*?->\s*["'].*?["']\.?\s*/i, '').trim();
 
-    // Final safety net: If finalReply somehow contains a schema dump, recover with direct inventory pricing
-    if (isSchemaDump(finalReply)) {
-      console.warn(`[Rex AI Engine] Final reply contained schema dump. Auto-generating direct inventory response...`);
+    // Final safety net: If finalReply somehow contains a schema dump or token repetition loop, recover with clean direct inventory pricing
+    if (isSchemaDump(finalReply) || hasTokenRepetitionLoop(finalReply)) {
+      console.warn(`[Rex AI Engine] Final reply contained repetition loop or schema dump. Auto-generating direct inventory response...`);
       const itemSearch = cleanItemSearchTerm(lastUserMsg);
       const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
       const matched = toolResult.matchedInventory?.[0];
+      const userSpeaksEng = isEnglishPrompt(lastUserMsg);
       if (matched) {
-        finalReply = `📦 **${matched.name}** (SKU: \`${matched.sku}\`)\n\n• **විකුණුම් මිල (Selling Price):** Rs. ${Number(matched.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **ගැනුම් / පිරිවැය මිල (Purchase Cost):** Rs. ${Number(matched.standardPurchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **දැනට පවතින තොගය (Current Stock):** ${matched.quantity} ${matched.uom || 'units'}\n• **ගබඩා ස්ථානය (Location):** ${matched.location || 'Store A'}`;
+        if (userSpeaksEng) {
+          finalReply = `📦 **${matched.name}** (SKU: \`${matched.sku}\`)\n\n• **Selling Price:** Rs. ${Number(matched.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **Purchase / Cost Price:** Rs. ${Number(matched.standardPurchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **Current Stock:** ${matched.quantity} ${matched.uom || 'units'}\n• **Storage Location:** ${matched.location || 'Store A'}`;
+        } else {
+          finalReply = `📦 **${matched.name}** (SKU: \`${matched.sku}\`)\n\n• **විකුණුම් මිල (Selling Price):** Rs. ${Number(matched.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **ගැනුම් / පිරිවැය මිල (Unit Cost):** Rs. ${Number(matched.standardPurchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **දැනට පවතින තොගය (Current Stock):** ${matched.quantity} ${matched.uom || 'units'}\n• **ගබඩා ස්ථානය (Location):** ${matched.location || 'Store A'}`;
+        }
       }
     }
 

@@ -141,7 +141,7 @@ export const RexAIAssistant: React.FC = () => {
   const activeModel = activeProvider === 'gemini'
     ? (settings.gemini_model || 'gemini-1.5-flash')
     : (activeProvider === 'groq' 
-        ? (settings.groq_model || 'llama-3.1-8b-instant') 
+        ? (settings.groq_model || 'llama-3.3-70b-versatile') 
         : (settings.openai_model || 'gpt-4o-mini'));
   const hasApiKey = Boolean(
     (settings.gemini_api_key && settings.gemini_api_key.trim().length > 0) ||

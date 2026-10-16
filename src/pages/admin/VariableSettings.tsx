@@ -788,42 +788,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Option 1: Meta Llama 3.1 8B Instant (Primary Recommended / 100% Free) */}
-                <label
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'llama-3.1-8b-instant'
-                      ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
-                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
-                        <Zap size={13} className="text-amber-500" />
-                        llama-3.1-8b
-                      </span>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-                        100% Free · Recommended
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Ultra-fast ~560 tps with generous 30k TPM limit. Native ERP tool calling for live prices and stock.
-                    </p>
-                  </div>
-                  <input
-                    type="radio"
-                    name="groq_model"
-                    value="llama-3.1-8b-instant"
-                    checked={groqModel === 'llama-3.1-8b-instant'}
-                    onChange={e => {
-                      setGroqModel(e.target.value);
-                      updateSettings({ groq_model: e.target.value });
-                    }}
-                    className="sr-only"
-                  />
-                </label>
-
-                {/* Option 2: Meta Llama 3.3 70B (High Reasoning) */}
+                {/* Option 1: Meta Llama 3.3 70B (Primary Recommended / Flagship) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     groqModel === 'llama-3.3-70b-versatile'
@@ -837,12 +802,12 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                         <Cpu size={13} className="text-amber-500" />
                         llama-3.3-70b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
-                        70B Versatile
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                        100% Free · Recommended
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Flagship Meta 70B model with deep reasoning. (Note: May require Groq Dev Tier or project access).
+                      Flagship Meta 70B model with deep reasoning, native ERP tool calling, and zero repetition issues.
                     </p>
                   </div>
                   <input
@@ -850,6 +815,41 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     name="groq_model"
                     value="llama-3.3-70b-versatile"
                     checked={groqModel === 'llama-3.3-70b-versatile'}
+                    onChange={e => {
+                      setGroqModel(e.target.value);
+                      updateSettings({ groq_model: e.target.value });
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 2: Meta Llama 3.1 8B Instant (Ultra-Fast) */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'llama-3.1-8b-instant'
+                      ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Zap size={13} className="text-amber-500" />
+                        llama-3.1-8b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 border border-blue-500/30">
+                        Ultra-Fast · 8B
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Blazing fast ~560 tps with generous 30k TPM limit. Lightweight tool calling for quick lookups.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="llama-3.1-8b-instant"
+                    checked={groqModel === 'llama-3.1-8b-instant'}
                     onChange={e => {
                       setGroqModel(e.target.value);
                       updateSettings({ groq_model: e.target.value });
