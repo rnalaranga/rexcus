@@ -1729,7 +1729,8 @@ export const Inventory: React.FC = () => {
           isOpen={!!ledgerModalItem}
           onClose={() => setLedgerModalItem(null)}
           title={`Stock Movement & Audit Ledger: ${ledgerModalItem.name}`}
-          className="max-w-5xl"
+          size="5xl"
+          className="max-w-[96vw] 2xl:max-w-[1560px]"
         >
           <StockLedgerHub
             selectedInventoryItem={ledgerModalItem}
