@@ -532,8 +532,9 @@ async function run() {
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{\"id\":\"bank_hnb\",\"bankName\":\"Hatton National Bank\",\"branchName\":\"Negombo\",\"accountName\":\"Rex Industries (Pvt) Ltd\",\"accountNumber\":\"011010078028\",\"swiftCode\":\"HNBLLKLX\",\"isDefault\":true}]')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{\"id\":\"tc_std_30d\",\"name\":\"Standard 30 Days Credit\",\"paymentTerms\":\"30 days from date of delivery\",\"validity\":\"30 Days\",\"delivery\":\"2-3 weeks from confirmed PO\",\"isDefault\":true},{\"id\":\"tc_50_adv\",\"name\":\"50% Advance + Balance on Delivery\",\"paymentTerms\":\"50% Advance with confirmed PO, balance 50% upon delivery\",\"validity\":\"14 Days\",\"delivery\":\"10-15 working days\",\"isDefault\":false},{\"id\":\"tc_cod\",\"name\":\"Immediate Payment on Delivery (COD)\",\"paymentTerms\":\"100% on delivery against invoice\",\"validity\":\"30 Days\",\"delivery\":\"3-5 working days / Ex-stock\",\"isDefault\":false},{\"id\":\"tc_milestone\",\"name\":\"Progressive Milestone Payment\",\"paymentTerms\":\"30% Advance, 40% on dispatch, 30% after installation & sign-off\",\"validity\":\"30 Days\",\"delivery\":\"4-6 weeks from approved drawings\",\"isDefault\":false}]')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('gemini_model', 'gemini-1.5-flash')",
     "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini') ON DUPLICATE KEY UPDATE val=VALUES(val)",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'groq')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'gemini')",
     "INSERT INTO settings (id, val) VALUES ('groq_model', 'llama-3.1-8b-instant') ON DUPLICATE KEY UPDATE val=IF(val LIKE '%gpt-oss%' OR val LIKE '%llama-3.3-70b-versatile%', 'llama-3.1-8b-instant', val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an advanced intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. You have full read-only access to all modules: Purchasing, Inventory & Stock, Work Orders & Machine Operations, Customers & Invoices, Quotations, and Finance/Accounts. Use the provided tools or execute_custom_erp_query to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
@@ -559,10 +560,17 @@ async function run() {
     }
   }
 
-  // 4.1 Sync AI Settings & Groq API Key from .env or DB
+  // 4.1 Sync AI Settings & Keys (Gemini & Groq) from .env or DB
+  const envGeminiKey = (process.env.GEMINI_API_KEY || '').trim();
   const envGroqKey = (process.env.GROQ_API_KEY || '').trim();
-  const [existingSettings] = await conn.query("SELECT id, val FROM settings WHERE id IN ('groq_api_key', 'groq_model', 'ai_provider', 'ai_enabled')");
+  const [existingSettings] = await conn.query("SELECT id, val FROM settings WHERE id IN ('gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'ai_provider', 'ai_enabled')");
   const settingsMap = (existingSettings || []).reduce((acc, r) => ({ ...acc, [r.id]: r.val }), {});
+
+  let activeGeminiKey = envGeminiKey || settingsMap.gemini_api_key || '';
+  if (envGeminiKey && envGeminiKey !== settingsMap.gemini_api_key) {
+    await conn.query("INSERT INTO settings (id, val) VALUES ('gemini_api_key', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [envGeminiKey]);
+    console.log('[fix_db] Synced GEMINI_API_KEY from .env into settings table.');
+  }
 
   let activeGroqKey = envGroqKey || settingsMap.groq_api_key || '';
   if (envGroqKey && envGroqKey !== settingsMap.groq_api_key) {
@@ -570,14 +578,36 @@ async function run() {
     console.log('[fix_db] Synced GROQ_API_KEY from .env into settings table.');
   }
 
-  // Ensure provider and enabled are configured
-  await conn.query("INSERT INTO settings (id, val) VALUES ('ai_provider', 'groq') ON DUPLICATE KEY UPDATE val='groq'");
-  await conn.query("INSERT INTO settings (id, val) VALUES ('ai_enabled', 'true') ON DUPLICATE KEY UPDATE val='true'");
+  // Ensure ai_provider and ai_enabled are configured without overwriting existing settings
+  const preferredProvider = (activeGeminiKey ? 'gemini' : (activeGroqKey ? 'groq' : 'gemini'));
+  await conn.query("INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', ?)", [preferredProvider]);
+  await conn.query("INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')");
 
-  if (!activeGroqKey) {
-    console.warn('\n[fix_db] ⚠️ GROQ_API_KEY is not found in .env or settings table!');
-    console.warn('[fix_db] 💡 Please add GROQ_API_KEY=gsk_... to api/.env or in Admin > Variable Settings.\n');
-  } else {
+  // Test Google Gemini Connection if key is configured
+  if (activeGeminiKey) {
+    try {
+      console.log(`\n[fix_db] 🔍 Testing Google Gemini API Key (${activeGeminiKey.slice(0, 8)}...)...`);
+      const geminiRes = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/models', {
+        headers: { 'Authorization': `Bearer ${activeGeminiKey}` }
+      });
+      if (geminiRes.ok) {
+        const gData = await geminiRes.json();
+        const availableIds = (gData.data || []).map(m => m.id);
+        console.log(`[fix_db] ✅ Google Gemini API Key verified! (${availableIds.length} models accessible on this account)`);
+        const chosenModel = availableIds.includes('gemini-1.5-flash') ? 'gemini-1.5-flash' : (availableIds[0] || 'gemini-1.5-flash');
+        console.log(`[fix_db] 🎯 Auto-configured best live Gemini model: '${chosenModel}'\n`);
+        await conn.query("INSERT INTO settings (id, val) VALUES ('gemini_model', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [chosenModel]);
+      } else {
+        const errData = await geminiRes.json().catch(() => ({}));
+        console.warn(`[fix_db] ❌ Google Gemini API Key rejected (HTTP ${geminiRes.status}):`, errData.error?.message || 'Unauthorized / Invalid Key');
+      }
+    } catch (e) {
+      console.warn(`[fix_db] ⚠️ Could not connect to Google Gemini API:`, e.message);
+    }
+  }
+
+  // Test Groq Connection if key is configured
+  if (activeGroqKey) {
     try {
       console.log(`\n[fix_db] 🔍 Testing Groq API Key (${activeGroqKey.slice(0, 8)}...)...`);
       const testRes = await fetch('https://api.groq.com/openai/v1/models', {
@@ -587,27 +617,21 @@ async function run() {
         const testData = await testRes.json();
         const availableIds = (testData.data || []).map(m => m.id);
         console.log(`[fix_db] ✅ Groq API Key verified! (${availableIds.length} models accessible on this account)`);
-        console.log(`[fix_db] 📋 Accessible models: ${availableIds.slice(0, 8).join(', ')}${availableIds.length > 8 ? '...' : ''}`);
-
-        const priorityCandidates = [
-          'llama-3.1-8b-instant',
-          'llama-3.3-70b-versatile',
-          'llama-3.1-70b-versatile',
-          'openai/gpt-oss-120b',
-          'openai/gpt-oss-20b'
-        ];
-        const match = priorityCandidates.find(p => availableIds.includes(p)) || availableIds.find(id => !id.includes('whisper') && !id.includes('guard')) || 'llama-3.1-8b-instant';
-        const chosenModel = match;
-        console.log(`[fix_db] 🎯 Auto-configured best live model for this account: '${chosenModel}'\n`);
+        const chosenModel = availableIds.includes('llama-3.1-8b-instant') ? 'llama-3.1-8b-instant' : (availableIds[0] || 'llama-3.1-8b-instant');
+        console.log(`[fix_db] 🎯 Auto-configured best live Groq model: '${chosenModel}'\n`);
         await conn.query("INSERT INTO settings (id, val) VALUES ('groq_model', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [chosenModel]);
       } else {
         const errData = await testRes.json().catch(() => ({}));
         console.warn(`[fix_db] ❌ Groq API Key rejected (HTTP ${testRes.status}):`, errData.error?.message || 'Unauthorized / Invalid Key');
-        console.warn(`[fix_db] 💡 Please check that your key starts with gsk_ and is active at https://console.groq.com/keys\n`);
       }
     } catch (e) {
       console.warn(`[fix_db] ⚠️ Could not connect to Groq API:`, e.message);
     }
+  }
+
+  if (!activeGeminiKey && !activeGroqKey) {
+    console.warn('\n[fix_db] ⚠️ No AI API Key found in .env or settings table!');
+    console.warn('[fix_db] 💡 Please add GEMINI_API_KEY=AIzaSy... to api/.env or in Admin > Variable Settings.\n');
   }
 
   // 5. Seed default quotation templates if table is empty

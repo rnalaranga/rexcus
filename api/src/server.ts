@@ -918,8 +918,9 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     `INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]')`,
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
+    "INSERT IGNORE INTO settings (id, val) VALUES ('gemini_model', 'gemini-1.5-flash')",
     "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini') ON DUPLICATE KEY UPDATE val=VALUES(val)",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'groq')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'gemini')",
     "INSERT INTO settings (id, val) VALUES ('groq_model', 'llama-3.3-70b-versatile') ON DUPLICATE KEY UPDATE val=IF(val LIKE '%gpt-oss%', 'llama-3.3-70b-versatile', val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an advanced intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. You have full read-only access to all modules: Purchasing, Inventory & Stock, Work Orders & Machine Operations, Customers & Invoices, Quotations, and Finance/Accounts. Use the provided tools or execute_custom_erp_query to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
@@ -934,8 +935,9 @@ async function runDatabaseSync() {
     } catch (err) {}
   }
 
-  // Auto-migrate groq_model: replace gpt-oss (which has strict 8k TPM limits) or empty values with production llama-3.3-70b-versatile
+  // Auto-migrate groq_model & gemini_model default seeds
   try {
+    await db.query("UPDATE settings SET val = 'gemini-1.5-flash' WHERE id = 'gemini_model' AND (val IS NULL OR val = '')");
     await db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model' AND (val LIKE '%gpt-oss%' OR val IS NULL OR val = '')");
     await db.query("UPDATE settings SET val = 'gpt-4o-mini' WHERE id = 'openai_model' AND (val LIKE '%luna%' OR val IS NULL OR val = '')");
   } catch (err) {}
@@ -6173,44 +6175,80 @@ async function executeAITool(name: string, args: any) {
 }
 
 /**
- * Helper to dynamically fetch live models from Groq or OpenAI
+ * Helper to dynamically fetch live models from Google Gemini, Groq, or OpenAI
  */
 async function fetchProviderModels(provider: string, apiKey: string): Promise<string[]> {
   try {
+    const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
-    const endpoint = isGroq ? 'https://api.groq.com/openai/v1/models' : 'https://api.openai.com/v1/models';
+
+    let endpoint = 'https://api.groq.com/openai/v1/models';
+    if (isGemini) {
+      endpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/models';
+    } else if (isGroq) {
+      endpoint = 'https://api.groq.com/openai/v1/models';
+    } else {
+      endpoint = 'https://api.openai.com/v1/models';
+    }
+
     const res = await fetch(endpoint, {
       headers: { 'Authorization': `Bearer ${apiKey.trim()}` }
     });
     if (!res.ok) {
       console.warn(`[Rex AI] Failed to fetch models list from ${provider}: HTTP ${res.status}`);
+      if (isGemini) {
+        return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+      }
       return [];
     }
     const data: any = await res.json();
     if (Array.isArray(data.data)) {
-      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard'];
+      const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa'];
       const chatModels = data.data
         .map((m: any) => m.id)
         .filter((id: string) => {
           const lower = id.toLowerCase();
           return !nonChatKeywords.some(kw => lower.includes(kw));
         });
+      if (isGemini && chatModels.length === 0) {
+        return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+      }
       return chatModels;
+    }
+    if (isGemini) {
+      return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
     }
     return [];
   } catch (err: any) {
     console.error(`[Rex AI] Error fetching models from ${provider}:`, err.message);
+    if (provider === 'gemini' || apiKey.startsWith('AIzaSy')) {
+      return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+    }
     return [];
   }
 }
 
 /**
- * Helper to normalize common shorthand model names entered by users (e.g. 8b, 70b)
+ * Helper to normalize common shorthand model names entered by users (e.g. flash, 8b, 70b)
  */
-function normalizeModelName(modelName: string, isGroq: boolean): string {
-  if (!modelName) return isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
+function normalizeModelName(modelName: string, provider: string): string {
+  if (!modelName) {
+    if (provider === 'gemini') return 'gemini-1.5-flash';
+    if (provider === 'groq') return 'llama-3.1-8b-instant';
+    return 'gpt-4o-mini';
+  }
   const m = modelName.trim().toLowerCase();
-  if (isGroq) {
+  if (provider === 'gemini') {
+    if (m === 'flash' || m === '1.5-flash' || m === 'gemini-flash' || m === 'gemini-1.5-flash-latest') {
+      return 'gemini-1.5-flash';
+    }
+    if (m === '2.0-flash' || m === '2-flash' || m === 'gemini-2.0' || m === 'gemini-2.0-flash-exp') {
+      return 'gemini-2.0-flash';
+    }
+    if (m === 'pro' || m === '1.5-pro' || m === 'gemini-pro') {
+      return 'gemini-1.5-pro';
+    }
+  } else if (provider === 'groq') {
     if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
       return 'llama-3.1-8b-instant';
     }
@@ -6230,12 +6268,34 @@ function normalizeModelName(modelName: string, isGroq: boolean): string {
 /**
  * Helper to select the best available model from a list of live models
  */
-function selectBestModel(availableModels: string[], isGroq: boolean, failedModels: string[] = []): string {
+function selectBestModel(availableModels: string[], provider: string, failedModels: string[] = []): string {
   const isFailed = (name: string) => failedModels.some(f => f.toLowerCase() === name.toLowerCase());
   const candidates = (availableModels || []).filter(m => !isFailed(m));
 
+  if (provider === 'gemini') {
+    if (candidates.length === 0) {
+      if (!isFailed('gemini-1.5-flash')) return 'gemini-1.5-flash';
+      if (!isFailed('gemini-2.0-flash')) return 'gemini-2.0-flash';
+      if (!isFailed('gemini-1.5-pro')) return 'gemini-1.5-pro';
+      return 'gemini-1.5-flash';
+    }
+    // 1. Gemini 1.5 Flash (Super fast, 1M context, reliable free tier)
+    const flash15 = candidates.find(m => m === 'gemini-1.5-flash' || m.includes('1.5-flash'));
+    if (flash15) return flash15;
+
+    // 2. Gemini 2.0 Flash
+    const flash20 = candidates.find(m => m === 'gemini-2.0-flash' || m.includes('2.0-flash'));
+    if (flash20) return flash20;
+
+    // 3. Gemini 1.5 Pro
+    const pro15 = candidates.find(m => m === 'gemini-1.5-pro' || m.includes('1.5-pro'));
+    if (pro15) return pro15;
+
+    return candidates[0] || 'gemini-1.5-flash';
+  }
+
   if (candidates.length === 0) {
-    if (isGroq) {
+    if (provider === 'groq') {
       if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
       if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
       if (!isFailed('llama-3.1-70b-versatile')) return 'llama-3.1-70b-versatile';
@@ -6247,7 +6307,7 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
     }
   }
 
-  if (isGroq) {
+  if (provider === 'groq') {
     // 1. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, 30,000 TPM limit, 100% Free on all tiers, native function calling)
     const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
     if (llama8b) return llama8b;
@@ -6287,7 +6347,7 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
   }
 }
 
-// Endpoint to test AI API Key connection (Groq Cloud or OpenAI)
+// Endpoint to test AI API Key connection (Google Gemini, Groq Cloud, or OpenAI)
 app.post('/api/ai/test-key', async (req, res) => {
   try {
     const { apiKey, provider } = req.body;
@@ -6295,9 +6355,22 @@ app.post('/api/ai/test-key', async (req, res) => {
     if (!testKey) {
       return res.status(400).json({ success: false, error: 'API key is required.' });
     }
+
+    const isGemini = provider === 'gemini' || testKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || testKey.startsWith('gsk_');
-    const endpoint = isGroq ? 'https://api.groq.com/openai/v1/models' : 'https://api.openai.com/v1/models';
-    const providerLabel = isGroq ? 'Groq Cloud (Meta Llama)' : 'OpenAI';
+
+    let endpoint = 'https://api.groq.com/openai/v1/models';
+    let providerLabel = 'Groq Cloud (Meta Llama)';
+    if (isGemini) {
+      endpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/models';
+      providerLabel = 'Google Gemini (Google AI Studio)';
+    } else if (isGroq) {
+      endpoint = 'https://api.groq.com/openai/v1/models';
+      providerLabel = 'Groq Cloud (Meta Llama)';
+    } else {
+      endpoint = 'https://api.openai.com/v1/models';
+      providerLabel = 'OpenAI';
+    }
 
     const response = await fetch(endpoint, {
       headers: { 'Authorization': `Bearer ${testKey}` }
@@ -6312,16 +6385,22 @@ app.post('/api/ai/test-key', async (req, res) => {
 
     const data: any = await response.json();
     const allModels: string[] = Array.isArray(data.data) ? data.data.map((m: any) => m.id) : [];
-    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard'];
-    const chatModels = allModels.filter((id: string) => {
+    const nonChatKeywords = ['whisper', 'embedding', 'tts', 'dall-e', 'moderation', 'bdr', 'guard', 'text-embedding', 'imagen', 'aqa'];
+    let chatModels = allModels.filter((id: string) => {
       const lower = id.toLowerCase();
       return !nonChatKeywords.some(kw => lower.includes(kw));
     });
 
-    const recommendedModel = selectBestModel(chatModels, isGroq);
+    if (isGemini && chatModels.length === 0) {
+      chatModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+    }
+
+    const resolvedProvider = isGemini ? 'gemini' : (isGroq ? 'groq' : 'openai');
+    const recommendedModel = selectBestModel(chatModels, resolvedProvider);
 
     res.json({ 
       success: true, 
+      provider: resolvedProvider,
       message: `${providerLabel} API Key verified successfully! Connection established with ${chatModels.length} active models.`,
       models: chatModels,
       recommendedModel
@@ -6335,34 +6414,45 @@ app.post('/api/ai/test-key', async (req, res) => {
 app.get('/api/ai/models', async (req, res) => {
   try {
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
-    let provider = (settingsMap.ai_provider || 'groq').trim();
+    
+    const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
 
-    let apiKey = provider === 'groq' ? groqKey : openAiKey;
-    if (!apiKey && groqKey) {
-      provider = 'groq';
-      apiKey = groqKey;
-    } else if (!apiKey && openAiKey) {
-      provider = 'openai';
-      apiKey = openAiKey;
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : 'gemini'))).trim();
+
+    let apiKey = '';
+    if (provider === 'gemini') {
+      apiKey = geminiKey || groqKey || openAiKey;
+      if (!geminiKey && groqKey) provider = 'groq';
+      else if (!geminiKey && openAiKey) provider = 'openai';
+    } else if (provider === 'groq') {
+      apiKey = groqKey || geminiKey || openAiKey;
+      if (!groqKey && geminiKey) provider = 'gemini';
+      else if (!groqKey && openAiKey) provider = 'openai';
+    } else {
+      apiKey = openAiKey || geminiKey || groqKey;
+      if (!openAiKey && geminiKey) provider = 'gemini';
+      else if (!openAiKey && groqKey) provider = 'groq';
     }
 
     if (!apiKey) {
       return res.json({ success: false, error: 'No API key configured in settings.' });
     }
 
-    const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
     const models = await fetchProviderModels(provider, apiKey);
-    const recommendedModel = selectBestModel(models, isGroq);
+    const recommendedModel = selectBestModel(models, provider);
+    const currentModel = provider === 'gemini' 
+      ? (settingsMap.gemini_model || recommendedModel)
+      : (provider === 'groq' ? (settingsMap.groq_model || recommendedModel) : (settingsMap.openai_model || recommendedModel));
 
     res.json({
       success: true,
       provider,
-      currentModel: isGroq ? (settingsMap.groq_model || recommendedModel) : (settingsMap.openai_model || recommendedModel),
+      currentModel,
       recommendedModel,
       models
     });
@@ -6371,14 +6461,14 @@ app.get('/api/ai/models', async (req, res) => {
   }
 });
 
-// Primary AI Chat Completion endpoint with Tools / Function Calling (Groq & OpenAI)
+// Primary AI Chat Completion endpoint with Tools / Function Calling (Gemini, Groq & OpenAI)
 app.post('/api/ai/chat', async (req, res) => {
   try {
     const { messages = [] } = req.body;
 
     // 1. Retrieve AI Settings from Database
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'openai_system_instructions', 'ai_enabled')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'openai_system_instructions', 'ai_enabled')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
 
@@ -6390,62 +6480,78 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
+    const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
-    let provider = (settingsMap.ai_provider || 'groq').trim();
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : 'gemini'))).trim();
 
-    // Auto-detect provider if user entered a Groq key (starts with gsk_) or OpenAI key (starts with sk-)
+    // Auto-detect provider if user entered a Gemini key (starts with AIzaSy), Groq key (starts with gsk_), or OpenAI key (starts with sk-)
     let apiKey = '';
-    if (provider === 'groq') {
+    if (provider === 'gemini') {
+      apiKey = geminiKey;
+      if (!apiKey && groqKey) {
+        provider = 'groq';
+        apiKey = groqKey;
+      } else if (!apiKey && openAiKey) {
+        provider = 'openai';
+        apiKey = openAiKey;
+      }
+    } else if (provider === 'groq') {
       apiKey = groqKey;
-      if (!apiKey && openAiKey) {
-        if (openAiKey.startsWith('gsk_')) {
-          apiKey = openAiKey;
-        } else {
-          provider = 'openai';
-          apiKey = openAiKey;
-        }
+      if (!apiKey && geminiKey) {
+        provider = 'gemini';
+        apiKey = geminiKey;
+      } else if (!apiKey && openAiKey) {
+        provider = 'openai';
+        apiKey = openAiKey;
       }
     } else {
       apiKey = openAiKey;
-      if (!apiKey && groqKey) {
-        if (groqKey.startsWith('sk-')) {
-          apiKey = groqKey;
-        } else {
-          provider = 'groq';
-          apiKey = groqKey;
-        }
+      if (!apiKey && geminiKey) {
+        provider = 'gemini';
+        apiKey = geminiKey;
+      } else if (!apiKey && groqKey) {
+        provider = 'groq';
+        apiKey = groqKey;
       }
     }
+
+    // Auto-detect if key prefix doesn't match selected provider
+    if (apiKey.startsWith('AIzaSy')) provider = 'gemini';
+    else if (apiKey.startsWith('gsk_')) provider = 'groq';
+    else if (apiKey.startsWith('sk-')) provider = 'openai';
 
     if (!apiKey) {
       return res.json({
         success: false,
         missingKey: true,
-        reply: 'AI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Groq Cloud API Key** එකක් (Meta Llama 3.1 8B Instant සඳහා) හෝ OpenAI Key එකක් ඇතුළත් කර Save කරන්න.'
+        reply: 'AI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Google Gemini API Key** එකක් (AIzaSy...) හෝ Groq Cloud Key එකක් ඇතුළත් කර Save කරන්න.'
       });
     }
 
+    const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
-    const endpointUrl = isGroq 
-      ? 'https://api.groq.com/openai/v1/chat/completions' 
-      : 'https://api.openai.com/v1/chat/completions';
 
-    let activeModelName = normalizeModelName(
-      isGroq
-        ? (settingsMap.groq_model || 'llama-3.1-8b-instant').trim()
-        : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
-      isGroq
-    );
-
-    if (!isGroq && (activeModelName.includes('luna') || !activeModelName)) {
-      activeModelName = 'gpt-4o-mini';
-      db.query("UPDATE settings SET val = 'gpt-4o-mini' WHERE id = 'openai_model'").catch(() => {});
+    let endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+    if (isGemini) {
+      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+    } else if (isGroq) {
+      endpointUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    } else {
+      endpointUrl = 'https://api.openai.com/v1/chat/completions';
     }
 
-    if (!isGroq && (activeModelName.includes('luna') || !activeModelName)) {
-      activeModelName = 'gpt-4o-mini';
-      db.query("UPDATE settings SET val = 'gpt-4o-mini' WHERE id = 'openai_model'").catch(() => {});
+    let activeModelName = '';
+    if (isGemini) {
+      activeModelName = normalizeModelName((settingsMap.gemini_model || 'gemini-1.5-flash').trim(), 'gemini');
+    } else if (isGroq) {
+      activeModelName = normalizeModelName((settingsMap.groq_model || 'llama-3.1-8b-instant').trim(), 'groq');
+    } else {
+      activeModelName = normalizeModelName((settingsMap.openai_model || 'gpt-4o-mini').trim(), 'openai');
+      if (activeModelName.includes('luna') || !activeModelName) {
+        activeModelName = 'gpt-4o-mini';
+        db.query("UPDATE settings SET val = 'gpt-4o-mini' WHERE id = 'openai_model'").catch(() => {});
+      }
     }
 
     console.log(`[Rex AI Chat] Request initiated. Provider: ${provider}, Model: ${activeModelName}, Key: ${apiKey.slice(0, 6)}...`);
@@ -6511,14 +6617,14 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         console.warn(`[Rex AI Engine] Rate limit encountered on '${activeModelName}' (${errMsg}).`);
         failedModelsList.push(activeModelName);
 
-        // If current model is a low-TPM model (like gpt-oss), immediately switch to a high-capacity model
         if (activeModelName.includes('gpt-oss')) {
           console.log(`[Rex AI Engine] Model '${activeModelName}' has strict 8k TPM limit. Auto-migrating to high-capacity model...`);
           const liveModels = await fetchProviderModels(provider, apiKey);
-          const resolvedModel = selectBestModel(liveModels, isGroq, failedModelsList);
+          const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
           if (resolvedModel && resolvedModel !== activeModelName) {
             activeModelName = resolvedModel;
-            db.query("UPDATE settings SET val = ? WHERE id = 'groq_model'", [activeModelName]).catch(() => {});
+            const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+            db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
             aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
           }
         } else {
@@ -6530,15 +6636,15 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
             aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
           }
 
-          // If still failing after wait, query live models for available alternative
           if (!aiRes.ok) {
             console.log(`[Rex AI Engine] Looking for alternative model due to rate limit...`);
             const liveModels = await fetchProviderModels(provider, apiKey);
-            const resolvedModel = selectBestModel(liveModels, isGroq, failedModelsList);
+            const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
             if (resolvedModel && resolvedModel !== activeModelName) {
               console.log(`[Rex AI Engine] Auto-switching from rate-limited model '${activeModelName}' to available alternative '${resolvedModel}'...`);
               activeModelName = resolvedModel;
-              db.query("UPDATE settings SET val = ? WHERE id = 'groq_model'", [activeModelName]).catch(() => {});
+              const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+              db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
               aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
             }
           }
@@ -6562,14 +6668,15 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
           console.warn(`[Rex AI Engine] Model '${activeModelName}' not accessible (${errMsg}). Querying ${provider} live model list...`);
           const liveModels = await fetchProviderModels(provider, apiKey);
           console.log(`[Rex AI Engine] Live models available for this key:`, liveModels);
-          const resolvedModel = selectBestModel(liveModels, isGroq, failedModelsList);
+          const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
           console.log(`[Rex AI Engine] Dynamically routing to verified alternative model: '${resolvedModel}'`);
           activeModelName = resolvedModel;
 
           // Asynchronously update DB settings with the verified working model
+          const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
           db.query(
             "INSERT INTO settings (id, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val=?",
-            [isGroq ? 'groq_model' : 'openai_model', activeModelName, activeModelName]
+            [modelSettingKey, activeModelName, activeModelName]
           ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
 
           aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
@@ -6581,7 +6688,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         }
       }
 
-      // Check for Tool Calling not supported error (HTTP 400 from Groq)
+      // Check for Tool Calling not supported error
       if (!aiRes.ok) {
         errJson = await aiRes.json().catch(() => errJson);
         errMsg = (errJson.error?.message || '').toLowerCase();
@@ -6607,10 +6714,11 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         console.error(`${provider} AI Error:`, fallbackErr);
         const rawErr = fallbackErr.error?.message || fallbackErr.message || `${provider} API request failed`;
         let userFriendlyMsg = rawErr;
-        if (rawErr.toLowerCase().includes('does not exist') || rawErr.toLowerCase().includes('not have access')) {
-          userFriendlyMsg = `Groq Cloud Model Access Error ('${activeModelName}'): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ Groq Cloud API Key එක (gsk_...) ඇතුළත් කර 'Test Connection' ඔබා Verified Models වලින් එකක් තෝරා Save කරන්න.`;
+        const provLabel = isGemini ? 'Google Gemini' : (isGroq ? 'Groq Cloud' : 'OpenAI');
+        if (rawErr.toLowerCase().includes('does not exist') || rawErr.toLowerCase().includes('not have access') || rawErr.toLowerCase().includes('not found')) {
+          userFriendlyMsg = `${provLabel} Model Access Error ('${activeModelName}'): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ ${provLabel} API Key එක ඇතුළත් කර 'Test Connection' ඔබා Verified Models වලින් එකක් තෝරා Save කරන්න.`;
         } else if (rawErr.toLowerCase().includes('invalid api key') || rawErr.toLowerCase().includes('unauthorized') || aiRes.status === 401) {
-          userFriendlyMsg = `Groq Cloud API Key එක වලංගු නැත (Invalid API Key): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ නිවැරදි Groq Cloud API Key එක (gsk_...) ඇතුළත් කර Save කරන්න.`;
+          userFriendlyMsg = `${provLabel} API Key එක වලංගු නැත (Invalid API Key): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ නිවැරදි ${provLabel} API Key එක ඇතුළත් කර Save කරන්න.`;
         }
         return res.status(aiRes.status || 500).json({
           success: false,
@@ -6650,32 +6758,31 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         });
       }
 
-      // Follow-up request: Groq requires AI_TOOLS to remain available so the model can process the tool results and synthesize the answer
+      // Follow-up request with tools so the model can process tool results and synthesize answer
       let followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
 
       if (!followUpRes.ok) {
         let errJson: any = await followUpRes.json().catch(() => ({}));
         let errMsg = (errJson.error?.message || '').toLowerCase();
 
-        // Check for rate limit during tool follow-up synthesis
         if (followUpRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tokens per minute') || errMsg.includes('tpm')) {
           console.warn(`[Rex AI] Rate limit on follow-up turn (${errMsg}).`);
           const liveModels = await fetchProviderModels(provider, apiKey);
-          const resolvedModel = selectBestModel(liveModels, isGroq, [activeModelName]);
+          const resolvedModel = selectBestModel(liveModels, provider, [activeModelName]);
           if (resolvedModel && resolvedModel !== activeModelName) {
             console.log(`[Rex AI Engine] Auto-switching follow-up from '${activeModelName}' to '${resolvedModel}'...`);
             activeModelName = resolvedModel;
-            db.query("UPDATE settings SET val = ? WHERE id = 'groq_model'", [activeModelName]).catch(() => {});
+            const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+            db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
             followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
           }
         }
 
-        // If Groq complains about tool_choice or tool use, retry gracefully without tool constraint
         if (!followUpRes.ok) {
           errJson = await followUpRes.json().catch(() => errJson);
           errMsg = (errJson.error?.message || '').toLowerCase();
-          if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed')) {
-            console.warn(`[Rex AI] Groq tool_choice warning detected. Retrying synthesis without tool constraint...`);
+          if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed') || errMsg.includes('tool')) {
+            console.warn(`[Rex AI] Tool followup warning detected. Retrying synthesis without tool constraint...`);
             conversation.push({
               role: 'user',
               content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
@@ -6713,7 +6820,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
   }
 });
 
-// Endpoint to generate professional Customer Quotation Description using Groq / OpenAI
+// Endpoint to generate professional Customer Quotation Description using Gemini / Groq / OpenAI
 app.post('/api/ai/generate-quotation-description', async (req, res) => {
   try {
     const {
@@ -6727,7 +6834,7 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
     } = req.body;
 
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'ai_enabled')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'ai_enabled')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
 
@@ -6735,37 +6842,57 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
       return res.status(403).json({ success: false, error: 'AI Assistant is currently disabled in settings.' });
     }
 
+    const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
-    let provider = (settingsMap.ai_provider || 'groq').trim();
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : 'gemini'))).trim();
 
-    let apiKey = provider === 'groq' ? groqKey : openAiKey;
-    if (!apiKey && groqKey) {
-      provider = 'groq';
-      apiKey = groqKey;
-    } else if (!apiKey && openAiKey) {
-      provider = 'openai';
-      apiKey = openAiKey;
+    let apiKey = '';
+    if (provider === 'gemini') {
+      apiKey = geminiKey || groqKey || openAiKey;
+      if (!geminiKey && groqKey) provider = 'groq';
+      else if (!geminiKey && openAiKey) provider = 'openai';
+    } else if (provider === 'groq') {
+      apiKey = groqKey || geminiKey || openAiKey;
+      if (!groqKey && geminiKey) provider = 'gemini';
+      else if (!groqKey && openAiKey) provider = 'openai';
+    } else {
+      apiKey = openAiKey || geminiKey || groqKey;
+      if (!openAiKey && geminiKey) provider = 'gemini';
+      else if (!openAiKey && groqKey) provider = 'groq';
     }
+
+    if (apiKey.startsWith('AIzaSy')) provider = 'gemini';
+    else if (apiKey.startsWith('gsk_')) provider = 'groq';
+    else if (apiKey.startsWith('sk-')) provider = 'openai';
 
     if (!apiKey) {
       return res.status(400).json({
         success: false,
-        error: 'AI API Key is not configured. Please add a free Groq Cloud API Key in Variable Settings.'
+        error: 'AI API Key is not configured. Please add a free Google Gemini or Groq API Key in Variable Settings.'
       });
     }
 
+    const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
-    const endpointUrl = isGroq 
-      ? 'https://api.groq.com/openai/v1/chat/completions' 
-      : 'https://api.openai.com/v1/chat/completions';
 
-    let activeModelName = normalizeModelName(
-      isGroq
-        ? (settingsMap.groq_model || 'llama-3.1-8b-instant').trim()
-        : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
-      isGroq
-    );
+    let endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+    if (isGemini) {
+      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+    } else if (isGroq) {
+      endpointUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    } else {
+      endpointUrl = 'https://api.openai.com/v1/chat/completions';
+    }
+
+    let activeModelName = '';
+    if (isGemini) {
+      activeModelName = normalizeModelName((settingsMap.gemini_model || 'gemini-1.5-flash').trim(), 'gemini');
+    } else if (isGroq) {
+      activeModelName = normalizeModelName((settingsMap.groq_model || 'llama-3.1-8b-instant').trim(), 'groq');
+    } else {
+      activeModelName = normalizeModelName((settingsMap.openai_model || 'gpt-4o-mini').trim(), 'openai');
+    }
 
     const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision manufacturing, hydraulics, and metal fabrication company.
 
@@ -6807,7 +6934,7 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
       let errMsg = (errJson.error?.message || '').toLowerCase();
       if (aiRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tpm')) {
         const liveModels = await fetchProviderModels(provider, apiKey);
-        activeModelName = selectBestModel(liveModels, isGroq, [activeModelName]);
+        activeModelName = selectBestModel(liveModels, provider, [activeModelName]);
         aiRes = await fetch(endpointUrl, {
           method: 'POST',
           headers: {
@@ -6824,9 +6951,9 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
           })
         });
       }
-      if (!aiRes.ok && (errJson.error?.code === 'model_not_found' || errMsg.includes('does not exist') || errMsg.includes('not have access'))) {
+      if (!aiRes.ok && (errJson.error?.code === 'model_not_found' || errMsg.includes('does not exist') || errMsg.includes('not have access') || errMsg.includes('not found'))) {
         const liveModels = await fetchProviderModels(provider, apiKey);
-        activeModelName = selectBestModel(liveModels, isGroq, [activeModelName]);
+        activeModelName = selectBestModel(liveModels, provider, [activeModelName]);
         aiRes = await fetch(endpointUrl, {
           method: 'POST',
           headers: {
@@ -6872,12 +6999,14 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
 (async () => {
   try {
     const [rows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
     );
     const map = rows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
-    const prov = map.ai_provider || 'groq';
-    const key = (prov === 'groq' ? map.groq_api_key : map.openai_api_key) || map.groq_api_key || map.openai_api_key || '';
-    const activeModel = prov === 'groq' ? (map.groq_model || 'llama-3.1-8b-instant') : (map.openai_model || 'gpt-4o-mini');
+    const prov = map.ai_provider || 'gemini';
+    const key = (prov === 'gemini' ? map.gemini_api_key : (prov === 'groq' ? map.groq_api_key : map.openai_api_key)) || map.gemini_api_key || map.groq_api_key || map.openai_api_key || '';
+    const activeModel = prov === 'gemini' 
+      ? (map.gemini_model || 'gemini-1.5-flash')
+      : (prov === 'groq' ? (map.groq_model || 'llama-3.1-8b-instant') : (map.openai_model || 'gpt-4o-mini'));
     console.log(`[Rex AI] Provider: ${prov} | Model: ${activeModel} | Key: ${key ? key.slice(0, 7) + '...' : 'Not configured'}`);
   } catch(e: any) {
     console.error('[Rex AI] Diagnostic error:', e.message);

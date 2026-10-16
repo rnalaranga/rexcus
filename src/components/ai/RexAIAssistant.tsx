@@ -137,11 +137,14 @@ export const RexAIAssistant: React.FC = () => {
     };
   }, [isOpen]);
 
-  const activeProvider = settings.ai_provider || 'groq';
-  const activeModel = activeProvider === 'groq' 
-    ? (settings.groq_model || 'llama-3.1-8b-instant') 
-    : (settings.openai_model || 'gpt-4o-mini');
+  const activeProvider = settings.ai_provider || 'gemini';
+  const activeModel = activeProvider === 'gemini'
+    ? (settings.gemini_model || 'gemini-1.5-flash')
+    : (activeProvider === 'groq' 
+        ? (settings.groq_model || 'llama-3.1-8b-instant') 
+        : (settings.openai_model || 'gpt-4o-mini'));
   const hasApiKey = Boolean(
+    (settings.gemini_api_key && settings.gemini_api_key.trim().length > 0) ||
     (settings.groq_api_key && settings.groq_api_key.trim().length > 0) ||
     (settings.openai_api_key && settings.openai_api_key.trim().length > 0)
   );
@@ -196,7 +199,7 @@ export const RexAIAssistant: React.FC = () => {
           {
             id: `ai_${Date.now()}`,
             role: 'assistant',
-            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ නොමිලේ **Groq Cloud API Key** එක (\`gsk_...\`) ඇතුළත් කර **Test Connection** ඔබා Save කරන්න.\n\n*(අනෙක් පරිගණකයේ සිට Git Pull කළ විට local database එක sync නොවන බැවින්, මෙම PC එකෙහි API Key එක එක්වරක් Save කරගත යුතුය).*`,
+            content: `⚠️ **AI API Key එක තවමත් Configure කර නොමැත.**\n\nකරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ නොමිලේ **Google Gemini API Key** එක (\`AIzaSy...\`) හෝ **Groq Key** එක ඇතුළත් කර **Test Connection** ඔබා Save කරන්න.\n\n*(Git Pull කළ විට local database එක වෙනස් නොවන බැවින්, මෙම PC එකෙහි API Key එක එක්වරක් Save කරගත යුතුය).*`,
             timestamp: new Date()
           }
         ]);
@@ -204,7 +207,7 @@ export const RexAIAssistant: React.FC = () => {
         const errorText = data.error || 'Failed to process request.';
         const isKeyOrModelIssue = errorText.toLowerCase().includes('model') || errorText.toLowerCase().includes('does not exist') || errorText.toLowerCase().includes('key') || errorText.toLowerCase().includes('access');
         const solutionMsg = isKeyOrModelIssue 
-          ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Groq Cloud API Key** එක (gsk_...) ඇතුළත් කර **Test Connection** ඔබන්න. (එවිට නොමිලේ අධිවේගී Llama 3.1 8B Instant මාදිලිය සහ Key එක ස්වයංක්‍රීයව Save වේ).'
+          ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Google Gemini API Key** එක (AIzaSy...) හෝ Groq Key එක ඇතුළත් කර **Test Connection** ඔබන්න.'
           : '';
         setMessages(prev => [
           ...prev,
