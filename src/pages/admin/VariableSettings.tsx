@@ -21,7 +21,7 @@ export const VariableSettings: React.FC = () => {
   // Groq credentials & model
   const [groqKey, setGroqKey] = useState('');
   const [showGroqKey, setShowGroqKey] = useState(false);
-  const [groqModel, setGroqModel] = useState('openai/gpt-oss-120b');
+  const [groqModel, setGroqModel] = useState('llama-3.3-70b-versatile');
   const [availableGroqModels, setAvailableGroqModels] = useState<string[]>([]);
 
   // OpenAI credentials & model
@@ -69,7 +69,11 @@ export const VariableSettings: React.FC = () => {
       if (settings.ai_provider) setProvider(settings.ai_provider as 'groq' | 'openai');
       if (settings.groq_api_key) setGroqKey(settings.groq_api_key);
       if (settings.groq_model) {
-        setGroqModel(settings.groq_model);
+        if (settings.groq_model.includes('gpt-oss')) {
+          setGroqModel('llama-3.3-70b-versatile');
+        } else {
+          setGroqModel(settings.groq_model);
+        }
       }
       if (settings.openai_api_key) setOpenAiKey(settings.openai_api_key);
       if (settings.openai_model) {
@@ -125,7 +129,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
         if (Array.isArray(data.models) && data.models.length > 0) {
           if (provider === 'groq') {
             setAvailableGroqModels(data.models);
-            if (!data.models.includes(groqModel) && data.recommendedModel) {
+            if ((groqModel.includes('gpt-oss') || !data.models.includes(groqModel)) && data.recommendedModel) {
               newGroqModel = data.recommendedModel;
               setGroqModel(data.recommendedModel);
             }
@@ -436,11 +440,11 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Option 1: OpenAI GPT OSS 120B (Active on Groq) */}
+                {/* Option 1: Meta Llama 3.3 70B (Primary Recommended) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'openai/gpt-oss-120b'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                    groqModel === 'llama-3.3-70b-versatile'
+                      ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
                 >
@@ -448,21 +452,21 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
                         <Cpu size={13} className="text-amber-500" />
-                        gpt-oss-120b
+                        llama-3.3-70b
                       </span>
                       <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-                        Active on Account
+                        100% Free · Top Pick
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      High-capacity 120B reasoning model hosted on Groq LPU. Excellent for ERP analytics and tools.
+                      Flagship Meta 70B. High token limits, 128k context, and best reasoning for live ERP database queries.
                     </p>
                   </div>
                   <input
                     type="radio"
                     name="groq_model"
-                    value="openai/gpt-oss-120b"
-                    checked={groqModel === 'openai/gpt-oss-120b'}
+                    value="llama-3.3-70b-versatile"
+                    checked={groqModel === 'llama-3.3-70b-versatile'}
                     onChange={e => {
                       setGroqModel(e.target.value);
                       updateSettings({ groq_model: e.target.value });
@@ -471,46 +475,11 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 2: OpenAI GPT OSS 20B (Fast) */}
-                <label
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'openai/gpt-oss-20b'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
-                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
-                        <Zap size={13} className="text-amber-500" />
-                        gpt-oss-20b
-                      </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        High Speed
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Compact 20B model for ultra-fast response times and low token consumption on Groq.
-                    </p>
-                  </div>
-                  <input
-                    type="radio"
-                    name="groq_model"
-                    value="openai/gpt-oss-20b"
-                    checked={groqModel === 'openai/gpt-oss-20b'}
-                    onChange={e => {
-                      setGroqModel(e.target.value);
-                      updateSettings({ groq_model: e.target.value });
-                    }}
-                    className="sr-only"
-                  />
-                </label>
-
-                {/* Option 3: Meta Llama 3.1 8B Instant */}
+                {/* Option 2: Meta Llama 3.1 8B Instant (Ultra Fast) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     groqModel === 'llama-3.1-8b-instant'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                      ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
                 >
@@ -518,14 +487,14 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
                         <Zap size={13} className="text-amber-500" />
-                        llama-3.1-8b-instant
+                        llama-3.1-8b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        Llama 8B
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                        Ultra Fast ~560 tps
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Meta 8B model (Note: requires Llama tier access enabled in your Groq organization).
+                      Sub-second response speed. Lightweight 8B model with high token throughput on Groq LPUs.
                     </p>
                   </div>
                   <input
@@ -541,11 +510,11 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 4: Meta Llama 3.3 70B */}
+                {/* Option 3: Mixtral 8x7B (MoE 32k) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'llama-3.3-70b-versatile'
-                      ? 'bg-amber-500/10 border-amber-500 shadow-sm shadow-amber-500/20'
+                    groqModel === 'mixtral-8x7b-32768'
+                      ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
                 >
@@ -553,21 +522,56 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
                         <Cpu size={13} className="text-amber-500" />
-                        llama-3.3-70b
+                        mixtral-8x7b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-surface2 text-secondary border border-theme-subtle">
-                        70B Tier
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                        32k Context
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Flagship 70B model (requires 70B tier access on Groq).
+                      Mistral 8x7B Mixture of Experts. Universally enabled on all Groq accounts with generous limits.
                     </p>
                   </div>
                   <input
                     type="radio"
                     name="groq_model"
-                    value="llama-3.3-70b-versatile"
-                    checked={groqModel === 'llama-3.3-70b-versatile'}
+                    value="mixtral-8x7b-32768"
+                    checked={groqModel === 'mixtral-8x7b-32768'}
+                    onChange={e => {
+                      setGroqModel(e.target.value);
+                      updateSettings({ groq_model: e.target.value });
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 4: OpenAI GPT OSS 120B (Preview) */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    groqModel === 'openai/gpt-oss-120b'
+                      ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Cpu size={13} className="text-amber-500" />
+                        gpt-oss-120b
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                        Preview (8k TPM)
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      Community preview model. Note: restricted to 8,000 tokens/min limit on Groq free tier.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="groq_model"
+                    value="openai/gpt-oss-120b"
+                    checked={groqModel === 'openai/gpt-oss-120b'}
                     onChange={e => {
                       setGroqModel(e.target.value);
                       updateSettings({ groq_model: e.target.value });

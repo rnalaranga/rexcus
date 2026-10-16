@@ -908,7 +908,7 @@ async function runDatabaseSync() {
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
     "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini') ON DUPLICATE KEY UPDATE val=VALUES(val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'groq')",
-    "INSERT IGNORE INTO settings (id, val) VALUES ('groq_model', 'openai/gpt-oss-120b')",
+    "INSERT INTO settings (id, val) VALUES ('groq_model', 'llama-3.3-70b-versatile') ON DUPLICATE KEY UPDATE val=IF(val LIKE '%gpt-oss%', 'llama-3.3-70b-versatile', val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('openai_system_instructions', 'You are Rex AI, an advanced intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, machining, and fabrication manufacturing company. You assist the team by answering queries in fluent Sinhala, Singlish, or English. You have full read-only access to all modules: Purchasing, Inventory & Stock, Work Orders & Machine Operations, Customers & Invoices, Quotations, and Finance/Accounts. Use the provided tools or execute_custom_erp_query to query real ERP data accurately. Always format currency as LKR (Rs.) and provide concise, helpful answers.')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
@@ -922,9 +922,9 @@ async function runDatabaseSync() {
     } catch (err) {}
   }
 
-  // Auto-migrate groq_model if null or empty (preserves user chosen models like gpt-oss or llama)
+  // Auto-migrate groq_model: replace gpt-oss (which has strict 8k TPM limits) or empty values with production llama-3.3-70b-versatile
   try {
-    await db.query("UPDATE settings SET val = 'openai/gpt-oss-120b' WHERE id = 'groq_model' AND (val IS NULL OR val = '')");
+    await db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model' AND (val LIKE '%gpt-oss%' OR val IS NULL OR val = '')");
     await db.query("UPDATE settings SET val = 'gpt-4o-mini' WHERE id = 'openai_model' AND (val LIKE '%luna%' OR val IS NULL OR val = '')");
   } catch (err) {}
 
@@ -5957,7 +5957,7 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
  * Helper to normalize common shorthand model names entered by users (e.g. 8b, 70b)
  */
 function normalizeModelName(modelName: string, isGroq: boolean): string {
-  if (!modelName) return isGroq ? 'openai/gpt-oss-120b' : 'gpt-4o-mini';
+  if (!modelName) return isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
   const m = modelName.trim().toLowerCase();
   if (isGroq) {
     if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
@@ -5988,12 +5988,13 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
 
   if (candidates.length === 0) {
     if (isGroq) {
+      if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
+      if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
+      if (!isFailed('mixtral-8x7b-32768')) return 'mixtral-8x7b-32768';
+      if (!isFailed('qwen/qwen3.8-27b')) return 'qwen/qwen3.8-27b';
       if (!isFailed('openai/gpt-oss-120b')) return 'openai/gpt-oss-120b';
       if (!isFailed('openai/gpt-oss-20b')) return 'openai/gpt-oss-20b';
-      if (!isFailed('qwen/qwen3.8-27b')) return 'qwen/qwen3.8-27b';
-      if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
-      if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
-      return 'openai/gpt-oss-120b';
+      return 'llama-3.3-70b-versatile';
     } else {
       if (!isFailed('gpt-4o-mini')) return 'gpt-4o-mini';
       if (!isFailed('gpt-4o')) return 'gpt-4o';
@@ -6002,51 +6003,51 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
   }
 
   if (isGroq) {
-    // 1. OpenAI GPT-OSS 120B (High reasoning, active on user's Groq account)
-    const gptOss120 = candidates.find(m => m.includes('gpt-oss-120b'));
-    if (gptOss120) return gptOss120;
-
-    // 2. OpenAI GPT-OSS 20B (Fast, high-efficiency)
-    const gptOss20 = candidates.find(m => m.includes('gpt-oss-20b') || m.includes('gpt-oss'));
-    if (gptOss20) return gptOss20;
-
-    // 3. Qwen 27B
-    const qwen = candidates.find(m => m.toLowerCase().includes('qwen'));
-    if (qwen) return qwen;
-
-    // 4. Meta Llama 3.1 8B instant (if account has Llama access)
-    const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
-    if (llama8b) return llama8b;
-
-    // 5. Meta Llama 3.3 70B
+    // 1. Meta Llama 3.3 70B (Primary recommended production model - 128k context, high token limits, best reasoning & ERP tool calling)
     const llama33_70b = candidates.find(m => m.includes('llama-3.3-70b'));
     if (llama33_70b) return llama33_70b;
 
-    // 6. Meta Llama 3.1 70B
-    const llama31_70b = candidates.find(m => m.includes('llama-3.1-70b') && !m.includes('instant'));
-    if (llama31_70b) return llama31_70b;
+    // 2. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, high token limits)
+    const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
+    if (llama8b) return llama8b;
 
-    // 7. Mixtral
+    // 3. Mixtral 8x7B (High context 32k, high limits, universal Groq availability)
     const mixtral = candidates.find(m => m.toLowerCase().includes('mixtral'));
     if (mixtral) return mixtral;
 
-    // 8. Gemma
+    // 4. Meta Llama 3.1 70B
+    const llama31_70b = candidates.find(m => m.includes('llama-3.1-70b') && !m.includes('instant'));
+    if (llama31_70b) return llama31_70b;
+
+    // 5. Any other Meta Llama chat model (excluding guard/vision)
+    const anyLlama = candidates.find(m => m.toLowerCase().includes('llama') && !m.includes('guard'));
+    if (anyLlama) return anyLlama;
+
+    // 6. Gemma
     const gemma = candidates.find(m => m.toLowerCase().includes('gemma'));
     if (gemma) return gemma;
 
-    // 9. Allam
+    // 7. Qwen
+    const qwen = candidates.find(m => m.toLowerCase().includes('qwen'));
+    if (qwen) return qwen;
+
+    // 8. Allam
     const allam = candidates.find(m => m.toLowerCase().includes('allam'));
     if (allam) return allam;
 
-    // 10. Any other Llama model
-    const anyLlama = candidates.find(m => m.toLowerCase().includes('llama') && !m.includes('guard'));
-    if (anyLlama) return anyLlama;
+    // 9. OpenAI GPT-OSS 120B (Last resort - strict 8k TPM preview limit)
+    const gptOss120 = candidates.find(m => m.includes('gpt-oss-120b'));
+    if (gptOss120) return gptOss120;
+
+    // 10. OpenAI GPT-OSS 20B (Last resort - strict 8k TPM preview limit)
+    const gptOss20 = candidates.find(m => m.includes('gpt-oss-20b') || m.includes('gpt-oss'));
+    if (gptOss20) return gptOss20;
 
     // 11. Any non-guard/non-whisper model
     const anyChat = candidates.find(m => !m.includes('guard') && !m.includes('whisper') && !m.includes('embedding') && !m.includes('tts'));
     if (anyChat) return anyChat;
 
-    return candidates[0] || 'openai/gpt-oss-120b';
+    return candidates[0] || 'llama-3.3-70b-versatile';
   } else {
     // Priority order for OpenAI models:
     const gpt4oMini = candidates.find(m => m === 'gpt-4o-mini' || m.includes('gpt-4o-mini'));
@@ -6211,10 +6212,17 @@ app.post('/api/ai/chat', async (req, res) => {
 
     let activeModelName = normalizeModelName(
       isGroq
-        ? (settingsMap.groq_model || 'openai/gpt-oss-120b').trim()
+        ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
         : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
       isGroq
     );
+
+    // If active model in DB was set to a rate-limited gpt-oss model, auto-promote to llama-3.3-70b-versatile
+    if (isGroq && activeModelName.includes('gpt-oss')) {
+      console.log(`[Rex AI Chat] Sanitizing legacy model '${activeModelName}' -> 'llama-3.3-70b-versatile'`);
+      activeModelName = 'llama-3.3-70b-versatile';
+      db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+    }
 
     if (!isGroq && (activeModelName.includes('luna') || !activeModelName)) {
       activeModelName = 'gpt-4o-mini';
@@ -6283,23 +6291,37 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       if (isRateLimited) {
         console.warn(`[Rex AI Engine] Rate limit encountered on '${activeModelName}' (${errMsg}).`);
         failedModelsList.push(activeModelName);
-        const waitMatch = errMsg.match(/try again in ([0-9.]+)\s*s/i);
-        const waitSecs = waitMatch ? parseFloat(waitMatch[1]) : 2;
-        if (waitSecs <= 6) {
-          console.log(`[Rex AI Engine] Waiting ${waitSecs}s for rate limit reset...`);
-          await new Promise(r => setTimeout(r, Math.ceil(waitSecs * 1000) + 300));
-          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
-        }
 
-        // If still failing after wait or wait was too long, query live models for available alternative
-        if (!aiRes.ok) {
-          console.log(`[Rex AI Engine] Looking for alternative model due to rate limit...`);
+        // If current model is a low-TPM model (like gpt-oss), immediately switch to a high-capacity model
+        if (activeModelName.includes('gpt-oss')) {
+          console.log(`[Rex AI Engine] Model '${activeModelName}' has strict 8k TPM limit. Auto-migrating to high-capacity model...`);
           const liveModels = await fetchProviderModels(provider, apiKey);
           const resolvedModel = selectBestModel(liveModels, isGroq, failedModelsList);
           if (resolvedModel && resolvedModel !== activeModelName) {
-            console.log(`[Rex AI Engine] Auto-switching from rate-limited model '${activeModelName}' to available alternative '${resolvedModel}'...`);
             activeModelName = resolvedModel;
+            db.query("UPDATE settings SET val = ? WHERE id = 'groq_model'", [activeModelName]).catch(() => {});
             aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          }
+        } else {
+          const waitMatch = errMsg.match(/try again in ([0-9.]+)\s*s/i);
+          const waitSecs = waitMatch ? parseFloat(waitMatch[1]) : 2;
+          if (waitSecs <= 4) {
+            console.log(`[Rex AI Engine] Waiting ${waitSecs}s for rate limit reset...`);
+            await new Promise(r => setTimeout(r, Math.ceil(waitSecs * 1000) + 300));
+            aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          }
+
+          // If still failing after wait, query live models for available alternative
+          if (!aiRes.ok) {
+            console.log(`[Rex AI Engine] Looking for alternative model due to rate limit...`);
+            const liveModels = await fetchProviderModels(provider, apiKey);
+            const resolvedModel = selectBestModel(liveModels, isGroq, failedModelsList);
+            if (resolvedModel && resolvedModel !== activeModelName) {
+              console.log(`[Rex AI Engine] Auto-switching from rate-limited model '${activeModelName}' to available alternative '${resolvedModel}'...`);
+              activeModelName = resolvedModel;
+              db.query("UPDATE settings SET val = ? WHERE id = 'groq_model'", [activeModelName]).catch(() => {});
+              aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+            }
           }
         }
       }
@@ -6391,23 +6413,17 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
         // Check for rate limit during tool follow-up synthesis
         if (followUpRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tokens per minute') || errMsg.includes('tpm')) {
           console.warn(`[Rex AI] Rate limit on follow-up turn (${errMsg}).`);
-          const waitMatch = errMsg.match(/try again in ([0-9.]+)\s*s/i);
-          const waitSecs = waitMatch ? parseFloat(waitMatch[1]) : 2;
-          if (waitSecs <= 6) {
-            await new Promise(r => setTimeout(r, Math.ceil(waitSecs * 1000) + 300));
+          const liveModels = await fetchProviderModels(provider, apiKey);
+          const resolvedModel = selectBestModel(liveModels, isGroq, [activeModelName]);
+          if (resolvedModel && resolvedModel !== activeModelName) {
+            console.log(`[Rex AI Engine] Auto-switching follow-up from '${activeModelName}' to '${resolvedModel}'...`);
+            activeModelName = resolvedModel;
+            db.query("UPDATE settings SET val = ? WHERE id = 'groq_model'", [activeModelName]).catch(() => {});
             followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
-          } else {
-            const liveModels = await fetchProviderModels(provider, apiKey);
-            const resolvedModel = selectBestModel(liveModels, isGroq, [activeModelName]);
-            if (resolvedModel && resolvedModel !== activeModelName) {
-              console.log(`[Rex AI Engine] Auto-switching follow-up from '${activeModelName}' to '${resolvedModel}'...`);
-              activeModelName = resolvedModel;
-              followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
-            }
           }
         }
 
-        // If Groq complains about tool_choice or tool use, retry gracefully
+        // If Groq complains about tool_choice or tool use, retry gracefully without tool constraint
         if (!followUpRes.ok) {
           errJson = await followUpRes.json().catch(() => errJson);
           errMsg = (errJson.error?.message || '').toLowerCase();
@@ -6417,7 +6433,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
               role: 'user',
               content: 'Please summarize and explain the retrieved data directly to the user in fluent Sinhala/English based on the tool results above.'
             });
-            followUpRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+            followUpRes = await callCompletion(activeModelName, conversation);
           }
         }
 
@@ -6499,10 +6515,14 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
 
     let activeModelName = normalizeModelName(
       isGroq
-        ? (settingsMap.groq_model || 'openai/gpt-oss-120b').trim()
+        ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
         : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
       isGroq
     );
+
+    if (isGroq && activeModelName.includes('gpt-oss')) {
+      activeModelName = 'llama-3.3-70b-versatile';
+    }
 
     const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
 
@@ -6620,7 +6640,7 @@ Requirements:
     const map = rows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
     const prov = map.ai_provider || 'groq';
     const key = (prov === 'groq' ? map.groq_api_key : map.openai_api_key) || map.groq_api_key || map.openai_api_key || '';
-    const activeModel = prov === 'groq' ? (map.groq_model || 'openai/gpt-oss-120b') : (map.openai_model || 'gpt-4o-mini');
+    const activeModel = prov === 'groq' ? (map.groq_model || 'llama-3.3-70b-versatile') : (map.openai_model || 'gpt-4o-mini');
     console.log(`[Rex AI] Provider: ${prov} | Model: ${activeModel} | Key: ${key ? key.slice(0, 7) + '...' : 'Not configured'}`);
   } catch(e: any) {
     console.error('[Rex AI] Diagnostic error:', e.message);
