@@ -1,7 +1,19 @@
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+
+// Multi-path dotenv loader for local & VPS environments
+const envPaths = [
+  path.join(__dirname, '.env'),
+  path.join(__dirname, '../.env'),
+  path.join(process.cwd(), '.env'),
+  path.join(process.cwd(), 'api/.env')
+];
+for (const p of envPaths) {
+  if (fs.existsSync(p)) {
+    require('dotenv').config({ path: p });
+  }
+}
 
 async function run() {
   console.log('--- Starting REX ERP Database Structure Fix & Sync ---');
@@ -536,6 +548,51 @@ async function run() {
       await conn.query(seed);
     } catch (err) {
       // Ignore
+    }
+  }
+
+  // 4.1 Sync AI Settings & Groq API Key from .env or DB
+  const envGroqKey = (process.env.GROQ_API_KEY || '').trim();
+  const [existingSettings] = await conn.query("SELECT id, val FROM settings WHERE id IN ('groq_api_key', 'groq_model', 'ai_provider')");
+  const settingsMap = (existingSettings || []).reduce((acc, r) => ({ ...acc, [r.id]: r.val }), {});
+
+  let activeGroqKey = envGroqKey || settingsMap.groq_api_key || '';
+  if (envGroqKey && envGroqKey !== settingsMap.groq_api_key) {
+    await conn.query("INSERT INTO settings (id, val) VALUES ('groq_api_key', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [envGroqKey]);
+    console.log('[fix_db] Synced GROQ_API_KEY from .env into settings table.');
+  }
+
+  // Live test key with Groq to identify exact available models
+  let chosenModel = settingsMap.groq_model || 'llama-3.1-8b-instant';
+  if (activeGroqKey) {
+    try {
+      console.log(`[fix_db] 🔍 Testing Groq API Key (${activeGroqKey.slice(0, 8)}...)...`);
+      const testRes = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { 'Authorization': `Bearer ${activeGroqKey}` }
+      });
+      if (testRes.ok) {
+        const testData = await testRes.json();
+        const availableIds = (testData.data || []).map(m => m.id);
+        console.log(`[fix_db] ✅ Groq API Key verified! (${availableIds.length} models accessible on this account)`);
+        console.log(`[fix_db] 📋 Accessible models: ${availableIds.slice(0, 8).join(', ')}${availableIds.length > 8 ? '...' : ''}`);
+
+        const priorityCandidates = [
+          'llama-3.1-8b-instant',
+          'llama-3.3-70b-versatile',
+          'llama-3.1-70b-versatile',
+          'openai/gpt-oss-120b',
+          'openai/gpt-oss-20b'
+        ];
+        const match = priorityCandidates.find(p => availableIds.includes(p)) || availableIds.find(id => !id.includes('whisper') && !id.includes('guard')) || 'llama-3.1-8b-instant';
+        chosenModel = match;
+        console.log(`[fix_db] 🎯 Auto-configured best live model for this account: '${chosenModel}'`);
+        await conn.query("INSERT INTO settings (id, val) VALUES ('groq_model', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [chosenModel]);
+      } else {
+        const errData = await testRes.json().catch(() => ({}));
+        console.warn(`[fix_db] ⚠️ Groq API Key test returned HTTP ${testRes.status}:`, errData.error?.message || 'Unauthorized / Invalid Key');
+      }
+    } catch (e) {
+      console.warn(`[fix_db] ⚠️ Could not connect to Groq API:`, e.message);
     }
   }
 

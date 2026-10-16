@@ -1,11 +1,22 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from './db';
 
-dotenv.config();
+// Multi-path dotenv loader for local & VPS production environments
+[
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'api/.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(__dirname, '.env')
+].forEach(p => {
+  if (fs.existsSync(p)) dotenv.config({ path: p });
+});
 
 const app = express();
 app.use(cors());
@@ -6227,18 +6238,9 @@ app.post('/api/ai/chat', async (req, res) => {
       isGroq
     );
 
-    // For Groq, proactively ensure activeModelName is a tool-supported model
-    if (isGroq) {
-      const isKnownToolModel = 
-        activeModelName.includes('llama-3.1-8b') || 
-        activeModelName.includes('llama-3.3-70b') || 
-        activeModelName.includes('llama-3.1-70b') || 
-        activeModelName.includes('tool-use');
-      if (!isKnownToolModel) {
-        console.log(`[Rex AI Chat] Sanitizing non-tool model '${activeModelName}' -> 'llama-3.1-8b-instant'`);
-        activeModelName = 'llama-3.1-8b-instant';
-        db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
-      }
+    if (!isGroq && (activeModelName.includes('luna') || !activeModelName)) {
+      activeModelName = 'gpt-4o-mini';
+      db.query("UPDATE settings SET val = 'gpt-4o-mini' WHERE id = 'openai_model'").catch(() => {});
     }
 
     if (!isGroq && (activeModelName.includes('luna') || !activeModelName)) {
@@ -6370,11 +6372,11 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
             [isGroq ? 'groq_model' : 'openai_model', activeModelName, activeModelName]
           ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
 
-          // If still failing and model wasn't llama-3.1-8b-instant, try llama-3.1-8b-instant explicitly
-          if (!aiRes.ok && isGroq && activeModelName !== 'llama-3.1-8b-instant') {
-            activeModelName = 'llama-3.1-8b-instant';
-            db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
-            aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+
+          // If tool call fails with this resolved model, retry without tools
+          if (!aiRes.ok) {
+            aiRes = await callCompletion(activeModelName, conversation);
           }
         }
       }
@@ -6389,36 +6391,26 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
           errMsg.includes('tools are not supported');
 
         if (isToolUnsupported) {
-          failedModelsList.push(activeModelName);
-          console.warn(`[Rex AI Engine] Model '${activeModelName}' does not support tools (${errMsg}). Auto-migrating to 'llama-3.1-8b-instant'...`);
-          activeModelName = 'llama-3.1-8b-instant';
-          db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
-          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
-
-          // If tools still fail, retry WITHOUT tools so user ALWAYS gets a successful answer
-          if (!aiRes.ok) {
-            console.warn(`[Rex AI Engine] Model tools failed. Retrying without tools...`);
-            aiRes = await callCompletion(activeModelName, conversation);
-          }
+          console.warn(`[Rex AI Engine] Model '${activeModelName}' does not support tools (${errMsg}). Retrying without tools...`);
+          aiRes = await callCompletion(activeModelName, conversation);
         }
       }
 
       // Safe conversational fallback without tools if tool calls failed
-      if (!aiRes.ok && isGroq) {
-        console.warn(`[Rex AI Engine] Retrying with llama-3.1-8b-instant without tools as safe conversational fallback...`);
-        activeModelName = 'llama-3.1-8b-instant';
+      if (!aiRes.ok) {
+        console.warn(`[Rex AI Engine] Retrying with model '${activeModelName}' without tools as safe conversational fallback...`);
         aiRes = await callCompletion(activeModelName, conversation);
       }
 
       if (!aiRes.ok) {
         const fallbackErr: any = await aiRes.json().catch(() => errJson);
         console.error(`${provider} AI Error:`, fallbackErr);
-        const rawErr = fallbackErr.error?.message || `${provider} API request failed`;
+        const rawErr = fallbackErr.error?.message || fallbackErr.message || `${provider} API request failed`;
         let userFriendlyMsg = rawErr;
         if (rawErr.toLowerCase().includes('does not exist') || rawErr.toLowerCase().includes('not have access')) {
-          userFriendlyMsg = `Groq API Key හෝ Model access දෝෂයකි ('${activeModelName}'). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබේ Groq API Key එක (gsk_...) ඇතුළත් කර 'Test Connection' ඔබා Live Verified Models වලින් එකක් තෝරා Save කරන්න.`;
+          userFriendlyMsg = `Groq Cloud Model Access Error ('${activeModelName}'): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ Groq Cloud API Key එක (gsk_...) ඇතුළත් කර 'Test Connection' ඔබා Verified Models වලින් එකක් තෝරා Save කරන්න.`;
         } else if (rawErr.toLowerCase().includes('invalid api key') || rawErr.toLowerCase().includes('unauthorized') || aiRes.status === 401) {
-          userFriendlyMsg = `Groq API Key එක වලංගු නැත (Invalid API Key). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබේ නිවැරදි Groq Cloud API Key එක (gsk_...) ඇතුළත් කර Test Connection ඔබන්න.`;
+          userFriendlyMsg = `Groq Cloud API Key එක වලංගු නැත (Invalid API Key): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ නිවැරදි Groq Cloud API Key එක (gsk_...) ඇතුළත් කර Save කරන්න.`;
         }
         return res.status(aiRes.status || 500).json({
           success: false,
