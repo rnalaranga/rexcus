@@ -5758,13 +5758,13 @@ const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_item_purchase_prices",
-      description: "Searches inventory items and historical purchase orders to find standard purchase price (unitCost), selling price, quantity, and actual past purchase rates paid to suppliers with supplier names and dates.",
+      description: "Searches inventory items, linked suppliers in inventory, and historical purchase orders to find standard purchase price (unitCost), selling price, quantity, linked suppliers, and past purchase rates paid to suppliers. Also returns registered system suppliers.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Item name, material, plate, shaft, fastener, or SKU to search for, e.g. 'EN8', 'Hydraulic Cylinder', 'Bearing 205', 'MS Plate'"
+            description: "Item name, material, plate, shaft, fastener, or SKU to search for, e.g. 'EN8', 'Hydraulic Cylinder', 'Bearing 205', 'MS Plate', 'Sample Item'"
           }
         },
         required: ["query"]
@@ -5815,13 +5815,13 @@ const AI_TOOLS = [
     type: "function",
     function: {
       name: "get_supplier_history",
-      description: "Retrieves supplier contacts, payment terms, and past purchase order records.",
+      description: "Retrieves all registered suppliers in Rex ERP, their contact persons, phone numbers, emails, addresses, payment terms, and past purchase order records. Can be called with or without a supplierName filter.",
       parameters: {
         type: "object",
         properties: {
           supplierName: {
             type: "string",
-            description: "Optional supplier name or contact person"
+            description: "Optional supplier name or contact person. If omitted, returns all registered suppliers."
           }
         }
       }
@@ -5957,12 +5957,29 @@ async function executeAITool(name: string, args: any) {
       const rawQ = (args.query || '').trim();
       const q = `%${rawQ}%`;
       const [inv]: any = await db.query(
-        `SELECT id, name, sku, unitCost as standardPurchasePrice, unitPrice as sellingPrice, quantity, uom, location, category
+        `SELECT id, name, sku, unitCost as standardPurchasePrice, unitPrice as sellingPrice, quantity, uom, location, category, suppliers
          FROM inventory 
          WHERE name LIKE ? OR sku LIKE ? OR category LIKE ? 
          ORDER BY (name = ?) DESC LIMIT 8`,
         [q, q, q, rawQ]
       );
+
+      const parsedInv = (inv || []).map((item: any) => {
+        let linkedSuppliers: string[] = [];
+        if (item.suppliers) {
+          try {
+            linkedSuppliers = typeof item.suppliers === 'string' ? JSON.parse(item.suppliers) : item.suppliers;
+            if (!Array.isArray(linkedSuppliers)) linkedSuppliers = [String(linkedSuppliers)];
+          } catch (e) {
+            linkedSuppliers = [String(item.suppliers)];
+          }
+        }
+        return {
+          ...item,
+          linkedSuppliers
+        };
+      });
+
       const [pos]: any = await db.query(
         `SELECT poi.material, poi.qty, poi.unitCost as actualPurchaseRate, poi.notes,
                 po.id as poNumber, s.name as supplierName, s.phone as supplierPhone,
@@ -5974,10 +5991,17 @@ async function executeAITool(name: string, args: any) {
          ORDER BY po.date DESC LIMIT 8`,
         [q, q]
       );
+
+      // Also retrieve all active registered suppliers in the ERP for complete context
+      const [allSuppliers]: any = await db.query(
+        `SELECT id, name, contactPerson, contactName, phone, email, paymentTerms FROM suppliers ORDER BY name ASC LIMIT 30`
+      );
+
       return {
         searchedQuery: rawQ,
-        matchedInventory: inv,
-        historicalPurchasesFromSuppliers: pos
+        matchedInventory: parsedInv,
+        historicalPurchasesFromSuppliers: pos,
+        allRegisteredSuppliersInERP: allSuppliers
       };
     } else if (name === "check_inventory_stock") {
       let sql = `SELECT id, name, sku, quantity, uom, location, category, unitCost, unitPrice as sellingPrice, 
@@ -6030,7 +6054,7 @@ async function executeAITool(name: string, args: any) {
         unpaidInvoices: invoices
       };
     } else if (name === "get_supplier_history") {
-      let sql = `SELECT s.id, s.name, s.contactPerson, s.phone, s.email, s.paymentTerms,
+      let sql = `SELECT s.id, s.name, s.contactPerson, s.contactName, s.phone, s.email, s.paymentTerms,
                         po.id as poId, po.date as orderDate, po.totalAmount, po.status as poStatus
                  FROM suppliers s
                  LEFT JOIN purchase_orders po ON s.id = po.supplierId
@@ -6038,12 +6062,20 @@ async function executeAITool(name: string, args: any) {
       const params: any[] = [];
       if (args.supplierName && args.supplierName.trim()) {
         const q = `%${args.supplierName.trim()}%`;
-        sql += `AND (s.name LIKE ? OR s.contactPerson LIKE ?) `;
-        params.push(q, q);
+        sql += `AND (s.name LIKE ? OR s.contactPerson LIKE ? OR s.contactName LIKE ?) `;
+        params.push(q, q, q);
       }
-      sql += `ORDER BY po.date DESC LIMIT 15`;
-      const [suppliers]: any = await db.query(sql, params);
-      return { suppliers };
+      sql += `ORDER BY s.name ASC, po.date DESC LIMIT 25`;
+      const [suppliersWithPOs]: any = await db.query(sql, params);
+
+      const [allRegisteredSuppliers]: any = await db.query(
+        `SELECT id, name, contactPerson, contactName, phone, email, address, paymentTerms FROM suppliers ORDER BY name ASC LIMIT 50`
+      );
+
+      return { 
+        suppliersWithPurchaseOrders: suppliersWithPOs,
+        allRegisteredSuppliers
+      };
     } else if (name === "get_quotations_overview") {
       let sql = `SELECT q.id, q.leadId, q.totalAmount, q.status, q.approvedBy, q.approvedAt, q.date,
                         c.name as customerName, c.company as customerCompany
@@ -6153,7 +6185,7 @@ async function executeAITool(name: string, args: any) {
       return {
         databaseName: "rex_erp",
         tables: {
-          inventory: ["id", "name", "sku", "category", "unitCost (purchase price)", "unitPrice (selling price)", "quantity (stock)", "uom", "location", "reorderLevel", "minQty", "boms"],
+          inventory: ["id", "name", "sku", "category", "unitCost (purchase price)", "unitPrice (selling price)", "quantity (stock)", "uom", "location", "reorderLevel", "suppliers (JSON array of linked supplier names/IDs)", "minQty", "boms"],
           quotations: ["id", "quotationNo", "leadId", "date", "totalAmount", "status (Draft/Pending Approval/Approved/Sent/Rejected)", "approvedBy", "approvedAt", "rejectionReason"],
           customers: ["id", "name", "company", "phone", "email", "address", "creditLimit", "creditDays", "status"],
           invoices: ["id", "invoiceNo", "customerId", "date", "dueDate", "total", "subtotal", "taxAmount", "paidAmount", "status (unpaid/partially_paid/paid)"],
@@ -6631,8 +6663,8 @@ app.post('/api/ai/chat', async (req, res) => {
       `You are Rex AI, an advanced, highly intelligent ERP assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
 You answer questions in the language the user speaks (fluent Sinhala, Singlish, or English).
 You have complete, live read-only access to the entire Rex ERP database across all modules:
-- Purchasing: Supplier rates, past purchase prices, Purchase Orders, Material Requests, GRNs, and Bills
-- Inventory: Standard Purchase Cost (unitCost), Selling Prices (unitPrice), Physical Stock, Low Stock alerts, Storage Locations, and BOMs
+- Purchasing & Suppliers: All registered vendors in 'suppliers' (name, contactPerson, phone, email, paymentTerms), past Purchase Orders ('purchase_orders' & 'po_items'), Material Requests, GRNs, and Bills
+- Inventory: Standard Purchase Cost (unitCost), Selling Prices (unitPrice), Physical Stock, Low Stock alerts, Storage Locations, BOMs, and Linked Suppliers ('inventory.suppliers' JSON array)
 - Production & Shop Floor: Work Orders, Job card status, Operations routing, Planned hours, CNC/Lathe/Milling Machine schedules, and Assigned operators
 - CRM & Sales: Customers, Credit limits, Outstanding Dues, Overdue Invoices, Quotations, and Approval statuses
 - Finance & Accounting: Bank Balances, Cash in Hand, Chart of Accounts, Revenues, Expenses, and Journal entries
@@ -6644,7 +6676,8 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 CRITICAL RULES FOR REASONING AND TOOL CALLS:
 1. You HAVE real-time read-only live database access. NEVER say "If I were connected to the live database" or "As an AI I cannot check real-time data".
 2. NEVER output raw SQL queries (like 'SELECT ...') directly to the user as text! When you need database data, you MUST call 'execute_custom_erp_query' or the specialized tool function.
-3. Provide ONLY your final, professional answer to the user in fluent Sinhala/Singlish or English. Never output internal thought processes, planning notes, translation steps, or scratchpad text.`;
+3. Provide ONLY your final, professional answer to the user in fluent Sinhala/Singlish or English. Never output internal thought processes, planning notes, translation steps, or scratchpad text.
+4. When asked about suppliers for an item, check both 'linkedSuppliers' in the item's inventory record, past purchase orders ('historicalPurchasesFromSuppliers'), and the registered suppliers master list ('allRegisteredSuppliersInERP'). If an item does not have a specific supplier linked yet, explain that the item itself hasn't been assigned a supplier yet, but list the registered suppliers available in the ERP so the user has full clarity.`;
 
     const systemMessage = {
       role: 'system',
