@@ -6055,6 +6055,146 @@ function cleanCustomerSearchTerm(raw: string): string {
     .trim();
 }
 
+function isRawSql(text: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim().replace(/^```(?:sql)?/i, '').replace(/```$/i, '').trim();
+  if (/^SELECT\s+[\s\S]+\s+FROM\s+/i.test(trimmed)) return true;
+  if (/^\s*WITH\s+[\s\S]+\s+SELECT\s+[\s\S]+\s+FROM\s+/i.test(trimmed)) return true;
+  if (/^\s*SHOW\s+(TABLES|COLUMNS|DATABASES)/i.test(trimmed)) return true;
+  if (/^\s*DESCRIBE\s+\w+/i.test(trimmed)) return true;
+  const sqlMatch = trimmed.match(/\bSELECT\s+[\s\S]+?\bFROM\b[\s\S]+?(?:;|$)/i);
+  if (sqlMatch && trimmed.length < 350) return true;
+  return false;
+}
+
+function isEnglishPrompt(text: string): boolean {
+  if (!text) return true;
+  const hasSinhalaScript = /[\u0D80-\u0DFF]/.test(text);
+  if (hasSinhalaScript) return false;
+  const lower = text.toLowerCase();
+  const singlishMarkers = ['kiyada', 'gana', 'ganan', 'thiyenawa', 'thiyeda', 'pennanna', 'karanna', 'meke', 'machan', 'kohomada', 'dapan', 'one', 'monawada', 'danata', 'mokakda'];
+  const isSinglish = singlishMarkers.some(m => new RegExp(`\\b${m}\\b`, 'i').test(lower));
+  return !isSinglish;
+}
+
+function hasTokenRepetitionLoop(text: string): boolean {
+  if (!text || text.length < 25) return false;
+  // 1. Single word or token repeated 4+ times consecutively
+  if (/\b(\S+)(?:\s+\1){3,}\b/u.test(text)) return true;
+  // 2. Multi-word or phrase repeated 3+ times consecutively
+  if (/(\b.{3,25}\b)(?:\s*\1){2,}/u.test(text)) return true;
+  // 3. Any 2-15 character sequence repeating 4+ times consecutively without spaces
+  if (/(.{2,15}?)\1{3,}/u.test(text)) return true;
+  // 4. Token frequency ratio check
+  const words = text.split(/\s+/).filter(w => w.length > 1);
+  if (words.length > 15) {
+    const counts: Record<string, number> = {};
+    for (const w of words) {
+      counts[w] = (counts[w] || 0) + 1;
+      if (counts[w] > 6 && (counts[w] / words.length) > 0.3) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isSchemaDump(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return (
+    (lower.includes('erp database schema') || lower.includes('database schema') || (lower.includes('table') && lower.includes('key columns'))) &&
+    (lower.includes('inventory') || lower.includes('quotations') || lower.includes('invoices') || lower.includes('key takeaways') || lower.includes('specific data from any table'))
+  );
+}
+
+function formatDbResultsAsMarkdown(results: any[], isEnglish: boolean, userMsg?: string): string {
+  if (!Array.isArray(results) || results.length === 0) {
+    return isEnglish 
+      ? 'ℹ️ No matching records were found in Rex ERP. Please confirm the item name or SKU.'
+      : 'ℹ️ ඔබගේ විමසුමට අදාළ දත්ත Rex ERP පද්ධතිය තුළ හමු නොවීය. කරුණාකර Item Name එක හෝ SKU අංකය තහවුරු කරගන්න.';
+  }
+
+  const first = results[0];
+  const isInventory = first && (
+    first.unitPrice !== undefined || 
+    first.unitCost !== undefined || 
+    first.sellingPrice !== undefined || 
+    first.standardPurchasePrice !== undefined || 
+    first.sku !== undefined
+  );
+
+  if (isInventory) {
+    return results.slice(0, 5).map(item => {
+      const name = item.name || item.itemName || item.productName || 'Item';
+      const sku = item.sku ? `\`${item.sku}\`` : 'N/A';
+      const selling = Number(item.unitPrice ?? item.sellingPrice ?? 0);
+      const cost = Number(item.unitCost ?? item.standardPurchasePrice ?? 0);
+      const qty = item.quantity !== undefined ? item.quantity : (item.qty !== undefined ? item.qty : 0);
+      const uom = item.uom || 'units';
+      const loc = item.location || 'Store A';
+
+      let supList: string[] = [];
+      if (item.linkedSuppliers && Array.isArray(item.linkedSuppliers)) {
+        supList = item.linkedSuppliers;
+      } else if (item.suppliers) {
+        try {
+          const parsed = typeof item.suppliers === 'string' ? JSON.parse(item.suppliers) : item.suppliers;
+          supList = Array.isArray(parsed) ? parsed : [String(parsed)];
+        } catch {
+          supList = [String(item.suppliers)];
+        }
+      }
+      const supStr = supList.filter(Boolean).join(', ');
+
+      if (isEnglish) {
+        let card = `📦 **${name}** (SKU: ${sku})\n\n` +
+          `• **Selling Price:** Rs. ${selling.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n` +
+          `• **Purchase / Cost Price:** Rs. ${cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n` +
+          `• **Current Stock:** ${qty} ${uom}\n` +
+          `• **Storage Location:** ${loc}`;
+        if (supStr) {
+          card += `\n• **Linked Suppliers:** ${supStr}`;
+        }
+        return card;
+      } else {
+        let card = `📦 **${name}** (SKU: ${sku})\n\n` +
+          `• **විකුණුම් මිල (Selling Price):** Rs. ${selling.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n` +
+          `• **ගැනුම් / පිරිවැය මිල (Unit Cost):** Rs. ${cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n` +
+          `• **දැනට පවතින තොගය (Current Stock):** ${qty} ${uom}\n` +
+          `• **ගබඩා ස්ථානය (Location):** ${loc}`;
+        if (supStr) {
+          card += `\n• **සම්බන්ධිත සැපයුම්කරුවන් (Suppliers):** ${supStr}`;
+        }
+        return card;
+      }
+    }).join('\n\n---\n\n');
+  }
+
+  // Check if supplier records
+  const isSupplier = first && (first.contactPerson !== undefined || first.paymentTerms !== undefined || (first.phone !== undefined && first.creditLimit !== undefined));
+  if (isSupplier) {
+    return results.slice(0, 5).map(sup => {
+      const name = sup.name || 'Supplier';
+      const contact = sup.contactPerson || sup.contactName || 'N/A';
+      const phone = sup.phone || 'N/A';
+      const terms = sup.paymentTerms || 'Standard';
+      if (isEnglish) {
+        return `🏢 **${name}**\n• **Contact:** ${contact}\n• **Phone:** ${phone}\n• **Payment Terms:** ${terms}`;
+      } else {
+        return `🏢 **${name}**\n• **සම්බන්ධීකරණය:** ${contact}\n• **දුරකථන:** ${phone}\n• **ගෙවීම් කොන්දේසි:** ${terms}`;
+      }
+    }).join('\n\n---\n\n');
+  }
+
+  // Generic Markdown table
+  const keys = Object.keys(first).slice(0, 6);
+  const header = '| ' + keys.join(' | ') + ' |';
+  const sep = '| ' + keys.map(() => '---').join(' | ') + ' |';
+  const rows = results.slice(0, 10).map(r => '| ' + keys.map(k => String(r[k] ?? '')).join(' | ') + ' |').join('\n');
+  return header + '\n' + sep + '\n' + rows;
+}
+
 async function executeAITool(name: string, args: any) {
   try {
     if (name === "get_item_purchase_prices") {
@@ -6893,38 +7033,28 @@ app.post('/api/ai/chat', async (req, res) => {
     console.log(`[Rex AI Chat] Request initiated. Provider: ${provider}, Model: ${activeModelName}, Key: ${apiKey.slice(0, 6)}...`);
 
     const baseSystemPrompt = `You are Rex AI, the official, highly intelligent real-time ERP AI assistant for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision CNC machining, hydraulics, and metal fabrication company.
-You answer questions accurately in the exact language the user speaks.
-You have complete, live real-time read-only access to the entire Rex ERP database (MySQL):
-
-LIVE DATABASE TABLE STRUCTURE:
-- inventory: id, name, sku, category, unitCost (Purchase/Cost Price in Rs.), unitPrice (Selling Price in Rs.), quantity (physical warehouse stock), uom, location (rack/shelf/bin), reorderLevel, suppliers (JSON array of supplier names)
-- customers: id, name, company, phone, email, address, creditLimit, creditDays, status
-- invoices: id, invoiceNo, quotationNo, customerId, date, dueDate, total, subtotal, taxAmount, paidAmount, status ('unpaid', 'partially_paid', 'paid')
-- purchase_orders: id, supplierId, date, expectedDate, totalAmount, status ('draft', 'sent', 'received', 'cancelled')
-- po_items: id, poId, material, qty, unitCost, notes
-- suppliers: id, name, contactPerson, contactName, phone, email, address, paymentTerms, status
-- quotations: id, quotationNo, leadId, date, totalAmount, status ('Draft', 'Pending Approval', 'Approved', 'Sent', 'Rejected')
-- work_orders: id, orderNo, customer, productName, qty, status, priority, targetDeliveryDate, plannedStartDate
-- work_order_operations: id, workOrderId, operationName, stepNumber, machineId, employeeId, plannedHours, status
-- machineries: id, code, name, category, status, hourlyRate
-- employees: id, code, name, designation, department, phone, status
-- qc_inspections: id, workOrderId, inspectedBy, status ('Pass', 'Fail', 'Rework'), defectReason, notes
-- chart_of_accounts: id, code, name, type ('Asset', 'Liability', 'Equity', 'Revenue', 'Expense'), subtype ('Bank', 'Cash', ...), balance
+You assist managers, engineers, and factory staff by answering queries accurately in the exact language the user speaks.
 
 CRITICAL OPERATIONAL RULES:
-1. LIVE DATABASE ACCESS: You HAVE live database access through your function calling tools. NEVER say "If I were connected to the database" or "As an AI I cannot check real-time data". You MUST call the specialized tool (e.g. 'get_item_purchase_prices', 'check_inventory_stock', 'get_customer_finance_summary', 'get_supplier_history', etc.) or 'execute_custom_erp_query'.
-2. ITEM PRICES & VALUES: In Rex ERP, items have TWO prices:
-   • Selling Price (විකුණුම් මිල): 'unitPrice' (or 'sellingPrice') - Price charged to customers
-   • Purchase / Cost Price (ගැනුම් මිල / පිරිවැය): 'unitCost' (or 'standardPurchasePrice') - Cost to buy or produce
-   When asked for the price of ANY item or product, ALWAYS clearly state BOTH prices in Sri Lankan Rupees (Rs. / LKR), along with current stock quantity and SKU.
-3. NEVER DUMP SCHEMA: NEVER output raw table schemas, column listings, or database structure dumps to the user. Users are business managers and factory operators who only want answers about their actual products, prices, and orders.
-4. NEVER OUTPUT RAW SQL TO USERS: Never output "SELECT * FROM..." or explain how to query SQL. Query the tool silently and provide the final answer in natural language.
-5. ACCURATE SUPPLIER INFORMATION: When asked about suppliers for an item, check linkedSuppliers in the inventory record, historical purchases from suppliers, and the registered suppliers master list. If an item has no supplier linked yet, state clearly that it is not yet linked and list the active suppliers in the ERP.
-6. STRICT LANGUAGE CONSISTENCY & NATURAL TONE:
-   • If the user's message is in ENGLISH (e.g. "sample item price please?", "show me unpaid invoices", "what is the stock"), you MUST answer entirely in fluent, professional ENGLISH. NEVER answer in Sinhala or transcribe English into broken Sinhala characters!
-   • If the user asks in SINGLISH (Latin script Sinhala, e.g. "sample item eke mila kiyada", "stock eka pennanna", "machan"), answer in clean, natural Singlish or English.
-   • If the user asks in SINHALA SCRIPT (Unicode, e.g. "භාණ්ඩයේ මිල කීයද?"), answer in clear, grammatically sound Sinhala script.
-   • NEVER output random repeated syllables (like repeating words over and over). Always output clear, well-formatted markdown tables and bullet points.`;
+1. ALWAYS USE FUNCTION CALLING (NEVER WRITE RAW SQL):
+   You have live real-time access to the entire Rex ERP database through your function calling tools.
+   To retrieve data, you MUST call the appropriate tool ('get_item_purchase_prices', 'check_inventory_stock', 'get_customer_finance_summary', 'get_supplier_history', etc.).
+   NEVER write raw SQL queries like "SELECT ... FROM ..." in your response text to the user.
+   NEVER say "If I were connected to the database" or "As an AI I cannot check real-time data". Call the tools silently and summarize the findings in natural language.
+2. ITEM PRICES & INVENTORY:
+   In Rex ERP, items have TWO prices:
+   • Selling Price (විකුණුම් මිල / unitPrice): The price charged to customers.
+   • Purchase / Cost Price (ගැනුම් / පිරිවැය මිල / unitCost): The cost to purchase or manufacture.
+   Whenever asked about the price, cost, stock, or suppliers of ANY item, product, or SKU, ALWAYS call 'get_item_purchase_prices' and clearly state BOTH prices in Sri Lankan Rupees (Rs. / LKR), current warehouse stock quantity, and storage location.
+3. NEVER DUMP DATABASE SCHEMAS OR WRITE TEXT-TO-SQL:
+   NEVER output raw table schemas, column listings, or database structure dumps. Users are business managers and factory operators who only want answers about their actual products, prices, and orders.
+4. ACCURATE SUPPLIER INFORMATION:
+   When asked about suppliers for an item, check linkedSuppliers in the inventory record, historical purchases from suppliers, and the registered suppliers master list. If an item has no supplier linked yet, state clearly that it is not yet linked and list the active suppliers in the ERP.
+5. STRICT LANGUAGE CONSISTENCY & NATURAL TONE:
+   • If the user asks in ENGLISH (e.g. "sample item price please?", "what are the suppliers for sample item"), reply ONLY in fluent, professional ENGLISH.
+   • If the user asks in SINGLISH (e.g. "sample item eke mila kiyada", "stock eka pennanna", "machan"), reply in natural Singlish or English.
+   • If the user asks in SINHALA SCRIPT (Unicode, e.g. "භාණ්ඩයේ මිල කීයද?"), reply in clear, grammatically sound Sinhala script.
+   • NEVER output random repeated syllables or word loops. Always output clean, friendly markdown formatting.`;
 
     const systemPrompt = settingsMap.openai_system_instructions && settingsMap.openai_system_instructions.trim()
       ? `${baseSystemPrompt}\n\nADDITIONAL ADMIN INSTRUCTIONS:\n${settingsMap.openai_system_instructions.trim()}`
@@ -7144,107 +7274,107 @@ CRITICAL OPERATIONAL RULES:
     const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user')?.content || '';
     const lastUserLower = lastUserMsg.toLowerCase();
     const isAskingPriceOrStock = /\b(price|pricing|prices|cost|costs|rate|rates|mila|ganan|kiyada|stock|stocks|supplier|suppliers|sample|inventory)\b/i.test(lastUserLower);
+    const userSpeaksEng = isEnglishPrompt(lastUserMsg);
 
-    const isEnglishPrompt = (text: string) => {
-      if (!text) return true;
-      const hasSinhalaScript = /[\u0D80-\u0DFF]/.test(text);
-      if (hasSinhalaScript) return false;
-      const lower = text.toLowerCase();
-      const singlishMarkers = ['kiyada', 'gana', 'ganan', 'thiyenawa', 'thiyeda', 'pennanna', 'karanna', 'meke', 'machan', 'kohomada', 'dapan', 'one', 'monawada', 'danata', 'mokakda'];
-      const isSinglish = singlishMarkers.some(m => new RegExp(`\\b${m}\\b`, 'i').test(lower));
-      return !isSinglish;
-    };
-
-    const hasTokenRepetitionLoop = (text: string): boolean => {
-      if (!text || text.length < 25) return false;
-      // 1. Check for single word or token repeated 4+ times consecutively (e.g. "කෙන් කෙන් කෙන් කෙන්")
-      if (/\b(\S+)(?:\s+\1){3,}\b/u.test(text)) return true;
-      // 2. Check for multi-word or phrase repeated 3+ times consecutively
-      if (/(\b.{3,25}\b)(?:\s*\1){2,}/u.test(text)) return true;
-      // 3. Check for any 2-15 character sequence repeating 4+ times consecutively without spaces
-      if (/(.{2,15}?)\1{3,}/u.test(text)) return true;
-      // 4. Token frequency ratio check: if top repeating word makes up > 30% of total words in a text longer than 15 words
-      const words = text.split(/\s+/).filter(w => w.length > 1);
-      if (words.length > 15) {
-        const counts: Record<string, number> = {};
-        for (const w of words) {
-          counts[w] = (counts[w] || 0) + 1;
-          if (counts[w] > 6 && (counts[w] / words.length) > 0.3) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    const isSchemaDump = (text: string) => {
-      if (!text) return false;
-      const lower = text.toLowerCase();
-      return (
-        (lower.includes('erp database schema') || lower.includes('database schema') || (lower.includes('table') && lower.includes('key columns'))) &&
-        (lower.includes('inventory') || lower.includes('quotations') || lower.includes('invoices') || lower.includes('key takeaways') || lower.includes('specific data from any table'))
-      );
-    };
+    let lastExecutedToolResult: any = null;
 
     // Auto-intercept if model printed a raw SQL query, schema dump, or hallucinated database refusal instead of calling a tool
     if (!responseMsg.tool_calls || responseMsg.tool_calls.length === 0) {
       const contentText = (responseMsg.content || '').trim();
-      const sqlMatch = contentText.match(/\b(SELECT\s+[\s\S]+?\bFROM\b[\s\S]+?)(?:;|\n\n|```|$)/i);
-      const isSqlOnly = sqlMatch && (
-        contentText.toUpperCase().startsWith('SELECT') ||
-        contentText.includes('```sql') ||
-        contentText.length < 350
-      );
 
-      if (isSqlOnly && sqlMatch) {
-        const queryToExec = sqlMatch[1].replace(/```sql|```/gi, '').trim();
+      if (isRawSql(contentText)) {
+        const sqlMatch = contentText.match(/\b(SELECT\s+[\s\S]+?\bFROM\b[\s\S]+?)(?:;|\n\n|```|$)/i);
+        const queryToExec = (sqlMatch ? sqlMatch[1] : contentText).replace(/```sql|```/gi, '').trim();
         console.log(`[Rex AI Engine] Intercepted raw SQL query in model text: "${queryToExec}". Auto-executing on database...`);
         const toolResult = await executeAITool('execute_custom_erp_query', { query: queryToExec });
+        lastExecutedToolResult = toolResult;
+
+        let synthesized = false;
         conversation.push({ role: 'assistant', content: responseMsg.content });
         conversation.push({
           role: 'user',
-          content: `Live database query execution results: ${JSON.stringify(toolResult)}. Based on these results, please provide your final direct answer to the user in fluent Sinhala/Singlish or English.`
+          content: `Live database query execution results: ${JSON.stringify(toolResult.results || toolResult)}. Summarize the Selling Price, Purchase Cost, current stock, and SKU directly to the user in fluent ${userSpeaksEng ? 'ENGLISH' : 'Sinhala/English'}. NEVER output raw SQL queries or table column definitions.`
         });
         const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
         if (autoSynthRes && autoSynthRes.ok) {
           const autoData = await autoSynthRes.json().catch(() => ({}));
-          if (autoData.choices?.[0]?.message) {
+          const synthText = autoData.choices?.[0]?.message?.content || '';
+          if (synthText && !isRawSql(synthText) && !isSchemaDump(synthText) && !hasTokenRepetitionLoop(synthText)) {
             responseMsg = autoData.choices[0].message;
+            synthesized = true;
+          }
+        }
+
+        if (!synthesized) {
+          console.log(`[Rex AI Engine] Synthesis failed or generated SQL. Formatting database rows deterministically...`);
+          const rows = Array.isArray(toolResult.results) ? toolResult.results : [];
+          if (rows.length > 0) {
+            responseMsg = {
+              role: 'assistant',
+              content: formatDbResultsAsMarkdown(rows, userSpeaksEng, lastUserMsg)
+            };
+          } else {
+            const itemSearch = cleanItemSearchTerm(lastUserMsg);
+            const priceRes = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample' });
+            lastExecutedToolResult = priceRes;
+            const invRows = priceRes.matchedInventory || [];
+            responseMsg = {
+              role: 'assistant',
+              content: formatDbResultsAsMarkdown(invRows, userSpeaksEng, lastUserMsg)
+            };
           }
         }
       } else if (isSchemaDump(contentText) || hasTokenRepetitionLoop(contentText)) {
         console.log(`[Rex AI Engine] Intercepted schema dump or repetition loop in response. Auto-retrieving live ERP records for: "${lastUserMsg}"...`);
         const itemSearch = cleanItemSearchTerm(lastUserMsg);
         const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
-        const userSpeaksEng = isEnglishPrompt(lastUserMsg);
+        lastExecutedToolResult = toolResult;
         conversation.push({ role: 'assistant', content: responseMsg.content });
         conversation.push({
           role: 'user',
           content: `Real-time database records for "${lastUserMsg}": ${JSON.stringify(toolResult)}. DO NOT dump database schema and do NOT repeat syllables. Directly state the Selling Price (unitPrice), Purchase/Cost Price (unitCost), and warehouse stock to the user in fluent ${userSpeaksEng ? 'ENGLISH' : 'Sinhala/Singlish'}.`
         });
         const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
+        let synthesized = false;
         if (autoSynthRes && autoSynthRes.ok) {
           const autoData = await autoSynthRes.json().catch(() => ({}));
-          if (autoData.choices?.[0]?.message) {
+          const synthText = autoData.choices?.[0]?.message?.content || '';
+          if (synthText && !isRawSql(synthText) && !isSchemaDump(synthText) && !hasTokenRepetitionLoop(synthText)) {
             responseMsg = autoData.choices[0].message;
+            synthesized = true;
           }
+        }
+        if (!synthesized) {
+          responseMsg = {
+            role: 'assistant',
+            content: formatDbResultsAsMarkdown(toolResult.matchedInventory || [], userSpeaksEng, lastUserMsg)
+          };
         }
       } else if (isAskingPriceOrStock && (contentText.includes('If I were connected') || contentText.includes('cannot check real-time') || !/\b(Rs\.?|LKR|\d+[\d,]*\.\d{2})\b/i.test(contentText))) {
         console.log(`[Rex AI Engine] Detected unfulfilled price/stock query. Auto-executing get_item_purchase_prices for: "${lastUserMsg}"...`);
         const itemSearch = cleanItemSearchTerm(lastUserMsg);
         const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
-        const userSpeaksEng = isEnglishPrompt(lastUserMsg);
+        lastExecutedToolResult = toolResult;
         conversation.push({ role: 'assistant', content: responseMsg.content });
         conversation.push({
           role: 'user',
           content: `Live database results for item lookup: ${JSON.stringify(toolResult)}. Please state the exact Selling Price (unitPrice), Purchase/Cost Price (unitCost), and current warehouse stock directly to the user in fluent ${userSpeaksEng ? 'ENGLISH' : 'Sinhala/English'}.`
         });
         const autoSynthRes = await callCompletion(activeModelName, conversation).catch(() => null);
+        let synthesized = false;
         if (autoSynthRes && autoSynthRes.ok) {
           const autoData = await autoSynthRes.json().catch(() => ({}));
-          if (autoData.choices?.[0]?.message) {
+          const synthText = autoData.choices?.[0]?.message?.content || '';
+          if (synthText && !isRawSql(synthText) && !isSchemaDump(synthText) && !hasTokenRepetitionLoop(synthText)) {
             responseMsg = autoData.choices[0].message;
+            synthesized = true;
           }
+        }
+        if (!synthesized) {
+          responseMsg = {
+            role: 'assistant',
+            content: formatDbResultsAsMarkdown(toolResult.matchedInventory || [], userSpeaksEng, lastUserMsg)
+          };
         }
       } else if (contentText.includes('If I were connected') || contentText.includes('As an AI assistant, I need to query') || contentText.includes('I cannot directly access')) {
         console.log(`[Rex AI Engine] Model hallucinated refusal to query live DB. Re-prompting for tool execution...`);
@@ -7277,6 +7407,7 @@ CRITICAL OPERATIONAL RULES:
         } catch(e) {}
 
         const toolResult = await executeAITool(functionName, functionArgs);
+        lastExecutedToolResult = toolResult;
         conversation.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -7325,6 +7456,14 @@ CRITICAL OPERATIONAL RULES:
         }
 
         if (!followUpRes || !followUpRes.ok) {
+          if (lastExecutedToolResult) {
+            const rows = lastExecutedToolResult.matchedInventory || lastExecutedToolResult.results || [];
+            responseMsg = {
+              role: 'assistant',
+              content: formatDbResultsAsMarkdown(rows, userSpeaksEng, lastUserMsg)
+            };
+            break;
+          }
           const finalErr: any = followUpRes ? await followUpRes.json().catch(() => ({})) : {};
           return res.json({
             success: false,
@@ -7346,20 +7485,23 @@ CRITICAL OPERATIONAL RULES:
     finalReply = finalReply.replace(/^The query returned[\s\S]*?as requested\.\s*/i, '').trim();
     finalReply = finalReply.replace(/^["'].*?->\s*["'].*?["']\.?\s*/i, '').trim();
 
-    // Final safety net: If finalReply somehow contains a schema dump or token repetition loop, recover with clean direct inventory pricing
-    if (isSchemaDump(finalReply) || hasTokenRepetitionLoop(finalReply)) {
-      console.warn(`[Rex AI Engine] Final reply contained repetition loop or schema dump. Auto-generating direct inventory response...`);
-      const itemSearch = cleanItemSearchTerm(lastUserMsg);
-      const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
-      const matched = toolResult.matchedInventory?.[0];
-      const userSpeaksEng = isEnglishPrompt(lastUserMsg);
-      if (matched) {
-        if (userSpeaksEng) {
-          finalReply = `📦 **${matched.name}** (SKU: \`${matched.sku}\`)\n\n• **Selling Price:** Rs. ${Number(matched.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **Purchase / Cost Price:** Rs. ${Number(matched.standardPurchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **Current Stock:** ${matched.quantity} ${matched.uom || 'units'}\n• **Storage Location:** ${matched.location || 'Store A'}`;
-        } else {
-          finalReply = `📦 **${matched.name}** (SKU: \`${matched.sku}\`)\n\n• **විකුණුම් මිල (Selling Price):** Rs. ${Number(matched.sellingPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **ගැනුම් / පිරිවැය මිල (Unit Cost):** Rs. ${Number(matched.standardPurchasePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}\n• **දැනට පවතින තොගය (Current Stock):** ${matched.quantity} ${matched.uom || 'units'}\n• **ගබඩා ස්ථානය (Location):** ${matched.location || 'Store A'}`;
+    // Final safety net: If finalReply somehow contains raw SQL, a schema dump, a token repetition loop, or is empty:
+    if (!finalReply || isRawSql(finalReply) || isSchemaDump(finalReply) || hasTokenRepetitionLoop(finalReply)) {
+      console.warn(`[Rex AI Engine] Final reply triggered safety net (isRawSql=${isRawSql(finalReply)}, isSchemaDump=${isSchemaDump(finalReply)}, hasTokenRepetitionLoop=${hasTokenRepetitionLoop(finalReply)}). Overriding with deterministic database response...`);
+      let formatted = '';
+      if (lastExecutedToolResult) {
+        const rows = lastExecutedToolResult.matchedInventory || lastExecutedToolResult.results || [];
+        if (rows.length > 0) {
+          formatted = formatDbResultsAsMarkdown(rows, userSpeaksEng, lastUserMsg);
         }
       }
+      if (!formatted) {
+        const itemSearch = cleanItemSearchTerm(lastUserMsg);
+        const toolResult = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample item' });
+        const matched = toolResult.matchedInventory || [];
+        formatted = formatDbResultsAsMarkdown(matched, userSpeaksEng, lastUserMsg);
+      }
+      finalReply = formatted;
     }
 
     return res.json({
