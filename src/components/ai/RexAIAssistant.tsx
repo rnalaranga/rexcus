@@ -180,7 +180,10 @@ export const RexAIAssistant: React.FC = () => {
         body: JSON.stringify({ messages: convPayload })
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ 
+        success: false, 
+        error: `Server responded with HTTP ${res.status}. කරුණාකර backend server එක ක්‍රියාත්මක දැයි පරීක්ෂා කරන්න.` 
+      }));
 
       if (data.success) {
         setMessages(prev => [
@@ -205,9 +208,18 @@ export const RexAIAssistant: React.FC = () => {
         ]);
       } else {
         const errorText = data.error || 'Failed to process request.';
-        const isKeyOrModelIssue = errorText.toLowerCase().includes('model') || errorText.toLowerCase().includes('does not exist') || errorText.toLowerCase().includes('key') || errorText.toLowerCase().includes('access');
+        const isKeyOrModelIssue = 
+          errorText.toLowerCase().includes('model') || 
+          errorText.toLowerCase().includes('does not exist') || 
+          errorText.toLowerCase().includes('key') || 
+          errorText.toLowerCase().includes('access') ||
+          errorText.toLowerCase().includes('api request failed') ||
+          errorText.toLowerCase().includes('unauthorized') ||
+          errorText.toLowerCase().includes('unauthenticated') ||
+          errorText.toLowerCase().includes('gemini');
+
         const solutionMsg = isKeyOrModelIssue 
-          ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Google Gemini API Key** එක (AIzaSy...) හෝ Groq Key එක ඇතුළත් කර **Test Connection** ඔබන්න.'
+          ? '\n\n💡 **විසඳුම (Solution):** කරුණාකර **Admin > Variable Settings** වෙත ගොස් ඔබගේ **Google Gemini API Key** එක (AIzaSy...) ඇතුළත් කර **Test Connection** ඔබා Save කරන්න.'
           : '';
         setMessages(prev => [
           ...prev,

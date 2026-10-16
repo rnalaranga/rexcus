@@ -6175,6 +6175,21 @@ async function executeAITool(name: string, args: any) {
 }
 
 /**
+ * Helper to reliably extract error messages across OpenAI, Groq, and Google Gemini (which returns error arrays)
+ */
+function extractApiErrorMessage(errData: any): string {
+  if (!errData) return '';
+  if (Array.isArray(errData) && errData.length > 0) {
+    const first = errData[0];
+    return first?.error?.message || first?.message || (typeof first === 'string' ? first : JSON.stringify(first));
+  }
+  if (typeof errData === 'object') {
+    return errData.error?.message || errData.message || JSON.stringify(errData);
+  }
+  return String(errData);
+}
+
+/**
  * Helper to dynamically fetch live models from Google Gemini, Groq, or OpenAI
  */
 async function fetchProviderModels(provider: string, apiKey: string): Promise<string[]> {
@@ -6377,9 +6392,10 @@ app.post('/api/ai/test-key', async (req, res) => {
     });
     if (!response.ok) {
       const errData: any = await response.json().catch(() => ({}));
+      const rawErrMsg = extractApiErrorMessage(errData);
       return res.status(400).json({ 
         success: false, 
-        error: errData.error?.message || `Invalid API key or unauthorized by ${providerLabel}.` 
+        error: rawErrMsg || `Invalid API key or unauthorized by ${providerLabel}.` 
       });
     }
 
@@ -6712,15 +6728,16 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
       if (!aiRes.ok) {
         const fallbackErr: any = await aiRes.json().catch(() => errJson);
         console.error(`${provider} AI Error:`, fallbackErr);
-        const rawErr = fallbackErr.error?.message || fallbackErr.message || `${provider} API request failed`;
+        const rawErr = extractApiErrorMessage(fallbackErr) || `${provider} API request failed`;
         let userFriendlyMsg = rawErr;
         const provLabel = isGemini ? 'Google Gemini' : (isGroq ? 'Groq Cloud' : 'OpenAI');
-        if (rawErr.toLowerCase().includes('does not exist') || rawErr.toLowerCase().includes('not have access') || rawErr.toLowerCase().includes('not found')) {
-          userFriendlyMsg = `${provLabel} Model Access Error ('${activeModelName}'): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ ${provLabel} API Key එක ඇතුළත් කර 'Test Connection' ඔබා Verified Models වලින් එකක් තෝරා Save කරන්න.`;
-        } else if (rawErr.toLowerCase().includes('invalid api key') || rawErr.toLowerCase().includes('unauthorized') || aiRes.status === 401) {
-          userFriendlyMsg = `${provLabel} API Key එක වලංගු නැත (Invalid API Key): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ නිවැරදි ${provLabel} API Key එක ඇතුළත් කර Save කරන්න.`;
+        const lowerRaw = rawErr.toLowerCase();
+        if (lowerRaw.includes('does not exist') || lowerRaw.includes('not have access') || lowerRaw.includes('not found') || lowerRaw.includes('model')) {
+          userFriendlyMsg = `${provLabel} Model Access Error ('${activeModelName}'): ${rawErr}. කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ ${provLabel} API Key එක ඇතුළත් කර 'Test Connection' ඔබා Save කරන්න.`;
+        } else if (lowerRaw.includes('invalid api key') || lowerRaw.includes('unauthorized') || lowerRaw.includes('valid api key') || lowerRaw.includes('invalid_argument') || lowerRaw.includes('unauthenticated') || aiRes.status === 401 || aiRes.status === 400) {
+          userFriendlyMsg = `${provLabel} API Key Error (${rawErr}). කරුණාකර Admin > Variable Settings වෙත ගොස් ඔබගේ නිවැරදි ${provLabel} API Key එක ඇතුළත් කර Save කරන්න.`;
         }
-        return res.status(aiRes.status || 500).json({
+        return res.json({
           success: false,
           error: userFriendlyMsg,
           model: activeModelName
@@ -6733,7 +6750,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
     let responseMsg = choice?.message;
 
     if (!responseMsg) {
-      return res.status(500).json({ success: false, error: `Empty response from ${provider}` });
+      return res.json({ success: false, error: `Empty response from ${provider}` });
     }
 
     // Process Tool Calls if model requested ERP data
@@ -6763,7 +6780,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
       if (!followUpRes.ok) {
         let errJson: any = await followUpRes.json().catch(() => ({}));
-        let errMsg = (errJson.error?.message || '').toLowerCase();
+        let errMsg = extractApiErrorMessage(errJson).toLowerCase();
 
         if (followUpRes.status === 429 || errMsg.includes('rate limit') || errMsg.includes('tokens per minute') || errMsg.includes('tpm')) {
           console.warn(`[Rex AI] Rate limit on follow-up turn (${errMsg}).`);
@@ -6780,7 +6797,7 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
         if (!followUpRes.ok) {
           errJson = await followUpRes.json().catch(() => errJson);
-          errMsg = (errJson.error?.message || '').toLowerCase();
+          errMsg = extractApiErrorMessage(errJson).toLowerCase();
           if (errMsg.includes('tool choice') || errMsg.includes('tool_use_failed') || errMsg.includes('tool')) {
             console.warn(`[Rex AI] Tool followup warning detected. Retrying synthesis without tool constraint...`);
             conversation.push({
@@ -6793,9 +6810,9 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
 
         if (!followUpRes.ok) {
           const finalErr: any = await followUpRes.json().catch(() => errJson);
-          return res.status(followUpRes.status).json({
+          return res.json({
             success: false,
-            error: finalErr.error?.message || 'Failed generating final answer'
+            error: extractApiErrorMessage(finalErr) || 'Failed generating final answer'
           });
         }
       }
@@ -6973,9 +6990,9 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
 
       if (!aiRes.ok) {
         const fallbackErr: any = await aiRes.json().catch(() => errJson);
-        return res.status(aiRes.status).json({
+        return res.json({
           success: false,
-          error: fallbackErr.error?.message || 'Failed generating description'
+          error: extractApiErrorMessage(fallbackErr) || 'Failed generating description'
         });
       }
     }
