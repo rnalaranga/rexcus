@@ -423,8 +423,19 @@ export const updateInvoice = async (id: string, data: any) => {
 };
 
 export const deleteInvoice = async (id: string) => {
-  const res = await fetch(`${API_URL}/invoices/${id}`, { method: 'DELETE' });
-  return res.json();
+  const encId = encodeURIComponent(id);
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_URL}/invoices/${encId}?id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ id })
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete invoice');
+  return json;
 };
 
 export const addInvoicePayment = async (id: string, data: any) => {

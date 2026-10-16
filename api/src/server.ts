@@ -3659,13 +3659,35 @@ app.put('/api/invoices/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/invoices/:id', async (req, res) => {
+app.delete(['/api/invoices', '/api/invoices/:id', '/api/invoices/*'], async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = req.query.id || req.body?.id || req.params.id || req.params[0];
+    const id = decodeURIComponent(String(rawId || '')).trim();
+    if (!id) {
+      return res.status(400).json({ error: 'Invoice ID is required' });
+    }
     
-    // Fetch the invoice before deleting to get its payments and amounts
-    const [rows]: any = await db.query('SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1', [id, id]);
-    if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
+    // Resilient lookup: match by id or invoiceNo with and without whitespace
+    const cleanId = id.trim();
+    const compactId = cleanId.replace(/\s+/g, '');
+    const [rows]: any = await db.query(
+      'SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? OR REPLACE(id, " ", "") = ? OR REPLACE(invoiceNo, " ", "") = ? LIMIT 1', 
+      [cleanId, cleanId, compactId, compactId]
+    );
+
+    if (!rows || !rows.length) {
+      // Check partial match
+      const [altRows]: any = await db.query(
+        'SELECT * FROM invoices WHERE id LIKE ? OR invoiceNo LIKE ? LIMIT 1',
+        [`%${cleanId}%`, `%${cleanId}%`]
+      );
+      if (altRows && altRows.length > 0) {
+        rows.push(altRows[0]);
+      } else {
+        console.warn(`[Invoice Delete] Invoice "${cleanId}" not found or already deleted.`);
+        return res.json({ success: true, message: 'Invoice already deleted or not found' });
+      }
+    }
     
     const invoice = rows[0];
     let existingPayments: any[] = [];
@@ -3699,19 +3721,17 @@ app.delete('/api/invoices/:id', async (req, res) => {
         
         // Generic GL Reversal
         try {
-          // Find all lines and accounts
           for (const line of lines) {
             const [accounts]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ?', [line.accountId]);
             if (!accounts.length) continue;
             
             const accType = accounts[0].type;
             const isDebitNormal = accType === 'Asset' || accType === 'Expense';
-            const balanceChange = Number(line.debit) - Number(line.credit); // What this line originally added to the normal balance
+            const balanceChange = Number(line.debit) - Number(line.credit);
             
             if (isDebitNormal) {
               await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [balanceChange, line.accountId]);
             } else {
-              // for credit normal, it added -balanceChange
               await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [balanceChange, line.accountId]);
             }
           }
@@ -3724,10 +3744,10 @@ app.delete('/api/invoices/:id', async (req, res) => {
     }
     
     // Finally delete the invoice
-    await db.query('DELETE FROM invoices WHERE id = ?', [invoice.id]);
+    await db.query('DELETE FROM invoices WHERE id = ? OR invoiceNo = ?', [invoice.id, invoice.id]);
     res.json({ success: true });
   } catch (error: any) {
-    console.error(error);
+    console.error('Invoice deletion error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });

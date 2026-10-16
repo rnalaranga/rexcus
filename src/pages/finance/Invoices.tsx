@@ -71,9 +71,12 @@ export const Invoices: React.FC = () => {
     try {
       await deleteInvoice(deleteTarget)
       refetch()
+      if (viewInvoice && (viewInvoice.id === deleteTarget || viewInvoice.invoiceNo === deleteTarget)) {
+        setViewInvoice(null)
+      }
       showToast('success', 'Invoice deleted')
-    } catch (e) {
-      showToast('error', 'Failed to delete invoice')
+    } catch (e: any) {
+      showToast('error', e?.message || 'Failed to delete invoice')
     }
     setDeleteTarget(null)
     setSubmitting(false)
