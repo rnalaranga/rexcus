@@ -6211,15 +6211,14 @@ function normalizeModelName(modelName: string, isGroq: boolean): string {
   if (!modelName) return isGroq ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
   const m = modelName.trim().toLowerCase();
   if (isGroq) {
-    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b' || m.includes('8b-instant')) {
+    if (m === '8b' || m === 'llama-8b' || m === 'llama-3-8b' || m === 'llama-3.1-8b' || m === 'llama3-8b' || m === 'llama3.1-8b') {
       return 'llama-3.1-8b-instant';
     }
-    if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b' || m === 'llama3-70b' || m === 'llama3.3-70b' || m === 'llama-3.1-70b') {
-      return 'llama-3.1-8b-instant';
+    if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b' || m === 'llama3-70b' || m === 'llama3.3-70b' || m === 'llama-3.3-70b-versatile') {
+      return 'llama-3.3-70b-versatile';
     }
-    // Any models that lack native tool support on Groq normalized to production llama-3.1-8b-instant
-    if (m.includes('gpt-oss') || m.includes('mixtral') || m.includes('guard') || m.includes('gemma') || m.includes('qwen') || m.includes('whisper')) {
-      return 'llama-3.1-8b-instant';
+    if (m === 'llama-3.1-70b' || m === 'llama-3.1-70b-versatile') {
+      return 'llama-3.1-70b-versatile';
     }
   } else {
     if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
@@ -6767,10 +6766,6 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
         : (settingsMap.openai_model || 'gpt-4o-mini').trim(),
       isGroq
     );
-
-    if (isGroq && (activeModelName.includes('gpt-oss') || activeModelName.includes('llama-3.3-70b-versatile'))) {
-      activeModelName = 'llama-3.1-8b-instant';
-    }
 
     const prompt = `You are a Senior Technical Proposal Specialist for Rex Industries (Pvt) Ltd, Sri Lanka - an engineering, precision manufacturing, hydraulics, and metal fabrication company.
 

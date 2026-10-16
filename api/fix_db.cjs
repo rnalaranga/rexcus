@@ -11,7 +11,7 @@ const envPaths = [
 ];
 for (const p of envPaths) {
   if (fs.existsSync(p)) {
-    require('dotenv').config({ path: p });
+    require('dotenv').config({ path: p, override: true });
   }
 }
 
@@ -561,7 +561,7 @@ async function run() {
 
   // 4.1 Sync AI Settings & Groq API Key from .env or DB
   const envGroqKey = (process.env.GROQ_API_KEY || '').trim();
-  const [existingSettings] = await conn.query("SELECT id, val FROM settings WHERE id IN ('groq_api_key', 'groq_model', 'ai_provider')");
+  const [existingSettings] = await conn.query("SELECT id, val FROM settings WHERE id IN ('groq_api_key', 'groq_model', 'ai_provider', 'ai_enabled')");
   const settingsMap = (existingSettings || []).reduce((acc, r) => ({ ...acc, [r.id]: r.val }), {});
 
   let activeGroqKey = envGroqKey || settingsMap.groq_api_key || '';
@@ -570,11 +570,16 @@ async function run() {
     console.log('[fix_db] Synced GROQ_API_KEY from .env into settings table.');
   }
 
-  // Live test key with Groq to identify exact available models
-  let chosenModel = settingsMap.groq_model || 'llama-3.1-8b-instant';
-  if (activeGroqKey) {
+  // Ensure provider and enabled are configured
+  await conn.query("INSERT INTO settings (id, val) VALUES ('ai_provider', 'groq') ON DUPLICATE KEY UPDATE val='groq'");
+  await conn.query("INSERT INTO settings (id, val) VALUES ('ai_enabled', 'true') ON DUPLICATE KEY UPDATE val='true'");
+
+  if (!activeGroqKey) {
+    console.warn('\n[fix_db] ⚠️ GROQ_API_KEY is not found in .env or settings table!');
+    console.warn('[fix_db] 💡 Please add GROQ_API_KEY=gsk_... to api/.env or in Admin > Variable Settings.\n');
+  } else {
     try {
-      console.log(`[fix_db] 🔍 Testing Groq API Key (${activeGroqKey.slice(0, 8)}...)...`);
+      console.log(`\n[fix_db] 🔍 Testing Groq API Key (${activeGroqKey.slice(0, 8)}...)...`);
       const testRes = await fetch('https://api.groq.com/openai/v1/models', {
         headers: { 'Authorization': `Bearer ${activeGroqKey}` }
       });
@@ -592,12 +597,13 @@ async function run() {
           'openai/gpt-oss-20b'
         ];
         const match = priorityCandidates.find(p => availableIds.includes(p)) || availableIds.find(id => !id.includes('whisper') && !id.includes('guard')) || 'llama-3.1-8b-instant';
-        chosenModel = match;
-        console.log(`[fix_db] 🎯 Auto-configured best live model for this account: '${chosenModel}'`);
+        const chosenModel = match;
+        console.log(`[fix_db] 🎯 Auto-configured best live model for this account: '${chosenModel}'\n`);
         await conn.query("INSERT INTO settings (id, val) VALUES ('groq_model', ?) ON DUPLICATE KEY UPDATE val=VALUES(val)", [chosenModel]);
       } else {
         const errData = await testRes.json().catch(() => ({}));
-        console.warn(`[fix_db] ⚠️ Groq API Key test returned HTTP ${testRes.status}:`, errData.error?.message || 'Unauthorized / Invalid Key');
+        console.warn(`[fix_db] ❌ Groq API Key rejected (HTTP ${testRes.status}):`, errData.error?.message || 'Unauthorized / Invalid Key');
+        console.warn(`[fix_db] 💡 Please check that your key starts with gsk_ and is active at https://console.groq.com/keys\n`);
       }
     } catch (e) {
       console.warn(`[fix_db] ⚠️ Could not connect to Groq API:`, e.message);
