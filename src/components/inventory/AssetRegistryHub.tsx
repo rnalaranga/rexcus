@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search, Filter, Briefcase, Wrench, Calendar, MapPin, User, Shield, DollarSign, Download, Printer, Tag, Eye, Edit, Trash2, CheckCircle, AlertTriangle, Clock, RefreshCw, BarChart3, LayoutGrid, List, Sparkles } from 'lucide-react'
+import { Plus, ArrowLeft, Search, Filter, Briefcase, Wrench, Calendar, MapPin, User, Shield, DollarSign, Download, Printer, Tag, Eye, Edit, Trash2, CheckCircle, AlertTriangle, Clock, RefreshCw, BarChart3, LayoutGrid, List, Sparkles } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -632,14 +632,38 @@ export const AssetRegistryHub: React.FC<AssetRegistryHubProps> = ({
         </div>
       )}
 
-      {/* Register / Edit Asset Modal */}
-      <Modal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingItem ? `Edit Asset: ${editingItem.name}` : "Register New Company Asset"}
-        className="max-w-2xl"
-      >
-        <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Register / Edit Asset In-Page Studio */}
+      {modalOpen && (
+        <GlassCard className="p-6 mb-6 border-t-4 border-t-rex-600 animate-fade-in shadow-xl">
+          <div className="flex items-center justify-between pb-4 mb-5 border-b border-theme-subtle">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={ArrowLeft}
+                onClick={() => setModalOpen(false)}
+                type="button"
+                className="text-xs font-semibold"
+              >
+                Back to Asset List
+              </Button>
+              <div>
+                <h3 className="text-base font-bold text-primary">
+                  {editingItem ? `Edit Asset: ${editingItem.name}` : "Register New Company Asset Studio"}
+                </h3>
+                <p className="text-xs text-muted">Fixed asset registry, capitalization, depreciation, and custodian tracking.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" type="button" onClick={() => setModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" type="button" onClick={handleSubmit} disabled={saving}>
+                {saving ? 'Saving Asset...' : editingItem ? 'Save Asset Changes' : 'Register Asset to Fleet'}
+              </Button>
+            </div>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-secondary mb-1">
@@ -941,7 +965,8 @@ export const AssetRegistryHub: React.FC<AssetRegistryHubProps> = ({
             </Button>
           </div>
         </form>
-      </Modal>
+      </GlassCard>
+      )}
 
       {/* Delete Confirmation Modal */}
       <Modal

@@ -907,7 +907,15 @@ async function runDatabaseSync() {
     "ALTER TABLE stock_ledger ADD COLUMN batchNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE stock_ledger ADD COLUMN location VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE inventory ADD COLUMN assetDetails LONGTEXT DEFAULT NULL",
-    "ALTER TABLE inventory ADD COLUMN subCategory VARCHAR(100) DEFAULT NULL"
+    "ALTER TABLE inventory ADD COLUMN subCategory VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN specifications LONGTEXT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN barcode VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN leadTimeDays INT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN preferredSupplier VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN supplierPartNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN maxStock INT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN safetyStock INT DEFAULT NULL",
+    "ALTER TABLE inventory ADD COLUMN reorderBatchQty INT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -2187,6 +2195,10 @@ app.post('/api/inventory', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.suppliers && typeof data.suppliers === 'object') data.suppliers = JSON.stringify(data.suppliers);
+    if (data.specifications && typeof data.specifications === 'object') data.specifications = JSON.stringify(data.specifications);
+    if (data.boms && typeof data.boms === 'object') data.boms = JSON.stringify(data.boms);
+    if (data.assetDetails && typeof data.assetDetails === 'object') data.assetDetails = JSON.stringify(data.assetDetails);
     const item = {
       ...data,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -2205,6 +2217,10 @@ app.put('/api/inventory/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.suppliers && typeof data.suppliers === 'object') data.suppliers = JSON.stringify(data.suppliers);
+    if (data.specifications && typeof data.specifications === 'object') data.specifications = JSON.stringify(data.specifications);
+    if (data.boms && typeof data.boms === 'object') data.boms = JSON.stringify(data.boms);
+    if (data.assetDetails && typeof data.assetDetails === 'object') data.assetDetails = JSON.stringify(data.assetDetails);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE inventory SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });

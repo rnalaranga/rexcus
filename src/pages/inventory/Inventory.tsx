@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List } from 'lucide-react'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -18,6 +18,7 @@ import { FinishedProductModal } from './FinishedProductModal'
 import { FinishedGoodsOrdersView } from './FinishedGoodsOrdersView'
 import { AssetRegistryHub } from '@/components/inventory/AssetRegistryHub'
 import { StockLedgerHub } from '@/components/inventory/StockLedgerHub'
+import { ItemFormStudio } from '@/components/inventory/ItemFormStudio'
 import html2pdf from 'html2pdf.js'
 
 type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'all'
@@ -1191,198 +1192,25 @@ export const Inventory: React.FC = () => {
 
   if (showForm) {
     return (
-      <div className="space-y-6 animate-fade-in pb-12 max-w-7xl mx-auto">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Top Bar */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" icon={ArrowLeft} onClick={() => setShowForm(false)} type="button">Back</Button>
-              <h1 className="text-2xl font-bold text-primary tracking-tight">{editId ? "Edit Item" : "Add New Item"}</h1>
-            </div>
-            
-            {editId && formData.type === 'product' && (
-              <div className="flex bg-surface2/50 p-1 rounded-lg border border-theme-subtle">
-                <button 
-                  type="button"
-                  className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${formTab === 'details' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-                  onClick={() => setFormTab('details')}
-                >Item Details</button>
-                <button 
-                  type="button"
-                  className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${formTab === 'ledger' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-                  onClick={() => setFormTab('ledger')}
-                >Stock Ledger</button>
-              </div>
-            )}
-
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
-              {formTab === 'details' && (
-                <Button variant="primary" type="submit" icon={Save} disabled={submitting}>
-                  {submitting ? 'Saving...' : 'Save Item'}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {formTab === 'details' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-              {/* Left Column (Main Specs) */}
-            <div className="lg:col-span-2 space-y-6">
-              
-              {/* General Info Card */}
-              <GlassCard className="p-6">
-                <h2 className="text-sm font-bold text-primary uppercase tracking-wider mb-5 flex items-center gap-2"><Info size={16}/> General Information</h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Item Name *</label>
-                    <input required type="text" className="w-full input-base" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. MS Plate 10mm or CNC Milling" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">SKU / Code</label>
-                    <input type="text" className="w-full input-base" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="e.g. PRD-001" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Description</label>
-                    <textarea className="w-full input-base h-24 resize-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Detailed description or dimensions..." />
-                  </div>
-                </div>
-              </GlassCard>
-
-              {/* Pricing Card */}
-              <GlassCard className="p-6">
-                <h2 className="text-sm font-bold text-primary uppercase tracking-wider mb-5 flex items-center gap-2"><DollarSign size={16}/> Pricing details</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Selling Price (Rs) *</label>
-                    <input required type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} step="0.01" className="w-full input-base font-mono text-lg" value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} placeholder="0.00" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Cost Price (Rs)</label>
-                    <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} step="0.01" className="w-full input-base font-mono text-lg" value={formData.unitCost} onChange={e => setFormData({...formData, unitCost: e.target.value})} placeholder="0.00" />
-                  </div>
-                </div>
-              </GlassCard>
-
-              {/* Inventory Tracking Card */}
-              <GlassCard className={`p-6 ${formData.type === 'service' ? 'opacity-50 pointer-events-none' : ''}`}>
-                <div className="flex items-center justify-between mb-5">
-                  <h2 className="text-sm font-bold text-primary uppercase tracking-wider flex items-center gap-2"><Package size={16}/> Inventory Tracking</h2>
-                  {formData.type === 'service' && <span className="text-xs bg-surface2 px-2 py-1 rounded text-muted">Disabled for Services</span>}
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Initial Stock</label>
-                    <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className="w-full input-base font-mono" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} disabled={formData.type === 'service'} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Reorder Level</label>
-                    <input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className="w-full input-base font-mono" value={formData.reorderLevel} onChange={e => setFormData({...formData, reorderLevel: e.target.value})} placeholder="Alert when below..." disabled={formData.type === 'service'} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Bin Location</label>
-                    <input type="text" className="w-full input-base" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g. Rack A1" disabled={formData.type === 'service'} />
-                  </div>
-                </div>
-              </GlassCard>
-            </div>
-
-            {/* Right Column (Meta & Organzation) */}
-            <div className="lg:col-span-1 space-y-6">
-              
-              <GlassCard className="p-6">
-                <h2 className="text-sm font-bold text-primary uppercase tracking-wider mb-5">Organization</h2>
-                <div className="space-y-5">
-                  
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-2">Item Type</label>
-                    <div className="flex bg-surface2 p-1 rounded-lg border border-theme-subtle">
-                      <button 
-                        type="button"
-                        onClick={() => setFormData({...formData, type: 'product'})}
-                        className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${formData.type === 'product' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-                      >Product</button>
-                      <button 
-                        type="button"
-                        onClick={() => setFormData({...formData, type: 'service'})}
-                        className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${formData.type === 'service' ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-                      >Service</button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Unit of Measure</label>
-                    <select className="w-full input-base" value={formData.uom} onChange={e => setFormData({...formData, uom: e.target.value})}>
-                      <option value="pcs">Pieces (Pcs)</option>
-                      <option value="kg">Kilograms (Kg)</option>
-                      <option value="mm">Millimeters (mm)</option>
-                      <option value="m">Meters (m)</option>
-                      <option value="hr">Hours (Hr)</option>
-                      <option value="job">Per Job</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Status</label>
-                    <select className="w-full input-base" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </div>
-
-                </div>
-              </GlassCard>
-
-              <GlassCard className="p-6">
-                <h2 className="text-sm font-bold text-primary uppercase tracking-wider mb-5 flex items-center gap-2"><Truck size={16}/> Suppliers</h2>
-                <div className="space-y-4">
-                  
-                  {/* Selected Tags */}
-                  <div className="flex flex-wrap gap-2">
-                    {formData.suppliers.length > 0 ? formData.suppliers.map(sup => (
-                      <Badge key={sup} variant="outline" className="flex items-center gap-1.5 bg-surface text-xs py-1">
-                        {sup}
-                        <button 
-                          type="button" 
-                          className="hover:text-red-500 transition-colors"
-                          onClick={() => setFormData({...formData, suppliers: formData.suppliers.filter(s => s !== sup)})}
-                        ><X size={12}/></button>
-                      </Badge>
-                    )) : (
-                      <span className="text-xs text-muted italic">No suppliers linked.</span>
-                    )}
-                  </div>
-                  
-                  {/* Dropdown to add */}
-                  <div>
-                    <select 
-                      className="w-full input-base text-sm"
-                      value=""
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val && !formData.suppliers.includes(val)) {
-                          setFormData({...formData, suppliers: [...formData.suppliers, val]});
-                        }
-                      }}
-                    >
-                      <option value="">+ Add supplier...</option>
-                      {suppliersList.filter((s: any) => !formData.suppliers.includes(s.name)).map((sup: any) => (
-                        <option key={sup.id} value={sup.name}>{sup.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                </div>
-              </GlassCard>
-
-            </div>
-            </div>
-          ) : (
-            <StockLedgerView inventoryId={editId!} onUpdate={refetch} />
-          )}
-        </form>
-      </div>
+      <ItemFormStudio
+        initialItem={editId ? inventory.find((i: any) => i.id === editId) : null}
+        defaultType={activeTab === 'service' ? 'service' : activeTab === 'finished_product' ? 'finished_product' : 'raw_material'}
+        suppliersList={suppliersList || []}
+        onCancel={() => setShowForm(false)}
+        onSave={async (itemData: any, addAnother: boolean = false) => {
+          if (editId) {
+            await updateInventoryItem(editId, itemData)
+            showToast('success', 'Item updated successfully')
+          } else {
+            await createInventoryItem(itemData)
+            showToast('success', 'Item saved to inventory successfully')
+          }
+          refetch()
+          if (!addAnother) {
+            setShowForm(false)
+          }
+        }}
+      />
     )
   }
 
@@ -1450,27 +1278,77 @@ export const Inventory: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs & Controls */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center bg-surface2/50 p-1 rounded-lg border border-theme-subtle overflow-x-auto max-w-full">
+      {/* Tabs & Navigation Strip */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-theme-subtle">
+          <div className="flex items-center gap-1 overflow-x-auto pb-0 -mb-px custom-scrollbar">
             {[
-              { id: 'raw_material', label: `Raw Materials (${inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length})` },
-              { id: 'finished_product', label: `Finished Products (${inventory.filter(i => isItemFinishedProduct(i.type)).length})` },
-              { id: 'company_asset', label: `Company Assets (${inventory.filter(i => i.type === 'company_asset').length})` },
-              { id: 'service', label: `Services (${inventory.filter(i => i.type === 'service').length})` },
-              { id: 'customer_sample', label: `Customer Samples (${grns.length})` },
-              { id: 'stock_ledger', label: 'Stock Movement & Ledger' }
-            ].map(t => (
-              <button 
-                key={t.id}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-surface border border-theme-subtle text-primary shadow-sm' : 'text-muted hover:text-secondary'}`}
-                onClick={() => setActiveTab(t.id as TabType)}
-              >{t.label}</button>
-            ))}
+              { 
+                id: 'raw_material' as TabType, 
+                label: 'Raw Materials', 
+                count: inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length,
+                icon: Layers 
+              },
+              { 
+                id: 'finished_product' as TabType, 
+                label: 'Finished Products', 
+                count: inventory.filter(i => isItemFinishedProduct(i.type)).length,
+                icon: Package 
+              },
+              { 
+                id: 'company_asset' as TabType, 
+                label: 'Company Assets', 
+                count: inventory.filter(i => i.type === 'company_asset').length,
+                icon: Briefcase 
+              },
+              { 
+                id: 'service' as TabType, 
+                label: 'Services', 
+                count: inventory.filter(i => i.type === 'service').length,
+                icon: Wrench 
+              },
+              { 
+                id: 'customer_sample' as TabType, 
+                label: 'Customer Samples', 
+                count: grns.length,
+                icon: FileText 
+              },
+              { 
+                id: 'stock_ledger' as TabType, 
+                label: 'Stock Movement Ledger', 
+                icon: Activity 
+              }
+            ].map(t => {
+              const Icon = t.icon;
+              const isActive = activeTab === t.id;
+              return (
+                <button 
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-all duration-150 cursor-pointer ${
+                    isActive 
+                      ? 'border-rex-600 text-rex-600 dark:text-rex-400 bg-rex-500/5 font-bold' 
+                      : 'border-transparent text-muted hover:text-primary hover:bg-surface2/40'
+                  }`}
+                >
+                  <Icon size={14} className={isActive ? 'text-rex-600 dark:text-rex-400' : 'text-muted'} />
+                  <span>{t.label}</span>
+                  {t.count !== undefined && (
+                    <span className={`px-2 py-0.5 text-[10px] font-mono rounded-full font-bold transition-colors ${
+                      isActive 
+                        ? 'bg-rex-600 text-white' 
+                        : 'bg-surface2 text-muted'
+                    }`}>
+                      {t.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex items-center gap-3 flex-1 justify-end">
+          <div className="flex items-center gap-3 justify-end pb-2 lg:pb-0">
             <SearchBar 
               value={search} 
               onChange={setSearch} 
@@ -1480,7 +1358,6 @@ export const Inventory: React.FC = () => {
             <Button variant="ghost" icon={Filter}>Filters</Button>
           </div>
         </div>
-
         {/* Finished Goods Sub-navigation */}
         {activeTab === 'finished_product' && (
           <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2.5 rounded-lg border border-theme-subtle">
