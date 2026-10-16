@@ -510,10 +510,10 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 3: Mixtral 8x7B (MoE 32k) */}
+                {/* Option 3: Meta Llama 3.1 70B (High Precision & 128k Context) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'mixtral-8x7b-32768'
+                    groqModel === 'llama-3.1-70b-versatile'
                       ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
@@ -522,21 +522,21 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
                         <Cpu size={13} className="text-amber-500" />
-                        mixtral-8x7b
+                        llama-3.1-70b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
-                        32k Context
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
+                        128k Context
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Mistral 8x7B Mixture of Experts. Universally enabled on all Groq accounts with generous limits.
+                      Proven Meta 70B model with native ERP database tools and comprehensive reasoning.
                     </p>
                   </div>
                   <input
                     type="radio"
                     name="groq_model"
-                    value="mixtral-8x7b-32768"
-                    checked={groqModel === 'mixtral-8x7b-32768'}
+                    value="llama-3.1-70b-versatile"
+                    checked={groqModel === 'llama-3.1-70b-versatile'}
                     onChange={e => {
                       setGroqModel(e.target.value);
                       updateSettings({ groq_model: e.target.value });
@@ -545,10 +545,10 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   />
                 </label>
 
-                {/* Option 4: OpenAI GPT OSS 120B (Preview) */}
+                {/* Option 4: Meta Llama 3 70B (High Reliability) */}
                 <label
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                    groqModel === 'openai/gpt-oss-120b'
+                    groqModel === 'llama3-70b-8192'
                       ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
                       : 'bg-surface border-theme-subtle hover:border-theme-strong'
                   }`}
@@ -557,21 +557,21 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
                         <Cpu size={13} className="text-amber-500" />
-                        gpt-oss-120b
+                        llama3-70b
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
-                        Preview (8k TPM)
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                        100% Free · Tools
                       </span>
                     </div>
                     <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
-                      Community preview model. Note: restricted to 8,000 tokens/min limit on Groq free tier.
+                      High reliability 70B model with full ERP function calling support for stock & contact lookups.
                     </p>
                   </div>
                   <input
                     type="radio"
                     name="groq_model"
-                    value="openai/gpt-oss-120b"
-                    checked={groqModel === 'openai/gpt-oss-120b'}
+                    value="llama3-70b-8192"
+                    checked={groqModel === 'llama3-70b-8192'}
                     onChange={e => {
                       setGroqModel(e.target.value);
                       updateSettings({ groq_model: e.target.value });
@@ -594,6 +594,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto pt-1">
                     {availableGroqModels.map((m) => {
                       const isSelected = groqModel === m;
+                      const isToolReady = m.includes('llama-3') || m.includes('llama3') || m.includes('tool-use');
                       return (
                         <button
                           key={m}
@@ -609,8 +610,13 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                               : 'bg-surface2 hover:bg-surface2/80 text-primary border border-theme-subtle hover:border-emerald-500'
                           }`}
                         >
-                          {isSelected ? <CheckCircle2 size={13} className="text-white" /> : <div className="w-2 h-2 rounded-full bg-emerald-500" />}
+                          {isSelected ? <CheckCircle2 size={13} className="text-white" /> : <div className={`w-2 h-2 rounded-full ${isToolReady ? 'bg-emerald-500' : 'bg-amber-400'}`} />}
                           {m}
+                          {isToolReady && (
+                            <span className={`text-[8px] uppercase tracking-wider px-1 py-0.2 rounded font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
+                              Tools Ready
+                            </span>
+                          )}
                         </button>
                       );
                     })}

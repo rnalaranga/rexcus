@@ -5670,6 +5670,23 @@ const AI_TOOLS = [
   {
     type: "function",
     function: {
+      name: "search_contacts_and_directory",
+      description: "Searches across Customers, Suppliers, and Leads directory for company names, contact persons, phone numbers, emails, addresses, and key personnel.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The company name, customer name, supplier name, contact person, phone number, or email to search"
+          }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "execute_custom_erp_query",
       description: "Executes a safe read-only SQL SELECT query on the MySQL ERP database for any complex calculation, cross-table join, or specific data detail across any module in Rex ERP. Only SELECT queries are permitted.",
       parameters: {
@@ -5731,12 +5748,12 @@ async function executeAITool(name: string, args: any) {
       const [rows]: any = await db.query(sql, params);
       return { count: rows.length, stockItems: rows };
     } else if (name === "get_customer_finance_summary") {
-      let custSql = `SELECT id, name, company, phone, email, creditLimit, creditPeriod FROM customers WHERE 1=1 `;
+      let custSql = `SELECT id, name, company, phone, email, creditLimit, creditDays, contacts FROM customers WHERE 1=1 `;
       const custParams: any[] = [];
       if (args.customerName && args.customerName.trim()) {
         const q = `%${args.customerName.trim()}%`;
-        custSql += `AND (name LIKE ? OR company LIKE ?) `;
-        custParams.push(q, q);
+        custSql += `AND (name LIKE ? OR company LIKE ? OR contacts LIKE ?) `;
+        custParams.push(q, q, q);
       }
       custSql += `LIMIT 8`;
       const [customers]: any = await db.query(custSql, custParams);
@@ -5862,6 +5879,28 @@ async function executeAITool(name: string, args: any) {
         machineries: machines,
         recentQCInspections: inspections
       };
+    } else if (name === "search_contacts_and_directory") {
+      const rawQ = (args.query || '').trim();
+      const q = `%${rawQ}%`;
+      const [customers]: any = await db.query(
+        "SELECT id, name, company, phone, phone2, email, address, contacts FROM customers WHERE name LIKE ? OR company LIKE ? OR phone LIKE ? OR email LIKE ? OR contacts LIKE ? LIMIT 6",
+        [q, q, q, q, q]
+      );
+      const [suppliers]: any = await db.query(
+        "SELECT id, name, contactPerson, contactName, phone, phone2, email, address, contacts FROM suppliers WHERE name LIKE ? OR contactPerson LIKE ? OR contactName LIKE ? OR phone LIKE ? OR email LIKE ? OR contacts LIKE ? LIMIT 6",
+        [q, q, q, q, q, q]
+      );
+      const [leads]: any = await db.query(
+        "SELECT id, name, company, phone, email FROM leads WHERE name LIKE ? OR company LIKE ? OR phone LIKE ? OR email LIKE ? LIMIT 6",
+        [q, q, q, q]
+      );
+      return {
+        searchedQuery: rawQ,
+        totalFound: customers.length + suppliers.length + leads.length,
+        customers,
+        suppliers,
+        leads
+      };
     } else if (name === "get_erp_database_schema") {
       return {
         databaseName: "rex_erp",
@@ -5966,11 +6005,9 @@ function normalizeModelName(modelName: string, isGroq: boolean): string {
     if (m === '70b' || m === 'llama-70b' || m === 'llama-3-70b' || m === 'llama-3.3-70b' || m === 'llama3-70b' || m === 'llama3.3-70b' || m === 'llama-3.1-70b') {
       return 'llama-3.3-70b-versatile';
     }
-    if (m.includes('mixtral') && !m.includes('32768')) {
-      return 'mixtral-8x7b-32768';
-    }
-    if (m.includes('gpt-oss') && !m.includes('/')) {
-      return 'openai/gpt-oss-120b';
+    // Any models that lack native tool support on Groq normalized to production llama-3.3-70b-versatile
+    if (m.includes('gpt-oss') || m.includes('mixtral') || m.includes('guard') || m.includes('gemma') || m.includes('qwen') || m.includes('whisper')) {
+      return 'llama-3.3-70b-versatile';
     }
   } else {
     if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
@@ -5990,10 +6027,7 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
     if (isGroq) {
       if (!isFailed('llama-3.3-70b-versatile')) return 'llama-3.3-70b-versatile';
       if (!isFailed('llama-3.1-8b-instant')) return 'llama-3.1-8b-instant';
-      if (!isFailed('mixtral-8x7b-32768')) return 'mixtral-8x7b-32768';
-      if (!isFailed('qwen/qwen3.8-27b')) return 'qwen/qwen3.8-27b';
-      if (!isFailed('openai/gpt-oss-120b')) return 'openai/gpt-oss-120b';
-      if (!isFailed('openai/gpt-oss-20b')) return 'openai/gpt-oss-20b';
+      if (!isFailed('llama-3.1-70b-versatile')) return 'llama-3.1-70b-versatile';
       return 'llama-3.3-70b-versatile';
     } else {
       if (!isFailed('gpt-4o-mini')) return 'gpt-4o-mini';
@@ -6003,51 +6037,27 @@ function selectBestModel(availableModels: string[], isGroq: boolean, failedModel
   }
 
   if (isGroq) {
-    // 1. Meta Llama 3.3 70B (Primary recommended production model - 128k context, high token limits, best reasoning & ERP tool calling)
+    // 1. Meta Llama 3.3 70B (Primary recommended production model - 128k context, high token limits, native function calling)
     const llama33_70b = candidates.find(m => m.includes('llama-3.3-70b'));
     if (llama33_70b) return llama33_70b;
 
-    // 2. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, high token limits)
+    // 2. Meta Llama 3.1 8B instant (Blazing fast ~560 tps, native function calling)
     const llama8b = candidates.find(m => m.includes('llama-3.1-8b') || m.includes('llama-3-8b'));
     if (llama8b) return llama8b;
 
-    // 3. Mixtral 8x7B (High context 32k, high limits, universal Groq availability)
-    const mixtral = candidates.find(m => m.toLowerCase().includes('mixtral'));
-    if (mixtral) return mixtral;
-
-    // 4. Meta Llama 3.1 70B
+    // 3. Meta Llama 3.1 70B (Native function calling)
     const llama31_70b = candidates.find(m => m.includes('llama-3.1-70b') && !m.includes('instant'));
     if (llama31_70b) return llama31_70b;
 
-    // 5. Any other Meta Llama chat model (excluding guard/vision)
-    const anyLlama = candidates.find(m => m.toLowerCase().includes('llama') && !m.includes('guard'));
+    // 4. Any dedicated tool-use model
+    const toolUse = candidates.find(m => m.includes('tool-use'));
+    if (toolUse) return toolUse;
+
+    // 5. Any Llama 3 instruct model (excluding guard/vision)
+    const anyLlama = candidates.find(m => m.toLowerCase().includes('llama-3') && !m.includes('guard') && !m.includes('vision'));
     if (anyLlama) return anyLlama;
 
-    // 6. Gemma
-    const gemma = candidates.find(m => m.toLowerCase().includes('gemma'));
-    if (gemma) return gemma;
-
-    // 7. Qwen
-    const qwen = candidates.find(m => m.toLowerCase().includes('qwen'));
-    if (qwen) return qwen;
-
-    // 8. Allam
-    const allam = candidates.find(m => m.toLowerCase().includes('allam'));
-    if (allam) return allam;
-
-    // 9. OpenAI GPT-OSS 120B (Last resort - strict 8k TPM preview limit)
-    const gptOss120 = candidates.find(m => m.includes('gpt-oss-120b'));
-    if (gptOss120) return gptOss120;
-
-    // 10. OpenAI GPT-OSS 20B (Last resort - strict 8k TPM preview limit)
-    const gptOss20 = candidates.find(m => m.includes('gpt-oss-20b') || m.includes('gpt-oss'));
-    if (gptOss20) return gptOss20;
-
-    // 11. Any non-guard/non-whisper model
-    const anyChat = candidates.find(m => !m.includes('guard') && !m.includes('whisper') && !m.includes('embedding') && !m.includes('tts'));
-    if (anyChat) return anyChat;
-
-    return candidates[0] || 'llama-3.3-70b-versatile';
+    return 'llama-3.3-70b-versatile';
   } else {
     // Priority order for OpenAI models:
     const gpt4oMini = candidates.find(m => m === 'gpt-4o-mini' || m.includes('gpt-4o-mini'));
@@ -6217,11 +6227,18 @@ app.post('/api/ai/chat', async (req, res) => {
       isGroq
     );
 
-    // If active model in DB was set to a rate-limited gpt-oss model, auto-promote to llama-3.3-70b-versatile
-    if (isGroq && activeModelName.includes('gpt-oss')) {
-      console.log(`[Rex AI Chat] Sanitizing legacy model '${activeModelName}' -> 'llama-3.3-70b-versatile'`);
-      activeModelName = 'llama-3.3-70b-versatile';
-      db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+    // For Groq, proactively ensure activeModelName is a tool-supported model
+    if (isGroq) {
+      const isKnownToolModel = 
+        activeModelName.includes('llama-3.3-70b') || 
+        activeModelName.includes('llama-3.1-8b') || 
+        activeModelName.includes('llama-3.1-70b') || 
+        activeModelName.includes('tool-use');
+      if (!isKnownToolModel) {
+        console.log(`[Rex AI Chat] Sanitizing non-tool model '${activeModelName}' -> 'llama-3.3-70b-versatile'`);
+        activeModelName = 'llama-3.3-70b-versatile';
+        db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+      }
     }
 
     if (!isGroq && (activeModelName.includes('luna') || !activeModelName)) {
@@ -6354,6 +6371,37 @@ Be direct, helpful, polite, and structure your responses with clean markdown tab
           ).catch((e: any) => console.error('[Rex AI] Failed to save updated model to DB:', e.message));
 
           aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+        }
+      }
+
+      // Check for Tool Calling not supported error (HTTP 400 from Groq)
+      if (!aiRes.ok) {
+        errJson = await aiRes.json().catch(() => errJson);
+        errMsg = (errJson.error?.message || '').toLowerCase();
+        const isToolUnsupported = 
+          errMsg.includes('tool calling is not supported') || 
+          errMsg.includes('tool use is not supported') || 
+          errMsg.includes('tools are not supported');
+
+        if (isToolUnsupported) {
+          failedModelsList.push(activeModelName);
+          console.warn(`[Rex AI Engine] Model '${activeModelName}' does not support tools (${errMsg}). Auto-migrating to 'llama-3.3-70b-versatile'...`);
+          activeModelName = 'llama-3.3-70b-versatile';
+          db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
+          aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+
+          // If that still fails, try llama-3.1-8b-instant
+          if (!aiRes.ok) {
+            activeModelName = 'llama-3.1-8b-instant';
+            db.query("UPDATE settings SET val = 'llama-3.1-8b-instant' WHERE id = 'groq_model'").catch(() => {});
+            aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
+          }
+
+          // If tools still fail, retry WITHOUT tools so user ALWAYS gets a successful answer
+          if (!aiRes.ok) {
+            console.warn(`[Rex AI Engine] Model tools failed. Retrying without tools...`);
+            aiRes = await callCompletion(activeModelName, conversation);
+          }
         }
       }
 
