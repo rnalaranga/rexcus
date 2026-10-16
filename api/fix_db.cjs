@@ -540,6 +540,14 @@ async function run() {
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_host', 'mail.rexgroup.lk')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_port', '465')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_secure', 'true')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_from_email', 'info@rexgroup.lk')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_from_name', 'Rex Industries (Pvt) Ltd')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_reply_to', 'info@rexgroup.lk')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_quote_subject', 'Quotation #{number} - Rex Industries (Pvt) Ltd')",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('smtp_invoice_subject', 'Tax Invoice #{number} - Rex Industries (Pvt) Ltd')",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())"
   ];
 

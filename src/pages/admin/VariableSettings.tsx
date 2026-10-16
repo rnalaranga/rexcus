@@ -8,6 +8,7 @@ import {
   AlertCircle, Sparkles, Save, RefreshCw, Cpu, Database, 
   HelpCircle, ShieldCheck, Zap, Factory, Clock
 } from 'lucide-react';
+import { EmailSettingsManager } from '@/components/EmailSettingsManager';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -1060,6 +1061,9 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
           </div>
         </div>
       </GlassCard>
+
+      {/* --- SECTION 3: SENDER EMAIL & OUTGOING SMTP SETTINGS --- */}
+      <EmailSettingsManager />
 
       {/* Bottom Save Bar */}
       <div className="flex items-center justify-end gap-3 pt-2">

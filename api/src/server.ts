@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
 import db from './db';
 
 // Multi-path dotenv loader for local & VPS production environments
@@ -970,6 +971,206 @@ app.post('/api/settings', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// ==========================
+// OUTGOING EMAIL (SMTP) & SENDER SERVICE
+// ==========================
+async function getEmailTransporter(customConfig?: any) {
+  let host = customConfig?.host;
+  let port = customConfig?.port;
+  let secure = customConfig?.secure;
+  let user = customConfig?.user;
+  let pass = customConfig?.pass;
+
+  // Retrieve existing settings from DB
+  const [rows]: any = await db.query("SELECT id, val FROM settings WHERE id LIKE 'smtp_%'");
+  const map = (rows || []).reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
+
+  host = (host || map.smtp_host || process.env.SMTP_HOST || '').trim();
+  port = Number(port || map.smtp_port || process.env.SMTP_PORT || 587);
+  const secureSetting = secure !== undefined ? secure : (map.smtp_secure === 'true' || port === 465);
+  user = (user || map.smtp_user || map.smtp_from_email || process.env.SMTP_USER || '').trim();
+  pass = (pass !== undefined && pass !== null ? pass : (map.smtp_pass || process.env.SMTP_PASS || '')).trim();
+
+  if (!host) throw new Error('SMTP Host is not configured. Please enter your SMTP Host in Admin > Settings > Outgoing Email Settings.');
+  if (!user) throw new Error('SMTP Username or Sender Email is not configured.');
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: Boolean(secureSetting),
+    auth: {
+      user,
+      pass
+    },
+    tls: {
+      rejectUnauthorized: false
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000
+  });
+
+  return {
+    transporter,
+    host,
+    port,
+    user,
+    fromEmail: (map.smtp_from_email || user).trim(),
+    fromName: (map.smtp_from_name || 'Rex Industries (Pvt) Ltd').trim(),
+    replyTo: (map.smtp_reply_to || map.smtp_from_email || user).trim(),
+    bcc: (map.smtp_bcc || '').trim(),
+    quoteSubject: map.smtp_quote_subject || 'Quotation #{number} - Rex Industries (Pvt) Ltd',
+    quoteBody: map.smtp_quote_body || '',
+    invoiceSubject: map.smtp_invoice_subject || 'Tax Invoice #{number} - Rex Industries (Pvt) Ltd',
+    invoiceBody: map.smtp_invoice_body || ''
+  };
+}
+
+// Test SMTP Connection and optionally send a live test message
+app.post('/api/email/test', async (req, res) => {
+  try {
+    const { host, port, secure, user, pass, fromEmail, fromName, toEmail } = req.body;
+    if (!toEmail) {
+      return res.status(400).json({ success: false, error: 'Recipient email address (toEmail) is required to test email delivery' });
+    }
+
+    const emailConfig = await getEmailTransporter({
+      host,
+      port,
+      secure,
+      user,
+      pass
+    });
+
+    // 1. Verify credentials and transport connection
+    await emailConfig.transporter.verify();
+
+    // 2. Send test email to verify end-to-end delivery
+    const effectiveSender = fromEmail || emailConfig.fromEmail || emailConfig.user;
+    const effectiveName = fromName || emailConfig.fromName || 'Rex ERP';
+    
+    const info = await emailConfig.transporter.sendMail({
+      from: `"${effectiveName}" <${effectiveSender}>`,
+      to: toEmail.trim(),
+      subject: `Rex ERP - SMTP Outgoing Email Test (${new Date().toLocaleTimeString()})`,
+      text: `Hello,\n\nThis is a verification email from Rex ERP confirming that your outgoing SMTP email settings and sender email address are working properly.\n\nServer: ${emailConfig.host}:${emailConfig.port}\nSender: ${effectiveSender}\nRecipient: ${toEmail}\nTimestamp: ${new Date().toISOString()}\n\nRex Industries (Pvt) Ltd`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; border-bottom: 2px solid #0284c7; padding-bottom: 12px;">
+            <h2 style="color: #0f172a; margin: 0; font-size: 19px;">Rex ERP - Outgoing Email Test</h2>
+          </div>
+          <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+            Congratulations! Your outgoing email server settings and sender address have been successfully verified. Rex ERP can now send quotations, tax invoices, and official notices directly to your clients.
+          </p>
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin: 18px 0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; width: 140px;"><strong>SMTP Server:</strong></td>
+                <td style="padding: 6px 0; color: #0f172a; font-family: monospace;">${emailConfig.host}:${emailConfig.port}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;"><strong>Sender Address:</strong></td>
+                <td style="padding: 6px 0; color: #0f172a;">${effectiveSender}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;"><strong>Recipient:</strong></td>
+                <td style="padding: 6px 0; color: #0f172a;">${toEmail}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;"><strong>Verified At:</strong></td>
+                <td style="padding: 6px 0; color: #0f172a;">${new Date().toLocaleString()}</td>
+              </tr>
+            </table>
+          </div>
+          <p style="color: #94a3b8; font-size: 11px; margin-top: 18px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+            Rex Industries (Pvt) Ltd ERP System • Automated Delivery Verification
+          </p>
+        </div>
+      `
+    });
+
+    res.json({
+      success: true,
+      message: `SMTP verified and test email successfully delivered to ${toEmail}!`,
+      messageId: info.messageId
+    });
+  } catch (error: any) {
+    console.error('[Email Test Error]:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'SMTP connection failed. Check host, port, username, and password.'
+    });
+  }
+});
+
+// Send Document Email (Quotation, Invoice, etc.) with attachments
+app.post('/api/email/send', async (req, res) => {
+  try {
+    const { to, cc, bcc, subject, text, html, attachments, docType, docNumber } = req.body;
+    if (!to) {
+      return res.status(400).json({ success: false, error: 'Recipient email address (to) is required' });
+    }
+    if (!subject) {
+      return res.status(400).json({ success: false, error: 'Email subject is required' });
+    }
+
+    const emailConfig = await getEmailTransporter();
+
+    const mailOptions: any = {
+      from: `"${emailConfig.fromName}" <${emailConfig.fromEmail}>`,
+      to: Array.isArray(to) ? to.join(', ') : to,
+      subject,
+      text: text || '',
+      html: html || (text ? text.replace(/\n/g, '<br/>') : ''),
+      replyTo: emailConfig.replyTo
+    };
+
+    if (cc) mailOptions.cc = Array.isArray(cc) ? cc.join(', ') : cc;
+    const finalBcc = [emailConfig.bcc, bcc].filter(Boolean).join(', ');
+    if (finalBcc) mailOptions.bcc = finalBcc;
+
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      mailOptions.attachments = attachments.map((att: any) => {
+        let contentBuffer = att.content;
+        let encoding: string | undefined = att.encoding;
+
+        // If content is a base64 data URI (data:application/pdf;base64,...)
+        if (typeof att.content === 'string' && att.content.startsWith('data:')) {
+          const parts = att.content.split(';base64,');
+          if (parts.length === 2) {
+            contentBuffer = Buffer.from(parts[1], 'base64');
+            encoding = undefined;
+          }
+        } else if (typeof att.content === 'string' && att.encoding === 'base64') {
+          contentBuffer = Buffer.from(att.content, 'base64');
+          encoding = undefined;
+        }
+
+        return {
+          filename: att.filename || `${docType || 'Document'}-${docNumber || 'file'}.pdf`,
+          content: contentBuffer,
+          encoding,
+          contentType: att.contentType || 'application/pdf'
+        };
+      });
+    }
+
+    const info = await emailConfig.transporter.sendMail(mailOptions);
+    console.log(`[Email Sent] ${docType || 'Document'} #${docNumber || ''} sent to ${to} (Message ID: ${info.messageId})`);
+
+    res.json({
+      success: true,
+      message: `Email sent successfully to ${to}`,
+      messageId: info.messageId
+    });
+  } catch (error: any) {
+    console.error('[Email Send Error]:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send email. Check SMTP settings in Admin Settings.'
+    });
   }
 });
 

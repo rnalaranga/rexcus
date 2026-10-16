@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle } from 'lucide-react'
+import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
@@ -13,6 +13,7 @@ import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
+import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -30,6 +31,7 @@ export const Invoices: React.FC = () => {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [viewInvoice, setViewInvoice] = useState<any>(null)
+  const [emailModalData, setEmailModalData] = useState<any>(null)
   
   const [toast, setToast] = useState<{type: 'success'|'error', msg: string} | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -844,7 +846,25 @@ export const Invoices: React.FC = () => {
                   ))}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <Button 
+                    variant="primary" 
+                    icon={Mail} 
+                    className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                    onClick={() => {
+                      const cust = getCustomerInfo(viewInvoice);
+                      const invTotal = Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0));
+                      setEmailModalData({
+                        documentNumber: viewInvoice.id,
+                        customerName: cust.company || cust.name || 'Customer',
+                        customerEmail: cust.email || '',
+                        totalAmount: invTotal,
+                        elementIdToPdf: 'invoice-preview'
+                      });
+                    }}
+                  >
+                    Email
+                  </Button>
                   <Button variant="ghost" className="h-9 text-xs border border-blue-500/30 text-blue-500 hover:bg-blue-500/10" onClick={() => {
                       const content = document.getElementById('invoice-preview');
                       if (!content) return;
@@ -919,6 +939,19 @@ export const Invoices: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {emailModalData && (
+        <SendDocumentEmailModal
+          isOpen={!!emailModalData}
+          onClose={() => setEmailModalData(null)}
+          documentType="invoice"
+          documentNumber={emailModalData.documentNumber}
+          customerName={emailModalData.customerName}
+          customerEmail={emailModalData.customerEmail}
+          totalAmount={emailModalData.totalAmount}
+          elementIdToPdf={emailModalData.elementIdToPdf}
+        />
       )}
 
       {/* Delete Confirmation Modal */}

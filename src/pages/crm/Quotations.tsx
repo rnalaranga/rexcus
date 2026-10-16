@@ -18,7 +18,8 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN } from '@/lib/api'
-import { Banknote } from 'lucide-react'
+import { Banknote, Mail } from 'lucide-react'
+import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 
 
 export const Quotations: React.FC = () => {
@@ -152,6 +153,7 @@ export const Quotations: React.FC = () => {
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
   const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string} | null>(null)
   const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
+  const [emailModalData, setEmailModalData] = useState<any>(null)
   const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string } | null>(null)
   const [printGrnData, setPrintGrnData] = useState<{ grn: any, group: any } | null>(null)
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
@@ -181,7 +183,7 @@ export const Quotations: React.FC = () => {
 
 
   
-    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadAddress: string, leadVat: string, leadSvat: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
+    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadEmail?: string, leadAddress: string, leadVat: string, leadSvat: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
     
     quotations.forEach(q => {
        let parsed: any = {}
@@ -193,10 +195,11 @@ export const Quotations: React.FC = () => {
           const lead = leads.find((l: any) => l.id === q.leadId);
           const leadCompany = q.leadCompany || cust?.company || lead?.company || '';
           const leadName = q.leadName || cust?.name || lead?.name || parsed.customerName || 'Walk-in Customer';
+          const leadEmail = parsed.customerEmail || parsed.email || (cust as any)?.email || (lead as any)?.email || '';
           const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || (lead as any)?.address || '';
           const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || '';
           const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || (cust as any)?.tin || lead?.svat || (lead as any)?.tin || '';
-          groups[quoNo] = { quoNo, leadName, leadCompany, leadAddress, leadVat, leadSvat, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date };
+          groups[quoNo] = { quoNo, leadName, leadCompany, leadEmail, leadAddress, leadVat, leadSvat, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date };
         }
        
        if (q.type === 'main') groups[quoNo].main.push(q)
@@ -665,7 +668,7 @@ export const Quotations: React.FC = () => {
                   )}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })} className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/20 h-8">
+                      <Button variant="ghost" size="sm" onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })} className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/20 h-8">
                          View Quote
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${displayQ.id}`)} className="bg-surface border border-theme-subtle hover:bg-surface2 h-8">
@@ -878,6 +881,25 @@ export const Quotations: React.FC = () => {
                settings={settings}
             />
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
+              <Button 
+                variant="primary" 
+                icon={Mail} 
+                onClick={() => {
+                  let parsed: any = {};
+                  try { parsed = JSON.parse(previewData.quotation?.data || '{}'); } catch(e){}
+                  setEmailModalData({
+                    documentNumber: parsed.quotationNo || previewData.quotation.id,
+                    customerName: previewData.lead?.company || previewData.lead?.name || parsed.customerName || 'Customer',
+                    customerEmail: previewData.lead?.email || parsed.customerEmail || '',
+                    totalAmount: previewData.quotation.totalAmount || parsed.total || 0,
+                    validityDays: parsed.validity || '30',
+                    elementIdToPdf: 'print-section'
+                  });
+                }} 
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
+              >
+                Email Quotation
+              </Button>
               <Button variant="ghost" onClick={() => {
                 const element = document.getElementById('print-section');
                 if (!element) return;
@@ -895,6 +917,20 @@ export const Quotations: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {emailModalData && (
+        <SendDocumentEmailModal
+          isOpen={!!emailModalData}
+          onClose={() => setEmailModalData(null)}
+          documentType="quotation"
+          documentNumber={emailModalData.documentNumber}
+          customerName={emailModalData.customerName}
+          customerEmail={emailModalData.customerEmail}
+          totalAmount={emailModalData.totalAmount}
+          validityDays={emailModalData.validityDays}
+          elementIdToPdf={emailModalData.elementIdToPdf}
+        />
+      )}
     
       <Modal isOpen={!!woDialog} onClose={() => setWoDialog(null)} title={woDialog?.type === 'confirm' ? 'Confirm Action' : woDialog?.type === 'success' ? 'Success' : 'Error'} size="md">
         <div className="p-6">
