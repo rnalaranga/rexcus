@@ -145,7 +145,7 @@ export const Settings = () => {
   };
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 animate-fade-in pb-16">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">System Settings</h1>
@@ -156,9 +156,9 @@ export const Settings = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Company Profile & Tax Details */}
-        <GlassCard className="p-6">
+        <GlassCard className="p-6 xl:col-span-7">
           <div className="flex items-center gap-2 mb-2">
             <Building2 className="w-4 h-4 text-rex-500" />
             <h2 className="text-sm font-bold text-primary uppercase tracking-widest">Company & Tax Profile</h2>
@@ -256,7 +256,7 @@ export const Settings = () => {
         </GlassCard>
 
         {/* Branding & Logo */}
-        <GlassCard className="p-6">
+        <GlassCard className="p-6 xl:col-span-5">
           <h2 className="text-sm font-bold text-primary uppercase tracking-widest mb-4">Branding & Logo</h2>
           <div className="space-y-4">
             <p className="text-xs text-muted">Upload your company logo. This will be displayed on the sidebar and in PDF documents like invoices and quotations. (Max 2MB)</p>
@@ -306,7 +306,7 @@ export const Settings = () => {
           </div>
         </GlassCard>
 
-        <div className="col-span-1 md:col-span-2 space-y-6">
+        <div className="col-span-1 xl:col-span-12 space-y-6">
           <EmailSettingsManager />
           <TermsConditionsManager />
           <BankDetailsManager />
@@ -315,7 +315,7 @@ export const Settings = () => {
         </div>
       
         
-        <GlassCard className="p-6 col-span-1 md:col-span-2 border-blue-500/30">
+        <GlassCard className="p-6 col-span-1 xl:col-span-12 border-blue-500/30">
           <h2 className="text-sm font-bold text-blue-500 uppercase tracking-widest mb-4 flex items-center gap-2">Server Resources (Live)</h2>
           {sysStats ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -376,7 +376,7 @@ export const Settings = () => {
           )}
         </GlassCard>
 
-        <GlassCard className="p-6 col-span-1 md:col-span-2 border-emerald-500/30">
+        <GlassCard className="p-6 col-span-1 xl:col-span-12 border-emerald-500/30">
 
           <div className="flex items-center gap-2 mb-4">
             <Wrench className="w-4 h-4 text-emerald-500" />

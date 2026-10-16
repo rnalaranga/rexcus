@@ -242,7 +242,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-16 max-w-6xl mx-auto">
+    <div className="space-y-6 animate-fade-in pb-16 w-full max-w-[1600px] mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
