@@ -393,13 +393,13 @@ export const InvoiceBuilder: React.FC = () => {
 
         {/* Right — Actions */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-600">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 whitespace-nowrap shrink-0">
             <CheckCircle2 size={13} /> Gazette No. 2481/22
           </div>
-          <button onClick={() => setShowPreview(p => !p)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${showPreview ? 'bg-surface2 border-blue-500/50 text-blue-500' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2'}`}>
+          <button onClick={() => setShowPreview(p => !p)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ${showPreview ? 'bg-surface2 border-blue-500/50 text-blue-500' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2'}`}>
             <Eye size={14} /> Preview
           </button>
-          <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors">
+          <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors">
             <Printer size={14} /> Print
           </button>
           <Button variant="primary" icon={Save} onClick={handleSave} className="text-xs">
@@ -416,7 +416,7 @@ export const InvoiceBuilder: React.FC = () => {
             <p className="text-xs text-muted uppercase tracking-widest font-semibold">
               Preview — Statutory {isTaxShownSeparately ? 'Tax Invoice' : 'Invoice'} (Gazette No. 2481/22)
             </p>
-            <button onClick={() => setShowPreview(false)} className="flex items-center gap-1.5 text-xs text-muted hover:text-primary px-3 py-1.5 rounded-lg border border-theme-subtle hover:bg-surface transition-colors">
+            <button onClick={() => setShowPreview(false)} className="flex items-center gap-1.5 text-xs text-muted hover:text-primary px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 border border-theme-subtle hover:bg-surface transition-colors">
               <X size={12} /> Close Preview
             </button>
           </div>
@@ -436,7 +436,7 @@ export const InvoiceBuilder: React.FC = () => {
                 <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                   <Building2 size={16} className="text-blue-500" /> Bill To — Customer
                 </h2>
-                <button type="button" onClick={() => navigate('/crm/customers')} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/10 transition-colors">
+                <button type="button" onClick={() => navigate('/crm/customers')} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 hover:bg-blue-500/10 transition-colors">
                   <Plus size={10} /> Add New Customer
                 </button>
               </div>

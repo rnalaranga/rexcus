@@ -1262,7 +1262,7 @@ export const WorkOrders: React.FC = () => {
                                         <span className="flex items-center gap-1"><Settings size={12}/> {m?.name || 'Any Machine'}</span>
                                       </div>
                                     </div>
-                                    <button onClick={() => setTrackTab('operations')} className="shrink-0 px-4 py-2 bg-blue-500 text-white text-xs font-bold rounded-lg hover:bg-blue-600 transition-colors shadow-sm">Manage Operation</button>
+                                    <button onClick={() => setTrackTab('operations')} className="shrink-0 px-3 py-1.5 bg-blue-500 text-white text-xs font-bold rounded-md whitespace-nowrap hover:bg-blue-600 transition-colors shadow-sm">Manage Operation</button>
                                   </div>
                                 )
                               })}
@@ -1273,7 +1273,7 @@ export const WorkOrders: React.FC = () => {
                                 <p className="text-xs font-bold text-primary mb-1">Ready for next step: <span className="text-rex-600">{nextOp.operationName}</span></p>
                                 <p className="text-[10px] text-muted">No operations are currently in progress.</p>
                               </div>
-                              <button onClick={() => setTrackTab('operations')} className="px-3 py-1.5 bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-bold text-primary rounded-lg transition-colors">Start Step</button>
+                              <button onClick={() => setTrackTab('operations')} className="px-3 py-1.5 bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-bold text-primary rounded-md whitespace-nowrap shrink-0 transition-colors">Start Step</button>
                             </div>
                           ) : trackPct === 100 ? (
                             <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-5 flex items-center justify-between">
@@ -1656,10 +1656,10 @@ export const WorkOrders: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2 pt-3 border-t border-theme-subtle/60 items-center">
-                              {op.status === 'Pending' && <button onClick={() => handleUpdateOpStatus(op.id, 'In Progress')} className="flex items-center gap-1.5 text-xs font-semibold px-4 py-1.5 rounded-lg border border-blue-500/30 text-blue-600 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all"><Play size={11}/> Start Operation</button>}
-                              {op.status === 'In Progress' && <button onClick={() => handleUpdateOpStatus(op.id, 'QC Pending')} className="flex items-center gap-1.5 text-xs font-semibold px-4 py-1.5 rounded-lg border border-green-500/30 text-green-600 hover:bg-green-500 hover:text-white hover:border-green-500 transition-all"><CheckCircle size={11}/> Mark as Done</button>}
-                              {op.status === 'QC Pending' && <button onClick={() => setShowQcModal(op)} className="flex items-center gap-1.5 text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm"><AlertTriangle size={11}/> QC Inspection Required</button>}
-                              {op.qc?.map((q: any) => ( <div key={q.id} className={`flex items-center gap-1.5 text-[10px] font-semibold px-3 py-1 rounded-lg border ${q.status === 'Pass' ? 'bg-green-500/5 text-green-600 border-green-500/20' : 'bg-red-500/5 text-red-600 border-red-500/20'}`}><CheckCircle size={10}/>QC {q.status}{q.notes ? `: ${q.notes}` : ''}{q.defectReason ? ` — ${q.defectReason}` : ''}</div> ))}
+                              {op.status === 'Pending' && <button onClick={() => handleUpdateOpStatus(op.id, 'In Progress')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 border border-blue-500/30 text-blue-600 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all"><Play size={11}/> Start Operation</button>}
+                              {op.status === 'In Progress' && <button onClick={() => handleUpdateOpStatus(op.id, 'QC Pending')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 border border-green-500/30 text-green-600 hover:bg-green-500 hover:text-white hover:border-green-500 transition-all"><CheckCircle size={11}/> Mark as Done</button>}
+                              {op.status === 'QC Pending' && <button onClick={() => setShowQcModal(op)} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm"><AlertTriangle size={11}/> QC Inspection Required</button>}
+                              {op.qc?.map((q: any) => ( <div key={q.id} className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-0.5 rounded-md border ${q.status === 'Pass' ? 'bg-green-500/5 text-green-600 border-green-500/20' : 'bg-red-500/5 text-red-600 border-red-500/20'}`}><CheckCircle size={10}/>QC {q.status}{q.notes ? `: ${q.notes}` : ''}{q.defectReason ? ` — ${q.defectReason}` : ''}</div> ))}
                             </div>
                           </div>
                         </div>

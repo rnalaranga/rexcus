@@ -704,13 +704,13 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
               </div>
 
               <div className="flex items-center justify-between sm:justify-end gap-2">
-                <span className="text-xs font-bold px-2.5 py-1 bg-surface2 border border-theme-subtle text-primary">
+                <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-surface2 border border-theme-subtle text-primary whitespace-nowrap shrink-0">
                   {roleForm.permissions.length} / {ALL_PERMISSION_IDS.length} Selected
                 </span>
                 <button
                   type="button"
                   onClick={selectAllPermissions}
-                  className="px-2.5 py-1 text-xs font-semibold bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 transition-colors flex items-center gap-1.5"
+                  className="px-2.5 py-1 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 transition-colors flex items-center gap-1.5"
                 >
                   <CheckCheck size={13} className="text-rex-400" />
                   Select All
@@ -718,7 +718,7 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                 <button
                   type="button"
                   onClick={deselectAllPermissions}
-                  className="px-2.5 py-1 text-xs font-semibold bg-surface hover:bg-surface2 text-muted hover:text-red-400 border border-theme-subtle transition-colors"
+                  className="px-2.5 py-1 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 bg-surface hover:bg-surface2 text-muted hover:text-red-400 border border-theme-subtle transition-colors"
                 >
                   Clear All
                 </button>

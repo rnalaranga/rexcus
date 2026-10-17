@@ -197,7 +197,7 @@ export const BankDetailsManager: React.FC = () => {
           {editingId && (
             <button
               onClick={handleCancelEdit}
-              className="text-xs text-muted hover:text-primary transition-colors"
+              className="text-xs text-muted hover:text-primary transition-colors whitespace-nowrap shrink-0"
             >
               Cancel Edit
             </button>

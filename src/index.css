@@ -56,7 +56,21 @@
   .rounded-xl, [class*="rounded-xl"]     { border-radius: 0.75rem !important; }
   .rounded-lg, [class*="rounded-lg"]     { border-radius: 0.5rem !important; }
   .rounded-md, [class*="rounded-md"]     { border-radius: 0.375rem !important; }
+  .rounded, [class~="rounded"]           { border-radius: 0.25rem !important; }
   .rounded-sm, [class*="rounded-sm"]     { border-radius: 0.125rem !important; }
+
+  /* Small button ergonomics: prevent text from wrapping into multiple lines & keep radius balanced */
+  button[class*="text-xs"],
+  button[class*="text-[10px]"],
+  button[class*="text-[11px]"],
+  button[class*="text-[9px]"],
+  button[class*="h-6"],
+  button[class*="h-7"],
+  button[class*="h-8"],
+  .btn-sm {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 
   html, body, #root {
     height: 100%;

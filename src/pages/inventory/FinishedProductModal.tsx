@@ -486,7 +486,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 hover:bg-surface2 rounded-xl text-muted hover:text-primary transition-colors border border-theme-subtle flex items-center gap-1.5 text-xs font-semibold mr-1"
+                className="p-2 hover:bg-surface2 rounded-md text-muted hover:text-primary transition-colors border border-theme-subtle flex items-center gap-1.5 text-xs font-semibold mr-1 whitespace-nowrap shrink-0"
                 title="Back to Finished Goods"
               >
                 <ArrowLeft size={16} />
@@ -511,7 +511,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
             <button 
               type="button" 
               onClick={onClose}
-              className="p-2 rounded-lg text-muted hover:text-primary hover:bg-surface2 transition-colors"
+              className="p-2 rounded-md text-muted hover:text-primary hover:bg-surface2 transition-colors"
             >
               <X size={18} />
             </button>
@@ -524,7 +524,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('info')}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-md whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${
                 activeTab === 'info' 
                   ? 'bg-rex-600 text-white shadow-sm' 
                   : 'text-muted hover:text-primary hover:bg-surface2'
@@ -535,7 +535,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('boms')}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-md whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${
                 activeTab === 'boms' 
                   ? 'bg-rex-600 text-white shadow-sm' 
                   : 'text-muted hover:text-primary hover:bg-surface2'
@@ -551,7 +551,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('pricing')}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-md whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${
                 activeTab === 'pricing' 
                   ? 'bg-rex-600 text-white shadow-sm' 
                   : 'text-muted hover:text-primary hover:bg-surface2'
@@ -568,7 +568,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('ledger')}
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-xs font-bold rounded-md whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${
                   activeTab === 'ledger' 
                     ? 'bg-rex-600 text-white shadow-sm' 
                     : 'text-muted hover:text-primary hover:bg-surface2'

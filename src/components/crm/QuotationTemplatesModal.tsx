@@ -275,7 +275,7 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
             </button>
             <button
               onClick={handleOpenBlankCreate}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
                 activeTab === 'create' 
                   ? 'bg-rex-500 text-white shadow-xs' 
                   : 'text-muted hover:text-primary hover:bg-surface2'

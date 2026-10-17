@@ -624,7 +624,7 @@ export const PurchasingHub: React.FC = () => {
                 setStartDate(`${y}-${m}-01`);
                 setEndDate(now.toISOString().slice(0, 10));
               }}
-              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+              className="px-2.5 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-md whitespace-nowrap shrink-0 text-[11px] text-secondary hover:text-primary transition-colors"
             >
               This Month
             </button>
@@ -635,7 +635,7 @@ export const PurchasingHub: React.FC = () => {
                 setStartDate(past.toISOString().slice(0, 10));
                 setEndDate(now.toISOString().slice(0, 10));
               }}
-              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+              className="px-2.5 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-md whitespace-nowrap shrink-0 text-[11px] text-secondary hover:text-primary transition-colors"
             >
               Last 30 Days
             </button>
@@ -649,7 +649,7 @@ export const PurchasingHub: React.FC = () => {
                   setEndDate('');
                   setSearch('');
                 }}
-                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded font-semibold text-[11px] transition-colors ml-1"
+                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-md whitespace-nowrap shrink-0 font-semibold text-[11px] transition-colors ml-1"
               >
                 Clear Filters
               </button>

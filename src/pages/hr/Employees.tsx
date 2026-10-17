@@ -232,10 +232,10 @@ export const Employees: React.FC = () => {
       key: 'actions', header: '', align: 'right',
       render: (_: any, row: any) => (
         <div className="flex justify-end gap-1">
-          <button onClick={() => handleOpenSkillsAssign(row)} className="p-1.5 hover:bg-blue-500/10 rounded text-blue-500 transition-colors" title="Verify Skills"><Award size={14}/></button>
-          <button onClick={() => handleOpenAssign(row)} className="p-1.5 hover:bg-amber-500/10 rounded text-amber-500 transition-colors" title="Assign Machines"><Settings size={14}/></button>
-          <button onClick={() => handleOpenForm(row)} className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"><Edit size={14}/></button>
-          <button onClick={() => handleDelete(row.id)} className="p-1.5 hover:bg-red-500/20 rounded text-muted hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+          <button onClick={() => handleOpenSkillsAssign(row)} className="p-1.5 hover:bg-blue-500/10 rounded-md text-blue-500 transition-colors" title="Verify Skills"><Award size={14}/></button>
+          <button onClick={() => handleOpenAssign(row)} className="p-1.5 hover:bg-amber-500/10 rounded-md text-amber-500 transition-colors" title="Assign Machines"><Settings size={14}/></button>
+          <button onClick={() => handleOpenForm(row)} className="p-1.5 hover:bg-surface2 rounded-md text-muted hover:text-primary transition-colors"><Edit size={14}/></button>
+          <button onClick={() => handleDelete(row.id)} className="p-1.5 hover:bg-red-500/20 rounded-md text-muted hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
         </div>
       )
     }
@@ -264,7 +264,7 @@ export const Employees: React.FC = () => {
           <button
             key={r}
             onClick={() => setFilterRole(r)}
-            className={`px-2.5 py-1 text-xs border transition-colors ${filterRole === r ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}
+            className={`px-2.5 py-1 text-xs border rounded-md whitespace-nowrap shrink-0 transition-colors ${filterRole === r ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-semibold' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}
           >
             {r}
           </button>

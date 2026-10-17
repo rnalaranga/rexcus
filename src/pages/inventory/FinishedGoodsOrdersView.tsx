@@ -275,7 +275,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               key={st}
               type="button"
               onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 transition-all ${
                 statusFilter === st
                   ? 'bg-rex-600 text-white shadow-sm'
                   : 'bg-surface hover:bg-surface2 text-secondary border border-theme-subtle'

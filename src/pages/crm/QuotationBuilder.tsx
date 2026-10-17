@@ -1411,7 +1411,7 @@ export const QuotationBuilder: React.FC = () => {
       {/* TOPBAR */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-theme-subtle bg-surface/60 backdrop-blur shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/crm/quotations')} className="p-2 hover:bg-surface2 rounded-lg transition-colors text-muted hover:text-primary">
+          <button onClick={() => navigate('/crm/quotations')} className="p-2 hover:bg-surface2 rounded-md transition-colors text-muted hover:text-primary">
             <ArrowLeft size={17} />
           </button>
           <div>
@@ -1441,7 +1441,7 @@ export const QuotationBuilder: React.FC = () => {
         {/* Actions */}
         <div className="flex gap-2">
           <button onClick={() => setShowTemplatesModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors"
             title="Browse Quotation Templates"
           >
             <Bookmark size={14} className="text-rex-500" /> Templates
@@ -1451,27 +1451,27 @@ export const QuotationBuilder: React.FC = () => {
               setTemplateSaveName(templateSaveName || subject || '');
               setShowSaveAsTemplateModal(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-purple-500/40 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-purple-500/40 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 transition-colors"
             title="Save this entire quotation (BOMs, machining, materials, pricing) as a reusable template"
           >
             <Bookmark size={14} /> {isTemplateMode && editTemplateId ? 'Update Template' : 'Save as Template'}
           </button>
 
           <button onClick={() => setShowHistory(p => !p)}
-            className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ' + 
+            className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ' + 
             (showHistory ? 'bg-surface2 border-rex-500/50 text-primary' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2')}
           >
             <History size={14} /> History {showHistory ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
           </button>
           <button onClick={() => setPreviewCollapsed(p => !p)}
-            className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ' + 
+            className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ' + 
             (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-rex-500/50 text-primary')}
             title={previewCollapsed ? 'Expand Live Preview' : 'Collapse Live Preview'}
           >
             <Eye size={14} /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
           </button>
           <button onClick={() => setShowPreview(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
             <Download size={14} /> Preview
           </button>
 
@@ -1754,7 +1754,7 @@ export const QuotationBuilder: React.FC = () => {
                     </div>
 
                     {clientType === 'customer' && (
-                      <button type="button" onClick={() => setShowAddCustomer(true)} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
+                      <button type="button" onClick={() => setShowAddCustomer(true)} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 border border-blue-500/30 px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 hover:bg-blue-500/10 transition-colors">
                         <Plus size={10} /> Add New Customer
                       </button>
                     )}
@@ -2706,16 +2706,16 @@ export const QuotationBuilder: React.FC = () => {
              {/* TABS */}
              <div className="flex items-center justify-between p-2 border-b border-theme-subtle bg-surface/80 backdrop-blur">
                <div className="flex items-center gap-1 flex-1">
-                 <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-zinc-800 text-primary rounded-lg shadow-sm border border-theme-subtle/40">
+                 <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-zinc-800 text-primary rounded-md shadow-sm border border-theme-subtle/40 whitespace-nowrap shrink-0">
                    Live Preview
                  </button>
-                 <button className="flex-1 py-1.5 text-xs font-bold text-muted hover:text-primary transition-colors flex items-center justify-center gap-1.5 rounded-lg hover:bg-surface2">
+                 <button className="flex-1 py-1.5 text-xs font-bold text-muted hover:text-primary transition-colors flex items-center justify-center gap-1.5 rounded-md hover:bg-surface2 whitespace-nowrap shrink-0">
                    <span className="text-purple-500"><Wand2 size={13} /></span> AI Co-Pilot
                  </button>
                </div>
                <button 
                  onClick={() => setPreviewCollapsed(true)}
-                 className="p-1.5 ml-2 hover:bg-surface2 rounded-lg text-muted hover:text-primary transition-colors"
+                 className="p-1.5 ml-2 hover:bg-surface2 rounded-md text-muted hover:text-primary transition-colors shrink-0"
                  title="Collapse Live Preview"
                >
                  <ChevronRight size={16} />

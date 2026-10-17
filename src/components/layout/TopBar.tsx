@@ -657,7 +657,7 @@ export const TopBar: React.FC = () => {
           onClick={toggle}
           title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           className={cn(
-            'flex items-center justify-center w-8 h-8 rounded-lg border transition-all duration-150',
+            'flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-150',
             'border-theme-subtle text-muted hover:text-primary hover:border-rex-500/40 hover:bg-rex-500/5',
           )}
         >
@@ -731,7 +731,7 @@ export const TopBar: React.FC = () => {
                 <button
                   onClick={() => setNotifFilter('all')}
                   className={cn(
-                    'px-2.5 py-1 rounded text-[11px] font-medium transition-colors',
+                    'px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors',
                     notifFilter === 'all' ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-secondary'
                   )}
                 >
@@ -740,7 +740,7 @@ export const TopBar: React.FC = () => {
                 <button
                   onClick={() => setNotifFilter('unread')}
                   className={cn(
-                    'px-2.5 py-1 rounded text-[11px] font-medium transition-colors',
+                    'px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors',
                     notifFilter === 'unread' ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-secondary'
                   )}
                 >

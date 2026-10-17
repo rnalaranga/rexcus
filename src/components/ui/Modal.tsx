@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
         {/* Fullscreen header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-theme-subtle flex-shrink-0 bg-surface">
           <h2 className="text-sm font-bold text-primary tracking-wide uppercase">{title}</h2>
-          <button onClick={onClose} className="text-muted hover:text-primary transition-colors p-1 hover:bg-surface2 rounded">
+          <button onClick={onClose} className="text-muted hover:text-primary transition-colors p-1 hover:bg-surface2 rounded-md">
             <X size={18} />
           </button>
         </div>
@@ -97,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
                 type="button"
                 onClick={() => setIsMaximized(!isMaximized)}
                 title={isMaximized ? "Restore standard size" : "Expand width (Full View)"}
-                className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface2 transition-colors"
+                className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface2 transition-colors"
               >
                 {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               </button>
@@ -105,7 +105,7 @@ export const Modal: React.FC<ModalProps> = ({
             <button 
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface2 transition-colors"
+              className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface2 transition-colors"
               title="Close modal"
             >
               <X size={16} />

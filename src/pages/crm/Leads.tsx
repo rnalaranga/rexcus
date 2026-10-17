@@ -481,9 +481,9 @@ export const Leads: React.FC = () => {
             </h3>
             
             {/* Customer Selection / Creation Toggle */}
-            <div className="flex gap-2 mb-4 p-1 bg-surface2 rounded-lg inline-flex">
-              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: false})} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${!formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>Select Existing Customer</button>
-              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: true, customerId: '', name: '', company: '', email: '', phone: ''})} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>+ Register New Customer</button>
+            <div className="flex gap-2 mb-4 p-1 bg-surface2 rounded-md inline-flex">
+              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: false})} className={`px-4 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 transition-all ${!formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>Select Existing Customer</button>
+              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: true, customerId: '', name: '', company: '', email: '', phone: ''})} className={`px-4 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 transition-all ${formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>+ Register New Customer</button>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -823,7 +823,7 @@ export const Leads: React.FC = () => {
                             </Button>
                             <button
                               type="button"
-                              className="h-6 w-6 flex items-center justify-center text-muted hover:text-red-500 transition-colors"
+                              className="h-6 w-6 flex items-center justify-center text-muted hover:text-red-500 rounded-md transition-colors"
                               onClick={() => setDeleteTarget({ type: 'quotation', id: q.id })}
                             >
                               <Trash2 size={12} />

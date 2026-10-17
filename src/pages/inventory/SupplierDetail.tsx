@@ -910,34 +910,34 @@ export const SupplierDetail: React.FC = () => {
             </div>
 
             {/* Type Filter Pills */}
-            <div className="flex items-center gap-1 bg-surface2/50 p-1 rounded-lg border border-theme-subtle">
+            <div className="flex items-center gap-1 bg-surface2/50 p-1 rounded-md border border-theme-subtle">
               <button 
                 onClick={() => setTypeFilter('all')} 
-                className={`px-2 py-1 text-xs rounded transition-colors ${typeFilter === 'all' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
+                className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap shrink-0 transition-colors ${typeFilter === 'all' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
               >
                 All
               </button>
               <button 
                 onClick={() => setTypeFilter('purchase')} 
-                className={`px-2 py-1 text-xs rounded transition-colors ${typeFilter === 'purchase' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
+                className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap shrink-0 transition-colors ${typeFilter === 'purchase' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
               >
                 📦 Invoices
               </button>
               <button 
                 onClick={() => setTypeFilter('payment')} 
-                className={`px-2 py-1 text-xs rounded transition-colors ${typeFilter === 'payment' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
+                className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap shrink-0 transition-colors ${typeFilter === 'payment' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
               >
                 💳 Payments
               </button>
               <button 
                 onClick={() => setTypeFilter('return')} 
-                className={`px-2 py-1 text-xs rounded transition-colors ${typeFilter === 'return' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
+                className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap shrink-0 transition-colors ${typeFilter === 'return' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
               >
                 ↩️ Returns
               </button>
               <button 
                 onClick={() => setTypeFilter('advance')} 
-                className={`px-2 py-1 text-xs rounded transition-colors ${typeFilter === 'advance' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
+                className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap shrink-0 transition-colors ${typeFilter === 'advance' ? 'bg-primary text-white font-semibold' : 'text-muted hover:text-primary'}`}
               >
                 ⬆️ Advances
               </button>
@@ -965,7 +965,7 @@ export const SupplierDetail: React.FC = () => {
             {(ledgerSearch || typeFilter !== 'all' || startDate || endDate) && (
               <button 
                 onClick={() => { setLedgerSearch(''); setTypeFilter('all'); setStartDate(''); setEndDate(''); }} 
-                className="text-xs text-muted hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-surface2"
+                className="text-xs text-muted hover:text-red-400 flex items-center gap-1 px-2.5 py-1 rounded-md whitespace-nowrap shrink-0 hover:bg-surface2 transition-colors"
               >
                 <X size={12} /> Clear Filters
               </button>
@@ -1071,7 +1071,7 @@ export const SupplierDetail: React.FC = () => {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => setDeleteTarget(row.id)}
-                          className="p-1 hover:bg-red-500/20 rounded text-muted hover:text-red-500 transition-colors"
+                          className="p-1 hover:bg-red-500/20 rounded-md text-muted hover:text-red-500 transition-colors"
                           title="Delete Entry"
                         >
                           <Trash2 size={13} />
@@ -1306,7 +1306,7 @@ export const SupplierDetail: React.FC = () => {
                   key={t.value}
                   type="button"
                   onClick={() => handleEntryTypeChange(t.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap shrink-0 border transition-colors ${
                     entryForm.type === t.value 
                       ? 'bg-primary text-white border-primary shadow-sm' 
                       : 'bg-surface border-theme-subtle text-secondary hover:border-primary'
@@ -1889,7 +1889,7 @@ export const SupplierDetail: React.FC = () => {
                       newContacts.splice(i, 1)
                       setFormData({ ...formData, contacts: newContacts })
                     }} 
-                    className="text-red-400 hover:text-red-600 p-1.5 rounded hover:bg-red-500/10 mt-4 transition-colors"
+                    className="text-red-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-500/10 mt-4 transition-colors"
                     title="Remove Contact"
                   >
                     <Trash2 size={13} />

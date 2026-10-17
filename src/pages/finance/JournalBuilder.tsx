@@ -190,7 +190,7 @@ export const JournalBuilder: React.FC = () => {
             </h2>
             <button
               onClick={addLine}
-              className="flex items-center gap-1.5 text-xs text-rex-600 hover:text-rex-500 font-semibold transition-colors"
+              className="flex items-center gap-1.5 text-xs text-rex-600 hover:text-rex-500 font-semibold whitespace-nowrap shrink-0 transition-colors"
             >
               <Plus size={14} /> Add Line
             </button>

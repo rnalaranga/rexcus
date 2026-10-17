@@ -427,7 +427,7 @@ export const Quotations: React.FC = () => {
                         {snap?.subject && <p className="text-xs text-muted truncate mt-1">{snap.subject}</p>}
                         
                         <div className="mt-4 flex gap-2">
-                           <button onClick={() => navigate(`/crm/quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors">
+                           <button onClick={() => navigate(`/crm/quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-md whitespace-nowrap transition-colors">
                              Resume Draft
                            </button>
                         </div>
@@ -623,11 +623,11 @@ export const Quotations: React.FC = () => {
                             {latestMain && latestMain.status === 'Approved' && (
                               <>
                               {quoteGrns[latestMain.id] && quoteGrns[latestMain.id].length > 0 ? (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
                                      Print Sample GRN
                                    </Button>
                                 ) : (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain, items: [{description: '', qty: 1}] }); }}>
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain, items: [{description: '', qty: 1}] }); }}>
                                      Receive Sample
                                    </Button>
                                 )}
@@ -635,7 +635,7 @@ export const Quotations: React.FC = () => {
                                 variant="primary" 
                                 size="sm" 
                                 icon={Banknote} 
-                                className="ml-4 h-6 text-[9px] px-2 bg-blue-600 hover:bg-blue-500 text-white border-none"
+                                className="ml-4 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-500 text-white border-none"
                                 onClick={() => handlePaymentRequest(group, latestMain)}
                               >
                                 Request Advance
@@ -644,7 +644,7 @@ export const Quotations: React.FC = () => {
                                 variant="primary" 
                                 size="sm" 
                                 icon={Factory} 
-                                className="ml-2 h-6 text-[9px] px-2 bg-emerald-600 hover:bg-emerald-500 text-white border-none"
+                                className="ml-2 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none"
                                 onClick={() => handleCreateWO(group, latestMain)}
                               >
                                 Create WO

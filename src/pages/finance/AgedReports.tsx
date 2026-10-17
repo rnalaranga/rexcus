@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, Download } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -54,8 +54,8 @@ export const AgedReports: React.FC = () => {
 
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
         <div className="flex gap-2 mb-4">
-           <button onClick={() => setReportType('ar')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors ${reportType === 'ar' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}>Aged Receivables (Customers)</button>
-           <button onClick={() => setReportType('ap')} className={`px-4 py-1.5 text-xs font-medium border rounded-full transition-colors ${reportType === 'ap' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface border-theme-subtle text-secondary hover:border-amber-500/50'}`}>Aged Payables (Suppliers)</button>
+           <button onClick={() => setReportType('ar')} className={`px-3 py-1.5 text-xs font-semibold border rounded-md whitespace-nowrap shrink-0 transition-colors ${reportType === 'ar' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme-subtle text-secondary hover:border-primary/50'}`}>Aged Receivables (Customers)</button>
+           <button onClick={() => setReportType('ap')} className={`px-3 py-1.5 text-xs font-semibold border rounded-md whitespace-nowrap shrink-0 transition-colors ${reportType === 'ap' ? 'bg-amber-500 text-white border-amber-500' : 'bg-surface border-theme-subtle text-secondary hover:border-amber-500/50'}`}>Aged Payables (Suppliers)</button>
         </div>
         
         <GlassCard className="p-0 overflow-hidden shadow-sm border border-theme-subtle max-w-5xl">

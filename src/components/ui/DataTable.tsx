@@ -132,14 +132,14 @@ export function DataTable<T>({
               type="button"
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              className="px-3 py-1.5 text-xs font-semibold rounded bg-surface border border-theme-subtle hover:bg-surface2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 bg-surface border border-theme-subtle hover:bg-surface2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >Prev</button>
             <span className="text-xs font-bold text-secondary px-2">{currentPage} / {totalPages}</span>
             <button 
               type="button"
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              className="px-3 py-1.5 text-xs font-semibold rounded bg-surface border border-theme-subtle hover:bg-surface2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 bg-surface border border-theme-subtle hover:bg-surface2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >Next</button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Download, Plus, Filter, Factory, Wrench, Users, Save, Trash2, Edit, Tag, ArrowRight } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -152,9 +152,9 @@ export const Machinery: React.FC = () => {
           <p className="text-xs text-muted mt-1">{machines.length} physical machines registered across {categories.length} categories</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex border border-theme-subtle rounded overflow-hidden">
-            <button onClick={() => setActiveMainTab('categories')} className={`px-3 py-1.5 text-xs transition-colors ${activeMainTab === 'categories' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>Categories</button>
-            <button onClick={() => setActiveMainTab('machines')} className={`px-3 py-1.5 text-xs transition-colors ${activeMainTab === 'machines' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>Physical Machines</button>
+          <div className="flex border border-theme-subtle rounded-md overflow-hidden">
+            <button onClick={() => setActiveMainTab('categories')} className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${activeMainTab === 'categories' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400 font-semibold' : 'text-muted hover:text-primary'}`}>Categories</button>
+            <button onClick={() => setActiveMainTab('machines')} className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${activeMainTab === 'machines' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400 font-semibold' : 'text-muted hover:text-primary'}`}>Physical Machines</button>
           </div>
           {activeMainTab === 'categories' ? (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowCatModal(true)}>Add Category</Button>
@@ -220,9 +220,9 @@ export const Machinery: React.FC = () => {
         <GlassCard className="overflow-hidden p-0 animate-fade-in">
           <div className="p-4 border-b border-theme-subtle flex flex-wrap items-center justify-between gap-4">
             <SearchBar value={search} onChange={setSearch} placeholder="Search physical machines..." className="w-64"/>
-            <div className="flex bg-surface p-1 rounded border border-theme-subtle">
+            <div className="flex bg-surface p-1 rounded-md border border-theme-subtle">
               {['All','Active','Maintenance','Broken'].map(status => (
-                <button key={status} onClick={() => setFilterStatus(status)} className={`px-3 py-1 rounded text-xs transition-colors ${filterStatus === status ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>{status}</button>
+                <button key={status} onClick={() => setFilterStatus(status)} className={`px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${filterStatus === status ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400 font-semibold' : 'text-muted hover:text-primary'}`}>{status}</button>
               ))}
             </div>
           </div>
@@ -290,8 +290,8 @@ export const Machinery: React.FC = () => {
                         <span className="text-xs text-secondary font-mono">{formatCurrency(op.setTimeRate)}</span>
 
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{opacity: 1}}>
-                        <button onClick={() => handleEditOp(op)} className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"><Edit size={12}/></button>
-                        <button onClick={() => handleDeleteOp(op.id)} className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-red-500 transition-colors"><Trash2 size={12}/></button>
+                        <button onClick={() => handleEditOp(op)} className="p-1.5 hover:bg-surface2 rounded-md text-muted hover:text-primary transition-colors"><Edit size={12}/></button>
+                        <button onClick={() => handleDeleteOp(op.id)} className="p-1.5 hover:bg-surface2 rounded-md text-muted hover:text-red-500 transition-colors"><Trash2 size={12}/></button>
                       </div>
                     </div>
                   </div>

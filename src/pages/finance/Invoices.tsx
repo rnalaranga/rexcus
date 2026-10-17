@@ -838,7 +838,7 @@ export const Invoices: React.FC = () => {
                     <button
                       key={s}
                       onClick={() => handleUpdateStatus(viewInvoice.id, s)}
-                      className={`text-[11px] font-bold uppercase tracking-wider py-2 rounded-lg border transition-colors ${
+                      className={`text-[11px] font-bold uppercase tracking-wider py-1.5 rounded-md whitespace-nowrap border transition-colors ${
                         viewInvoice.status === s 
                           ? 'bg-primary text-surface border-primary' 
                           : 'bg-surface text-muted border-theme-subtle hover:bg-surface2'

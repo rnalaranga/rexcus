@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Play, Download, Filter } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -83,7 +83,7 @@ export const CustomReportBuilder: React.FC = () => {
                   <label className="block text-[10px] font-bold text-muted uppercase mb-1.5 tracking-wider">Account Types</label>
                   <div className="flex flex-wrap gap-2">
                     {['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'].map(t => (
-                      <button key={t} onClick={() => toggleType(t)} className={`px-3 py-1.5 text-[10px] rounded-full border transition-colors ${accountTypes.includes(t) ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface text-secondary border-theme hover:border-primary/50'}`}>
+                      <button key={t} onClick={() => toggleType(t)} className={`px-2.5 py-1 text-[10px] font-semibold rounded-md whitespace-nowrap shrink-0 border transition-colors ${accountTypes.includes(t) ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface text-secondary border-theme hover:border-primary/50'}`}>
                         {t}
                       </button>
                     ))}
