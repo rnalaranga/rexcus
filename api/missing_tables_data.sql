@@ -6,7 +6,7 @@ CREATE TABLE `machining_operations` (
   `setTimeRate` decimal(10,2) DEFAULT '0.00',
   `machineId` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `machining_operations` (`id`, `groupName`, `name`, `hrRate`, `setTimeRate`, `machineId`) VALUES
   (1, 'General', 'Parting', '500.00', '500.00', NULL),
@@ -43,7 +43,7 @@ CREATE TABLE `machine_categories` (
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `machine_categories` (`id`, `name`, `createdAt`) VALUES
   ('CAT-0u2vzc', 'Man Lathe', '2026-09-16 09:18:41.000'),
@@ -63,7 +63,7 @@ CREATE TABLE `rework_logs` (
   `cost` decimal(10,2) DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `suppliers` (
   `id` varchar(50) NOT NULL,
@@ -77,7 +77,7 @@ CREATE TABLE `suppliers` (
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 REPLACE INTO `machineries` (`id`, `name`, `type`, `model`, `status`, `hourlyCost`, `lastMaintenance`, `createdAt`) VALUES
   ('MAC-001', 'Heavy Duty Lathe', 'Lathe', 'Mazak QTE-100', 'Active', '1500.00', '2026-08-10 00:00:00.000', NULL),

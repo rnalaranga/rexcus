@@ -201,9 +201,9 @@ export const Inventory: React.FC = () => {
 
   const handleDownloadTemplate = () => {
     const headers = ['Type(raw_material/finished_product/service/company_asset)', 'Name', 'SKU', 'Description', 'UnitPrice', 'UnitCost', 'Quantity', 'UOM(pcs/kg/m)', 'Location', 'ReorderLevel']
-    const row = ['raw_material', 'Sample Item', 'SKU-001', 'Description here', '1500', '1000', '10', 'pcs', 'Store A', '5']
+    const row = ['raw_material', 'MS Plate 1/2" (12.7mm)', 'SKU-001', 'Spec: 50×300mm Ø25mm 90°', '1500', '1000', '10', 'pcs', 'Store A', '5']
     const csv = headers.join(',') + '\n' + row.join(',') + '\n'
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -214,33 +214,63 @@ export const Inventory: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = async (evt) => {
-      const text = evt.target?.result as string
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l)
-      if (lines.length < 2) return showToast('error', 'CSV is empty or invalid')
-      
+    try {
       setSubmitting(true)
+      const buffer = await file.arrayBuffer()
+      let text = ''
+      try {
+        // Try strict UTF-8 decoding first (standard UTF-8 and UTF-8 with BOM)
+        const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+        text = utf8Decoder.decode(buffer)
+      } catch {
+        // Fall back to Windows-1252 (ANSI), default encoding for Windows Excel CSV saves
+        const winDecoder = new TextDecoder('windows-1252')
+        text = winDecoder.decode(buffer)
+      }
+
+      // Strip optional UTF-8 BOM if present
+      if (text.charCodeAt(0) === 0xFEFF) {
+        text = text.slice(1)
+      }
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l)
+      if (lines.length < 2) {
+        setSubmitting(false)
+        return showToast('error', 'CSV is empty or invalid')
+      }
+
       let count = 0
       for (let i = 1; i < lines.length; i++) {
-        // very basic CSV row split
-        let row = []
+        const line = lines[i]
+        const row: string[] = []
         let cur = ''
         let inQuote = false
-        for (let char of lines[i]) {
-          if (char === '"') inQuote = !inQuote
-          else if (char === ',' && !inQuote) { row.push(cur); cur = '' }
-          else cur += char
+
+        for (let j = 0; j < line.length; j++) {
+          const char = line[j]
+          if (char === '"') {
+            if (inQuote && line[j + 1] === '"') {
+              cur += '"'
+              j++ // skip escaped quote
+            } else {
+              inQuote = !inQuote
+            }
+          } else if (char === ',' && !inQuote) {
+            row.push(cur.trim())
+            cur = ''
+          } else {
+            cur += char
+          }
         }
-        row.push(cur)
+        row.push(cur.trim())
 
         if (row.length < 2) continue
-        
-        let typeStr = (row[0]||'').toLowerCase().replace(' ', '_');
+
+        let typeStr = (row[0] || '').toLowerCase().replace(' ', '_')
         if (!['raw_material', 'finished_product', 'service', 'company_asset'].includes(typeStr)) {
-          typeStr = typeStr === 'product' ? 'finished_product' : 'raw_material';
+          typeStr = typeStr === 'product' ? 'finished_product' : 'raw_material'
         }
-        const type = typeStr;
+        const type = typeStr
         const name = row[1]
         const sku = row[2] || ''
         const description = row[3] || ''
@@ -252,15 +282,33 @@ export const Inventory: React.FC = () => {
         const reorderLevel = Number(row[9]) || 0
 
         if (!name) continue
-        
-        const res = await createInventoryItem({ id: `INV-${Date.now().toString().slice(-4)}${i}`, type, name, sku, description, unitPrice, unitCost, quantity, uom, location, reorderLevel, status: 'active', suppliers: JSON.stringify([]) }); if (!res.error) count++; else console.error(res.error);
+
+        const res = await createInventoryItem({
+          id: `INV-${Date.now().toString().slice(-4)}${i}`,
+          type,
+          name,
+          sku,
+          description,
+          unitPrice,
+          unitCost,
+          quantity,
+          uom,
+          location,
+          reorderLevel,
+          status: 'active',
+          suppliers: JSON.stringify([])
+        })
+        if (!res.error) count++
+        else console.error(res.error)
       }
       setSubmitting(false)
       setShowImport(false)
       showToast('success', `Imported ${count} items successfully`)
       refetch()
+    } catch (err: any) {
+      setSubmitting(false)
+      showToast('error', 'Failed to read CSV: ' + (err?.message || 'Unknown error'))
     }
-    reader.readAsText(file)
   }
 
 
@@ -970,14 +1018,29 @@ export const Inventory: React.FC = () => {
         }
         return (
           <div className="space-y-1 max-w-xs">
-            {itemsList.map((it: any, idx: number) => (
-              <div key={idx} className="flex items-center gap-1.5 text-xs">
-                <span className="font-medium text-primary">{it.description || it.items}</span>
-                <span className="text-[10px] font-mono text-muted bg-surface2 px-1.5 py-0.5 rounded border border-theme-subtle">
-                  x{Number(it.qty || 1)} {it.unit || 'Nos'}
-                </span>
-              </div>
-            ))}
+            {itemsList.map((it: any, idx: number) => {
+              const desc = typeof it === 'string'
+                ? it
+                : typeof it?.description === 'string'
+                ? it.description
+                : typeof it?.name === 'string'
+                ? it.name
+                : typeof it?.item === 'string'
+                ? it.item
+                : typeof it?.items === 'string'
+                ? it.items
+                : (it && typeof it === 'object' && Object.values(it)[0])
+                ? String(Object.values(it)[0])
+                : String(it);
+              return (
+                <div key={idx} className="flex items-center gap-1.5 text-xs">
+                  <span className="font-medium text-primary">{desc}</span>
+                  <span className="text-[10px] font-mono text-muted bg-surface2 px-1.5 py-0.5 rounded border border-theme-subtle">
+                    x{Number(it?.qty || 1)} {it?.unit || 'Nos'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         );
       }
@@ -1019,13 +1082,13 @@ export const Inventory: React.FC = () => {
       render: (_: any, row: any) => {
         const isDispatched = row.status === 'Dispatched' || !!row.gatePassId;
         return (
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-1.5">
             <Button
               variant="ghost"
               size="sm"
               icon={Printer}
               onClick={() => setPrintGrnData(row)}
-              className="text-xs h-7 px-2 bg-surface hover:bg-surface2 border border-theme-subtle"
+              className="text-xs h-7 px-2.5 rounded bg-surface hover:bg-surface2 border border-theme-subtle"
               title="Print Sample Goods Receipt Note"
             >
               GRN
@@ -1037,7 +1100,7 @@ export const Inventory: React.FC = () => {
                 size="sm"
                 icon={FileText}
                 onClick={() => handlePrintExistingGatePass(row)}
-                className="text-xs h-7 px-2.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/20"
+                className="text-xs h-7 px-2.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/20"
                 title="Print Gate Pass in Sample Format"
               >
                 Print GP
@@ -1048,7 +1111,7 @@ export const Inventory: React.FC = () => {
                 size="sm"
                 icon={Send}
                 onClick={() => handleOpenGatePassDialog(row)}
-                className="text-xs h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white"
+                className="text-xs h-7 px-2.5 rounded bg-rex-700 hover:bg-rex-600 text-white"
                 title="Issue Outward Gate Pass to Return Sample"
               >
                 Issue Gate Pass
@@ -1360,19 +1423,19 @@ export const Inventory: React.FC = () => {
         </div>
         {/* Finished Goods Sub-navigation */}
         {activeTab === 'finished_product' && (
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2.5 rounded-lg border border-theme-subtle">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2 rounded border border-theme-subtle">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setFinishedSubTab('products')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${finishedSubTab === 'products' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'products' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
                 <Package size={14} /> Ready-Made Products ({inventory.filter(i => isItemFinishedProduct(i.type)).length})
               </button>
               <button
                 type="button"
                 onClick={() => setFinishedSubTab('orders')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${finishedSubTab === 'orders' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'orders' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
                 <ShoppingCart size={14} /> Customer Orders ({fgOrders.length})
               </button>
@@ -1390,33 +1453,33 @@ export const Inventory: React.FC = () => {
 
         {/* Customer Samples Sub-navigation & Status Filters */}
         {activeTab === 'customer_sample' && (
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2.5 rounded-lg border border-theme-subtle">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface2/40 p-2 rounded border border-theme-subtle">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setSampleSubTab('samples')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${sampleSubTab === 'samples' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${sampleSubTab === 'samples' ? 'bg-rex-700 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
                 <Package size={14} /> Customer Samples ({grns.length})
               </button>
               <button
                 type="button"
                 onClick={() => setSampleSubTab('gate_passes')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${sampleSubTab === 'gate_passes' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${sampleSubTab === 'gate_passes' ? 'bg-rex-700 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
                 <Truck size={14} /> Outward Gate Passes ({gatePasses.length})
               </button>
             </div>
 
             {sampleSubTab === 'samples' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted font-medium">Status Filter:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted font-medium mr-1">Status Filter:</span>
                 {(['all', 'in_stock', 'dispatched'] as const).map(st => (
                   <button
                     key={st}
                     type="button"
                     onClick={() => setSampleFilterStatus(st)}
-                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${sampleFilterStatus === st ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded whitespace-nowrap shrink-0 transition-all ${sampleFilterStatus === st ? 'bg-rex-700 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
                   >
                     {st === 'all' ? `All (${grns.length})` : st === 'in_stock' ? `In Hand (${inHandCount})` : `Dispatched (${dispatchedCount})`}
                   </button>

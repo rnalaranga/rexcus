@@ -281,6 +281,11 @@ async function runDatabaseSync() {
   const fs = require('fs');
   const path = require('path');
   
+  try {
+    await db.query("ALTER DATABASE rex_erp CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci");
+    await db.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+  } catch (e) {}
+  
   // 1. Multiple candidate paths for fix_db_schema.sql
   const possiblePaths = [
     path.join(__dirname, '../../fix_db_schema.sql'),

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS `chart_of_accounts` (
   `subtype` varchar(50) DEFAULT NULL,
   `accountNumber` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `cost_centers` (
   `id` varchar(50) NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS `cost_centers` (
   `department` varchar(100) DEFAULT NULL,
   `isActive` tinyint(1) DEFAULT '1',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `customers` (
   `id` varchar(50) NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
     `deliveryTerms` text,
       `contacts` text,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `deals` (
   `id` varchar(50) NOT NULL,
@@ -80,19 +80,19 @@ CREATE TABLE IF NOT EXISTS `deals` (
   `product` varchar(255) DEFAULT NULL,
   `lastUpdated` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_machines` (
   `employeeId` varchar(50) NOT NULL DEFAULT '',
   `machineId` varchar(50) NOT NULL DEFAULT '',
   PRIMARY KEY (`employeeId`,`machineId`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_skills` (
   `employeeId` varchar(50) NOT NULL DEFAULT '',
   `skillId` varchar(50) NOT NULL DEFAULT '',
   PRIMARY KEY (`employeeId`,`skillId`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `employees` (
   `id` varchar(50) NOT NULL,
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS `employees` (
   `skills` text,
   `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `followups` (
   `id` varchar(50) NOT NULL,
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS `followups` (
   `completedAt` datetime DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `grns` (
   `id` varchar(50) NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS `grns` (
   `vehicleNo` varchar(100) DEFAULT NULL,
   `storageLocation` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `inventory` (
   `id` varchar(50) NOT NULL,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS `inventory` (
   `drawingsUrl` text DEFAULT NULL,
   `category` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `finished_goods_orders` (
   `id` varchar(50) NOT NULL,
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS `finished_goods_orders` (
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `invoices` (
   `id` varchar(50) NOT NULL,
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS `invoices` (
   `subtotal` decimal(15,2) DEFAULT '0.00',
   `notes` text,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `journal_entries` (
   `id` varchar(50) NOT NULL,
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS `journal_entries` (
   `createdAt` datetime DEFAULT NULL,
   `status` varchar(50) DEFAULT 'posted',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `journal_lines` (
   `id` varchar(50) NOT NULL,
@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS `journal_lines` (
   `costCenterId` varchar(50) DEFAULT NULL,
   `partyType` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `leads` (
   `id` varchar(50) NOT NULL,
@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS `leads` (
   `vat` varchar(50) DEFAULT NULL,
   `svat` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `machine_categories` (
   `id` varchar(50) NOT NULL,
@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS `machine_categories` (
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `machineries` (
   `id` varchar(50) NOT NULL,
@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS `machineries` (
   `lastMaintenance` date DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `machining_operations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -281,7 +281,7 @@ CREATE TABLE IF NOT EXISTS `machining_operations` (
   `setTimeRate` decimal(10,2) DEFAULT '0.00',
   `machineId` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `material_requests` (
   `id` varchar(50) NOT NULL,
@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS `material_requests` (
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `purchase_orders` (
   `id` varchar(50) NOT NULL,
@@ -329,7 +329,7 @@ CREATE TABLE IF NOT EXISTS `purchase_orders` (
   `paymentTerms` varchar(100) DEFAULT NULL,
   `terms` text,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `qc_inspections` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS `qc_inspections` (
   `remarks` text,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `quotations` (
   `id` varchar(50) NOT NULL,
@@ -354,7 +354,7 @@ CREATE TABLE IF NOT EXISTS `quotations` (
   `type` varchar(50) DEFAULT 'main',
   `status` varchar(50) DEFAULT 'Draft',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `rework_logs` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -365,13 +365,13 @@ CREATE TABLE IF NOT EXISTS `rework_logs` (
   `cost` decimal(10,2) DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `settings` (
   `id` varchar(100) NOT NULL,
   `val` longtext,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `skills` (
   `id` varchar(50) NOT NULL,
@@ -379,7 +379,7 @@ CREATE TABLE IF NOT EXISTS `skills` (
   `category` varchar(100) DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `stock_ledger` (
   `id` varchar(50) NOT NULL,
@@ -390,7 +390,7 @@ CREATE TABLE IF NOT EXISTS `stock_ledger` (
   `reference` varchar(255) DEFAULT NULL,
   `notes` text,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `supplier_bills` (
   `id` varchar(50) NOT NULL,
@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS `supplier_bills` (
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `supplier_ledger` (
   `id` varchar(50) NOT NULL,
@@ -420,7 +420,7 @@ CREATE TABLE IF NOT EXISTS `supplier_ledger` (
   `reference` varchar(255) DEFAULT NULL,
   `notes` text,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `suppliers` (
   `id` varchar(50) NOT NULL,
@@ -434,7 +434,7 @@ CREATE TABLE IF NOT EXISTS `suppliers` (
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `tax_rates` (
   `id` varchar(50) NOT NULL,
@@ -443,7 +443,7 @@ CREATE TABLE IF NOT EXISTS `tax_rates` (
   `accountId` varchar(50) DEFAULT NULL,
   `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `users` (
   `id` varchar(50) NOT NULL,
@@ -456,7 +456,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `prefix` varchar(10) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `work_order_operations` (
   `id` varchar(50) NOT NULL,
@@ -475,7 +475,7 @@ CREATE TABLE IF NOT EXISTS `work_order_operations` (
   `scheduledEnd` datetime DEFAULT NULL,
   `isLocked` tinyint(1) DEFAULT '0',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `work_orders` (
   `id` varchar(50) NOT NULL,
@@ -495,7 +495,7 @@ CREATE TABLE IF NOT EXISTS `work_orders` (
   `plannedStartDate` datetime DEFAULT NULL,
   `attachments` longtext,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
 ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL;
@@ -540,7 +540,7 @@ CREATE TABLE IF NOT EXISTS `currencies` (
   `isBase` tinyint(1) DEFAULT '0',
   `lastUpdated` datetime DEFAULT NULL,
   PRIMARY KEY (`code`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE customers ADD COLUMN currency VARCHAR(3) DEFAULT 'LKR';
 
@@ -566,7 +566,7 @@ CREATE TABLE IF NOT EXISTS `tax_profiles` (
     `tax1_hidden` tinyint(1) DEFAULT '0',
   `accountId` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL;
 ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL;
 
@@ -585,7 +585,7 @@ CREATE TABLE IF NOT EXISTS `customer_grns` (
   `status` varchar(50) DEFAULT 'In Stock',
     `createdAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Patches from server.ts
 ALTER TABLE chart_of_accounts ADD COLUMN balance DECIMAL(15,2) DEFAULT 0.00;
@@ -643,7 +643,7 @@ CREATE TABLE IF NOT EXISTS `gate_passes` (
   `status` VARCHAR(50) DEFAULT 'Dispatched',
   `notes` TEXT NULL,
   `createdAt` DATETIME NULL
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `supplier_ledger` (
   `id` VARCHAR(50) PRIMARY KEY,
@@ -665,7 +665,7 @@ CREATE TABLE IF NOT EXISTS `supplier_ledger` (
   `creditAccountId` VARCHAR(50) DEFAULT NULL,
   `debitAccountName` VARCHAR(100) DEFAULT NULL,
   `creditAccountName` VARCHAR(100) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE invoices ADD COLUMN modeOfPayment VARCHAR(100) DEFAULT 'Credit';
 ALTER TABLE invoices ADD COLUMN additionalInfo TEXT DEFAULT NULL;
@@ -752,7 +752,7 @@ CREATE TABLE IF NOT EXISTS `quotation_templates` (
   `createdAt` datetime DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO quotation_templates (id, name, description, subject, items, terms, validity, delivery, createdAt, updatedAt) VALUES
 ('QTPL-0001', 'Standard Precision CNC Machining', 'Standard template for CNC milling, turning and custom metal component fabrication', 'Quotation for Precision CNC Machining & Fabrication', '[{"desc":"Precision CNC Machining of Components as per drawing / CAD model","qty":1,"unitPrice":25000,"unit":"pcs","note":"Material: MS / SS / Aluminum as specified"},{"desc":"Surface Finishing, Deburring & Dimensional Inspection Report","qty":1,"unitPrice":3500,"unit":"lot","note":"Certificate of Conformity included"}]', '1. Payment: 30 days from delivery.\n2. Delivery: 2-3 weeks from confirmed Purchase Order.\n3. Inspection: Dimensional inspection carried out at REX QC lab.\n4. Taxes: Applicable taxes extra as per prevailing statutory rates.', '30 Days', '2-3 Weeks', NOW(), NOW()),
@@ -809,7 +809,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
   `createdAt` datetime DEFAULT CURRENT_TIMESTAMP,
   `updatedAt` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Default System Roles Seed
 INSERT IGNORE INTO `roles` (`id`, `name`, `description`, `permissions`, `isSystem`, `createdAt`) VALUES

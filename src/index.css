@@ -49,15 +49,39 @@
     box-sizing: border-box;
   }
 
-  /* Explicit Rounded utility overrides to ensure rounded corners render reliably */
+  /* Explicit Rounded utility overrides to ensure rounded corners render reliably without being oversized */
   .rounded-full, [class*="rounded-full"] { border-radius: 9999px !important; }
-  .rounded-3xl, [class*="rounded-3xl"]   { border-radius: 1.5rem !important; }
-  .rounded-2xl, [class*="rounded-2xl"]   { border-radius: 1rem !important; }
-  .rounded-xl, [class*="rounded-xl"]     { border-radius: 0.75rem !important; }
-  .rounded-lg, [class*="rounded-lg"]     { border-radius: 0.5rem !important; }
-  .rounded-md, [class*="rounded-md"]     { border-radius: 0.375rem !important; }
+  .rounded-3xl, [class*="rounded-3xl"]   { border-radius: 1rem !important; }
+  .rounded-2xl, [class*="rounded-2xl"]   { border-radius: 0.75rem !important; }
+  .rounded-xl, [class*="rounded-xl"]     { border-radius: 0.5rem !important; }
+  .rounded-lg, [class*="rounded-lg"]     { border-radius: 0.375rem !important; }
+  .rounded-md, [class*="rounded-md"]     { border-radius: 0.25rem !important; }
   .rounded, [class~="rounded"]           { border-radius: 0.25rem !important; }
   .rounded-sm, [class*="rounded-sm"]     { border-radius: 0.125rem !important; }
+
+  /* Enterprise Button Ergonomics: Crisp, modern 4px corner radius across all interactive buttons */
+  button,
+  .btn,
+  [role="button"] {
+    border-radius: 0.25rem;
+  }
+
+  button:not([class*="rounded-full"]):not([class*="rounded-none"]):not([class*="rounded-t-"]):not([class*="rounded-b-"]):not([class*="rounded-l-"]):not([class*="rounded-r-"]),
+  .btn:not([class*="rounded-full"]):not([class*="rounded-none"]) {
+    border-radius: 0.25rem !important;
+  }
+
+  button[class*="rounded-full"] {
+    border-radius: 9999px !important;
+  }
+
+  button[class*="rounded-none"] {
+    border-radius: 0px !important;
+  }
+
+  button[class*="rounded-sm"] {
+    border-radius: 0.125rem !important;
+  }
 
   /* Small button ergonomics: prevent text from wrapping into multiple lines & keep radius balanced */
   button[class*="text-xs"],
