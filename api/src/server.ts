@@ -538,8 +538,8 @@ async function runDatabaseSync() {
       description VARCHAR(255) DEFAULT NULL,
       permissions TEXT NOT NULL,
       isSystem TINYINT(1) DEFAULT 0,
-      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      createdAt DATETIME DEFAULT NULL,
+      updatedAt DATETIME DEFAULT NULL
     )`
   ];
 
@@ -551,99 +551,116 @@ async function runDatabaseSync() {
 
   // 3. Default Roles Seeding
   try {
-    const [roleRows]: any = await db.query('SELECT COUNT(*) as count FROM roles');
-    if (roleRows && roleRows[0]?.count === 0) {
-      const ALL_PERMS = [
-        'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
-        'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
-        'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
-        'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.invoices.delete', 'finance.payments.record',
-        'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create', 'finance.reports.view',
-        'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit', 'production.work_orders.delete',
-        'production.machining.manage', 'production.planning.view', 'production.qc.manage',
-        'inventory.items.view', 'inventory.items.create', 'inventory.items.edit', 'inventory.items.delete', 'inventory.ledger.manage', 'inventory.customer_grn.manage', 'inventory.gatepass.manage',
-        'purchasing.suppliers.view', 'purchasing.suppliers.manage', 'purchasing.mr.manage', 'purchasing.po.manage', 'purchasing.grn.manage', 'purchasing.bills.manage',
-        'admin.users.manage', 'admin.roles.manage', 'admin.approvals.manage', 'admin.settings.manage', 'admin.database.backup'
-      ];
+    const ALL_PERMS = [
+      'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
+      'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+      'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
+      'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.invoices.delete', 'finance.payments.record',
+      'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create',
+      'finance.receivables.view', 'finance.payables.view', 'finance.tax.manage', 'finance.reports.view',
+      'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit', 'production.work_orders.delete',
+      'production.machining.manage', 'production.planning.view', 'production.qc.manage',
+      'production.machinery.manage', 'production.operations.manage',
+      'inventory.items.view', 'inventory.items.view_details', 'inventory.items.create', 'inventory.items.edit', 'inventory.items.delete',
+      'inventory.ledger.manage', 'inventory.stock_ledger.view', 'inventory.customer_grn.manage', 'inventory.gatepass.manage', 'inventory.assets.manage',
+      'purchasing.suppliers.view', 'purchasing.suppliers.manage', 'purchasing.mr.manage', 'purchasing.po.manage', 'purchasing.grn.manage', 'purchasing.bills.manage',
+      'hr.employees.view', 'hr.employees.create', 'hr.employees.edit', 'hr.employees.delete', 'hr.skills.manage', 'hr.labor_report.view',
+      'approvals.quotations', 'approvals.discounts', 'approvals.credit_limit', 'approvals.purchase_orders', 'approvals.material_requests', 'approvals.bills_payments', 'approvals.work_orders',
+      'admin.users.manage', 'admin.roles.manage', 'admin.approvals.manage', 'admin.settings.manage', 'admin.database.backup'
+    ];
 
-      const defaultRoles = [
-        {
-          id: 'admin',
-          name: 'Administrator',
-          description: 'Full unconstrained access to all system functions and configurations',
-          permissions: JSON.stringify(ALL_PERMS),
-          isSystem: 1
-        },
-        {
-          id: 'manager',
-          name: 'General Manager',
-          description: 'Operational management across CRM, Production, Finance and Approvals',
-          permissions: JSON.stringify(ALL_PERMS.filter(p => !p.startsWith('admin.database'))),
-          isSystem: 1
-        },
-        {
-          id: 'sales',
-          name: 'Sales Executive',
-          description: 'Customer relations, quotations generation, and invoicing view',
-          permissions: JSON.stringify([
-            'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.credit.request',
-            'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
-            'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.print',
-            'finance.invoices.view', 'inventory.items.view'
-          ]),
-          isSystem: 1
-        },
-        {
-          id: 'finance',
-          name: 'Finance & Accounts Officer',
-          description: 'Billing, invoice management, customer payment receipts, and banking ledger',
-          permissions: JSON.stringify([
-            'crm.customers.view', 'quotations.view',
-            'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.payments.record',
-            'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create', 'finance.reports.view',
-            'purchasing.bills.manage'
-          ]),
-          isSystem: 1
-        },
-        {
-          id: 'production',
-          name: 'Production Supervisor',
-          description: 'Work order job tracking, scheduling, machining operations and QC inspection',
-          permissions: JSON.stringify([
-            'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit',
-            'production.machining.manage', 'production.planning.view', 'production.qc.manage',
-            'inventory.items.view', 'inventory.ledger.manage', 'inventory.gatepass.manage'
-          ]),
-          isSystem: 1
-        },
-        {
-          id: 'inventory',
-          name: 'Inventory & Store Keeper',
-          description: 'Stock management, material receipt, stock ledger entries, and gate pass issue',
-          permissions: JSON.stringify([
-            'inventory.items.view', 'inventory.items.create', 'inventory.items.edit', 'inventory.ledger.manage',
-            'inventory.customer_grn.manage', 'inventory.gatepass.manage',
-            'purchasing.suppliers.view', 'purchasing.mr.manage', 'purchasing.grn.manage'
-          ]),
-          isSystem: 1
-        },
-        {
-          id: 'user',
-          name: 'Standard User',
-          description: 'Basic view-only access across core business modules',
-          permissions: JSON.stringify([
-            'crm.customers.view', 'quotations.view', 'finance.invoices.view',
-            'production.work_orders.view', 'inventory.items.view'
-          ]),
-          isSystem: 1
-        }
-      ];
-
-      for (const r of defaultRoles) {
-        await db.query('INSERT IGNORE INTO roles (id, name, description, permissions, isSystem, createdAt) VALUES (?, ?, ?, ?, ?, NOW())', [
-          r.id, r.name, r.description, r.permissions, r.isSystem
-        ]);
+    const defaultRoles = [
+      {
+        id: 'admin',
+        name: 'Administrator',
+        description: 'Full unconstrained access to all system functions and configurations',
+        permissions: JSON.stringify(['*']),
+        isSystem: 1
+      },
+      {
+        id: 'manager',
+        name: 'General Manager',
+        description: 'Operational management across CRM, Production, Inventory, HR, Finance and Approvals',
+        permissions: JSON.stringify(ALL_PERMS.filter(p => !p.startsWith('admin.database'))),
+        isSystem: 1
+      },
+      {
+        id: 'sales',
+        name: 'Sales Executive',
+        description: 'Customer relations, quotations generation, discounts, and sales invoicing',
+        permissions: JSON.stringify([
+          'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.credit.request',
+          'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+          'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.discount', 'quotations.print',
+          'finance.invoices.view', 'inventory.items.view', 'inventory.items.view_details'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'finance',
+        name: 'Finance & Accounts Officer',
+        description: 'Billing, invoice management, customer payment receipts, banking ledger, payables and tax returns',
+        permissions: JSON.stringify([
+          'crm.customers.view', 'quotations.view',
+          'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.payments.record',
+          'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create',
+          'finance.receivables.view', 'finance.payables.view', 'finance.tax.manage', 'finance.reports.view',
+          'purchasing.bills.manage', 'approvals.bills_payments'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'production',
+        name: 'Production Supervisor',
+        description: 'Work order job tracking, scheduling, CNC machining operations, machinery and QC inspection',
+        permissions: JSON.stringify([
+          'production.work_orders.view', 'production.work_orders.create', 'production.work_orders.edit',
+          'production.machining.manage', 'production.planning.view', 'production.qc.manage',
+          'production.machinery.manage', 'production.operations.manage',
+          'inventory.items.view', 'inventory.items.view_details', 'inventory.ledger.manage', 'inventory.gatepass.manage',
+          'hr.skills.manage', 'hr.labor_report.view'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'inventory',
+        name: 'Inventory & Store Keeper',
+        description: 'Stock management, material receipt, stock ledger entries, customer GRN and gate pass issue',
+        permissions: JSON.stringify([
+          'inventory.items.view', 'inventory.items.view_details', 'inventory.items.create', 'inventory.items.edit',
+          'inventory.ledger.manage', 'inventory.stock_ledger.view', 'inventory.customer_grn.manage',
+          'inventory.gatepass.manage', 'inventory.assets.manage',
+          'purchasing.suppliers.view', 'purchasing.mr.manage', 'purchasing.grn.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'hr',
+        name: 'Human Resources Officer',
+        description: 'Employee personnel records, technical skill matrices, and factory labor utilization',
+        permissions: JSON.stringify([
+          'hr.employees.view', 'hr.employees.create', 'hr.employees.edit', 'hr.employees.delete',
+          'hr.skills.manage', 'hr.labor_report.view'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'user',
+        name: 'Standard User',
+        description: 'Basic view-only access across core business modules',
+        permissions: JSON.stringify([
+          'crm.customers.view', 'quotations.view', 'finance.invoices.view',
+          'production.work_orders.view', 'inventory.items.view', 'inventory.items.view_details'
+        ]),
+        isSystem: 1
       }
+    ];
+
+    for (const r of defaultRoles) {
+      await db.query(
+        'INSERT INTO roles (id, name, description, permissions, isSystem, createdAt) VALUES (?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), permissions=VALUES(permissions), isSystem=VALUES(isSystem)',
+        [r.id, r.name, r.description, r.permissions, r.isSystem]
+      );
     }
   } catch (e) {
     console.error('Error seeding roles:', e);

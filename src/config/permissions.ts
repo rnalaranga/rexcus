@@ -59,6 +59,9 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'finance.banking.manage', label: 'Manage Banking & Transfers', description: 'Create bank accounts, transfer funds, and reconcile statements' },
       { id: 'finance.accounting.view', label: 'General Ledger & COA', description: 'Inspect chart of accounts and debit/credit ledger transactions' },
       { id: 'finance.journals.create', label: 'Post Journal Entries', description: 'Create and submit manual double-entry accounting journals' },
+      { id: 'finance.receivables.view', label: 'Receivables & Ageing', description: 'Monitor customer receivables balances and aged outstanding invoices' },
+      { id: 'finance.payables.view', label: 'Payables & Ageing', description: 'Monitor supplier vendor payables and overdue purchase bills' },
+      { id: 'finance.tax.manage', label: 'Tax Management & VAT', description: 'Configure corporate tax rules, SSCL, VAT rates and generate tax schedules' },
       { id: 'finance.reports.view', label: 'Financial & Tax Reports', description: 'Generate Profit & Loss, Balance Sheet, and VAT/SSCL returns' }
     ]
   },
@@ -74,7 +77,9 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'production.work_orders.delete', label: 'Cancel / Delete Work Orders', description: 'Abort or remove work orders from the floor' },
       { id: 'production.machining.manage', label: 'Machining & CNC Operations', description: 'Assign tasks to machines, log cycle times, and machine status' },
       { id: 'production.planning.view', label: 'Production Planning', description: 'Access production timeline, machine capacity, and scheduling' },
-      { id: 'production.qc.manage', label: 'Quality Control (QC)', description: 'Conduct QA inspections, sign off tolerances, and reject defective units' }
+      { id: 'production.qc.manage', label: 'Quality Control (QC)', description: 'Conduct QA inspections, sign off tolerances, and reject defective units' },
+      { id: 'production.machinery.manage', label: 'Machinery & Equipment', description: 'Setup CNC machine profiles, operational capacity, and maintenance schedules' },
+      { id: 'production.operations.manage', label: 'Routing & Operation Times', description: 'Configure standard machining steps, runtimes, and process routing' }
     ]
   },
   {
@@ -84,12 +89,15 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     badgeColor: 'border-purple-500/20 bg-purple-500/10 text-purple-400',
     permissions: [
       { id: 'inventory.items.view', label: 'View Stock Catalog', description: 'View raw materials, finished goods, and live stock on hand' },
+      { id: 'inventory.items.view_details', label: 'Inspect Item Specifications', description: 'Inspect full item specifications, dimensions, cost rollups, and mapped suppliers in read-only mode' },
       { id: 'inventory.items.create', label: 'Add Inventory Items', description: 'Register new stock items, categories, and unit measurements' },
       { id: 'inventory.items.edit', label: 'Edit Inventory Items', description: 'Update item descriptions, standard costs, and reorder levels' },
       { id: 'inventory.items.delete', label: 'Delete Inventory Items', description: 'Remove discontinued or obsolete stock items' },
       { id: 'inventory.ledger.manage', label: 'Stock Adjustments & Transfers', description: 'Record manual stock count corrections and bin transfers' },
+      { id: 'inventory.stock_ledger.view', label: 'View Stock Ledger & Audit', description: 'Inspect complete historical stock in/out transaction ledger and bin movements' },
       { id: 'inventory.customer_grn.manage', label: 'Customer Material GRN', description: 'Accept and log customer-supplied materials for processing' },
-      { id: 'inventory.gatepass.manage', label: 'Gate Passes (RGP & NRGP)', description: 'Create and authorize returnable and non-returnable gate passes' }
+      { id: 'inventory.gatepass.manage', label: 'Gate Passes (RGP & NRGP)', description: 'Create and authorize returnable and non-returnable gate passes' },
+      { id: 'inventory.assets.manage', label: 'Factory Assets & Tooling', description: 'Manage company machinery assets, capital equipment, and tooling registry' }
     ]
   },
   {
@@ -104,6 +112,20 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'purchasing.po.manage', label: 'Purchase Orders (PO)', description: 'Draft, approve, and send purchase orders to suppliers' },
       { id: 'purchasing.grn.manage', label: 'Supplier GRN Inspection', description: 'Record incoming supplier goods receipt and verify deliveries' },
       { id: 'purchasing.bills.manage', label: 'Supplier Bills & Payables', description: 'Log vendor invoices and prepare accounts payable disbursements' }
+    ]
+  },
+  {
+    id: 'hr',
+    name: 'Human Resources & Workforce',
+    description: 'Employee profiles, labor attendance, technician skills matrix, and workforce allocation',
+    badgeColor: 'border-rose-500/20 bg-rose-500/10 text-rose-400',
+    permissions: [
+      { id: 'hr.employees.view', label: 'View Employees', description: 'Access staff directory, job designations, and department listings' },
+      { id: 'hr.employees.create', label: 'Add New Employees', description: 'Register new personnel, emergency contacts, and compensation packages' },
+      { id: 'hr.employees.edit', label: 'Edit Employee Records', description: 'Update employee designation, basic salary, allowances, and job status' },
+      { id: 'hr.employees.delete', label: 'Deactivate / Remove Employee', description: 'Archive, deactivate, or delete employee personnel profiles' },
+      { id: 'hr.skills.manage', label: 'Technician Skills Matrix', description: 'Assign machining skills, machine qualifications, and skill ratings' },
+      { id: 'hr.labor_report.view', label: 'Labor Efficiency & Reports', description: 'Analyze production man-hours, labor efficiency, and attendance logs' }
     ]
   },
   {
@@ -153,7 +175,9 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   'finance.bills.approve': ['approvals.bills_payments', 'finance.invoices.edit', 'purchasing.bills.manage'],
   'approvals.bills_payments': ['approvals.bills_payments', 'finance.invoices.edit', 'purchasing.bills.manage'],
   'production.work_orders.approve': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit'],
-  'approvals.work_orders': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit']
+  'approvals.work_orders': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit'],
+  'inventory.items.view_details': ['inventory.items.view_details', 'inventory.items.view'],
+  'inventory.stock_ledger.view': ['inventory.stock_ledger.view', 'inventory.ledger.manage', 'inventory.items.view']
 };
 
 export const hasPermission = (

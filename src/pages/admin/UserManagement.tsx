@@ -47,6 +47,8 @@ const getRoleBadgeStyle = (roleId: string) => {
       return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
     case 'inventory':
       return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    case 'hr':
+      return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
     default:
       return 'bg-surface2 text-muted border-theme-subtle';
   }
@@ -65,7 +67,7 @@ const emptyRoleForm = { id: '', name: '', description: '', permissions: [] as st
 export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
 
   // Tab State
   const defaultTab = initialTab || (location.pathname.includes('/roles') ? 'roles' : 'users');
@@ -186,6 +188,9 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
       setShowEditUser(null);
       fetchUsers();
       fetchRoles();
+      if (currentUser?.id === showEditUser.id) {
+        await refreshUser();
+      }
     } catch (e: any) {
       showToast('error', e.message);
     } finally {
@@ -909,6 +914,7 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                 onChange={e => setUserForm({ ...userForm, role: e.target.value })}
                 className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
               >
+                {roles.length === 0 && <option value="user">Standard User</option>}
                 {roles.map(r => (
                   <option key={r.id} value={r.id}>
                     {r.name} {r.isSystem ? '(System Default)' : '(Custom)'} — {r.permissions.length} permissions
@@ -967,6 +973,9 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                 onChange={e => setShowEditUser({ ...showEditUser, role: e.target.value })}
                 className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
               >
+                {!roles.some(r => r.id === showEditUser.role) && (
+                  <option value={showEditUser.role}>{showEditUser.roleName || showEditUser.role}</option>
+                )}
                 {roles.map(r => (
                   <option key={r.id} value={r.id}>
                     {r.name} {r.isSystem ? '(System Default)' : '(Custom)'} — {r.permissions.length} permissions

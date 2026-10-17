@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List } from 'lucide-react'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -19,6 +19,7 @@ import { FinishedGoodsOrdersView } from './FinishedGoodsOrdersView'
 import { AssetRegistryHub } from '@/components/inventory/AssetRegistryHub'
 import { StockLedgerHub } from '@/components/inventory/StockLedgerHub'
 import { ItemFormStudio } from '@/components/inventory/ItemFormStudio'
+import { ItemDetailModal } from '@/components/inventory/ItemDetailModal'
 import html2pdf from 'html2pdf.js'
 
 type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'all'
@@ -113,9 +114,10 @@ export const Inventory: React.FC = () => {
   const { data: leadsList = [] } = useLeads()
   const [sampleSearchQuery, setSampleSearchQuery] = useState('')
   const { settings } = useSettings()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
   const [activeTab, setActiveTab] = useState<TabType>('raw_material')
   const [ledgerModalItem, setLedgerModalItem] = useState<any | null>(null)
+  const [viewingItem, setViewingItem] = useState<any | null>(null)
   const [search, setSearch] = useState('')
   const [grns, setGrns] = useState<any[]>([])
   const [gatePasses, setGatePasses] = useState<any[]>([])
@@ -525,6 +527,14 @@ export const Inventory: React.FC = () => {
               <Layers size={14}/>
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setViewingItem(item)}
+            className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
+            title="View Details (Read-only)"
+          >
+            <Eye size={14}/>
+          </button>
           <button 
             type="button"
             onClick={() => {
@@ -676,6 +686,14 @@ export const Inventory: React.FC = () => {
             title="Stock Movement Ledger"
           >
             <Layers size={14}/>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewingItem(item)}
+            className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
+            title="View Product Details (Read-only)"
+          >
+            <Eye size={14}/>
           </button>
           <Button
             variant="ghost"
@@ -1592,6 +1610,25 @@ export const Inventory: React.FC = () => {
             )}
           </GlassCard>
         </div>
+      )}
+
+      {/* Read-Only Item Details View Modal */}
+      {viewingItem && (
+        <ItemDetailModal
+          isOpen={!!viewingItem}
+          item={viewingItem}
+          onClose={() => setViewingItem(null)}
+          onEdit={(item) => {
+            if (item.type === 'finished_product') {
+              setSelectedFinishedProduct(item)
+              setFinishedProductModalOpen(true)
+            } else {
+              handleOpenForm(item)
+            }
+          }}
+          onOpenLedger={(item) => setLedgerModalItem(item)}
+          canEdit={can ? can('inventory.items.edit') : true}
+        />
       )}
 
       {/* Individual Item Stock Ledger Modal */}

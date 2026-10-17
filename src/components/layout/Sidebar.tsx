@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
@@ -15,6 +15,7 @@ interface NavItem {
   path: string
   icon: React.FC<any>
   badge?: number
+  permission?: string
 }
 
 interface NavGroup {
@@ -28,59 +29,59 @@ const navGroups: NavGroup[] = [
   {
     title: 'CRM', icon: Users, active: true,
     items: [
-      { label: 'Dashboard',  path: '/crm',            icon: LayoutDashboard },
-      { label: 'Customers',  path: '/crm/customers',  icon: Users },
-      { label: 'Leads',      path: '/crm/leads',      icon: TrendingUp },
-      { label: 'Quotations', path: '/crm/quotations', icon: FileText },
-      { label: 'Deals',      path: '/crm/deals',      icon: Briefcase },
-      { label: 'Contacts',   path: '/crm/contacts',   icon: Contact2 },
-      { label: 'Follow-ups', path: '/crm/followups',  icon: Bell },
+      { label: 'Dashboard',  path: '/crm',            icon: LayoutDashboard, permission: 'crm.customers.view' },
+      { label: 'Customers',  path: '/crm/customers',  icon: Users,           permission: 'crm.customers.view' },
+      { label: 'Leads',      path: '/crm/leads',      icon: TrendingUp,      permission: 'crm.leads.manage' },
+      { label: 'Quotations', path: '/crm/quotations', icon: FileText,        permission: 'quotations.view' },
+      { label: 'Deals',      path: '/crm/deals',      icon: Briefcase,       permission: 'crm.deals.manage' },
+      { label: 'Contacts',   path: '/crm/contacts',   icon: Contact2,        permission: 'crm.customers.view' },
+      { label: 'Follow-ups', path: '/crm/followups',  icon: Bell,            permission: 'crm.followups.manage' },
     ],
   },
   {
     title: 'Inventory', icon: Package, active: true,
     items: [
-      { label: 'Stock',      path: '/inventory',           icon: Package },
-      { label: 'Suppliers',  path: '/inventory/suppliers', icon: Building2 },
-      { label: 'Purchasing', path: '/purchasing',           icon: ShoppingCart },
+      { label: 'Stock',      path: '/inventory',           icon: Package,      permission: 'inventory.items.view' },
+      { label: 'Suppliers',  path: '/inventory/suppliers', icon: Building2,    permission: 'purchasing.suppliers.view' },
+      { label: 'Purchasing', path: '/purchasing',           icon: ShoppingCart, permission: 'purchasing.po.manage' },
     ],
   },
   {
     title: 'Production', icon: Factory, active: true,
     items: [
-      { label: 'Work Orders', path: '/production',           icon: Factory },
-      { label: 'Machinery',   path: '/production/machinery', icon: Settings },
+      { label: 'Work Orders', path: '/production',           icon: Factory,  permission: 'production.work_orders.view' },
+      { label: 'Machinery',   path: '/production/machinery', icon: Settings, permission: 'production.machinery.manage' },
     ],
   },
   {
     title: 'Finance', icon: DollarSign, active: true,
     items: [
-      { label: 'Dashboard',    path: '/finance/dashboard',     icon: BarChart3 },
-      { label: 'Banking',      path: '/finance/banking',       icon: Landmark },
-      { label: 'Invoices',     path: '/finance/invoices',      icon: FileText },
-      { label: 'Accounting',   path: '/finance',               icon: DollarSign },
-      { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight },
-      { label: 'Payables',     path: '/finance/payables',      icon: ArrowDownRight },
-      { label: 'Reports',      path: '/finance/reports',       icon: BarChart3 },
-      { label: 'Tax Report',   path: '/finance/tax-report',    icon: BarChart3 },
+      { label: 'Dashboard',    path: '/finance/dashboard',     icon: BarChart3,        permission: 'finance.reports.view' },
+      { label: 'Banking',      path: '/finance/banking',       icon: Landmark,         permission: 'finance.banking.view' },
+      { label: 'Invoices',     path: '/finance/invoices',      icon: FileText,         permission: 'finance.invoices.view' },
+      { label: 'Accounting',   path: '/finance',               icon: DollarSign,       permission: 'finance.accounting.view' },
+      { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight,     permission: 'finance.receivables.view' },
+      { label: 'Payables',     path: '/finance/payables',      icon: ArrowDownRight,   permission: 'finance.payables.view' },
+      { label: 'Reports',      path: '/finance/reports',       icon: BarChart3,        permission: 'finance.reports.view' },
+      { label: 'Tax Report',   path: '/finance/tax-report',    icon: BarChart3,        permission: 'finance.tax.manage' },
     ],
   },
   {
     title: 'HR', icon: Users2, active: true,
     items: [
-      { label: 'Employees',    path: '/hr/employees', icon: Users2 },
-      { label: 'Skills',       path: '/hr/skills',    icon: FileText },
-      { label: 'Labor Report', path: '/hr/report',    icon: BarChart3 },
+      { label: 'Employees',    path: '/hr/employees', icon: Users2,   permission: 'hr.employees.view' },
+      { label: 'Skills',       path: '/hr/skills',    icon: FileText, permission: 'hr.skills.manage' },
+      { label: 'Labor Report', path: '/hr/report',    icon: BarChart3, permission: 'hr.labor_report.view' },
     ],
   },
   {
     title: 'Admin', icon: Settings, active: true,
     items: [
-      { label: 'Approvals',           path: '/admin/approvals', icon: CheckSquare },
-      { label: 'Users',               path: '/admin/users',    icon: Users },
-      { label: 'Roles & Permissions', path: '/admin/roles',    icon: Shield },
-      { label: 'Variable Settings',   path: '/admin/variables', icon: SlidersHorizontal },
-      { label: 'Settings',            path: '/admin/settings', icon: Settings },
+      { label: 'Approvals',           path: '/admin/approvals', icon: CheckSquare,        permission: 'admin.approvals.manage' },
+      { label: 'Users',               path: '/admin/users',    icon: Users,               permission: 'admin.users.manage' },
+      { label: 'Roles & Permissions', path: '/admin/roles',    icon: Shield,              permission: 'admin.roles.manage' },
+      { label: 'Variable Settings',   path: '/admin/variables', icon: SlidersHorizontal, permission: 'admin.settings.manage' },
+      { label: 'Settings',            path: '/admin/settings', icon: Settings,            permission: 'admin.settings.manage' },
     ],
   },
 ]
@@ -88,7 +89,7 @@ const navGroups: NavGroup[] = [
 export const Sidebar: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, can } = useAuth()
   const { settings } = useSettings()
 
   const [collapsed, setCollapsed] = useState(false)
@@ -98,6 +99,16 @@ export const Sidebar: React.FC = () => {
     navGroups.forEach(g => { if (g.active) init[g.title] = true })
     return init
   })
+
+  const visibleGroups = useMemo(() => {
+    return navGroups.map(group => {
+      const visibleItems = group.items.filter(item => !item.permission || can(item.permission))
+      return {
+        ...group,
+        items: visibleItems
+      }
+    }).filter(group => group.active && group.items.length > 0)
+  }, [can])
 
   const toggleGroup = (title: string) => {
     setOpenGroups(prev => ({ ...prev, [title]: !prev[title] }))
@@ -141,7 +152,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
-        {navGroups.map(group => {
+        {visibleGroups.map(group => {
           const GroupIcon = group.icon
           const groupActive = isGroupActive(group)
           const isOpen = openGroups[group.title]
