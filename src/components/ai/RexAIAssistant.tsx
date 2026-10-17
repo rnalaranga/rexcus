@@ -265,13 +265,13 @@ export const RexAIAssistant: React.FC = () => {
 
   return (
     <>
-      {/* Docked Square Trigger Button on Right Screen Edge */}
+      {/* Docked Half-Circle Trigger Button on Right Screen Edge */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
           style={{
-            borderTopLeftRadius: '4px',
-            borderBottomLeftRadius: '4px',
+            borderTopLeftRadius: '9999px',
+            borderBottomLeftRadius: '9999px',
             borderTopRightRadius: '0px',
             borderBottomRightRadius: '0px'
           }}
@@ -281,14 +281,14 @@ export const RexAIAssistant: React.FC = () => {
             backdrop-blur-xl 
             border-y border-l border-rose-500/50 hover:border-rose-500 
             shadow-[-4px_0_22px_0_rgba(225,29,72,0.4)] hover:shadow-[-8px_0_35px_0_rgba(225,29,72,0.65)]
-            transition-all duration-300 ease-out group overflow-hidden select-none rounded-l"
+            transition-all duration-300 ease-out group overflow-hidden select-none"
           title="Rex AI Agent - Real-Time ERP Intelligence"
         >
           {/* Ambient Glowing Gradient Background */}
           <div 
             style={{
-              borderTopLeftRadius: '4px',
-              borderBottomLeftRadius: '4px',
+              borderTopLeftRadius: '9999px',
+              borderBottomLeftRadius: '9999px',
               borderTopRightRadius: '0px',
               borderBottomRightRadius: '0px'
             }}
@@ -298,7 +298,7 @@ export const RexAIAssistant: React.FC = () => {
           {/* Top-half Glass Sheen / Reflection */}
           <div 
             style={{
-              borderTopLeftRadius: '4px',
+              borderTopLeftRadius: '9999px',
               borderBottomLeftRadius: '0px',
               borderTopRightRadius: '0px',
               borderBottomRightRadius: '0px'
@@ -306,11 +306,11 @@ export const RexAIAssistant: React.FC = () => {
             className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" 
           />
 
-          {/* Left Rex AI Logo Emblem (Always visible in square tab) */}
+          {/* Left Rex AI Logo Emblem (Always visible in half-circle) */}
           <div className="relative flex items-center justify-center w-[52px] h-[54px] shrink-0">
             <div 
-              style={{ borderRadius: '4px' }}
-              className="relative flex items-center justify-center p-1 bg-black/60 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 rounded"
+              style={{ borderRadius: '9999px' }}
+              className="relative flex items-center justify-center p-1 bg-black/60 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-12 transition-all duration-300"
             >
               <RexAILogo variant="icon" size={26} />
               <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
@@ -340,8 +340,8 @@ export const RexAIAssistant: React.FC = () => {
                   REX <span className="text-rose-500">AI</span>
                 </span>
                 <span 
-                  style={{ borderRadius: '2px' }}
-                  className="text-[8px] font-black px-1.5 py-0.5 rounded-xs bg-rose-600 text-white tracking-wider shadow-2xs"
+                  style={{ borderRadius: '9999px' }}
+                  className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-rose-600 text-white tracking-wider shadow-2xs"
                 >
                   AGENT
                 </span>
@@ -533,8 +533,8 @@ export const RexAIAssistant: React.FC = () => {
                   type="button"
                   disabled={loading}
                   onClick={() => handleSend(p.query)}
-                  style={{ borderRadius: '4px' }}
-                  className="px-3 py-1.5 text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 hover:border-rose-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded whitespace-nowrap transition-all shrink-0 shadow-2xs hover:scale-[1.02] active:scale-95 cursor-pointer"
+                  style={{ borderRadius: '9999px' }}
+                  className="px-3 py-1.5 text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 hover:border-rose-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-full whitespace-nowrap transition-all shrink-0 shadow-2xs hover:scale-[1.02] active:scale-95 cursor-pointer"
                 >
                   {p.label}
                 </button>
@@ -557,15 +557,15 @@ export const RexAIAssistant: React.FC = () => {
                 onChange={e => setInput(e.target.value)}
                 placeholder="Ask anything across Rex ERP (Prices, Stock, Work Orders, Invoices, Bank, QC)..."
                 disabled={loading}
-                style={{ borderRadius: '4px' }}
-                className="flex-1 px-4 py-2.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white text-xs focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 shadow-inner transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
+                style={{ borderRadius: '9999px' }}
+                className="flex-1 px-4 py-2.5 rounded-full border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white text-xs focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 shadow-inner transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
               />
               <Button
                 variant="primary"
                 type="submit"
                 disabled={loading || !input.trim()}
-                style={{ borderRadius: '4px' }}
-                className="h-10 px-4 rounded font-bold text-xs shrink-0 shadow-md shadow-rose-500/25 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 cursor-pointer"
+                style={{ borderRadius: '9999px' }}
+                className="h-10 px-4 rounded-full font-bold text-xs shrink-0 shadow-md shadow-rose-500/25 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 cursor-pointer"
               >
                 <Send size={14} />
               </Button>
