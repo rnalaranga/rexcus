@@ -4,7 +4,7 @@ import {
   Bell, Search, ChevronRight, Sun, Moon, X,
   CheckCircle2, TrendingUp, AlertCircle, AlertTriangle, Star, Banknote,
   Users, FileText, Package, Wrench, Truck, Building2, CheckCheck, Clock,
-  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2
+  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import { useTheme } from '@/store/theme'
@@ -19,6 +19,7 @@ const breadcrumbMap: Record<string, string> = {
   '/crm/contacts':    'Contacts',
   '/crm/followups':   'Follow-ups',
   '/inventory':       'Stock & Finished Goods',
+  '/inventory/material-issue': 'Material Issue & Store Dispatch',
   '/inventory/suppliers': 'Suppliers',
   '/purchasing':      'Purchasing & GRN',
   '/purchasing/suppliers': 'Suppliers',
@@ -50,6 +51,7 @@ const QUICK_PAGES: QuickPage[] = [
   { title: 'Contact Directory', path: '/crm/contacts', category: 'CRM', desc: 'All customer contacts & decision makers', icon: Contact2 },
   { title: 'Leads & Inquiries', path: '/crm/leads', category: 'CRM', desc: 'Manage incoming leads & pipeline', icon: TrendingUp },
   { title: 'Stock & Inventory', path: '/inventory', category: 'Inventory', desc: 'Raw materials and finished goods', icon: Package },
+  { title: 'Material Issue Station', path: '/inventory/material-issue', category: 'Inventory', desc: 'Issue raw materials & BOM items to Work Orders', icon: PackageCheck },
   { title: 'Suppliers & Vendors', path: '/inventory/suppliers', category: 'Purchasing', desc: 'Supplier database & ledger', icon: Truck },
   { title: 'Production Jobs', path: '/production', category: 'Production', desc: 'Work orders and machine planning', icon: Wrench },
   { title: 'Purchasing & GRN', path: '/purchasing', category: 'Purchasing', desc: 'Purchase orders, bills & GRNs', icon: Truck },

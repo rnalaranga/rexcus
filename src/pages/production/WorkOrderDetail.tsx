@@ -5,7 +5,7 @@ import {
   AlertTriangle, RotateCcw, DollarSign, Package, ClipboardList, Play, 
   Pause, Check, Scissors, ExternalLink, Trash2, Calendar, Building, 
   RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Printer, Sparkles, 
-  User, Cpu, AlertCircle, FileText, ChevronRight, ChevronDown, CheckSquare
+  User, Cpu, AlertCircle, FileText, ChevronRight, ChevronDown, CheckSquare, PackageCheck
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -1390,14 +1390,14 @@ export const WorkOrderDetail: React.FC = () => {
                                         </div>
                                       ) : (
                                         <Button
-                                          variant="primary"
+                                          variant="outline"
                                           size="sm"
                                           onClick={() => handleSyncSingleOpToFloor(proc)}
                                           disabled={submitting}
-                                          className="text-[11px] py-1 px-2.5 h-auto bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold inline-flex items-center shadow-xs"
+                                          className="text-[11px] py-1 px-2.5 h-auto bg-rex-500/10 hover:bg-rex-500/20 text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:border-rex-500/60 rounded-none font-bold inline-flex items-center shadow-xs"
                                           title="Add this quotation machining process to active shop floor routing"
                                         >
-                                          <Plus size={10} className="mr-1"/> Add to Routing
+                                          <Plus size={10} className="mr-1 text-rex-600 dark:text-rex-400"/> Add to Routing
                                         </Button>
                                       )}
                                     </td>
@@ -1694,7 +1694,17 @@ export const WorkOrderDetail: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate(`/inventory/material-issue?woId=${wo.id}`)}
+                className="text-xs font-bold text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none"
+                title="Open dedicated Storekeeper Material Issue Station"
+              >
+                <PackageCheck size={13} className="mr-1"/> Stores Issue Station
+              </Button>
+
               <Button 
                 variant="outline" 
                 size="sm" 

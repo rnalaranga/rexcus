@@ -2342,11 +2342,11 @@ app.delete('/api/inventory/:id', async (req, res) => {
 app.get('/api/inventory/ledger/all', async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT l.*, i.name as materialName, i.sku, i.uom as unit, i.type as itemType, i.category as itemCategory
+      SELECT l.*, COALESCE(i.name, l.notes) as materialName, i.sku, COALESCE(i.uom, 'pcs') as unit, i.type as itemType, i.category as itemCategory
       FROM stock_ledger l 
-      JOIN inventory i ON l.inventoryId = i.id 
+      LEFT JOIN inventory i ON l.inventoryId = i.id 
       ORDER BY l.date DESC 
-      LIMIT 300
+      LIMIT 500
     `);
     res.json(rows);
   } catch (error: any) {
@@ -2368,7 +2368,10 @@ app.get('/api/inventory/:id/ledger', async (req, res) => {
 app.get('/api/inventory/ledger/wo/:woId', async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT l.*, i.name as materialName, i.uom as unit FROM stock_ledger l JOIN inventory i ON l.inventoryId = i.id WHERE l.reference = ? ORDER BY l.date DESC',
+      `SELECT l.*, COALESCE(i.name, l.notes) as materialName, COALESCE(i.uom, 'pcs') as unit 
+       FROM stock_ledger l 
+       LEFT JOIN inventory i ON l.inventoryId = i.id 
+       WHERE l.reference = ? ORDER BY l.date DESC`,
       [req.params.woId]
     );
     res.json(rows);

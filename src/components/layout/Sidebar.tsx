@@ -42,9 +42,10 @@ const navGroups: NavGroup[] = [
   {
     title: 'Inventory', icon: Package, active: true,
     items: [
-      { label: 'Stock',      path: '/inventory',           icon: Package,      permission: 'inventory.items.view' },
-      { label: 'Suppliers',  path: '/inventory/suppliers', icon: Building2,    permission: 'purchasing.suppliers.view' },
-      { label: 'Purchasing', path: '/purchasing',           icon: ShoppingCart, permission: 'purchasing.po.manage' },
+      { label: 'Stock',          path: '/inventory',                icon: Package,      permission: 'inventory.items.view' },
+      { label: 'Material Issue', path: '/inventory/material-issue', icon: PackageCheck, permission: 'inventory.items.view' },
+      { label: 'Suppliers',      path: '/inventory/suppliers',      icon: Building2,    permission: 'purchasing.suppliers.view' },
+      { label: 'Purchasing',     path: '/purchasing',               icon: ShoppingCart, permission: 'purchasing.po.manage' },
     ],
   },
   {

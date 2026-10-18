@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { useSearchParams, useLocation } from 'react-router-dom'
-import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors } from 'lucide-react'
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -117,6 +117,7 @@ export const Inventory: React.FC = () => {
   const { settings } = useSettings()
   const { user, can } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('raw_material')
 
   useEffect(() => {
@@ -1391,6 +1392,15 @@ export const Inventory: React.FC = () => {
             </div>
           ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : activeTab === 'linear_remnants' ? null : (
             <>
+              <Button 
+                variant="outline" 
+                size="sm"
+                icon={PackageCheck}
+                onClick={() => navigate('/inventory/material-issue')}
+                className="text-xs text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none font-bold"
+              >
+                Material Issue Station
+              </Button>
               <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
               <Button variant="ghost" icon={Scissors} onClick={() => setActiveTab('linear_remnants')}>Cut Studio</Button>
               <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
