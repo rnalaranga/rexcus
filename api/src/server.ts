@@ -1746,10 +1746,10 @@ app.post('/api/quotations', async (req, res) => {
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const qType = data.type || 'customer';
     
-    if (qType === 'draft') {
+    if (qType === 'draft' || qType === 'product_draft') {
       const [existing]: any = await db.query(
         'SELECT id FROM quotations WHERE leadId = ? AND type = ? LIMIT 1',
-        [data.leadId, 'draft']
+        [data.leadId, qType]
       );
       if (existing && existing.length > 0) {
         const draftId = existing[0].id;
@@ -1757,7 +1757,7 @@ app.post('/api/quotations', async (req, res) => {
           'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=?, docNo=?, issueNo=?, issueDate=? WHERE id=?',
           [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, new Date().toISOString().slice(0, 19).replace('T', ' '), data.docNo || null, data.issueNo || null, data.issueDate || null, draftId]
         );
-        return res.json({ success: true, quotation: { id: draftId, version: 1, type: 'draft' } });
+        return res.json({ success: true, quotation: { id: draftId, version: 1, type: qType } });
       }
     }
 
@@ -1766,10 +1766,12 @@ app.post('/api/quotations', async (req, res) => {
       'SELECT MAX(version) as maxVer FROM quotations WHERE leadId = ? AND type = ?',
       [data.leadId, qType]
     );
-    const nextVersion = (qType === 'draft') ? 1 : ((rows[0].maxVer || 0) + 1);
+    const isDraft = qType === 'draft' || qType === 'product_draft';
+    const nextVersion = isDraft ? 1 : ((rows[0]?.maxVer || 0) + 1);
+    const prefix = (qType === 'product' || qType === 'product_draft') ? 'PQ' : 'QT';
     
     const newQuotation = {
-      id: `QT-${Date.now().toString().slice(-6)}`,
+      id: `${prefix}-${Date.now().toString().slice(-6)}`,
       leadId: data.leadId,
       version: nextVersion,
       date: new Date().toISOString().slice(0, 19).replace('T', ' '),

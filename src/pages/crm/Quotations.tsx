@@ -188,6 +188,7 @@ export const Quotations: React.FC = () => {
     quotations.forEach(q => {
        let parsed: any = {}
        try { parsed = JSON.parse(q.data || '{}') } catch(e){}
+       if (q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product') return;
        const quoNo = parsed.quotationNo || q.id
        
        if (!groups[quoNo]) {
