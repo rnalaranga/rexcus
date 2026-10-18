@@ -1,67 +1,35 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { 
-  FileText, Plus, Trash2, ArrowLeft, Eye, Download, Send, CheckCircle2, 
-  XCircle, Clock, Sparkles, Loader2, Building2, User, ChevronDown, 
-  ChevronUp, Paperclip, CreditCard, ShieldCheck, Printer, HelpCircle, 
-  Briefcase, Save, TrendingUp, LineChart, PackageCheck, Package, Search, 
-  ExternalLink, Layers, ShoppingBag, Boxes, AlertCircle, Wand2
-} from 'lucide-react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { 
+  ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, 
+  ChevronUp, User, RotateCcw, X, FileText, TrendingUp, Mail, FileDown, 
+  Printer, Wand2, LineChart, Building2, UserCheck, Eye, ChevronLeft, 
+  ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, 
+  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink 
+} from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { useDialog } from '@/components/ui/DialogProvider'
-import { useCustomers, useLeads, useInventory } from '@/hooks/useData'
-import { useCurrencies, useTaxProfiles } from '@/hooks/useFinance'
-import { useSettings } from '@/contexts/SettingsContext'
-import { useAuth } from '@/contexts/AuthContext'
+import { Badge } from '@/components/ui/Badge'
+import { CustomerModal } from '@/components/crm/CustomerModal'
+import { QuotationTemplatesModal } from '@/components/crm/QuotationTemplatesModal'
+import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
+import { useLeads, useInventory, useCustomers } from '@/hooks/useData'
+import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { 
   createQuotation, fetchQuotations, updateQuotation, deleteQuotation, 
   generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, 
   approveQuotation, rejectQuotation 
 } from '@/lib/api'
-import { formatCurrency, formatDate } from '@/lib/utils'
-import { QuotationPrintView } from '@/components/QuotationPrintView'
+import { formatCurrency } from '@/lib/utils'
+import { useDialog } from '@/components/ui/DialogProvider'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
-import { CustomerModal } from '@/components/crm/CustomerModal'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
-
-export interface QuotationTermsPreset {
-  id: string;
-  name: string;
-  terms: string;
-  validity: string;
-  delivery: string;
-  isDefault?: boolean;
-}
-
-const DEFAULT_TERMS_PRESETS: QuotationTermsPreset[] = [
-  {
-    id: 'standard-manufacturing',
-    name: 'Standard Finished Products Sale',
-    terms: 'Payment: 100% advance or approved credit terms. Goods once sold are not returnable without prior authorization.',
-    validity: '30 Days from quotation date',
-    delivery: 'Ex-Factory / 3-5 Working Days from Order Confirmation',
-    isDefault: true
-  },
-  {
-    id: 'credit-client',
-    name: 'Corporate / 30 Days Credit',
-    terms: 'Payment: 30 Days credit from the invoice date. Late payments subject to 2% monthly interest.',
-    validity: '14 Days from quotation date',
-    delivery: 'Delivery to Customer Warehouse within 5-7 working days',
-  },
-  {
-    id: 'cash-carry',
-    name: 'Cash on Delivery (COD)',
-    terms: 'Payment: Strictly Cash / Bank Transfer upon delivery of goods.',
-    validity: '7 Days from quotation date',
-    delivery: 'Immediate / Next Business Day upon stock verification',
-  }
-];
+import { useSettings } from '@/contexts/SettingsContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
@@ -108,7 +76,7 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
           onChange={e => { onChange(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)} 
           autoComplete="off" 
-          placeholder="Type product name or SKU to quick-add..." 
+          placeholder="Type product name or SKU to quick-add finished good..." 
         />
       </div>
       {open && filtered.length > 0 && createPortal(
@@ -117,7 +85,7 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
             top: wrapRef.current?.getBoundingClientRect().bottom! + window.scrollY + 4, 
             left: wrapRef.current?.getBoundingClientRect().left! + window.scrollX, 
             width: wrapRef.current?.getBoundingClientRect().width, 
-            minWidth: '320px' 
+            minWidth: '340px' 
           }} 
           className="absolute z-[99999] bg-surface border border-emerald-500/30 shadow-2xl rounded-xl py-1.5 max-h-64 overflow-y-auto backdrop-blur-xl"
         >
@@ -147,7 +115,7 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
               </div>
               <div className="flex flex-col items-end shrink-0">
                 <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(Number(item.unitPrice || 0))}
+                  {formatCurrency(Number(item.unitPrice || item.price || 0))}
                 </span>
                 <span className={`text-[9px] font-medium ${(item.quantity || 0) > 0 ? 'text-muted' : 'text-amber-500 font-bold'}`}>
                   {(item.quantity || 0) > 0 ? `${item.quantity} in stock` : 'Out of stock'}
@@ -155,6 +123,84 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
               </div>
             </li>
           ))}
+        </ul>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+interface LeadSearchProps {
+  value: string
+  onChange: (val: string) => void
+  onSelect: (item: any) => void
+  items: any[]
+  clientType: 'customer' | 'lead'
+  className?: string
+  placeholder?: string
+}
+
+const LeadSearchInput: React.FC<LeadSearchProps> = ({ clientType, value, onChange, onSelect, items, className = '', placeholder }) => {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  
+  const filtered = useMemo(() => {
+    if (!value || value.trim().length === 0) return items.slice(0, 8);
+    const q = value.toLowerCase();
+    return items.filter(l => {
+      const name = (l.name || '').toLowerCase();
+      const comp = (l.company || '').toLowerCase();
+      const desc = (l.description || '').toLowerCase();
+      const email = (l.email || '').toLowerCase();
+      const phone = (l.phone || '').toLowerCase();
+      return name.includes(q) || comp.includes(q) || desc.includes(q) || email.includes(q) || phone.includes(q);
+    }).slice(0, 10);
+  }, [value, items]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <input type="text" value={value} className={className}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)} autoComplete="off" 
+        placeholder={placeholder || (clientType === 'customer' ? 'Type to search customer (name, company)...' : 'Type to search lead (company, contact, description)...')} 
+      />
+      {open && filtered.length > 0 && createPortal(
+        <ul style={{ top: (wrapRef.current?.getBoundingClientRect().bottom || 0) + window.scrollY, left: (wrapRef.current?.getBoundingClientRect().left || 0) + window.scrollX, width: Math.max(wrapRef.current?.getBoundingClientRect().width || 0, 360) }} className="absolute z-[99999] mt-1 bg-surface border border-theme-subtle/50 shadow-2xl rounded-xl py-1 max-h-60 overflow-y-auto">
+          {filtered.map((l, i) => {
+            const title = l.company || l.name;
+            const subtitle = l.company && l.name ? l.name : (l.email || l.phone || '');
+            const leadDesc = clientType === 'lead' ? (l.description || '') : '';
+            return (
+              <li key={i} className="px-3.5 py-2 text-xs hover:bg-surface2 cursor-pointer border-b border-theme-subtle/30 last:border-b-0 transition-colors"
+                onMouseDown={e => { 
+                  e.preventDefault(); 
+                  onSelect(l); 
+                  onChange(title); 
+                  setOpen(false); 
+                }}>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-primary font-bold text-xs truncate">{title}</span>
+                  {l.status && (
+                    <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-muted shrink-0">
+                      {l.status}
+                    </span>
+                  )}
+                </div>
+                {subtitle && <p className="text-[10px] text-muted truncate mt-0.5">{subtitle}</p>}
+                {leadDesc && (
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-300 italic truncate mt-1 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    "{leadDesc}"
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>,
         document.body
       )}
@@ -179,63 +225,33 @@ export const ProductQuotationBuilder: React.FC = () => {
   const { leadId } = useParams<{ leadId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const quoteIdParam = searchParams.get('quoteId')
-  const previewParam = searchParams.get('preview')
-  const navigate = useNavigate()
-  const { user, can } = useAuth()
-  const canApprove = can('approvals.quotations')
-  const { settings } = useSettings()
+  const previewParam = searchParams.get('preview') === 'true'
+  const templateIdParam = searchParams.get('templateId')
 
+  const navigate = useNavigate()
+  const { showConfirm } = useDialog()
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false)
+  const [polishingItemId, setPolishingItemId] = useState<number | null>(null)
+  const [isPolishingAll, setIsPolishingAll] = useState(false)
+  
+  const { data: leads, loading } = useLeads()
   const { data: customers } = useCustomers()
-  const { data: leads } = useLeads()
-  const { data: currencies } = useCurrencies()
-  const { data: taxProfiles } = useTaxProfiles()
   const { data: inventory = [] } = useInventory()
+  const { settings } = useSettings()
+  const { user, can } = useAuth()
+  const canApprove = can ? can('approvals.quotations') : false
+  const { data: currencies } = useCurrencies()
+  const [currency, setCurrency] = useState('LKR')
+  const { data: taxProfiles } = useTaxProfiles()
+  const [taxEnabled, setTaxEnabled] = useState(true)
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep')
 
   // Filter only finished goods / products from inventory
   const finishedProducts = useMemo(() => {
     return inventory.filter((item: any) => 
-      item.type === 'finished_product' || item.type === 'product'
+      item.type === 'finished_product' || item.type === 'product' || !item.type
     );
   }, [inventory]);
-
-  const [currency, setCurrency] = useState('LKR')
-  const [currentId, setCurrentId] = useState<string | null>(null)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [quotationStatus, setQuotationStatus] = useState<string>('Draft')
-  const [approvedBy, setApprovedBy] = useState<string | null>(null)
-  const [approvedAt, setApprovedAt] = useState<string | null>(null)
-  const [rejectionReason, setRejectionReason] = useState<string | null>(null)
-
-  const [versions, setVersions] = useState<any[]>([])
-  const [showVersionHistory, setShowVersionHistory] = useState(false)
-  const [emailModalOpen, setEmailModalOpen] = useState(false)
-  const [printModalOpen, setPrintModalOpen] = useState(false)
-  const [catalogModalOpen, setCatalogModalOpen] = useState(false)
-  const [catalogSearch, setCatalogSearch] = useState('')
-  const [quickSearchText, setQuickSearchText] = useState('')
-
-  // Document metadata
-  const [docNo, setDocNo] = useState('FO/PD/02')
-  const [issueNo, setIssueNo] = useState('01')
-  const [issueDate, setIssueDate] = useState('March 04, 2026')
-  const [quoDate, setQuoDate] = useState(new Date().toISOString().slice(0, 10))
-  const [quotationNo, setQuotationNo] = useState('')
-  const [attention, setAttention] = useState('')
-  const [subject, setSubject] = useState('Supply of Finished Goods / Products')
-  const [customerName, setCustomerName] = useState('')
-  const [customerAddress, setCustomerAddress] = useState('')
-  const [vatNo, setVatNo] = useState('')
-  const [tinNo, setTinNo] = useState('')
-  const [attachments, setAttachments] = useState<any[]>([])
-
-  // Client Selection
-  const [clientType, setClientType] = useState<'customer' | 'lead'>(leadId ? 'lead' : 'customer')
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
-  const [showAddCustomer, setShowAddCustomer] = useState(false)
-
-  // Tax States
-  const [taxEnabled, setTaxEnabled] = useState(true)
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep')
 
   useEffect(() => {
     if (taxProfiles && taxProfiles.length > 0) {
@@ -247,36 +263,93 @@ export const ProductQuotationBuilder: React.FC = () => {
       }
     }
   }, [taxProfiles]);
+  
+  const lead = customers?.find(c => c.id === leadId) || leads?.find(l => l.id === leadId)
 
-  const selectedProfile = useMemo(() => {
-    return (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
-  }, [taxEnabled, selectedProfileId, taxProfiles]);
+  const [savedVersions, setSavedVersions] = useState<any[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [currentId, setCurrentId] = useState<string | null>(null)
+  const [draftId, setDraftId] = useState<string | null>(null)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [previewCollapsed, setPreviewCollapsed] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false)
+  const [catalogSearch, setCatalogSearch] = useState('')
+  const [quickSearchText, setQuickSearchText] = useState('')
+  const initialLoadedRef = useRef(false)
 
-  // Product Line Items (Instead of BOMs!)
-  const [custItems, setCustItems] = useState<ProductQuotationItem[]>([])
+  const currentQuote = useMemo(() => {
+    if (!currentId && !draftId) return null;
+    const targetId = currentId || draftId;
+    return savedVersions.find((v: any) => v.id === targetId) || null;
+  }, [currentId, draftId, savedVersions])
 
-  // Discount & Terms
-  const [custDiscount, setCustDiscount] = useState<number | string>(0)
-  const [custDiscountType, setCustDiscountType] = useState<'percent' | 'amount'>('percent')
-  const [custDiscountAmount, setCustDiscountAmount] = useState<number | string>(0)
-  const [custTerms, setCustTerms] = useState('')
-  const [custValidity, setCustValidity] = useState('30 Days')
-  const [custDelivery, setCustDelivery] = useState('3-5 Working Days')
-  const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('standard-manufacturing')
-  const [bankDetailId, setBankDetailId] = useState<string>('')
+  const loadVersions = useCallback(async () => {
+    if (!leadId) return
+    try {
+      const data = await fetchQuotations(leadId)
+      // Filter product quotes
+      const prodQuotes = (data || []).filter((q: any) => {
+        let snap: any = {};
+        try { snap = JSON.parse(q.data || '{}'); } catch(e){}
+        return q.type === 'product' || q.type === 'product_draft' || snap.isProductQuotation === true || snap.quotationCategory === 'product';
+      });
+      setSavedVersions(prodQuotes)
+      
+      // Auto-load if quoteId is in URL (only on initial load so it doesn't overwrite user edits)
+      if (quoteIdParam && !initialLoadedRef.current) {
+         const target = prodQuotes.find((v: any) => v.id === quoteIdParam)
+         if (target) {
+            initialLoadedRef.current = true
+            const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data
+            restoreSnapshot(snap)
+            if (target.type === 'product_draft') {
+               setDraftId(target.id)
+            } else {
+               setCurrentId(target.id)
+            }
+            
+            if (previewParam) {
+               setShowPreview(true)
+            }
+         }
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }, [leadId, quoteIdParam, previewParam])
 
-  // AI polishing state
-  const [isPolishingAll, setIsPolishingAll] = useState(false)
-  const [polishingItemId, setPolishingItemId] = useState<number | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  useEffect(() => { loadVersions() }, [loadVersions])
 
-  const showToast = (type: 'success' | 'error', msg: string) => {
-    setToast({ type, msg })
-    setTimeout(() => setToast(null), 3000)
-  }
+  // --- Document Details ---
+  const [docNo, setDocNo] = useState('FO/PD/02')
+  const [issueNo, setIssueNo] = useState('01')
+  const [issueDate, setIssueDate] = useState('March 04, 2026')
+  const [quoDate, setQuoDate] = useState(new Date().toISOString().split('T')[0])
+  const [vatNo, setVatNo] = useState(lead?.vat || '')
+  const [tinNo, setTinNo] = useState(lead?.svat || '')
+  const [customerAddress, setCustomerAddress] = useState(lead?.address || '')
+  const [quotationNo, setQuotationNo] = useState('')
+  const [jobQty, setJobQty] = useState('1')
+  const [attention, setAttention] = useState('')
+  const [subject, setSubject] = useState('Supply of Finished Goods / Products')
+  const [customerName, setCustomerName] = useState('')
+  const [clientType, setClientType] = useState<'customer' | 'lead'>(leadId ? 'lead' : 'customer')
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [allGrns, setAllGrns] = useState<any[]>([]);
+  const [jobItems, setJobItems] = useState<{ id: number; text: string }[]>([
+    { id: 1, text: 'Supply and delivery of finished products as per customer specifications' }
+  ])
+  const [attachments, setAttachments] = useState<{ id: string; name: string; type: string; dataUrl: string }[]>([])
+  
+  useEffect(() => {
+    fetchAllCustomerGRNs().then(setAllGrns).catch(() => {});
+  }, []);
+  
+  const leadGrns = allGrns.filter(g => g.leadId === selectedLeadId || g.customerId === selectedLeadId);
 
-  // Load Customer or Lead Details
   const selectedLead = useMemo(() => {
     return leads?.find((l: any) => l.id === selectedLeadId) || null;
   }, [leads, selectedLeadId]);
@@ -293,21 +366,77 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   const currentEntity = selectedCustomer || selectedLead;
 
-  // Set default terms and quotation no
-  useEffect(() => {
-    if (!custTerms) {
-      const def = DEFAULT_TERMS_PRESETS.find(p => p.isDefault) || DEFAULT_TERMS_PRESETS[0];
-      setCustTerms(def.terms);
-      setCustValidity(def.validity);
-      setCustDelivery(def.delivery);
-    }
-    if (!quotationNo) {
-      const seq = Date.now().toString().slice(-4);
-      setQuotationNo(`PQ-${seq}`);
-    }
-  }, []);
+  // Aggregate all contacts from Customer and Lead
+  const availableContacts = useMemo(() => {
+    const list: Array<{ name: string; designation?: string; phone?: string; email?: string; roleTag: string }> = [];
+    const seenNames = new Set<string>();
 
-  // Handle client selection
+    const addContact = (name: string, designation?: string, phone?: string, email?: string, roleTag = '') => {
+      const trimmed = (name || '').trim();
+      if (!trimmed || seenNames.has(trimmed.toLowerCase())) return;
+      seenNames.add(trimmed.toLowerCase());
+      list.push({ name: trimmed, designation, phone, email, roleTag });
+    };
+
+    if (selectedCustomer) {
+      if (selectedCustomer.name) {
+        addContact(selectedCustomer.name, selectedCustomer.designation, selectedCustomer.phone, selectedCustomer.email, 'Primary');
+      }
+      if (selectedCustomer.financeContact) {
+        addContact(selectedCustomer.financeContact, 'Finance', selectedCustomer.financePhone, selectedCustomer.financeEmail, 'Finance');
+      }
+      let custContacts: any[] = [];
+      try {
+        custContacts = typeof selectedCustomer.contacts === 'string' 
+          ? JSON.parse(selectedCustomer.contacts) 
+          : (selectedCustomer.contacts || []);
+      } catch (e) { custContacts = []; }
+      if (Array.isArray(custContacts)) {
+        for (const c of custContacts) {
+          if (c && c.name) {
+            addContact(c.name, c.designation, c.phone, c.email, c.isPrimary ? 'Primary' : (c.designation || 'Additional'));
+          }
+        }
+      }
+    }
+
+    if (selectedLead) {
+      if (selectedLead.name) {
+        addContact(selectedLead.name, selectedLead.designation, selectedLead.phone, selectedLead.email, 'Lead Contact');
+      }
+      let leadContacts: any[] = [];
+      try {
+        leadContacts = typeof selectedLead.contacts === 'string'
+          ? JSON.parse(selectedLead.contacts)
+          : (selectedLead.contacts || []);
+      } catch (e) { leadContacts = []; }
+      if (Array.isArray(leadContacts)) {
+        for (const c of leadContacts) {
+          if (c && c.name) {
+            addContact(c.name, c.designation, c.phone, c.email, c.designation || 'Additional');
+          }
+        }
+      }
+    }
+
+    return list;
+  }, [selectedCustomer, selectedLead]);
+
+  const handleCurrencyChange = (newCurrencyCode: string) => {
+     if (!currencies || currencies.length === 0) return;
+     const oldCur = currencies.find((c: any) => c.code === currency) || { exchangeRate: 1 };
+     const newCur = currencies.find((c: any) => c.code === newCurrencyCode) || { exchangeRate: 1 };
+
+     const multiplier = newCur.exchangeRate / oldCur.exchangeRate;
+     
+     setCustItems(items => items.map(i => ({
+        ...i,
+        unitPrice: Number((i.unitPrice * multiplier).toFixed(2))
+     })));
+
+     setCurrency(newCurrencyCode);
+  };
+
   const handleSelectLeadOrCustomer = (item: any) => {
     if (!item) return;
     const itemId = item.id || item;
@@ -317,115 +446,384 @@ export const ProductQuotationBuilder: React.FC = () => {
       const cust = customers?.find((c: any) => c.id === itemId) || item;
       setCustomerName(cust.company || cust.name || '');
       setCustomerAddress(cust.address || '');
-      if (cust.name) setAttention(cust.name);
+      if (cust.name) {
+        setAttention(cust.name);
+      }
       setVatNo(cust.vat || '');
       setTinNo(cust.svat || cust.tin || cust.brNumber || '');
-      if (cust.paymentTerms) setCustTerms(cust.paymentTerms);
+      if (cust.paymentTerms) {
+        setCustTerms(cust.paymentTerms);
+      } else if (!custTerms) {
+        let terms = '';
+        if (cust.requiresAdvance) terms = 'Advance required. ';
+        if (cust.creditDays > 0) terms += `${cust.creditDays} days credit.`;
+        if (terms.trim()) setCustTerms(terms.trim());
+      }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
+
+      const userPrefix = user?.prefix ? `${user.prefix}-` : '';
       const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-      setQuotationNo(`PQ-${custPrefix}${Date.now().toString().slice(-4)}`);
+      const seq = Date.now().toString().slice(-4);
+      setQuotationNo(`PQ-${userPrefix}${custPrefix}${seq}`);
     } else {
       const leadItem = leads?.find((l: any) => l.id === itemId) || item;
       setCustomerName(leadItem.company || leadItem.name || '');
-      if (leadItem.name) setAttention(leadItem.name);
-      setCustomerAddress(leadItem.address || '');
-      setVatNo(leadItem.vat || '');
-      setTinNo(leadItem.svat || leadItem.tin || '');
-      setQuotationNo(`PQ-LEAD-${Date.now().toString().slice(-4)}`);
+      if (leadItem.name) {
+        setAttention(leadItem.name);
+      }
+
+      let cust = null;
+      if (leadItem.customerId) cust = customers?.find((c: any) => c.id === leadItem.customerId);
+
+      if (cust) {
+        setCustomerAddress(cust.address || leadItem.address || '');
+        setVatNo(cust.vat || leadItem.vat || '');
+        setTinNo(cust.svat || cust.tin || cust.brNumber || leadItem.svat || '');
+      } else {
+        setCustomerAddress(leadItem.address || '');
+        setVatNo(leadItem.vat || '');
+        setTinNo(leadItem.svat || '');
+      }
+
+      const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+      const seq = Date.now().toString().slice(-4);
+      setQuotationNo(`PQ-${userPrefix}${seq}`);
     }
   };
 
-  // Add Finished Product as a line item
-  const handleAddProduct = (prod: any) => {
-    const descText = `${prod.name}${prod.sku ? ` (${prod.sku})` : ''}${prod.description ? `\n${prod.description}` : ''}`;
+  // Scope Items
+  const addJobItem = () => setJobItems(p => [...p, { id: Date.now(), text: '' }]);
+  const updateJobItem = (id: number, text: string) => setJobItems(p => p.map(i => i.id === id ? { ...i, text } : i));
+  const removeJobItem = (id: number) => setJobItems(p => p.filter(i => i.id !== id));
+
+  // Attachments
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachments(prev => [...prev, {
+          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name: file.name,
+          type: file.type,
+          dataUrl: reader.result as string
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  // --- Product Quotation Lines (Finished Goods) ---
+  const [custItems, setCustItems] = useState<ProductQuotationItem[]>([
+    { id: Date.now(), desc: '', qty: 1, unitPrice: 0, unitCost: 0, uom: 'pcs', stock: 0, note: '' }
+  ])
+  const addCustItem = () => setCustItems(p => [...p, { id: Date.now(), desc: '', qty: 1, unitPrice: 0, unitCost: 0, uom: 'pcs', stock: 0, note: '' }])
+  const updateCustItem = (id: number, f: string, v: any) => setCustItems(p => p.map(i => i.id === id ? { ...i, [f]: v } : i))
+  const removeCustItem = (id: number) => setCustItems(p => p.filter(i => i.id !== id))
+
+  // Add Product from Catalog or Quick Search
+  const addProductToItems = (prod: any) => {
+    const unitPrice = Number(prod.unitPrice || prod.price || prod.sellingPrice || 0);
+    const unitCost = Number(prod.unitCost || prod.cost || prod.costPrice || (unitPrice > 0 ? unitPrice * 0.7 : 0));
     const newItem: ProductQuotationItem = {
       id: Date.now(),
       productId: prod.id,
-      sku: prod.sku,
-      desc: descText,
+      sku: prod.sku || '',
+      desc: `${prod.name || 'Finished Product'}${prod.sku ? ` (SKU: ${prod.sku})` : ''}${prod.description ? `\n${prod.description}` : ''}`,
       qty: 1,
-      unitPrice: Number(prod.unitPrice || 0),
-      unitCost: Number(prod.unitCost || 0),
+      unitPrice,
+      unitCost,
       uom: prod.uom || 'pcs',
       stock: Number(prod.quantity || 0),
       note: ''
     };
-    setCustItems(prev => [...prev, newItem]);
+    setCustItems(prev => {
+      // If only one empty item, replace it
+      if (prev.length === 1 && !prev[0].desc && prev[0].unitPrice === 0) {
+        return [newItem];
+      }
+      return [...prev, newItem];
+    });
     showToast('success', `Added "${prod.name}" to quotation lines`);
   };
+  
+  const [custTerms, setCustTerms] = useState('')
+  const [custValidity, setCustValidity] = useState('30 Days')
+  const [custDelivery, setCustDelivery] = useState('3-5 Working Days')
+  const [custDiscount, setCustDiscount] = useState<number | string>(0)
+  const [custDiscountType, setCustDiscountType] = useState<'percent' | 'amount'>('percent')
+  const [custDiscountAmount, setCustDiscountAmount] = useState<number | string>(0)
 
-  const addCustomItem = () => {
-    setCustItems(prev => [
-      ...prev,
-      {
-        id: Date.now(),
-        desc: '',
-        qty: 1,
-        unitPrice: 0,
-        unitCost: 0,
-        uom: 'pcs',
-        stock: 0,
-        note: ''
+  // Quotation Terms & Conditions Presets (loaded from Settings)
+  const termsPresets = useMemo<QuotationTermsPreset[]>(() => {
+    if (settings?.quotation_terms_presets) {
+      try {
+        const parsed = JSON.parse(settings.quotation_terms_presets);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error('Error parsing quotation_terms_presets', e);
       }
-    ]);
-  };
+    }
+    return DEFAULT_TERMS_PRESETS;
+  }, [settings?.quotation_terms_presets]);
 
-  const updateCustItem = (id: number, field: string, val: any) => {
-    setCustItems(prev => prev.map(i => i.id === id ? { ...i, [field]: val } : i));
-  };
+  const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
 
-  const removeCustItem = (id: number) => {
-    setCustItems(prev => prev.filter(i => i.id !== id));
-  };
-
-  // Currency handler
-  const handleCurrencyChange = (newCurrencyCode: string) => {
-    if (!currencies || currencies.length === 0) return;
-    const oldCur = (currencies as any[]).find((c: any) => c.code === currency) || { exchangeRate: 1 };
-    const newCur = (currencies as any[]).find((c: any) => c.code === newCurrencyCode) || { exchangeRate: 1 };
-    const multiplier = newCur.exchangeRate / oldCur.exchangeRate;
-    
-    setCustItems(items => items.map(i => ({
-      ...i,
-      unitPrice: Number((i.unitPrice * multiplier).toFixed(2))
-    })));
-    setCurrency(newCurrencyCode);
-  };
-
-  // Terms preset selection
   const handleSelectTermsPreset = (presetId: string) => {
     setSelectedTermsPresetId(presetId);
-    const preset = DEFAULT_TERMS_PRESETS.find(p => p.id === presetId);
+    if (!presetId) return;
+    const preset = termsPresets.find(p => p.id === presetId);
     if (preset) {
-      setCustTerms(preset.terms);
-      setCustValidity(preset.validity);
-      setCustDelivery(preset.delivery);
+      if (preset.paymentTerms) setCustTerms(preset.paymentTerms);
+      if (preset.validity) setCustValidity(preset.validity);
+      if (preset.delivery) setCustDelivery(preset.delivery);
     }
   };
 
+  // Auto-select default preset if terms are blank
+  useEffect(() => {
+    if (!custTerms && termsPresets.length > 0) {
+      const def = termsPresets.find(p => p.isDefault) || termsPresets[0];
+      if (def) {
+        setSelectedTermsPresetId(def.id);
+        if (def.paymentTerms) setCustTerms(def.paymentTerms);
+        if (def.validity) setCustValidity(def.validity);
+        if (def.delivery) setCustDelivery(def.delivery);
+      }
+    }
+  }, [termsPresets]);
+
+  // Quotation Bank Details (loaded from Settings)
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [bankDetailId, setBankDetailId] = useState<string>('');
+  const selectedBank = useMemo(() => {
+    if (bankDetailId === 'none') return null;
+    return bankAccounts.find(b => b.id === bankDetailId) || null;
+  }, [bankDetailId, bankAccounts]);
+
+  useEffect(() => {
+    let banks: any[] = [];
+    if (settings?.company_bank_details) {
+      try {
+        const parsed = typeof settings.company_bank_details === 'string'
+          ? JSON.parse(settings.company_bank_details)
+          : settings.company_bank_details;
+        if (Array.isArray(parsed) && parsed.length > 0) banks = parsed;
+      } catch (e) {}
+    }
+    if (banks.length === 0) {
+      banks = [
+        { id: 'bank_hnb', bankName: 'Hatton National Bank', branchName: 'Negombo', accountName: 'Rex Industries (Pvt) Ltd', accountNumber: '011010078028', swiftCode: 'HNBLLKLX', isDefault: true }
+      ];
+    }
+    setBankAccounts(banks);
+    if (!bankDetailId) {
+      const def = banks.find((b: any) => b.isDefault) || banks[0];
+      if (def) setBankDetailId(def.id);
+    }
+  }, [settings?.company_bank_details]);
+
+  // --- Calculations ---
+  const totalProductCost = custItems.reduce((s, i) => s + (Number(i.qty || 0) * Number(i.unitCost || 0)), 0);
+  const custSubtotal = custItems.reduce((s, i) => s + Number(i.qty || 0) * Number(i.unitPrice || 0), 0);
+  const custDiscountAmt = custDiscountType === 'amount'
+    ? Math.min(custSubtotal, Math.max(0, Number(custDiscountAmount) || 0))
+    : custSubtotal * (Math.max(0, Number(custDiscount) || 0) / 100);
+  const custTotal = Math.max(0, custSubtotal - custDiscountAmt);
+
+  const handlePercentDiscountChange = (val: string) => {
+    setCustDiscountType('percent');
+    setCustDiscount(val);
+    if (val === '' || isNaN(Number(val))) {
+      setCustDiscountAmount('');
+    } else {
+      const p = Math.max(0, Number(val));
+      setCustDiscountAmount(custSubtotal > 0 ? Number((custSubtotal * (p / 100)).toFixed(2)) : 0);
+    }
+  };
+
+  const handleAmountDiscountChange = (val: string) => {
+    setCustDiscountType('amount');
+    setCustDiscountAmount(val);
+    if (val === '' || isNaN(Number(val))) {
+      setCustDiscount('');
+    } else {
+      const a = Math.max(0, Number(val));
+      setCustDiscount(custSubtotal > 0 ? Number(((a / custSubtotal) * 100).toFixed(2)) : 0);
+    }
+  };
+
+  const handleDiscountTypeToggle = (type: 'percent' | 'amount') => {
+    if (type === custDiscountType) return;
+    if (type === 'percent') {
+      const amt = Number(custDiscountAmount) || 0;
+      const pct = custSubtotal > 0 ? ((amt / custSubtotal) * 100).toFixed(2) : '0';
+      setCustDiscountType('percent');
+      setCustDiscount(pct);
+    } else {
+      const pct = Number(custDiscount) || 0;
+      const amt = custSubtotal > 0 ? ((custSubtotal * (pct / 100))).toFixed(2) : '0';
+      setCustDiscountType('amount');
+      setCustDiscountAmount(amt);
+    }
+  };
+
+  // Taxes
+  const selectedProfile = useMemo(() => {
+    return (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
+  }, [taxEnabled, selectedProfileId, taxProfiles]);
+
+  let custSscl = 0;
+  let custVat = 0;
+  let custTaxAmount = 0;
+
+  if (taxEnabled && selectedProfile) {
+    const baseCustTotal = custTotal;
+    const custT1 = baseCustTotal * (Number(selectedProfile.tax1_rate) / 100);
+    if (selectedProfile.tax1_show_separately === 1) custSscl = custT1;
+    
+    const baseForCustVat = selectedProfile.tax2_compound ? (baseCustTotal + custT1) : baseCustTotal;
+    const custT2 = baseForCustVat * (Number(selectedProfile.tax2_rate) / 100);
+    if (selectedProfile.tax2_show_separately === 1) custVat = custT2;
+    
+    custTaxAmount = custSscl + custVat;
+  }
+  
+  const custWithSSCL = custTotal + custTaxAmount;
+  
+  const expectedProfit = custSubtotal - totalProductCost;
+  const expectedMargin = custSubtotal > 0 ? (expectedProfit / custSubtotal) * 100 : 0;
+
+  const restoreSnapshot = (snap: any) => {
+    setDocNo(snap.docNo || 'FO/PD/02');
+    setIssueNo(snap.issueNo || '01');
+    setIssueDate(snap.issueDate || 'March 04, 2026');
+    setQuoDate(snap.quoDate || new Date().toISOString().split('T')[0]);
+    setVatNo(snap.vatNo !== undefined ? snap.vatNo : (lead?.vat || ''));
+    setTinNo(snap.tinNo !== undefined ? snap.tinNo : (lead?.svat || ''));
+    setQuotationNo(snap.quotationNo || '');
+    setJobQty(snap.jobQty || '1');
+    setAttention(snap.attention || '');
+    setSubject(snap.subject || 'Supply of Finished Goods / Products');
+    if (snap.customerName) setCustomerName(snap.customerName);
+    if (snap.customerAddress || snap.address) setCustomerAddress(snap.customerAddress || snap.address);
+    setTaxEnabled(snap.taxEnabled ?? true);
+    setSelectedProfileId(snap.selectedProfileId || 'tp_opt2_sscl_absorbed_vat_sep');
+    setJobItems(snap.jobItems || []);
+    setAttachments(snap.attachments || []);
+    setCustItems(snap.custItems || []);
+    setCustTerms(snap.custTerms || snap.terms || snap.paymentTerms || '');
+    setCustValidity(snap.custValidity || snap.validity || '30 Days');
+    setCustDelivery(snap.custDelivery || snap.delivery || snap.deliveryTerms || '3-5 Working Days');
+    if (snap.selectedTermsPresetId) setSelectedTermsPresetId(snap.selectedTermsPresetId);
+    if (snap.bankDetailId !== undefined) setBankDetailId(snap.bankDetailId);
+    else if (snap.bankDetails === 'none') setBankDetailId('none');
+    setCustDiscount(snap.custDiscount !== undefined ? snap.custDiscount : 0);
+    setCustDiscountType(snap.custDiscountType || 'percent');
+    setCustDiscountAmount(snap.custDiscountAmount !== undefined ? snap.custDiscountAmount : (snap.custTotals?.discount !== undefined ? snap.custTotals.discount : 0));
+  };
+
+  // --- Auto Save Draft (DB) ---
+  const draftIdRef = useRef<string | null>(draftId);
+  const currentIdRef = useRef<string | null>(currentId);
+  
+  useEffect(() => {
+    draftIdRef.current = draftId;
+    currentIdRef.current = currentId;
+  }, [draftId, currentId]);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!selectedLeadId) return; 
+      if (currentIdRef.current) return; 
+      
+      setSaveStatus('saving');
+      const snapshot: any = {
+        isProductQuotation: true,
+        quotationCategory: 'product',
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
+        taxEnabled, selectedProfileId,
+        custItems, custTerms, custValidity, custDelivery, custDiscount,
+        custDiscountType, custDiscountAmount,
+        selectedTermsPresetId,
+        bankDetailId: bankDetailId || null,
+        bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
+        custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+        productTotals: { totalCost: totalProductCost, revenue: custSubtotal, margin: expectedMargin, profit: expectedProfit },
+        selectedProfile, custSscl, custVat,
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+      };
+      
+      const sub = custItems.reduce((s, i) => s + Number(i.qty || 0) * Number(i.unitPrice || 0), 0);
+      const dis = custDiscountType === 'amount'
+        ? Math.min(sub, Math.max(0, Number(custDiscountAmount) || 0))
+        : sub * (Math.max(0, Number(custDiscount) || 0) / 100);
+      const am = sub - dis;
+      
+      try {
+        if (!draftIdRef.current) {
+          const res = await createQuotation({
+            leadId: selectedLeadId || 'WALK-IN', type: 'product_draft', data: snapshot,
+            totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+          });
+          if (res.success && res.quotation) {
+             setDraftId(res.quotation.id);
+             draftIdRef.current = res.quotation.id;
+          }
+        } else {
+          await updateQuotation(draftIdRef.current, {
+            type: 'product_draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+          });
+        }
+        setSaveStatus('saved');
+        setTimeout(() => {
+           setSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
+        }, 2000);
+      } catch (err) {
+        setSaveStatus('idle');
+      }
+    }, 2500);
+    
+    return () => clearTimeout(timer);
+  }, [
+    selectedLeadId, docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
+    taxEnabled, selectedProfileId, custItems, custTerms, custValidity, custDelivery, custDiscount, custDiscountType, custDiscountAmount
+  ]);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  const showToast = useCallback((type: 'success' | 'error', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
   // AI Polish Item
-  const handleAiPolishItem = async (id: number) => {
-    const item = custItems.find(i => i.id === id);
+  const handleAiPolishItem = async (itemId: number) => {
+    const item = custItems.find(i => i.id === itemId);
     if (!item || !item.desc.trim()) return;
-    setPolishingItemId(id);
+    setPolishingItemId(itemId);
     try {
-      const enrichedDesc = await generateQuotationDescription({
+      const enriched = await generateQuotationDescription({
         partTitle: item.desc.split('\n')[0] || 'Finished Product',
         rawDescription: item.desc,
-        customerName: customerName || 'Customer',
+        customerName: attention || customerName || 'Customer',
         quantity: item.qty || 1
       });
-      if (enrichedDesc) {
-        updateCustItem(id, 'desc', enrichedDesc);
+      if (enriched) {
+        updateCustItem(itemId, 'desc', enriched);
         showToast('success', 'Description enhanced with AI!');
       }
     } catch (e: any) {
-      showToast('error', e.message || 'AI generation failed');
+      showToast('error', e.message || 'AI polishing failed');
     } finally {
       setPolishingItemId(null);
     }
   };
 
+  // Bulk AI Polish
   const handleAiPolishAll = async () => {
     if (custItems.length === 0) return;
     setIsPolishingAll(true);
@@ -436,7 +834,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         const enriched = await generateQuotationDescription({
           partTitle: item.desc.split('\n')[0] || 'Finished Product',
           rawDescription: item.desc,
-          customerName: customerName || 'Customer',
+          customerName: attention || customerName || 'Customer',
           quantity: item.qty || 1
         });
         if (enriched) {
@@ -446,149 +844,24 @@ export const ProductQuotationBuilder: React.FC = () => {
       }
       showToast('success', `Polished ${count} item descriptions with AI!`);
     } catch (e: any) {
-      showToast('error', e.message || 'AI generation failed');
+      showToast('error', e.message || 'AI polishing failed');
     } finally {
       setIsPolishingAll(false);
     }
   };
 
-  // Financial Calculations
-  const custSubtotal = useMemo(() => {
-    return custItems.reduce((s, i) => s + (Number(i.qty || 0) * Number(i.unitPrice || 0)), 0);
-  }, [custItems]);
-
-  const totalProductCost = useMemo(() => {
-    return custItems.reduce((s, i) => s + (Number(i.qty || 0) * Number(i.unitCost || 0)), 0);
-  }, [custItems]);
-
-  const custDiscountAmt = useMemo(() => {
-    if (custDiscountType === 'amount') {
-      return Math.min(custSubtotal, Math.max(0, Number(custDiscountAmount) || 0));
-    }
-    return custSubtotal * (Math.max(0, Number(custDiscount) || 0) / 100);
-  }, [custSubtotal, custDiscountType, custDiscount, custDiscountAmount]);
-
-  const custTotal = Math.max(0, custSubtotal - custDiscountAmt);
-
-  // Taxes
-  const { custSscl, custVat, custWithSSCL } = useMemo(() => {
-    if (!taxEnabled || !selectedProfile) {
-      return { custSscl: 0, custVat: 0, custWithSSCL: custTotal };
-    }
-    let s = 0;
-    let v = 0;
-    const base = custTotal;
-    const t1 = base * (Number(selectedProfile.tax1_rate || 0) / 100);
-    if (selectedProfile.tax1_show_separately === 1) s = t1;
-    
-    const baseForVat = selectedProfile.tax2_compound ? (base + t1) : base;
-    const t2 = baseForVat * (Number(selectedProfile.tax2_rate || 0) / 100);
-    if (selectedProfile.tax2_show_separately === 1) v = t2;
-    
-    return {
-      custSscl: s,
-      custVat: v,
-      custWithSSCL: base + s + v
-    };
-  }, [taxEnabled, selectedProfile, custTotal]);
-
-  // Expected Profit & Margin (Finished Product Cost vs Revenue)
-  const expectedProfit = custSubtotal - totalProductCost;
-  const expectedMargin = custSubtotal > 0 ? (expectedProfit / custSubtotal) * 100 : 0;
-
-  // Selected Bank
-  const selectedBank = useMemo(() => {
-    if (!bankDetailId || bankDetailId === 'none') return null;
-    const rawBankSettings = settings?.company_bank_details;
-    if (rawBankSettings) {
-      try {
-        const parsed = typeof rawBankSettings === 'string' ? JSON.parse(rawBankSettings) : rawBankSettings;
-        if (Array.isArray(parsed)) return parsed.find((b: any) => b.id === bankDetailId) || null;
-      } catch (e) {}
-    }
-    return null;
-  }, [bankDetailId, settings?.company_bank_details]);
-
-  // Load versions
-  const loadVersions = async () => {
-    if (!selectedLeadId) return;
-    try {
-      const data = await fetchQuotations(selectedLeadId);
-      if (Array.isArray(data)) {
-        const prodQuotes = data.filter((q: any) => q.type === 'product' || q.type === 'product_draft' || q.data?.includes('"isProductQuotation":true'));
-        setVersions(prodQuotes);
-      }
-    } catch (e) {}
-  };
-
-  useEffect(() => {
-    if (selectedLeadId) loadVersions();
-  }, [selectedLeadId]);
-
-  // Load quoteId from query
-  const initialLoadedRef = useRef(false);
-  useEffect(() => {
-    if (quoteIdParam && !initialLoadedRef.current) {
-      import('@/lib/api').then(({ fetchQuotations }) => {
-        fetchQuotations().then((allQuotes: any[]) => {
-          const target = allQuotes.find((q: any) => q.id === quoteIdParam);
-          if (target) {
-            try {
-              const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
-              restoreSnapshot(snap);
-              setCurrentId(target.id);
-              setQuotationStatus(target.status || 'Draft');
-              setApprovedBy(target.approvedBy || null);
-              setApprovedAt(target.approvedAt || null);
-              setRejectionReason(target.rejectionReason || null);
-              initialLoadedRef.current = true;
-              if (previewParam === '1') setPrintModalOpen(true);
-            } catch (e) {}
-          }
-        });
-      });
-    }
-  }, [quoteIdParam, previewParam]);
-
-  const restoreSnapshot = (snap: any) => {
-    if (!snap) return;
-    setDocNo(snap.docNo || 'FO/PD/02');
-    setIssueNo(snap.issueNo || '01');
-    setIssueDate(snap.issueDate || 'March 04, 2026');
-    setQuoDate(snap.quoDate || new Date().toISOString().slice(0, 10));
-    setQuotationNo(snap.quotationNo || '');
-    setAttention(snap.attention || '');
-    setSubject(snap.subject || 'Supply of Finished Goods / Products');
-    setCustomerName(snap.customerName || '');
-    setCustomerAddress(snap.customerAddress || '');
-    setVatNo(snap.vatNo || '');
-    setTinNo(snap.tinNo || '');
-    setAttachments(snap.attachments || []);
-    setTaxEnabled(snap.taxEnabled ?? true);
-    setSelectedProfileId(snap.selectedProfileId || 'tp_opt2_sscl_absorbed_vat_sep');
-    setCustItems(snap.custItems || []);
-    setCustTerms(snap.custTerms || '');
-    setCustValidity(snap.custValidity || '30 Days');
-    setCustDelivery(snap.custDelivery || '3-5 Working Days');
-    setCustDiscount(snap.custDiscount || 0);
-    setCustDiscountType(snap.custDiscountType || 'percent');
-    setCustDiscountAmount(snap.custDiscountAmount || 0);
-    setBankDetailId(snap.bankDetailId || '');
-  };
-
-  // Save quotation
-  const handleSave = async (asStatus?: string) => {
+  // Save Quotation
+  const handleSave = async () => {
     if (!customerName.trim() && !selectedLeadId) {
       showToast('error', 'Please select or enter a Customer name first');
       return;
     }
     setIsSaving(true);
     try {
-      const snapshot = {
+      const snapshot: any = {
         isProductQuotation: true,
         quotationCategory: 'product',
-        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo,
-        attention, subject, attachments, customerName, customerAddress,
+        docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
         custDiscountType, custDiscountAmount,
         selectedTermsPresetId,
@@ -636,10 +909,12 @@ export const ProductQuotationBuilder: React.FC = () => {
           issueDate
         });
         if (result.success) {
-          const newId = result.quotation?.id;
+          const newId = result.quotation?.id || null;
           setCurrentId(newId);
-          showToast('success', `Product Quotation ${result.quotation?.id} saved!`);
-          navigate(`/crm/product-quotations/new/${selectedLeadId || 'WALK-IN'}?quoteId=${newId}`, { replace: true });
+          if (newId && leadId) {
+            navigate(`/crm/product-quotations/new/${leadId}?quoteId=${newId}`, { replace: true });
+          }
+          showToast('success', `Product Quotation v${result.quotation?.version || '1'} saved!`);
           await loadVersions();
         } else {
           showToast('error', result.error || 'Save failed');
@@ -652,1134 +927,1301 @@ export const ProductQuotationBuilder: React.FC = () => {
     }
   };
 
-  // Submit Approval
-  const handleSubmitApproval = async () => {
-    if (!currentId) {
-      await handleSave();
-    }
-    if (!currentId) return;
+  const handleLoadVersion = (v: any) => {
     try {
-      await submitQuotationForApproval(currentId);
-      setQuotationStatus('Pending Approval');
-      showToast('success', 'Quotation submitted for Manager / Director approval');
-    } catch (e: any) {
-      showToast('error', e.message);
+      const snap = typeof v.data === 'string' ? JSON.parse(v.data) : v.data;
+      restoreSnapshot(snap);
+      setCurrentId(v.id);
+      setShowHistory(false);
+      showToast('success', `Loaded v${v.version}`);
+    } catch {
+      showToast('error', 'Failed to load version');
     }
   };
 
-  const handleApprove = async () => {
-    if (!currentId) return;
+  const handleDeleteVersion = async (v: any) => {
+    const ok = await showConfirm(
+      `Are you sure you want to delete Version v${v.version} of this product quotation? This action cannot be undone.`,
+      'Delete Quotation Version',
+      { confirmLabel: 'Delete Version' }
+    );
+    if (!ok) return;
+
     try {
-      await approveQuotation(currentId, user?.name || 'Director');
-      setQuotationStatus('Approved');
-      setApprovedBy(user?.name || 'Director');
-      setApprovedAt(new Date().toISOString());
-      showToast('success', 'Quotation Approved!');
-    } catch (e: any) {
-      showToast('error', e.message);
+      await deleteQuotation(v.id);
+      showToast('success', `Deleted Version v${v.version}`);
+      if (currentId === v.id) {
+        setCurrentId(null);
+      }
+      await loadVersions();
+    } catch (err: any) {
+      showToast('error', err?.message || 'Failed to delete');
     }
   };
 
-  const handleReject = async () => {
-    if (!currentId) return;
-    const reason = prompt('Please enter the rejection reason:');
-    if (!reason) return;
-    try {
-      await rejectQuotation(currentId, reason);
-      setQuotationStatus('Rejected');
-      setRejectionReason(reason);
-      showToast('success', 'Quotation Rejected');
-    } catch (e: any) {
-      showToast('error', e.message);
-    }
-  };
+  if (loading) return <div className="p-8 text-center animate-pulse text-muted">Loading...</div>;
+  if (leadId && !lead) return <div className="p-8 text-center text-red-500">Lead or Customer not found.</div>;
+
+  const mainVersions = savedVersions.filter(v => v.type === 'product');
 
   return (
-    <div className="space-y-6 pb-20">
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`fixed bottom-5 right-5 z-[99999] px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-2 border animate-in slide-in-from-bottom-5 ${
-          toast.type === 'success' 
-            ? 'bg-emerald-600 text-white border-emerald-400' 
-            : 'bg-red-600 text-white border-red-400'
-        }`}>
-          {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-          <span>{toast.msg}</span>
-        </div>
-      )}
-
-      {/* Top Header / Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-theme-subtle">
+    <div className="h-full -m-6 flex flex-col bg-background overflow-hidden relative">
+      
+      {/* TOPBAR */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-theme-subtle bg-surface/60 backdrop-blur shrink-0">
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate('/crm/product-quotations')}
-            className="p-2 rounded-xl bg-surface hover:bg-surface2 text-muted hover:text-primary border border-theme-subtle transition-all"
-            title="Back to Product Quotations"
-          >
-            <ArrowLeft size={16} />
+          <button onClick={() => navigate('/crm/product-quotations')} className="p-2 hover:bg-surface2 rounded-md transition-colors text-muted hover:text-primary">
+            <ArrowLeft size={17} />
           </button>
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                <PackageCheck size={18} />
-              </span>
-              <h1 className="text-xl font-bold text-primary tracking-tight">Product Quotation Builder</h1>
-              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider">
-                Finished Goods
-              </Badge>
+               <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                 <PackageCheck size={16} />
+               </span>
+               <h1 className="text-lg font-black text-primary tracking-tight">Product Quotation Builder</h1>
+               <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
+                 Finished Goods
+               </span>
+               {saveStatus !== 'idle' && (
+                 <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${saveStatus === 'saving' ? 'bg-orange-500/10 text-orange-500 animate-pulse' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                   {saveStatus === 'saving' ? 'Auto-saving...' : 'Saved to Drafts'}
+                 </span>
+               )}
             </div>
-            <p className="text-xs text-muted mt-0.5">
-              Instant sales quotation for finished goods with live inventory cost & margin tracking
+            <p className="text-[11px] text-muted mt-0.5">
+              {lead?.company || customerName || lead?.name || 'Walk-in Customer'} · Instant finished goods quote with zero BOMs
             </p>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center flex-wrap gap-2">
-          {/* Status Badge */}
-          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 ${
-            quotationStatus === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' :
-            quotationStatus === 'Pending Approval' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
-            quotationStatus === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
-            quotationStatus === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
-            'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              quotationStatus === 'Approved' ? 'bg-emerald-500' :
-              quotationStatus === 'Pending Approval' ? 'bg-amber-500' :
-              quotationStatus === 'Rejected' ? 'bg-red-500' :
-              quotationStatus === 'Sent' ? 'bg-blue-500' : 'bg-zinc-400'
-            }`} />
-            {quotationStatus}
-          </span>
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowTemplatesModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors"
+            title="Browse Quotation Templates"
+          >
+            <Bookmark size={14} className="text-emerald-500" /> Templates
+          </button>
 
-          {/* Version History Dropdown */}
-          {versions.length > 0 && (
-            <div className="relative">
-              <button 
-                onClick={() => setShowVersionHistory(!showVersionHistory)}
-                className="px-2.5 py-1.5 rounded-lg border border-theme-subtle bg-surface hover:bg-surface2 text-xs font-semibold flex items-center gap-1.5"
-              >
-                <Clock size={13} className="text-muted" />
-                <span>v{versions[0]?.version || 1} ({versions.length})</span>
-                <ChevronDown size={13} className="text-muted" />
-              </button>
-              {showVersionHistory && (
-                <div className="absolute right-0 mt-1 w-64 bg-surface border border-theme-subtle rounded-xl shadow-xl z-50 py-1 overflow-hidden">
-                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted border-b border-theme-subtle">
-                    Revision History
-                  </div>
-                  {versions.map((v) => (
-                    <button
-                      key={v.id}
-                      onClick={() => {
-                        restoreSnapshot(typeof v.data === 'string' ? JSON.parse(v.data) : v.data);
-                        setCurrentId(v.id);
-                        setQuotationStatus(v.status || 'Draft');
-                        setShowVersionHistory(false);
+          <button onClick={() => setShowHistory(p => !p)}
+            className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ' + 
+            (showHistory ? 'bg-surface2 border-emerald-500/50 text-primary' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2')}
+          >
+            <History size={14} /> History {showHistory ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+          </button>
+
+          <button onClick={() => setPreviewCollapsed(p => !p)}
+            className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ' + 
+            (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-emerald-500/50 text-emerald-600 dark:text-emerald-400 font-bold')}
+            title={previewCollapsed ? 'Expand Live Preview' : 'Collapse Live Preview'}
+          >
+            <Eye size={14} className="text-emerald-500" /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
+          </button>
+
+          <button onClick={() => setShowPreview(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
+            <Download size={14} /> Preview
+          </button>
+
+          {/* Approval Workflow Actions */}
+          {currentQuote && (
+            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-theme-subtle">
+              {currentQuote.status === 'Approved' ? (
+                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
+                  <CheckCircle2 size={14} /> Approved {currentQuote.approvedBy ? `(${currentQuote.approvedBy})` : ''}
+                </div>
+              ) : currentQuote.status === 'Pending Approval' ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-xs font-bold">
+                    <Clock size={14} /> Pending Approval
+                  </span>
+                  {canApprove ? (
+                    <>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={CheckCircle2}
+                        className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-none shadow-xs font-bold"
+                        onClick={async () => {
+                          try {
+                            await approveQuotation(currentQuote.id, user?.name || 'Manager');
+                            showToast('success', 'Quotation approved successfully!');
+                            await loadVersions();
+                          } catch(err: any) {
+                            showToast('error', err?.message || 'Failed to approve');
+                          }
+                        }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={XCircle}
+                        className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/30"
+                        onClick={async () => {
+                          const reason = prompt('Enter rejection reason:');
+                          if (!reason) return;
+                          try {
+                            await rejectQuotation(currentQuote.id, reason);
+                            showToast('error', 'Quotation rejected');
+                            await loadVersions();
+                          } catch(err: any) {
+                            showToast('error', err?.message || 'Failed to reject');
+                          }
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-muted italic">Awaiting Manager Approval</span>
+                  )}
+                </div>
+              ) : currentQuote.status === 'Rejected' ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-600 border border-red-500/20 text-xs font-bold" title={currentQuote.rejectionReason}>
+                    <XCircle size={14} /> Rejected {currentQuote.rejectionReason ? `(${currentQuote.rejectionReason})` : ''}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs bg-surface border border-theme-subtle"
+                    onClick={async () => {
+                      try {
+                        await submitQuotationForApproval(currentQuote.id);
+                        showToast('success', 'Resubmitted for approval');
+                        await loadVersions();
+                      } catch(err: any) {
+                        showToast('error', err?.message || 'Failed to resubmit');
+                      }
+                    }}
+                  >
+                    Resubmit
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Send}
+                    className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-semibold"
+                    onClick={async () => {
+                      try {
+                        await submitQuotationForApproval(currentQuote.id);
+                        showToast('success', 'Quotation submitted for approval!');
+                        await loadVersions();
+                      } catch(err: any) {
+                        showToast('error', err?.message || 'Failed to submit');
+                      }
+                    }}
+                  >
+                    Submit for Approval
+                  </Button>
+                  {canApprove && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={CheckCircle2}
+                      className="text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-bold"
+                      onClick={async () => {
+                        try {
+                          await approveQuotation(currentQuote.id, user?.name || 'Manager');
+                          showToast('success', 'Quotation approved directly!');
+                          await loadVersions();
+                        } catch(err: any) {
+                          showToast('error', err?.message || 'Failed to approve');
+                        }
                       }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-surface2 flex justify-between items-center transition-colors border-b border-theme-subtle/20 last:border-0"
                     >
-                      <div className="flex flex-col">
-                        <span className="font-bold text-primary">v{v.version} • {formatCurrency(Number(v.totalAmount || 0))}</span>
-                        <span className="text-[10px] text-muted">{formatDate(v.date)}</span>
-                      </div>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-muted">
-                        {v.status || 'Draft'}
-                      </span>
-                    </button>
-                  ))}
+                      Quick Approve
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Print Preview Button */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            icon={Eye} 
-            onClick={() => setPrintModalOpen(true)}
-            className="border border-theme-subtle bg-surface hover:bg-surface2 h-8 text-xs font-semibold"
-          >
-            Preview
-          </Button>
-
-          {/* Email Button */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            icon={Send} 
-            onClick={() => setEmailModalOpen(true)}
-            className="border border-theme-subtle bg-surface hover:bg-surface2 h-8 text-xs font-semibold text-blue-600 dark:text-blue-400"
-          >
-            Email
-          </Button>
-
-          {/* Approval Buttons */}
-          {quotationStatus === 'Draft' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={Clock}
-              onClick={handleSubmitApproval}
-              className="border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 h-8 text-xs font-semibold"
-            >
-              Submit Approval
-            </Button>
-          )}
-
-          {canApprove && quotationStatus === 'Pending Approval' && (
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={CheckCircle2}
-                onClick={handleApprove}
-                className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 h-8 text-xs font-bold"
-              >
-                Approve
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={XCircle}
-                onClick={handleReject}
-                className="bg-red-500/10 border border-red-500/20 text-red-600 hover:bg-red-500/20 h-8 text-xs font-bold"
-              >
-                Reject
-              </Button>
-            </div>
-          )}
-
-          {/* Main Save / Update Button */}
-          <Button
-            variant="primary"
-            size="sm"
-            icon={isSaving ? Loader2 : Save}
-            disabled={isSaving}
-            onClick={() => handleSave()}
-            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold h-8 text-xs shadow-md shadow-emerald-500/20 cursor-pointer"
-          >
-            {isSaving ? 'Saving...' : (currentId ? 'Update Quotation' : 'Save Quotation')}
+          <Button variant="primary" icon={Save} onClick={() => handleSave()} disabled={isSaving} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-none shadow-sm">
+            {isSaving ? 'Saving...' : 'Save Quotation'}
           </Button>
         </div>
       </div>
 
-      {/* Main Grid: Left Details & Products vs Right Summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* TOASTS */}
+      {toast && (
+        <div className={'absolute top-20 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-xl text-white text-sm font-semibold ' + (toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500')}>
+          <span>{toast.msg}</span>
+          <button onClick={() => setToast(null)}><X size={14}/></button>
+        </div>
+      )}
+
+      {/* HISTORY PANEL */}
+      {showHistory && (
+        <div className="border-b border-theme-subtle bg-surface/40 px-5 py-3 shrink-0">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-[11px] font-bold text-muted uppercase tracking-widest">Product Quotation History</span>
+            <span className="text-[10px] text-muted">({mainVersions.length} saved)</span>
+          </div>
+          {mainVersions.length === 0 ? (
+            <p className="text-xs text-muted italic">No saved versions yet.</p>
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              {mainVersions.map(v => (
+                <div key={v.id} className="flex items-center gap-2 bg-surface border border-theme-subtle/40 rounded-xl px-3 py-2 text-xs">
+                  <div>
+                    <div className="font-bold text-primary capitalize">
+                      v{v.version}
+                      {v.id === currentId && <span className="ml-1.5 text-[9px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded-full font-mono">ACTIVE</span>}
+                    </div>
+                    <div className="text-[10px] text-muted">
+                      {v.date ? String(v.date).slice(0,10) : ''} · {formatCurrency(v.totalAmount || 0)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleLoadVersion(v)}
+                      className="flex items-center gap-1 px-2 py-1 bg-emerald-500/10 text-emerald-600 rounded-lg hover:bg-emerald-500/20 transition-colors text-[11px] font-semibold">
+                      <RotateCcw size={11} /> Load
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteVersion(v)}
+                      className="p-1 text-muted/60 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                      title={`Delete Version v${v.version}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MAIN SPLIT AREA */}
+      <div className="flex-1 flex overflow-hidden">
         
-        {/* Left 8-column side: Client Details & Products Table */}
-        <div className="lg:col-span-8 space-y-6">
+        {/* LEFT COLUMN: BUILDER CANVAS */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-surface/20">
 
-          {/* Section 1: Customer & Metadata Card */}
-          <GlassCard className="p-5 border-theme-subtle">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-theme-subtle">
-              <div className="flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-wider">
-                <Building2 size={15} className="text-emerald-500" />
-                <span>Client & Document Details</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-lg p-0.5 bg-surface2 border border-theme-subtle text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setClientType('customer')}
-                    className={`px-2.5 py-1 rounded-md font-bold transition-all ${
-                      clientType === 'customer' 
-                        ? 'bg-emerald-600 text-white shadow-xs' 
-                        : 'text-muted hover:text-primary'
-                    }`}
-                  >
-                    Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setClientType('lead')}
-                    className={`px-2.5 py-1 rounded-md font-bold transition-all ${
-                      clientType === 'lead' 
-                        ? 'bg-emerald-600 text-white shadow-xs' 
-                        : 'text-muted hover:text-primary'
-                    }`}
-                  >
-                    Lead
-                  </button>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={Plus}
-                  onClick={() => setShowAddCustomer(true)}
-                  className="h-7 text-[10px] text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10"
-                >
-                  New Client
-                </Button>
-              </div>
+        {/* Section 1: Document Details */}
+        <GlassCard className="border border-theme-subtle/40 overflow-visible">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-theme-subtle/10 bg-surface/30">
+            <div className="flex items-center gap-2">
+              <FileText size={14} className="text-muted" />
+              <h2 className="text-[11px] font-medium text-secondary">Document Details</h2>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Select Customer/Lead Combobox */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Select {clientType === 'customer' ? 'Customer' : 'Lead'}
-                </label>
-                <select
-                  value={selectedLeadId || ''}
-                  onChange={e => handleSelectLeadOrCustomer(e.target.value)}
-                  className={docInputClass + " font-medium"}
-                >
-                  <option value="">-- Choose {clientType === 'customer' ? 'Registered Customer' : 'Sales Lead'} --</option>
-                  {(clientType === 'customer' ? customers : leads)?.map((c: any) => (
-                    <option key={c.id} value={c.id}>
-                      {c.company ? `${c.company} (${c.name || 'No Name'})` : c.name}
-                    </option>
-                  ))}
-                </select>
+            {selectedLeadId && (
+              <div className="flex gap-2">
+                <span className="flex items-center gap-1.5 text-[10px] text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Customer Linked
+                </span>
+                {leadGrns.length > 0 && (
+                  <span className="flex items-center gap-1.5 text-[10px] text-blue-500 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20" title={leadGrns.map((g: any) => g.items).join(', ')}>
+                    <Package size={12} className="text-blue-500" />
+                    {leadGrns.length} Sample(s) Received
+                  </span>
+                )}
               </div>
+            )}
+          </div>
 
-              {/* Quotation No */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Quotation Number
-                </label>
-                <input
-                  type="text"
-                  value={quotationNo}
-                  onChange={e => setQuotationNo(e.target.value)}
-                  placeholder="e.g. PQ-2026-001"
-                  className={docInputClass + " font-mono font-bold text-emerald-600 dark:text-emerald-400"}
-                />
-              </div>
-
-              {/* Attention / Contact Person */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Attention (Contact Person)
-                </label>
-                <input
-                  type="text"
-                  value={attention}
-                  onChange={e => setAttention(e.target.value)}
-                  placeholder="e.g. Mr. Sunimal Perera (Procurement Manager)"
-                  className={docInputClass}
-                />
-              </div>
-
-              {/* Quotation Date */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Quotation Date
-                </label>
-                <input
-                  type="date"
-                  value={quoDate}
-                  onChange={e => setQuoDate(e.target.value)}
-                  className={docInputClass}
-                />
-              </div>
-
-              {/* Customer Company / Display Name */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Client / Company Name
-                </label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
-                  placeholder="e.g. Ceylon Cold Stores PLC"
-                  className={docInputClass}
-                />
-              </div>
-
-              {/* Subject */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Subject / Heading
-                </label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={e => setSubject(e.target.value)}
-                  placeholder="e.g. Quotation for Ready-Made Industrial Components"
-                  className={docInputClass}
-                />
-              </div>
-
-              {/* Customer Address */}
-              <div className="md:col-span-2">
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Billing & Delivery Address
-                </label>
-                <textarea
-                  value={customerAddress}
-                  onChange={e => setCustomerAddress(e.target.value)}
-                  placeholder="e.g. No. 125, Industrial Zone, Biyagama, Sri Lanka"
-                  rows={2}
-                  className={docInputClass + " resize-none leading-relaxed"}
-                />
-              </div>
-
-              {/* VAT and TIN/SVAT */}
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Client VAT No
-                </label>
-                <input
-                  type="text"
-                  value={vatNo}
-                  onChange={e => setVatNo(e.target.value)}
-                  placeholder="e.g. 102345678-7000"
-                  className={docInputClass + " font-mono"}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
-                  Client SVAT / TIN No
-                </label>
-                <input
-                  type="text"
-                  value={tinNo}
-                  onChange={e => setTinNo(e.target.value)}
-                  placeholder="e.g. SVAT002345"
-                  className={docInputClass + " font-mono"}
-                />
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* Section 2: Finished Products Catalog & Quotation Line Items (NO BOMS!) */}
-          <div className="border border-emerald-500/30 rounded-2xl bg-surface shadow-sm overflow-hidden">
-            {/* Header with Quick Actions */}
-            <div className="px-5 py-4 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border-b border-theme-subtle flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                  <Boxes size={18} />
-                </div>
+          <div className="p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+              
+              {/* Left Column */}
+              <div className="space-y-4">
                 <div>
-                  <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                    Finished Products Quotation Lines
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-bold">
-                      {custItems.length} {custItems.length === 1 ? 'Item' : 'Items'}
-                    </span>
-                  </h2>
-                  <p className="text-[11px] text-muted">
-                    Pick ready-to-sell products from your warehouse inventory or add custom lines
-                  </p>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <label className="block text-[11px] font-bold text-muted uppercase">Select Type:</label>
+                      <div className="inline-flex rounded-lg bg-surface2/60 p-0.5 border border-theme-subtle">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClientType('customer');
+                            setCustomerName('');
+                            setSelectedLeadId(null);
+                          }}
+                          className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                            clientType === 'customer' 
+                              ? 'bg-blue-600 text-white shadow-sm' 
+                              : 'text-muted hover:text-primary'
+                          }`}
+                        >
+                          <Building2 size={12} /> Customer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClientType('lead');
+                            setCustomerName('');
+                            setSelectedLeadId(null);
+                          }}
+                          className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                            clientType === 'lead' 
+                              ? 'bg-emerald-600 text-white shadow-sm' 
+                              : 'text-muted hover:text-primary'
+                          }`}
+                        >
+                          <UserCheck size={12} /> Lead
+                        </button>
+                      </div>
+                    </div>
+
+                    {clientType === 'customer' && (
+                      <button type="button" onClick={() => setShowAddCustomer(true)} className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 border border-emerald-500/30 px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 hover:bg-emerald-500/10 transition-colors">
+                        <Plus size={10} /> Add New Customer
+                      </button>
+                    )}
+                  </div>
+
+                  <LeadSearchInput
+                    clientType={clientType}
+                    value={customerName}
+                    onChange={setCustomerName}
+                    onSelect={handleSelectLeadOrCustomer}
+                    items={clientType === 'customer' ? (customers || []) : (leads || [])}
+                    className={docInputClass + " " + (selectedLeadId ? (clientType === 'customer' ? "border-blue-500/40" : "border-emerald-500/40") : "")}
+                  />
+
+                  {clientType === 'lead' && selectedLead?.description && (
+                    <div className="mt-2 p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs">
+                      <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <FileText size={11} /> Lead Requirement / Description:
+                      </p>
+                      <p className="text-secondary leading-relaxed text-[11px]">{selectedLead.description}</p>
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="block text-[11px] text-muted mb-1.5">Subject / Re: <span className="text-red-400">*</span></label>
+                  <input type="text" value={subject} onChange={e => setSubject(e.target.value)}
+                    placeholder="e.g. Supply of Finished Goods..." className={docInputClass} />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-muted mb-1.5">Company / Customer Address</label>
+                  <textarea
+                    rows={2}
+                    value={customerAddress}
+                    onChange={e => setCustomerAddress(e.target.value)}
+                    placeholder="e.g. No. 128, Main Street, Colombo 10"
+                    className={docInputClass + " resize-none"}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-muted mb-1.5">Customer TIN No.</label>
+                  <input
+                    type="text"
+                    value={tinNo || vatNo}
+                    onChange={e => {
+                      setTinNo(e.target.value)
+                      setVatNo(e.target.value)
+                    }}
+                    placeholder="e.g. 104106470-7000"
+                    className={docInputClass}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[11px] text-muted">Attention To</label>
+                      {availableContacts.length > 0 && (
+                        <span className="text-[10px] text-muted">
+                          {availableContacts.length} contact{availableContacts.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input type="text" value={attention} onChange={e => setAttention(e.target.value)}
+                        placeholder="Mr. / Ms." className={`${docInputClass} pr-7`} />
+                      {availableContacts.length > 0 && (
+                        <>
+                          <select 
+                            className="absolute right-0 top-0 bottom-0 w-8 opacity-0 cursor-pointer z-10"
+                            onChange={e => e.target.value && setAttention(e.target.value)}
+                            title="Select from contacts"
+                            value=""
+                          >
+                            <option value="">(Select Contact)</option>
+                            {availableContacts.map((c, i) => (
+                              <option key={i} value={c.name}>
+                                {c.name} {c.designation ? `(${c.designation})` : (c.roleTag ? `(${c.roleTag})` : '')}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted border-l border-theme-subtle pl-1.5 flex items-center justify-center">
+                            <ChevronDown size={14} />
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Clickable Contact Chips */}
+                    {availableContacts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {availableContacts.map((c, i) => {
+                          const isSelected = attention.toLowerCase().includes(c.name.toLowerCase());
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setAttention(c.name)}
+                              className={`text-[10px] px-2 py-0.5 rounded-full border transition-all flex items-center gap-1 ${
+                                isSelected 
+                                  ? 'bg-emerald-600/15 border-emerald-500 text-emerald-600 font-bold shadow-sm' 
+                                  : 'bg-surface border-theme-subtle/70 text-secondary hover:border-emerald-500/50 hover:text-primary'
+                              }`}
+                              title={`Click to set Attn: ${c.name}${c.designation ? ` (${c.designation})` : ''}${c.phone ? ` • ${c.phone}` : ''}`}
+                            >
+                              <span>{c.name}</span>
+                              {c.designation ? (
+                                <span className="opacity-70 text-[9px]">({c.designation})</span>
+                              ) : c.roleTag ? (
+                                <span className="opacity-60 text-[9px]">({c.roleTag})</span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Terms Preset Selector */}
+                  <div className="bg-surface2/60 border border-theme-subtle/60 rounded-xl p-2.5 mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-bold text-primary flex items-center gap-1 uppercase tracking-wider">
+                        <FileText size={12} className="text-emerald-500" />
+                        Terms & Conditions Preset
+                      </label>
+                      <span className="text-[9px] text-muted">From Settings</span>
+                    </div>
+                    <select
+                      value={selectedTermsPresetId}
+                      onChange={e => handleSelectTermsPreset(e.target.value)}
+                      className={docInputClass + " bg-surface font-medium text-xs"}
+                    >
+                      <option value="">-- Choose Terms Preset --</option>
+                      {termsPresets.map(tp => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.name} ({tp.validity}) {tp.isDefault ? '★ (Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Payment Terms</label>
+                    <input type="text" value={custTerms} onChange={e => setCustTerms(e.target.value)}
+                      placeholder="e.g. 100% advance or 30 days credit" className={docInputClass} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Validity</label>
+                    <input type="text" value={custValidity} onChange={e => setCustValidity(e.target.value)}
+                      placeholder="e.g. 30 Days" className={docInputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Delivery Terms</label>
+                    <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)}
+                      placeholder="e.g. Ex-Factory / 3-5 Working Days" className={docInputClass} />
+                  </div>
+                </div>
+
+                {/* Bank Account for Remittance */}
+                <div className="bg-surface2/60 border border-theme-subtle/60 rounded-xl p-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-primary flex items-center gap-1 uppercase tracking-wider">
+                      <Landmark size={12} className="text-emerald-500" />
+                      Remittance Bank Account
+                    </label>
+                    <span className="text-[9px] text-muted">From Settings</span>
+                  </div>
+                  <select
+                    value={bankDetailId}
+                    onChange={e => setBankDetailId(e.target.value)}
+                    className={docInputClass + " bg-surface font-medium text-xs"}
+                  >
+                    {bankAccounts.map((b: any) => (
+                      <option key={b.id} value={b.id}>
+                        {b.bankName} — A/C {b.accountNumber} ({b.branchName || 'Main'}{b.isDefault ? ' · Default' : ''})
+                      </option>
+                    ))}
+                    <option value="none">— Do Not Show Bank Details on Quotation —</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Currency selector */}
-                <select 
-                  value={currency} 
-                  onChange={e => handleCurrencyChange(e.target.value)} 
-                  className="bg-surface border border-theme-subtle rounded-lg px-2.5 py-1 text-xs font-bold text-primary outline-none focus:border-emerald-500"
-                >
-                  <option value="LKR">LKR (Rs.)</option>
-                  {(currencies as any[])?.map((c: any) => (
-                    <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
-                  ))}
-                </select>
+              {/* Right Column */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Quotation No <span className="text-red-400">*</span></label>
+                    <input type="text" value={quotationNo} onChange={e => setQuotationNo(e.target.value)}
+                      placeholder="Auto-generated on selection" className={docInputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Date <span className="text-red-400">*</span></label>
+                    <input type="date" value={quoDate} onChange={e => setQuoDate(e.target.value)} className={docInputClass} />
+                  </div>
+                </div>
 
-                {/* AI Polish All */}
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  icon={isPolishingAll ? Loader2 : Sparkles} 
-                  onClick={handleAiPolishAll} 
-                  disabled={isPolishingAll || custItems.length === 0}
-                  className="text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 font-bold border border-purple-500/20 h-7 text-[11px]"
-                >
-                  {isPolishingAll ? 'Polishing...' : '✨ Polish All'}
-                </Button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Validity</label>
+                    <input type="text" value={custValidity} onChange={e => setCustValidity(e.target.value)}
+                      placeholder="30 Days" className={docInputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-muted mb-1.5">Currency</label>
+                    <select value={currency} onChange={e => handleCurrencyChange(e.target.value)} className={docInputClass}>
+                      <option value="LKR">LKR - Sri Lankan Rupee</option>
+                      {currencies?.map((c: any) => (
+                        <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-                {/* Browse Catalog Modal Button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={ShoppingBag}
-                  onClick={() => setCatalogModalOpen(true)}
-                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold border border-emerald-500/30 h-7 text-[11px]"
-                >
-                  Browse Catalog
-                </Button>
-
-                {/* Add Custom Blank Line */}
-                <Button 
-                  variant="primary" 
-                  size="sm" 
-                  icon={Plus} 
-                  onClick={addCustomItem} 
-                  className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                >
-                  Add Custom Item
-                </Button>
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-theme-subtle/30">
+                  <div>
+                    <label className="block text-[10px] text-muted/70 mb-1">Doc No</label>
+                    <input type="text" value={docNo} onChange={e => setDocNo(e.target.value)}
+                      className={docInputClass + " text-[10px] px-2"} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-muted/70 mb-1">Issue No</label>
+                    <input type="text" value={issueNo} onChange={e => setIssueNo(e.target.value)}
+                      className={docInputClass + " text-[10px] px-2"} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-muted/70 mb-1">Created By</label>
+                    <input type="text" value={user?.name || ''} disabled
+                      className={docInputClass + " text-[10px] px-2 opacity-60"} />
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Quick Product Search Bar */}
-            <div className="p-4 bg-surface2/30 border-b border-theme-subtle/50">
+            {/* Bottom Row: Scope & Attachments */}
+            <div className="mt-6 pt-5 border-t border-theme-subtle/30 grid grid-cols-1 md:grid-cols-12 gap-6">
+              <div className="col-span-12 md:col-span-8">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-[12px] font-medium text-secondary">Job Scope / Supply Descriptions</label>
+                  <button onClick={addJobItem}
+                    className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-semibold">
+                    <Plus size={12} /> Add Scope Item
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {jobItems.map((item, idx) => (
+                    <div key={item.id} className="flex gap-3 items-start group">
+                      <span className="text-[11px] text-muted/50 mt-2 select-none w-4 text-right">{idx + 1}.</span>
+                      <textarea
+                        value={item.text}
+                        onChange={e => updateJobItem(item.id, e.target.value)}
+                        placeholder="Describe the scope of work..."
+                        rows={2}
+                        className={docInputClass + " flex-1 resize-y min-h-[50px] leading-relaxed"}
+                      />
+                      <button onClick={() => removeJobItem(item.id)}
+                        className="mt-1 p-1.5 text-muted hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {jobItems.length === 0 && (
+                    <div className="py-4 text-center text-[11px] text-muted/50 bg-surface2/50 rounded-lg border border-dashed border-theme-subtle/50">
+                      No scope items added.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-[12px] font-medium text-secondary">Attachments</label>
+                  <label className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer font-semibold">
+                    <Plus size={12} /> Add File
+                    <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload} />
+                  </label>
+                </div>
+                {attachments.length > 0 ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {attachments.map(att => (
+                      <div key={att.id} className="relative w-16 h-16 border border-theme-subtle/50 rounded-lg overflow-hidden group bg-surface2">
+                        {att.type.includes('image')
+                          ? <img src={att.dataUrl} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex flex-col items-center justify-center text-muted gap-1">
+                              <FileText size={16} />
+                              <span className="text-[7px] max-w-full truncate px-1">{att.name}</span>
+                            </div>
+                        }
+                        <button type="button"
+                          onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
+                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 size={14} className="text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-[11px] text-muted/50 bg-surface2/50 rounded-lg border border-dashed border-theme-subtle/50">
+                    No attachments.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* Section 2: Product Quotation Lines (Finished Goods - IN PLACE OF BOMs!) */}
+        <div className="border border-emerald-500/30 rounded-2xl bg-surface/40 p-5 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-theme-subtle/40 pb-3">
+            <div>
+              <h2 className="text-[13px] font-bold text-primary flex items-center gap-2">
+                <PackageCheck size={16} className="text-emerald-500" /> 
+                Product Quotation Lines (Finished Goods)
+              </h2>
+              <p className="text-[11px] text-muted mt-0.5">
+                Direct finished product selection from inventory. No Bill of Materials (BOM) needed.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                icon={isPolishingAll ? Loader2 : Sparkles} 
+                onClick={handleAiPolishAll} 
+                disabled={isPolishingAll || custItems.length === 0}
+                className="text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 font-bold border border-emerald-500/20 h-7 text-[11px]"
+              >
+                {isPolishingAll ? 'Polishing...' : '✨ AI Polish All'}
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                icon={ShoppingBag} 
+                onClick={() => setCatalogModalOpen(true)} 
+                className="text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 font-bold border border-emerald-500/20 h-7 text-[11px]"
+              >
+                Browse Catalog
+              </Button>
+              <Button 
+                variant="primary" 
+                size="sm" 
+                icon={Plus} 
+                onClick={addCustItem} 
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-7 text-[11px] border-none shadow-xs"
+              >
+                Add Line
+              </Button>
+            </div>
+          </div>
+
+          {/* Quick Add Product Autocomplete */}
+          <div className="bg-surface2/50 p-3 rounded-xl border border-theme-subtle/40 flex items-center gap-3">
+            <span className="text-xs font-semibold text-muted shrink-0 flex items-center gap-1.5">
+              <Plus size={13} className="text-emerald-500" /> Quick Add Product:
+            </span>
+            <div className="flex-1">
               <ProductSearchInput
                 value={quickSearchText}
                 onChange={setQuickSearchText}
-                onSelect={handleAddProduct}
+                onSelect={addProductToItems}
                 products={finishedProducts}
               />
             </div>
+          </div>
 
-            {/* Line Items Table */}
-            {custItems.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[760px]">
-                  <thead>
-                    <tr className="bg-surface/50 border-b border-theme-subtle/30 text-[10px] uppercase tracking-wider text-muted font-bold">
-                      <th className="px-4 py-2.5 w-10 text-center">#</th>
-                      <th className="px-3 py-2.5 min-w-[280px]">Product / Description</th>
-                      <th className="px-3 py-2.5 w-20 text-center">Stock</th>
-                      <th className="px-3 py-2.5 w-20">Qty</th>
-                      <th className="px-3 py-2.5 w-28">Unit Cost</th>
-                      <th className="px-3 py-2.5 w-32">Unit Price</th>
-                      <th className="px-4 py-2.5 w-32 text-right">Total</th>
-                      <th className="px-3 py-2.5 w-24">Margin</th>
-                      <th className="px-3 py-2.5 w-28">Notes</th>
-                      <th className="px-3 py-2.5 w-10"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {custItems.map((item, idx) => {
-                      const lineTotal = Number(item.qty || 0) * Number(item.unitPrice || 0);
-                      const lineCost = Number(item.qty || 0) * Number(item.unitCost || 0);
-                      const lineProfit = lineTotal - lineCost;
-                      const lineMargin = lineTotal > 0 ? (lineProfit / lineTotal) * 100 : 0;
-
-                      return (
-                        <tr key={item.id} className="border-b border-theme-subtle/10 hover:bg-surface2/20 transition-colors group">
-                          <td className="px-4 py-2.5 text-xs font-mono text-muted text-center">{idx + 1}</td>
-                          <td className="p-2">
-                            <div className="relative group/desc">
-                              {item.sku && (
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                                    SKU: {item.sku}
-                                  </span>
-                                  {item.uom && (
-                                    <span className="text-[9px] text-muted">
-                                      • Unit: {item.uom}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              <textarea
-                                value={item.desc}
-                                onChange={e => updateCustItem(item.id, 'desc', e.target.value)}
-                                placeholder="Product description, technical specs..."
-                                className="w-full bg-transparent outline-none text-xs font-medium resize-y min-h-[50px] p-2 leading-relaxed block border border-transparent hover:border-theme-subtle/40 focus:border-emerald-500/50 focus:bg-surface rounded-lg pr-20"
-                                rows={item.desc.split('\n').length > 1 ? Math.min(item.desc.split('\n').length, 5) : 2}
-                              />
-                              <div className="absolute top-1.5 right-1.5 flex items-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAiPolishItem(item.id)}
-                                  disabled={polishingItemId === item.id}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-all opacity-80 group-hover/desc:opacity-100 disabled:opacity-50"
-                                  title="Enhance description using AI"
-                                >
-                                  {polishingItemId === item.id ? (
-                                    <Loader2 size={10} className="animate-spin text-purple-600" />
-                                  ) : (
-                                    <Sparkles size={10} className="text-purple-600" />
-                                  )}
-                                  <span>Polish</span>
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            {item.stock !== undefined ? (
-                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                                (item.stock || 0) >= (item.qty || 1)
-                                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-                                  : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                              }`}>
-                                {item.stock} {item.uom || 'pcs'}
-                              </span>
+          {/* Quotation Lines Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[760px]">
+              <thead>
+                <tr className="bg-surface/50 border-b border-theme-subtle/30 text-[10px] uppercase tracking-wider text-muted font-bold">
+                  <th className="px-4 py-2.5 w-10 text-center">#</th>
+                  <th className="px-3 py-2.5 min-w-[280px] w-full">Product & Description</th>
+                  <th className="px-3 py-2.5 w-24 text-center">Stock</th>
+                  <th className="px-3 py-2.5 w-24">Qty</th>
+                  <th className="px-3 py-2.5 w-28">Unit Cost</th>
+                  <th className="px-3 py-2.5 w-32">Unit Price</th>
+                  <th className="px-4 py-2.5 w-36 text-right">Total ({currency})</th>
+                  <th className="px-3 py-2.5 w-28">Notes</th>
+                  <th className="px-3 py-2.5 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {custItems.map((item, i) => (
+                  <tr key={item.id} className="border-b border-theme-subtle/10 hover:bg-surface/30 transition-colors group">
+                    <td className="px-4 py-2 text-xs font-mono text-muted text-center">{i + 1}</td>
+                    <td className="p-1">
+                      <div className="relative group/desc">
+                        <textarea 
+                          value={item.desc} 
+                          onChange={e => updateCustItem(item.id, 'desc', e.target.value)} 
+                          placeholder="Select finished product or enter description..." 
+                          className="w-full bg-transparent outline-none text-[11px] font-medium resize-y min-h-[64px] p-2 leading-relaxed block border border-transparent hover:border-theme-subtle/30 focus:border-emerald-500/50 focus:bg-surface rounded pr-24"
+                          rows={item.desc.split('\n').length > 1 ? Math.min(item.desc.split('\n').length, 6) : 2}
+                        />
+                        <div className="absolute top-1.5 right-1.5 flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => handleAiPolishItem(item.id)}
+                            disabled={polishingItemId === item.id}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all opacity-80 group-hover/desc:opacity-100 disabled:opacity-50"
+                            title="Enhance description using AI"
+                          >
+                            {polishingItemId === item.id ? (
+                              <Loader2 size={11} className="animate-spin text-emerald-600" />
                             ) : (
-                              <span className="text-[10px] text-muted">-</span>
+                              <Sparkles size={11} className="text-emerald-600" />
                             )}
-                          </td>
-                          <td className="p-1">
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.qty}
-                              onChange={e => updateCustItem(item.id, 'qty', Math.max(1, Number(e.target.value)))}
-                              className={tableInputClass + " font-mono font-bold text-center"}
-                            />
-                          </td>
-                          <td className="p-1">
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.unitCost}
-                              onChange={e => updateCustItem(item.id, 'unitCost', Number(e.target.value))}
-                              className={tableInputClass + " font-mono text-muted"}
-                              title="Internal Cost price (used to calculate margin)"
-                            />
-                          </td>
-                          <td className="p-1">
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.unitPrice}
-                              onChange={e => updateCustItem(item.id, 'unitPrice', Number(e.target.value))}
-                              className={tableInputClass + " font-mono font-bold text-primary focus:border-emerald-500"}
-                            />
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-xs font-bold text-primary">
-                            {formatCurrency(lineTotal)}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                              lineMargin >= 20 ? 'bg-emerald-500/10 text-emerald-600' :
-                              lineMargin > 0 ? 'bg-blue-500/10 text-blue-600' :
-                              'bg-red-500/10 text-red-600'
-                            }`}>
-                              {lineMargin.toFixed(0)}%
-                            </span>
-                          </td>
-                          <td className="p-1">
-                            <input
-                              type="text"
-                              value={item.note || ''}
-                              onChange={e => updateCustItem(item.id, 'note', e.target.value)}
-                              placeholder="Note..."
-                              className={tableInputClass + " text-muted text-[11px]"}
-                            />
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <button
-                              onClick={() => removeCustItem(item.id)}
-                              className="text-muted/40 hover:text-red-500 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
-                              title="Delete line"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="py-12 px-4 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
-                  <Package size={24} />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-primary">No finished products added yet</h3>
-                  <p className="text-xs text-muted max-w-sm mx-auto">
-                    Use the search bar above or click "Browse Catalog" to select ready products from your warehouse inventory.
-                  </p>
-                </div>
-                <div className="flex justify-center gap-2 pt-2">
-                  <Button 
-                    variant="primary" 
-                    size="sm" 
-                    icon={ShoppingBag} 
-                    onClick={() => setCatalogModalOpen(true)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
-                  >
-                    Browse Finished Products
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    icon={Plus} 
-                    onClick={addCustomItem}
-                    className="border border-theme-subtle text-xs"
-                  >
-                    Add Custom Line
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Table Footer Totals */}
-            {custItems.length > 0 && (
-              <div className="px-5 py-3 bg-surface2/30 border-t border-theme-subtle flex flex-wrap justify-between items-center gap-3">
-                <span className="text-xs text-muted">
-                  Total {custItems.length} product lines • Combined Cost: <span className="font-mono font-semibold text-primary">{formatCurrency(totalProductCost)}</span>
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-secondary uppercase tracking-wider">Subtotal:</span>
-                  <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(custSubtotal)}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Quotation Terms & Conditions Preset */}
-          <div className="border border-theme-subtle/50 rounded-2xl bg-surface p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-theme-subtle/50">
-              <div className="flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-wider">
-                <FileText size={15} className="text-emerald-500" />
-                <span>Quotation Terms & Conditions Preset</span>
-              </div>
-              <div className="w-full sm:w-72">
-                <select
-                  value={selectedTermsPresetId}
-                  onChange={e => handleSelectTermsPreset(e.target.value)}
-                  className="w-full bg-surface2 border border-theme-subtle rounded-lg px-2.5 py-1 text-xs text-primary focus:border-emerald-500 outline-none font-medium"
-                >
-                  {DEFAULT_TERMS_PRESETS.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
-                  Validity Period
-                </label>
-                <input
-                  type="text"
-                  value={custValidity}
-                  onChange={e => setCustValidity(e.target.value)}
-                  placeholder="e.g. 30 Days from date of quotation"
-                  className={docInputClass}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
-                  Delivery Terms
-                </label>
-                <input
-                  type="text"
-                  value={custDelivery}
-                  onChange={e => setCustDelivery(e.target.value)}
-                  placeholder="e.g. Ex-Factory / 3-5 Working Days"
-                  className={docInputClass}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
-                  Payment & Commercial Terms
-                </label>
-                <textarea
-                  value={custTerms}
-                  onChange={e => setCustTerms(e.target.value)}
-                  placeholder="Payment details, warranty, delivery terms..."
-                  rows={2}
-                  className={docInputClass + " resize-none leading-relaxed"}
-                />
-              </div>
-            </div>
+                            <span>{polishingItemId === item.id ? 'Polishing...' : 'AI Polish'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                        (item.stock || 0) > 0 
+                          ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' 
+                          : 'bg-zinc-500/10 text-muted border-theme-subtle'
+                      }`}>
+                        {item.stock !== undefined ? `${item.stock}` : '-'}
+                      </span>
+                    </td>
+                    <td className="p-0">
+                      <input 
+                        type="number" min="1" 
+                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} 
+                        value={item.qty} 
+                        onChange={e => updateCustItem(item.id, 'qty', Number(e.target.value))} 
+                        className={tableInputClass + " group-hover:bg-transparent text-center font-bold"} 
+                      />
+                    </td>
+                    <td className="p-0">
+                      <input 
+                        type="number" min="0" 
+                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} 
+                        value={item.unitCost} 
+                        onChange={e => updateCustItem(item.id, 'unitCost', Number(e.target.value))} 
+                        className={tableInputClass + " group-hover:bg-transparent text-muted font-mono"} 
+                      />
+                    </td>
+                    <td className="p-0">
+                      <input 
+                        type="number" min="0" 
+                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} 
+                        value={item.unitPrice} 
+                        onChange={e => updateCustItem(item.id, 'unitPrice', Number(e.target.value))} 
+                        className={tableInputClass + " group-hover:bg-transparent font-bold text-emerald-600 dark:text-emerald-400 font-mono"} 
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono text-[11px] font-bold text-primary">
+                      {formatCurrency(Number(item.qty || 0) * Number(item.unitPrice || 0))}
+                    </td>
+                    <td className="p-0">
+                      <input 
+                        type="text" 
+                        value={item.note} 
+                        onChange={e => updateCustItem(item.id, 'note', e.target.value)} 
+                        placeholder="Optional note" 
+                        className={tableInputClass + " group-hover:bg-transparent text-muted"} 
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <button onClick={() => removeCustItem(item.id)} className="text-muted/50 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {custItems.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="py-8 text-center text-muted italic">
+                      No finished product lines added. Use the search bar above or click "Browse Catalog" to add finished products.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Right 4-column side: Summary & Est. Financials Card */}
-        <div className="lg:col-span-4 space-y-5">
+        {/* Section 3: Quotation Terms & Summary */}
+        <div className="flex flex-col lg:flex-row gap-5 items-start">
           
-          {/* Quotation Summary Card */}
-          <div className="border border-emerald-500/20 rounded-2xl bg-surface shadow-sm p-5 relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
-            
-            <h3 className="text-xs font-bold text-secondary uppercase tracking-widest mb-4 flex items-center gap-2">
-              <TrendingUp size={15} className="text-emerald-500" />
-              <span>Quotation Summary</span>
-            </h3>
-
-            <div className="space-y-3.5 relative z-10">
-              {/* Subtotal */}
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-muted font-medium">Sub Total</span>
-                <span className="font-mono font-semibold text-secondary text-sm">
-                  {formatCurrency(custSubtotal)}
-                </span>
+          {/* Terms & Conditions Details */}
+          <div className="flex-1 w-full space-y-4">
+            <div className="border border-theme-subtle/50 rounded-2xl bg-surface p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-theme-subtle/30 pb-3">
+                <h3 className="text-xs font-bold text-primary flex items-center gap-2">
+                  <FileText size={14} className="text-emerald-500" /> Commercial Terms & Conditions
+                </h3>
+                <span className="text-[10px] text-muted">Will appear on print & PDF</span>
               </div>
 
-              {/* Discount Section */}
-              <div className="space-y-1.5 pt-2 border-t border-theme-subtle/50">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted font-medium">Discount</span>
-                    <div className="inline-flex rounded-md p-0.5 bg-surface2 border border-theme-subtle text-[10px]">
-                      <button
-                        type="button"
-                        onClick={() => setCustDiscountType('percent')}
-                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
-                          custDiscountType === 'percent' 
-                            ? 'bg-emerald-600 text-white shadow-xs' 
-                            : 'text-muted hover:text-primary'
-                        }`}
-                      >
-                        %
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCustDiscountType('amount')}
-                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
-                          custDiscountType === 'amount' 
-                            ? 'bg-emerald-600 text-white shadow-xs' 
-                            : 'text-muted hover:text-primary'
-                        }`}
-                      >
-                        LKR
-                      </button>
-                    </div>
-                  </div>
-                  <span className="font-mono text-red-500 font-semibold text-xs">
-                    -{formatCurrency(custDiscountAmt)}
-                  </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
+                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Payment Terms</label>
+                  <input type="text" value={custTerms} onChange={e => setCustTerms(e.target.value)} placeholder="e.g. 100% Advance" className={docInputClass + " bg-surface"} />
                 </div>
-
-                <div className="flex items-center bg-surface2 border border-theme-subtle/60 rounded-lg px-2.5 py-1">
-                  <input
-                    type="number"
-                    min="0"
-                    value={custDiscountType === 'percent' ? custDiscount : custDiscountAmount}
-                    onChange={e => {
-                      if (custDiscountType === 'percent') setCustDiscount(e.target.value);
-                      else setCustDiscountAmount(e.target.value);
-                    }}
-                    placeholder={custDiscountType === 'percent' ? "Discount %" : "Discount Amount"}
-                    className="w-full bg-transparent font-mono text-xs font-bold text-primary outline-none"
-                  />
-                  <span className="text-[10px] text-muted font-bold ml-1">
-                    {custDiscountType === 'percent' ? '%' : 'LKR'}
-                  </span>
+                <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
+                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Validity</label>
+                  <input type="text" value={custValidity} onChange={e => setCustValidity(e.target.value)} placeholder="e.g. 30 Days" className={docInputClass + " bg-surface"} />
+                </div>
+                <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
+                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Delivery Timeline</label>
+                  <input type="text" value={custDelivery} onChange={e => setCustDelivery(e.target.value)} placeholder="e.g. 3-5 Working Days" className={docInputClass + " bg-surface"} />
                 </div>
               </div>
 
-              {/* Taxes Breakdown */}
-              {taxEnabled && selectedProfile && (
-                <div className="space-y-1.5 pt-2 border-t border-theme-subtle/50 text-xs">
-                  {selectedProfile.tax1_show_separately === 1 && custSscl > 0 && (
-                    <div className="flex justify-between items-center text-muted">
-                      <span>{selectedProfile.tax1_name} ({selectedProfile.tax1_rate}%)</span>
-                      <span className="font-mono font-semibold text-secondary">+{formatCurrency(custSscl)}</span>
-                    </div>
-                  )}
-                  {selectedProfile.tax2_show_separately === 1 && custVat > 0 && (
-                    <div className="flex justify-between items-center text-muted">
-                      <span>{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}%)</span>
-                      <span className="font-mono font-semibold text-secondary">+{formatCurrency(custVat)}</span>
-                    </div>
-                  )}
+              {/* Bank Details Indicator */}
+              {selectedBank && (
+                <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
+                  <span><strong>Bank:</strong> {selectedBank.bankName}</span>
+                  <span><strong>A/C No:</strong> <span className="font-mono font-bold text-primary">{selectedBank.accountNumber}</span></span>
+                  <span><strong>Branch:</strong> {selectedBank.branchName || '-'}</span>
+                  {selectedBank.swiftCode && <span><strong>SWIFT:</strong> {selectedBank.swiftCode}</span>}
                 </div>
               )}
-
-              {/* Grand Total */}
-              <div className="pt-3 border-t border-dashed border-theme-subtle">
-                <div className="flex justify-between items-baseline">
-                  <span className="text-xs font-bold text-secondary uppercase tracking-wider">Grand Total</span>
-                  <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(custWithSSCL)}
+            </div>
+          </div>
+          
+          {/* Customer Summary Card on the right */}
+          <div className="w-full lg:w-80 shrink-0 space-y-4">
+            <div className="border border-theme-subtle/50 rounded-2xl bg-surface shadow-sm p-6 relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
+              
+              <h3 className="text-[12px] font-bold text-secondary uppercase tracking-widest mb-5 flex items-center gap-2">
+                 <TrendingUp size={14} className="text-emerald-500"/> Quotation Summary
+              </h3>
+              
+              <div className="space-y-4 relative z-10">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted font-medium">Sub Total</span>
+                  <span className="font-mono font-semibold text-secondary text-sm">
+                    {formatCurrency(
+                      taxEnabled && selectedProfile?.tax1_show_separately === 0 && selectedProfile?.tax2_show_separately === 0
+                        ? custWithSSCL
+                        : taxEnabled && selectedProfile?.tax1_show_separately === 0
+                          ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100))
+                          : custSubtotal
+                    )}
                   </span>
+                </div>
+                
+                <div className="space-y-2 group">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted font-medium">Discount</span>
+                      <div className="inline-flex rounded-md p-0.5 bg-surface2 border border-theme-subtle/50 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => handleDiscountTypeToggle('percent')}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${custDiscountType === 'percent' ? 'bg-emerald-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDiscountTypeToggle('amount')}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${custDiscountType === 'amount' ? 'bg-emerald-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                        >
+                          LKR
+                        </button>
+                      </div>
+                    </div>
+                    <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">
+                      -{formatCurrency(taxEnabled && selectedProfile?.tax1_show_separately === 0 ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100) : custDiscountAmt)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className={`flex items-center bg-surface2 border rounded-md shadow-inner px-2 py-1 transition-all ${custDiscountType === 'percent' ? 'border-emerald-500/60 ring-1 ring-emerald-500/20 bg-emerald-500/5' : 'border-theme-subtle/50'}`}>
+                      <span className="text-[11px] font-bold text-muted mr-1">%</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="any"
+                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+                        value={custDiscount}
+                        onChange={e => handlePercentDiscountChange(e.target.value)}
+                        onFocus={() => setCustDiscountType('percent')}
+                        placeholder="0.00"
+                        className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
+                      />
+                    </div>
+                    <div className={`flex items-center bg-surface2 border rounded-md shadow-inner px-2 py-1 transition-all ${custDiscountType === 'amount' ? 'border-emerald-500/60 ring-1 ring-emerald-500/20 bg-emerald-500/5' : 'border-theme-subtle/50'}`}>
+                      <span className="text-[10px] font-bold text-muted mr-1">LKR</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+                        value={custDiscountAmount}
+                        onChange={e => handleAmountDiscountChange(e.target.value)}
+                        onFocus={() => setCustDiscountType('amount')}
+                        placeholder="0.00"
+                        className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                {taxEnabled && selectedProfile && (
+                  <>
+                    {(selectedProfile.tax1_show_separately === 1 && custSscl > 0) && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted font-medium">{selectedProfile.tax1_name} ({selectedProfile.tax1_rate}%)</span>
+                        <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custSscl)}</span>
+                      </div>
+                    )}
+                    {(selectedProfile.tax2_show_separately === 1 && custVat > 0) && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted font-medium">{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}%)</span>
+                        <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custVat)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="pt-4 mt-2 border-t border-dashed border-theme-subtle/50">
+                  <div className="flex justify-between items-center">
+                    <div className="text-[12px] font-bold text-secondary uppercase tracking-wider">Grand Total</div>
+                    <div className="text-[24px] leading-none font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                      {formatCurrency(custWithSSCL)}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Est. Financials Card (Margin & Profit Tracking from Product Costs!) */}
-          <div className={`p-5 rounded-2xl border shadow-sm relative overflow-hidden transition-all ${
-            expectedProfit >= 0 ? 'bg-emerald-500/5 border-emerald-500/25' : 'bg-red-500/5 border-red-500/25'
-          }`}>
-            <div className={`absolute -right-4 -bottom-4 opacity-5 ${expectedProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-              <LineChart size={110} />
-            </div>
-
-            <div className="flex items-center gap-2 mb-3 relative z-10">
-              <div className={`p-1.5 rounded-lg ${expectedProfit >= 0 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}>
-                <LineChart size={14} />
+            {/* Profit & Margin Indicator */}
+            <div className={`p-5 rounded-2xl border shadow-sm relative overflow-hidden ${expectedProfit >= 0 ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+              <div className={`absolute -right-4 -bottom-4 opacity-5 ${expectedProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                <TrendingUp size={100} />
               </div>
-              <span className={`text-[11px] font-bold uppercase tracking-widest ${expectedProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
-                Est. Financials & Taxes
-              </span>
-            </div>
-
-            {/* Applicable Tax Toggle and Options (Clean Two-Row Layout!) */}
-            <div className="space-y-3 relative z-10">
-              {/* Row 1: Header + Pill Toggle */}
-              <div className="flex items-center justify-between border-b border-theme-subtle/50 pb-2">
-                <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Applicable Tax</span>
-                <button
-                  type="button"
-                  onClick={() => setTaxEnabled(t => !t)}
-                  className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-emerald-600' : 'bg-surface2 border border-theme-subtle'}`}
-                  title={taxEnabled ? 'Tax enabled' : 'Tax disabled'}
-                >
-                  <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
-                </button>
+              
+              <div className="flex items-center gap-2 mb-4 relative z-10">
+                 <div className={`p-1.5 rounded-lg ${expectedProfit >= 0 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}>
+                   <LineChart size={14} />
+                 </div>
+                 <span className={`text-[11px] font-bold uppercase tracking-widest ${expectedProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>Est. Financials</span>
               </div>
-
-              {/* Row 2 & 3: 2-Row Tax Preset Options + Dropdown */}
-              {taxEnabled && (
-                <div className="space-y-1.5 pb-2 border-b border-theme-subtle/50">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
-                      className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                        selectedProfileId === 'tp_opt1_absorbed'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                          : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                      }`}
-                      title="Option 1: VAT & SSCL Absorbed (Total Value)"
-                    >
-                      Opt 1: Absorbed
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProfileId('tp_opt2_sscl_absorbed_vat_sep')}
-                      className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                        selectedProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || selectedProfileId === 'tp_vat_sscl'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                          : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                      }`}
-                      title="Option 2: SSCL Absorbed + VAT Separate"
-                    >
-                      Opt 2: SSCL In, VAT Sep
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
-                      className={`col-span-2 px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                        selectedProfileId === 'tp_opt3_both_separate'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                          : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                      }`}
-                      title="Option 3: Both SSCL & VAT Separate (2 Lines)"
-                    >
-                      Opt 3: Both 2 Lines
-                    </button>
-                  </div>
-                  <select
-                    value={selectedProfileId}
-                    onChange={e => setSelectedProfileId(e.target.value)}
-                    className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-lg text-[10px] outline-none focus:border-emerald-500"
+              
+              <div className="space-y-3 relative z-10">
+                <div className="flex items-center justify-between border-b border-theme-subtle/50 pb-2">
+                  <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Applicable Tax</span>
+                  <button
+                    type="button"
+                    onClick={() => setTaxEnabled(t => !t)}
+                    className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-emerald-500' : 'bg-surface2 border border-theme-subtle'}`}
+                    title={taxEnabled ? 'Tax enabled' : 'Tax disabled'}
                   >
-                    <option value="">- Select Tax Profile -</option>
-                    {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                    <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
+                  </button>
                 </div>
-              )}
 
-              {/* Total Product Cost */}
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Product Cost</span>
-                <span className="font-mono font-bold text-secondary">{formatCurrency(totalProductCost)}</span>
-              </div>
+                {taxEnabled && (
+                  <div className="space-y-1.5 pb-2 border-b border-theme-subtle/50">
+                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Tax Option</span>
+                    {taxProfiles && taxProfiles.length > 0 ? (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex gap-1.5">
+                          {taxProfiles.slice(0, 2).map((tp: any) => {
+                            const isSelected = selectedProfileId === tp.id;
+                            return (
+                              <button
+                                key={tp.id}
+                                type="button"
+                                onClick={() => setSelectedProfileId(tp.id)}
+                                className={`flex-1 py-1 px-1.5 rounded-md text-[10px] font-bold transition-all text-center border truncate ${
+                                  isSelected
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                    : 'bg-surface2 text-muted border-theme-subtle hover:text-primary hover:border-theme-subtle/80'
+                                }`}
+                                title={tp.description || tp.name}
+                              >
+                                {tp.name.length > 18 ? tp.name.slice(0, 16) + '..' : tp.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {taxProfiles.length > 2 && (
+                          <div className="flex gap-1.5">
+                            {taxProfiles.slice(2).map((tp: any) => {
+                              const isSelected = selectedProfileId === tp.id;
+                              return (
+                                <button
+                                  key={tp.id}
+                                  type="button"
+                                  onClick={() => setSelectedProfileId(tp.id)}
+                                  className={`flex-1 py-1 px-1.5 rounded-md text-[10px] font-bold transition-all text-center border truncate ${
+                                    isSelected
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                      : 'bg-surface2 text-muted border-theme-subtle hover:text-primary hover:border-theme-subtle/80'
+                                  }`}
+                                  title={tp.description || tp.name}
+                                >
+                                  {tp.name.length > 18 ? tp.name.slice(0, 16) + '..' : tp.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-muted italic">No tax profiles found.</p>
+                    )}
+                  </div>
+                )}
 
-              {/* Margin % */}
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Margin</span>
-                <span className={`text-[13px] font-bold ${expectedProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'}`}>
-                  {expectedMargin.toFixed(1)}%
-                </span>
-              </div>
-
-              {/* Estimated Profit */}
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">
-                  {expectedProfit >= 0 ? 'Est. Profit' : 'Est. Loss'}
-                </span>
-                <span className={`text-[14px] font-mono font-black ${expectedProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'}`}>
-                  {formatCurrency(Math.abs(expectedProfit))}
-                </span>
+                <div className="flex justify-between items-center text-xs">
+                   <span className="text-muted font-medium">Total Product Cost</span>
+                   <span className="font-mono text-muted">{formatCurrency(totalProductCost)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                   <span className="text-muted font-medium">Revenue</span>
+                   <span className="font-mono text-primary font-bold">{formatCurrency(custSubtotal)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-theme-subtle/50">
+                   <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Margin</span>
+                   <span className={`text-[13px] font-bold ${expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{expectedMargin.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                   <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">{expectedProfit >= 0 ? 'Profit' : 'Loss'}</span>
+                   <span className={`text-[14px] font-mono font-black ${expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(Math.abs(expectedProfit))}</span>
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* Bank Details Selector Card */}
-          <div className="border border-theme-subtle/50 rounded-2xl bg-surface p-4 space-y-2.5">
-            <div className="flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-wider pb-2 border-b border-theme-subtle/50">
-              <CreditCard size={15} className="text-emerald-500" />
-              <span>Remittance Bank Details</span>
-            </div>
-            
-            <select
-              value={bankDetailId}
-              onChange={e => setBankDetailId(e.target.value)}
-              className="w-full bg-surface2 border border-theme-subtle rounded-lg px-2.5 py-1.5 text-xs text-primary focus:border-emerald-500 outline-none font-medium"
-            >
-              <option value="">-- Use Default Company Bank --</option>
-              <option value="none">-- Do Not Display Bank Details --</option>
-              {(() => {
-                const raw = settings?.company_bank_details;
-                if (!raw) return null;
-                try {
-                  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                  if (Array.isArray(parsed)) {
-                    return parsed.map((b: any) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bankName} - {b.accountNumber} ({b.accountName})
-                      </option>
-                    ));
-                  }
-                } catch(e) {}
-                return null;
-              })()}
-            </select>
-
-            {selectedBank && (
-              <div className="p-2.5 rounded-lg bg-surface2/50 border border-theme-subtle/50 text-[11px] text-muted space-y-1">
-                <div><strong>Bank:</strong> {selectedBank.bankName}</div>
-                <div><strong>Account:</strong> <span className="font-mono text-primary font-bold">{selectedBank.accountNumber}</span></div>
-                <div><strong>Beneficiary:</strong> {selectedBank.accountName}</div>
-                {selectedBank.swiftCode && <div><strong>SWIFT:</strong> {selectedBank.swiftCode}</div>}
-              </div>
-            )}
           </div>
         </div>
+        
+        </div>
+
+        {/* RIGHT COLUMN: LIVE PREVIEW */}
+        {!previewCollapsed ? (
+          <div className="w-[450px] xl:w-[500px] shrink-0 border-l border-theme-subtle flex flex-col bg-surface/40 relative z-10">
+             {/* TABS */}
+             <div className="flex items-center justify-between p-2 border-b border-theme-subtle bg-surface/80 backdrop-blur">
+               <div className="flex items-center gap-1 flex-1">
+                 <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 rounded-md shadow-sm border border-emerald-500/20 whitespace-nowrap shrink-0">
+                   Live Preview
+                 </button>
+               </div>
+               <button 
+                 onClick={() => setPreviewCollapsed(true)}
+                 className="p-1.5 ml-2 hover:bg-surface2 rounded-md text-muted hover:text-primary transition-colors shrink-0"
+                 title="Collapse Live Preview"
+               >
+                 <ChevronRight size={16} />
+               </button>
+             </div>
+             
+             {/* LIVE PREVIEW CANVAS */}
+             <div className="flex-1 overflow-y-auto bg-gray-500/5 relative p-4 custom-scrollbar flex justify-center">
+                <div className="shadow-2xl ring-1 ring-black/5 bg-white flex flex-col" style={{ zoom: 0.55, width: '210mm', minHeight: '297mm', flexShrink: 0, marginBottom: '20px' }}>
+                   <div className="w-full p-12 pointer-events-none flex-1">
+                     <QuotationPrintView 
+                        data={{
+                           docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
+                           custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
+                           custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+                           jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: totalProductCost, withSSCL: custWithSSCL },
+                           taxEnabled, selectedProfileId,
+                           custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat,
+                           customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+                           bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+                        }}
+                        type="main"
+                        lead={currentEntity || lead}
+                        settings={settings}
+                     />
+                   </div>
+                </div>
+             </div>
+          </div>
+        ) : (
+          <div className="w-10 shrink-0 border-l border-theme-subtle bg-surface/40 flex flex-col items-center py-4 relative z-10 transition-all">
+            <button
+              onClick={() => setPreviewCollapsed(false)}
+              className="p-2 hover:bg-surface2 rounded-lg text-muted hover:text-primary transition-colors mb-4"
+              title="Expand Live Preview"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div 
+              onClick={() => setPreviewCollapsed(false)}
+              className="flex-1 flex items-center justify-center cursor-pointer select-none py-4 text-muted hover:text-emerald-500 transition-colors"
+              style={{ writingMode: 'vertical-rl' }}
+              title="Expand Live Preview"
+            >
+              <div className="flex items-center gap-2 tracking-widest text-[11px] font-bold uppercase">
+                <Eye size={13} className="text-emerald-500" />
+                <span>Live Preview</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Catalog Browse Modal */}
-      {catalogModalOpen && (
-        <Modal
-          isOpen={catalogModalOpen}
-          onClose={() => setCatalogModalOpen(false)}
-          title="Browse Finished Goods Catalog"
-          size="4xl"
-        >
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5 bg-surface2 border border-theme-subtle rounded-xl px-3 py-2">
-              <Search size={16} className="text-muted shrink-0" />
+      {/* FULL PREVIEW MODAL */}
+      <Modal isOpen={showPreview} onClose={() => setShowPreview(false)} title={'Preview Product Quotation'} size="xl">
+        <div className="bg-white text-black p-8 max-h-[80vh] overflow-y-auto w-[900px] max-w-full">
+          <div id="product-quote-print-container">
+            <QuotationPrintView 
+              data={{
+                 docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
+                 custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
+                 custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+                 jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: totalProductCost, withSSCL: custWithSSCL },
+                 taxEnabled, selectedProfileId,
+                 custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat,
+                 customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+                 bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+              }}
+              type="main"
+              lead={currentEntity || lead}
+              settings={settings}
+            />
+          </div>
+          
+          {currentQuote && currentQuote.status !== 'Approved' && (
+            <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} className="shrink-0 text-amber-600" />
+                <span>Status is <strong>{currentQuote.status || 'Draft'}</strong>. Quotation should be formally approved before issuing or sending to customer.</span>
+              </div>
+              {canApprove && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await approveQuotation(currentQuote.id, user?.name || 'Manager');
+                      showToast('success', 'Quotation approved!');
+                      await loadVersions();
+                    } catch(err: any) {
+                      showToast('error', err?.message || 'Failed to approve');
+                    }
+                  }}
+                  className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shrink-0 shadow-xs"
+                >
+                  Approve Now
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
+            <Button variant="ghost" icon={Mail} onClick={() => {
+              if (currentQuote && currentQuote.status !== 'Approved') {
+                if (!window.confirm(`Notice: This quotation is currently "${currentQuote.status || 'Draft'}" and has not been formally approved yet. Do you still wish to email the customer?`)) {
+                  return;
+                }
+              }
+              setEmailModalOpen(true);
+            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
+            
+            <Button variant="ghost" icon={FileDown} onClick={() => {
+              const element = document.getElementById('product-quote-print-container');
+              if (!element) return;
+              const opt: any = {
+                margin:       0.2,
+                filename:     `Product_Quotation_${quotationNo || 'PQ'}.pdf`,
+                image:        { type: 'jpeg' as const, quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+              };
+              html2pdf().set(opt).from(element).save();
+            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
+            
+            <Button variant="primary" icon={Printer} onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* CATALOG BROWSE MODAL */}
+      <Modal 
+        isOpen={catalogModalOpen} 
+        onClose={() => setCatalogModalOpen(false)} 
+        title="Finished Products Catalog" 
+        size="4xl"
+      >
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 type="text"
                 value={catalogSearch}
                 onChange={e => setCatalogSearch(e.target.value)}
-                placeholder="Search catalog by product name, SKU, or description..."
-                className="w-full bg-transparent text-xs text-primary outline-none"
-                autoFocus
+                placeholder="Search catalog by name, sku, category..."
+                className="w-full bg-surface2 border border-theme-subtle rounded-xl pl-9 pr-3 py-2 text-xs text-primary outline-none focus:border-emerald-500"
               />
             </div>
+            <span className="text-xs text-muted shrink-0">
+              {finishedProducts.length} finished goods available
+            </span>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-              {finishedProducts
-                .filter((p: any) => 
-                  !catalogSearch.trim() || 
-                  (p.name || '').toLowerCase().includes(catalogSearch.toLowerCase()) ||
-                  (p.sku || '').toLowerCase().includes(catalogSearch.toLowerCase()) ||
-                  (p.description || '').toLowerCase().includes(catalogSearch.toLowerCase())
-                )
-                .map((prod: any) => (
-                  <div
-                    key={prod.id}
-                    className="p-3.5 rounded-xl border border-theme-subtle bg-surface hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all flex flex-col justify-between gap-3 group"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-xs font-bold text-primary group-hover:text-emerald-600 transition-colors">
-                          {prod.name}
-                        </h4>
-                        {prod.sku && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-muted shrink-0">
-                            {prod.sku}
-                          </span>
-                        )}
-                      </div>
-                      {prod.description && (
-                        <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
-                          {prod.description}
-                        </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+            {finishedProducts
+              .filter(p => {
+                if (!catalogSearch.trim()) return true;
+                const q = catalogSearch.toLowerCase();
+                return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q);
+              })
+              .map(p => (
+                <div key={p.id} className="p-3.5 rounded-xl border border-theme-subtle bg-surface hover:border-emerald-500/50 hover:bg-surface2/40 transition-all flex justify-between items-center group">
+                  <div className="min-w-0 pr-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-primary truncate">{p.name}</span>
+                      {p.sku && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle">
+                          {p.sku}
+                        </span>
                       )}
                     </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-theme-subtle/40">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(Number(prod.unitPrice || 0))}
-                        </span>
-                        <span className="text-[10px] text-muted">
-                          Cost: {formatCurrency(Number(prod.unitCost || 0))} • Stock: {prod.quantity || 0} {prod.uom || 'pcs'}
-                        </span>
-                      </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        icon={Plus}
-                        onClick={() => handleAddProduct(prod)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-xs"
-                      >
-                        Add to Quote
-                      </Button>
+                    {p.description && (
+                      <p className="text-[11px] text-muted truncate mt-0.5">{p.description}</p>
+                    )}
+                    <div className="flex items-center gap-3 mt-1.5 text-[11px]">
+                      <span className="text-muted">Stock: <strong className={(p.quantity || 0) > 0 ? 'text-primary' : 'text-amber-500'}>{p.quantity || 0} {p.uom || 'pcs'}</strong></span>
+                      <span className="text-muted">Cost: <strong className="font-mono text-muted">{formatCurrency(p.unitCost || p.cost || 0)}</strong></span>
                     </div>
                   </div>
-                ))}
-            </div>
-
-            {finishedProducts.length === 0 && (
-              <div className="py-12 text-center text-muted text-xs">
-                No finished products found in inventory. Please add finished products in the Inventory module.
-              </div>
-            )}
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      {formatCurrency(p.unitPrice || p.price || 0)}
+                    </span>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={Plus}
+                      onClick={() => {
+                        addProductToItems(p);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-[11px] px-3"
+                    >
+                      Add to Quote
+                    </Button>
+                  </div>
+                </div>
+              ))}
           </div>
-        </Modal>
-      )}
+        </div>
+      </Modal>
 
-      {/* Print Preview Modal */}
-      {printModalOpen && (
-        <Modal
-          isOpen={printModalOpen}
-          onClose={() => setPrintModalOpen(false)}
-          title={`Quotation Preview - ${quotationNo}`}
-          size="4xl"
-        >
-          <div className="space-y-4">
-            <div className="flex justify-end gap-2 pb-3 border-b border-theme-subtle">
-              <Button
-                variant="primary"
-                size="sm"
-                icon={Download}
-                onClick={() => {
-                  const element = document.getElementById('product-quote-print-container');
-                  if (element) {
-                    html2pdf().from(element).set({
-                      margin: 10,
-                      filename: `Quotation_${quotationNo || 'PQ'}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2 },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    }).save();
-                  }
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
-              >
-                Download PDF
-              </Button>
-            </div>
-
-            <div id="product-quote-print-container" className="bg-white text-zinc-900 rounded-xl p-6 shadow-sm overflow-x-auto">
-              <QuotationPrintView
-                data={{
-                  docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo,
-                  attention, subject, customerName, customerAddress,
-                  custItems, custTerms, custValidity, custDelivery, custDiscount,
-                  custDiscountType,
-                  bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
-                  custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-                  taxEnabled, selectedProfile, custSscl, custVat,
-                  customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
-                }}
-                type="main"
-                lead={currentEntity || selectedLead}
-                settings={settings}
-              />
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Send Email Modal */}
+      {/* SEND EMAIL MODAL */}
       {emailModalOpen && (
         <SendDocumentEmailModal
           isOpen={emailModalOpen}
@@ -1794,7 +2236,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         />
       )}
 
-      {/* Add Client Modal */}
+      {/* ADD CUSTOMER MODAL */}
       {showAddCustomer && (
         <CustomerModal
           isOpen={showAddCustomer}
@@ -1808,6 +2250,16 @@ export const ProductQuotationBuilder: React.FC = () => {
           }}
         />
       )}
+
+      {/* TEMPLATES MODAL */}
+      <QuotationTemplatesModal
+        isOpen={showTemplatesModal}
+        onClose={() => setShowTemplatesModal(false)}
+        onSelectForNewQuote={(tpl: any) => {
+          navigate(`/crm/product-quotations/new?templateId=${tpl.id}`);
+        }}
+      />
+
     </div>
   )
 }
