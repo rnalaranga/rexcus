@@ -157,7 +157,7 @@ export const WorkOrders: React.FC = () => {
 
         return (
           <div className="flex items-start gap-3 min-w-0 max-w-md py-1">
-            <div className="w-9 h-9 rounded-none bg-surface2 border border-theme-subtle text-primary flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
+            <div className="w-9 h-9 rounded-none bg-rex-500/10 border border-rex-500/30 text-rex-600 dark:text-rex-400 flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
               <Factory size={16}/>
             </div>
             <div className="min-w-0 flex-1">
@@ -334,9 +334,9 @@ export const WorkOrders: React.FC = () => {
             variant="outline" 
             size="sm" 
             onClick={() => navigate(`/production/work-orders/${row.id}`)}
-            className="text-xs font-bold text-primary border border-theme hover:bg-surface2 rounded-none"
+            className="text-xs font-bold text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none"
           >
-            <Eye size={12} className="mr-1 text-secondary"/> Execution Studio
+            <Eye size={12} className="mr-1 text-rex-600 dark:text-rex-400"/> Execution Studio
           </Button>
 
           <button 
@@ -443,13 +443,13 @@ export const WorkOrders: React.FC = () => {
                 onClick={() => setStatusFilter(tab.id as StatusFilter)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-none uppercase tracking-wider shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
                   statusFilter === tab.id
-                    ? 'border-b-2 border-primary text-primary font-bold bg-surface2/60 border-theme shadow-xs'
+                    ? 'border-b-2 border-rex-600 text-rex-600 dark:text-rex-400 font-bold bg-rex-500/10 border-rex-500/30 shadow-xs'
                     : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
                 }`}
               >
                 <span>{tab.label}</span>
-                <span className={`text-[10px] px-1 py-0.2 rounded-none font-mono ${
-                  statusFilter === tab.id ? 'bg-primary text-surface font-bold' : 'text-muted'
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-none font-mono ${
+                  statusFilter === tab.id ? 'bg-rex-600 text-white font-bold' : 'text-muted'
                 }`}>
                   {tab.count}
                 </span>
@@ -597,7 +597,7 @@ export const WorkOrders: React.FC = () => {
                             <span className="text-muted font-mono">
                               {formatCurrency(cost.actualTotalCost || 0)}
                             </span>
-                            <span className="text-secondary hover:text-primary font-bold flex items-center gap-0.5">
+                            <span className="text-rex-600 dark:text-rex-400 hover:underline font-bold flex items-center gap-0.5">
                               Studio <ArrowRight size={11}/>
                             </span>
                           </div>

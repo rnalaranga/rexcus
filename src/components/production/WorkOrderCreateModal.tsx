@@ -483,7 +483,7 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
             <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
               <Package size={14} className="text-rex-600"/> 2. Bill of Materials (BOM) Requirements
             </h4>
-            <Button variant="outline" size="sm" type="button" onClick={addBomRow} className="text-[11px] h-auto py-1 px-2.5 rounded-none">
+            <Button variant="outline" size="sm" type="button" onClick={addBomRow} className="text-[11px] h-auto py-1 px-2.5 rounded-none text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 font-bold">
               <Plus size={12} className="mr-1"/> Add Material
             </Button>
           </div>
@@ -552,7 +552,7 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
             <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
               <Layers size={14} className="text-rex-600"/> 3. Shop Floor Routing & Operations
             </h4>
-            <Button variant="outline" size="sm" type="button" onClick={addOpRow} className="text-[11px] h-auto py-1 px-2.5 rounded-none">
+            <Button variant="outline" size="sm" type="button" onClick={addOpRow} className="text-[11px] h-auto py-1 px-2.5 rounded-none text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 font-bold">
               <Plus size={12} className="mr-1"/> Add Process Step
             </Button>
           </div>

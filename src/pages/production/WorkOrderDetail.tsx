@@ -786,12 +786,12 @@ export const WorkOrderDetail: React.FC = () => {
           </select>
 
           <Button 
-            variant="ghost" 
+            variant="outline" 
             size="sm" 
             onClick={() => setShowIssueModal(true)}
-            className="text-xs rounded-none border border-theme text-primary hover:bg-surface2 font-semibold"
+            className="text-xs rounded-none border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 font-bold"
           >
-            <Plus size={13} className="mr-1 text-primary"/> Issue Material
+            <Plus size={13} className="mr-1"/> Issue Material
           </Button>
 
           <Button 
@@ -830,7 +830,7 @@ export const WorkOrderDetail: React.FC = () => {
       <GlassCard className="p-4 rounded-none border-theme-subtle space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="font-mono text-xs font-bold tracking-wider bg-surface2 text-primary px-3 py-1 rounded-none border border-theme-subtle">
+            <span className="font-mono text-xs font-bold tracking-wider bg-rex-500/10 text-rex-600 dark:text-rex-400 px-3 py-1 rounded-none border border-rex-500/30">
               {wo.orderNo || wo.id}
             </span>
             <span className="font-mono text-[11px] text-muted bg-surface2 px-2 py-0.5 rounded-none border border-theme-subtle">
@@ -947,15 +947,15 @@ export const WorkOrderDetail: React.FC = () => {
               onClick={() => setActiveTab(tab.id as DetailTab)}
               className={`px-4 py-2.5 rounded-none text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border-b-2 ${
                 isActive 
-                  ? 'border-primary text-primary font-bold bg-surface2/60' 
+                  ? 'border-rex-600 text-rex-600 dark:text-rex-400 font-bold bg-rex-500/10' 
                   : 'border-transparent text-muted hover:text-primary hover:bg-surface2/30'
               }`}
             >
-              <Icon size={14} className={isActive ? 'text-primary' : 'text-muted'}/>
+              <Icon size={14} className={isActive ? 'text-rex-600' : 'text-muted'}/>
               <span>{tab.label}</span>
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono font-bold ${
-                  isActive ? 'bg-surface border border-theme-subtle text-primary' : 'bg-surface2 text-muted border border-theme-subtle'
+                  isActive ? 'bg-rex-600 text-white' : 'bg-surface2 text-muted border border-theme-subtle'
                 }`}>
                   {tab.count}
                 </span>
@@ -971,7 +971,7 @@ export const WorkOrderDetail: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="text-sm font-bold text-primary flex items-center gap-2">
-                <ClipboardList size={16} className="text-secondary"/>
+                <ClipboardList size={16} className="text-rex-600"/>
                 Engineering Bill of Materials & Quoted Machining Hours (BOM by BOM)
               </h3>
               <p className="text-xs text-muted">
@@ -982,23 +982,23 @@ export const WorkOrderDetail: React.FC = () => {
             <div className="flex items-center gap-2 flex-wrap">
               {operations.length === 0 && grandTotalQuotedMachiningHours > 0 && (
                 <Button
-                  variant="ghost"
+                  variant="primary"
                   size="sm"
                   onClick={handleSyncAllBomsToFloor}
                   disabled={submitting}
-                  className="rounded-none text-xs font-bold border border-theme bg-surface2 hover:bg-surface text-primary inline-flex items-center"
+                  className="rounded-none text-xs font-bold bg-rex-600 hover:bg-rex-700 text-white inline-flex items-center shadow-xs"
                 >
-                  <Sparkles size={13} className="mr-1.5 text-amber-500"/> Sync All BOM Steps to Shopfloor
+                  <Sparkles size={13} className="mr-1.5"/> Sync All BOM Steps to Shopfloor
                 </Button>
               )}
 
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => setShowAddBomModal(true)}
-                className="rounded-none text-xs border border-theme text-primary hover:bg-surface2 font-medium inline-flex items-center"
+                className="rounded-none text-xs border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 font-bold inline-flex items-center"
               >
-                <Plus size={13} className="mr-1 text-primary"/> Add Material / Component
+                <Plus size={13} className="mr-1"/> Add Material / Component
               </Button>
             </div>
           </div>
@@ -1179,7 +1179,7 @@ export const WorkOrderDetail: React.FC = () => {
                                     <td className="py-2 px-3 text-right">
                                       <div className="flex items-center justify-end gap-1.5">
                                         <Button
-                                          variant="ghost"
+                                          variant="outline"
                                           size="sm"
                                           onClick={() => {
                                             setIssueForm({
@@ -1192,10 +1192,10 @@ export const WorkOrderDetail: React.FC = () => {
                                             })
                                             setShowIssueModal(true)
                                           }}
-                                          className="text-[11px] py-1 px-2.5 h-auto border border-theme hover:bg-surface2 text-primary rounded-none font-semibold inline-flex items-center"
+                                          className="text-[11px] py-1 px-2.5 h-auto border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 rounded-none font-bold inline-flex items-center"
                                           title="Issue this material directly to this job"
                                         >
-                                          <Package size={11} className="mr-1 text-secondary"/> Issue Material
+                                          <Package size={11} className="mr-1"/> Issue Material
                                         </Button>
 
                                         <Button
@@ -1390,14 +1390,14 @@ export const WorkOrderDetail: React.FC = () => {
                                         </div>
                                       ) : (
                                         <Button
-                                          variant="ghost"
+                                          variant="primary"
                                           size="sm"
                                           onClick={() => handleSyncSingleOpToFloor(proc)}
                                           disabled={submitting}
-                                          className="text-[11px] py-1 px-2.5 h-auto bg-surface2 hover:bg-surface border border-theme text-primary hover:border-theme-hover rounded-none font-bold inline-flex items-center"
+                                          className="text-[11px] py-1 px-2.5 h-auto bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold inline-flex items-center shadow-xs"
                                           title="Add this quotation machining process to active shop floor routing"
                                         >
-                                          <Plus size={10} className="mr-1 text-primary"/> Add to Routing
+                                          <Plus size={10} className="mr-1"/> Add to Routing
                                         </Button>
                                       )}
                                     </td>
@@ -1450,7 +1450,7 @@ export const WorkOrderDetail: React.FC = () => {
               variant="primary" 
               size="sm" 
               onClick={() => setShowAddOpModal(true)}
-              className="text-xs bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 rounded-none font-bold"
+              className="text-xs bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold shadow-xs"
             >
               <Plus size={13} className="mr-1"/> Add Operation Step
             </Button>
@@ -1468,16 +1468,16 @@ export const WorkOrderDetail: React.FC = () => {
               <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
                 {grandTotalQuotedMachiningHours > 0 && (
                   <Button 
-                    variant="outline" 
+                    variant="primary" 
                     size="sm" 
                     onClick={handleSyncAllBomsToFloor} 
                     disabled={submitting}
-                    className="bg-surface2 hover:bg-surface border border-theme text-primary font-bold rounded-none"
+                    className="bg-rex-600 hover:bg-rex-700 text-white font-bold rounded-none shadow-xs"
                   >
                     <Sparkles size={13} className="mr-1.5"/> Load Steps from Quotation BOM
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setShowAddOpModal(true)} className="rounded-none">
+                <Button variant="outline" size="sm" onClick={() => setShowAddOpModal(true)} className="rounded-none font-semibold">
                   <Plus size={13} className="mr-1"/> Add Operation Manually
                 </Button>
               </div>
@@ -1610,7 +1610,7 @@ export const WorkOrderDetail: React.FC = () => {
                                 size="sm" 
                                 onClick={() => handleOpTimerAction(op.id, 'In Progress')}
                                 disabled={submitting}
-                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-none"
+                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-none font-bold"
                                 title="Start live shopfloor timer"
                               >
                                 <Play size={12} className="mr-1 fill-white"/> Start
@@ -1621,7 +1621,7 @@ export const WorkOrderDetail: React.FC = () => {
                                 size="sm" 
                                 onClick={() => handleOpTimerAction(op.id, 'Paused')}
                                 disabled={submitting}
-                                className="text-xs text-amber-500 border-amber-500/30 hover:bg-amber-500/10 rounded-none"
+                                className="text-xs text-amber-500 border-amber-500/30 hover:bg-amber-500/10 rounded-none font-bold"
                                 title="Pause timer"
                               >
                                 <Pause size={12} className="mr-1"/> Pause
@@ -1633,7 +1633,7 @@ export const WorkOrderDetail: React.FC = () => {
                               size="sm" 
                               onClick={() => handleOpTimerAction(op.id, 'Completed')}
                               disabled={submitting}
-                              className="text-xs text-green-600 border-green-500/30 hover:bg-green-500/10 rounded-none"
+                              className="text-xs text-green-600 border-green-500/30 hover:bg-green-500/10 rounded-none font-bold"
                               title="Mark operation completed"
                             >
                               <Check size={12} className="mr-1"/> Complete
@@ -1656,7 +1656,7 @@ export const WorkOrderDetail: React.FC = () => {
                               severity: 'Normal'
                             })
                           }}
-                          className="text-xs text-secondary border-theme hover:bg-surface2 hover:text-primary rounded-none"
+                          className="text-xs text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none font-bold"
                           title="Inspect quality and record pass/rework/scrap"
                         >
                           <ShieldCheck size={12} className="mr-1"/> QC
@@ -1708,7 +1708,7 @@ export const WorkOrderDetail: React.FC = () => {
                 variant="primary" 
                 size="sm" 
                 onClick={() => setShowIssueModal(true)}
-                className="text-xs bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 rounded-none font-bold"
+                className="text-xs bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold shadow-xs"
               >
                 <Plus size={13} className="mr-1"/> Direct Issue Material
               </Button>
@@ -1728,7 +1728,7 @@ export const WorkOrderDetail: React.FC = () => {
                 variant="primary"
                 size="sm"
                 onClick={() => setShowIssueModal(true)}
-                className="rounded-none text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90"
+                className="rounded-none text-xs font-bold bg-rex-600 hover:bg-rex-700 text-white shadow-xs"
               >
                 <Plus size={13} className="mr-1"/> Direct Issue Material
               </Button>
@@ -1843,7 +1843,7 @@ export const WorkOrderDetail: React.FC = () => {
                               resolvedBy: 'QA Supervisor'
                             })
                           }}
-                          className="text-[11px] py-1 px-2 h-auto text-primary border-theme hover:bg-surface2 rounded-none font-semibold"
+                          className="text-[11px] py-1 px-2 h-auto text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none font-bold"
                         >
                           Resolve Ticket
                         </Button>
@@ -2001,7 +2001,7 @@ export const WorkOrderDetail: React.FC = () => {
                         notes: `Issued for ${bomMat.material}`
                       })
                     }}
-                    className="px-2.5 py-1 text-[11px] font-semibold bg-surface border border-theme-subtle hover:border-theme rounded-none text-left transition-colors cursor-pointer truncate max-w-xs"
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-surface border border-theme-subtle hover:border-rex-500/50 hover:bg-rex-500/5 rounded-none text-left transition-colors cursor-pointer truncate max-w-xs"
                     title={bomMat.material}
                   >
                     <strong className="text-primary">{bomMat.material}</strong>
@@ -2102,7 +2102,7 @@ export const WorkOrderDetail: React.FC = () => {
             <Button variant="ghost" type="button" onClick={() => setShowIssueModal(false)} className="rounded-none">
               Cancel
             </Button>
-            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 font-bold">
+            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-rex-600 hover:bg-rex-700 text-white font-bold shadow-xs">
               {submitting ? 'Issuing...' : 'Confirm Issue'}
             </Button>
           </div>
@@ -2207,7 +2207,7 @@ export const WorkOrderDetail: React.FC = () => {
             <Button variant="ghost" type="button" onClick={() => setShowAddOpModal(false)} className="rounded-none">
               Cancel
             </Button>
-            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 font-bold">
+            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-rex-600 hover:bg-rex-700 text-white font-bold shadow-xs">
               {submitting ? 'Adding...' : 'Add Operation'}
             </Button>
           </div>
@@ -2283,7 +2283,7 @@ export const WorkOrderDetail: React.FC = () => {
             <Button variant="ghost" type="button" onClick={() => setShowQcModal(null)} className="rounded-none">
               Cancel
             </Button>
-            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 font-bold">
+            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-rex-600 hover:bg-rex-700 text-white font-bold shadow-xs">
               {submitting ? 'Saving...' : 'Save Inspection'}
             </Button>
           </div>
@@ -2467,7 +2467,7 @@ export const WorkOrderDetail: React.FC = () => {
             <Button variant="ghost" type="button" onClick={() => setShowAddBomModal(false)} className="rounded-none">
               Cancel
             </Button>
-            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 font-bold">
+            <Button variant="primary" type="submit" disabled={submitting} className="rounded-none bg-rex-600 hover:bg-rex-700 text-white font-bold shadow-xs">
               {submitting ? 'Adding...' : 'Add BOM Requirement'}
             </Button>
           </div>
