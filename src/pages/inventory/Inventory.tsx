@@ -532,10 +532,10 @@ export const Inventory: React.FC = () => {
                   setSelectedLinearItem(item)
                   setActiveTab('linear_remnants')
                 }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs shadow-xs transition-colors shrink-0"
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-surface2/60 hover:bg-surface2 text-secondary hover:text-primary border border-theme-subtle text-xs transition-colors shrink-0"
                 title={`Execute Material Issue / Cut for ${item.name}`}
               >
-                <Scissors size={13} className="shrink-0" />
+                <Scissors size={12} className="text-muted shrink-0" />
                 <span>Material Issue</span>
               </button>
             )}
@@ -708,10 +708,10 @@ export const Inventory: React.FC = () => {
               setSelectedLinearItem(item)
               setActiveTab('linear_remnants')
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded text-xs font-semibold transition-colors"
+            className="inline-flex items-center gap-1.5 px-2 py-1 bg-surface2/60 hover:bg-surface2 border border-theme-subtle text-secondary hover:text-primary rounded text-xs transition-colors shrink-0"
             title="Material Issue / Cut Studio"
           >
-            <Scissors size={13}/>
+            <Scissors size={12} className="text-muted shrink-0"/>
             <span className="hidden sm:inline">Material Issue</span>
           </button>
           <button

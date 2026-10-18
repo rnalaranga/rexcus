@@ -1328,7 +1328,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 className={`w-full sm:w-auto px-6 font-bold shadow-lg transition-all ${
                   !jobRef.trim()
                     ? 'opacity-50 cursor-not-allowed bg-slate-700 text-slate-300 border border-slate-600'
-                    : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 text-white'
+                    : 'bg-rex-600 hover:bg-rex-700 shadow-rex-600/20 text-white'
                 }`}
                 title={!jobRef.trim() ? 'Job Number / Work Order is strictly mandatory' : 'Execute Cut & Issue Material'}
               >
