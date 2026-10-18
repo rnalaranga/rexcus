@@ -536,6 +536,8 @@ export const deleteMachiningOperation = async (id: string) => {
 
 export const fetchWorkOrders = async () => (await fetch(`${API_URL}/production/work-orders`)).json();
 
+export const fetchWorkOrderById = async (id: string) => (await fetch(`${API_URL}/production/work-orders/${id}`)).json();
+
 export const createWorkOrder = async (data: any) => {
   const res = await fetch(`${API_URL}/production/work-orders`, {
     method: 'POST',
@@ -544,6 +546,118 @@ export const createWorkOrder = async (data: any) => {
   });
   return res.json();
 };
+
+export const updateWorkOrder = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const updateWorkOrderStatus = async (id: string, status: string) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  });
+  return res.json();
+};
+
+export const deleteWorkOrder = async (id: string) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${id}`, { method: 'DELETE' });
+  return res.json();
+};
+
+export const issueMaterialToWorkOrder = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${id}/issue-material`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const fetchWorkOrderMaterials = async (id: string) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${id}/materials`);
+  return res.json();
+};
+
+export const addWorkOrderOperation = async (woId: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/operations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const updateWorkOrderOperation = async (opId: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/operations/${opId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const updateWorkOrderOperationStatus = async (opId: string, status: string, actualHours?: number) => {
+  const res = await fetch(`${API_URL}/production/operations/${opId}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, actualHours })
+  });
+  return res.json();
+};
+
+export const assignWorkOrderOperation = async (opId: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/operations/${opId}/assign`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deleteWorkOrderOperation = async (opId: string) => {
+  const res = await fetch(`${API_URL}/production/operations/${opId}`, { method: 'DELETE' });
+  return res.json();
+};
+
+export const logOperationQC = async (opId: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/operations/${opId}/qc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const fetchReworkLogs = async (workOrderId?: string) => {
+  const url = workOrderId ? `${API_URL}/production/rework-logs?workOrderId=${encodeURIComponent(workOrderId)}` : `${API_URL}/production/rework-logs`;
+  const res = await fetch(url);
+  return res.json();
+};
+
+export const updateReworkLog = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/rework-logs/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const completeWorkOrder = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${id}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
 export const fetchPartyLedger = async (id: string) => (await (await fetch(`${API_URL}/finance/party/${id}/ledger`)).json());
 export const deleteJournal = async (id: string) => (await (await fetch(`${API_URL}/finance/journals/${id}`, { method: 'DELETE' })).json());
 

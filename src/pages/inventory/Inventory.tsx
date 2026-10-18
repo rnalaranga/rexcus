@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -116,7 +116,14 @@ export const Inventory: React.FC = () => {
   const [sampleSearchQuery, setSampleSearchQuery] = useState('')
   const { settings } = useSettings()
   const { user, can } = useAuth()
+  const location = useLocation()
   const [activeTab, setActiveTab] = useState<TabType>('raw_material')
+
+  useEffect(() => {
+    if (location.state?.openCutStudioWithJobRef || location.state?.tab === 'linear_remnants') {
+      setActiveTab('linear_remnants')
+    }
+  }, [location.state])
   const [ledgerModalItem, setLedgerModalItem] = useState<any | null>(null)
   const [viewingItem, setViewingItem] = useState<any | null>(null)
   const [search, setSearch] = useState('')
@@ -1576,6 +1583,7 @@ export const Inventory: React.FC = () => {
             showToast(type === 'error' ? 'error' : 'success', message ? `${title}: ${message}` : title)
           }}
           initialInventoryId={selectedLinearItem?.id}
+          initialJobRef={location.state?.openCutStudioWithJobRef}
           onBackToInventory={() => {
             setSelectedLinearItem(null)
             setActiveTab('raw_material')

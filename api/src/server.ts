@@ -982,7 +982,36 @@ async function runDatabaseSync() {
     "ALTER TABLE inventory ADD COLUMN supplierPartNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE inventory ADD COLUMN maxStock INT DEFAULT NULL",
     "ALTER TABLE inventory ADD COLUMN safetyStock INT DEFAULT NULL",
-    "ALTER TABLE inventory ADD COLUMN reorderBatchQty INT DEFAULT NULL"
+    "ALTER TABLE inventory ADD COLUMN reorderBatchQty INT DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN jobQty INT DEFAULT 1",
+    "ALTER TABLE work_orders ADD COLUMN completedQty INT DEFAULT 0",
+    "ALTER TABLE work_orders ADD COLUMN scrapQty INT DEFAULT 0",
+    "ALTER TABLE work_orders ADD COLUMN actualStartDate DATETIME DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN completedDate DATETIME DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN actualMaterialCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE work_orders ADD COLUMN actualLaborCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE work_orders ADD COLUMN actualMachineCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE work_orders ADD COLUMN actualReworkCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE work_orders ADD COLUMN actualTotalCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE work_orders ADD COLUMN estimatedCost DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE work_orders ADD COLUMN overheadPct DECIMAL(5,2) DEFAULT 15.00",
+    "ALTER TABLE work_order_operations ADD COLUMN hourlyLaborRate DECIMAL(10,2) DEFAULT 0.00",
+    "ALTER TABLE work_order_operations ADD COLUMN hourlyMachineRate DECIMAL(10,2) DEFAULT 0.00",
+    "ALTER TABLE employees ADD COLUMN hourlyRate DECIMAL(10,2) DEFAULT 750.00",
+    "ALTER TABLE machineries ADD COLUMN hourlyCost DECIMAL(10,2) DEFAULT 1200.00",
+    "ALTER TABLE qc_inspections ADD COLUMN workOrderId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE qc_inspections ADD COLUMN sampleQty INT DEFAULT 1",
+    "ALTER TABLE qc_inspections ADD COLUMN defectQty INT DEFAULT 0",
+    "ALTER TABLE qc_inspections ADD COLUMN severity VARCHAR(50) DEFAULT 'Normal'",
+    "ALTER TABLE rework_logs ADD COLUMN workOrderId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN operationId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN defectCategory VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN actionTaken TEXT DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN assignedEmployeeId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN machineId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN resolvedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN resolvedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE rework_logs ADD COLUMN notes TEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -5561,108 +5590,500 @@ app.post('/api/hr/employees/:id/machines', async (req, res) => {
 
 
 // ==========================
-// PRODUCTION / WORK ORDERS API
+// PRODUCTION / WORK ORDERS API (COMPREHENSIVE MANUFACTURING SUITE)
 // ==========================
 app.get('/api/production/work-orders', async (req, res) => {
   try {
-    const [wos] = await db.query('SELECT * FROM work_orders ORDER BY createdAt DESC');
-    const [ops] = await db.query('SELECT * FROM work_order_operations ORDER BY stepNumber ASC');
-    const [qcs] = await db.query('SELECT * FROM qc_inspections');
-    const [empRows]: any = await db.query('SELECT id, name FROM employees');
-    
-    // Resolve customer names from leads table
-    let leadMap: Record<string, string> = {};
+    const [wos]: any = await db.query('SELECT * FROM work_orders ORDER BY createdAt DESC');
+    const [ops]: any = await db.query('SELECT * FROM work_order_operations ORDER BY stepNumber ASC');
+    const [qcs]: any = await db.query('SELECT * FROM qc_inspections ORDER BY id DESC');
+    const [reworks]: any = await db.query('SELECT * FROM rework_logs ORDER BY id DESC');
+    const [empRows]: any = await db.query('SELECT id, name, role, hourlyRate FROM employees');
+    const [machRows]: any = await db.query('SELECT id, name, type, hourlyCost, status FROM machineries');
+
+    // Fetch all stock ledger items issued to work orders
+    let ledgerRows: any[] = [];
+    try {
+      const [ledgers]: any = await db.query(
+        `SELECT sl.*, i.name as itemName, i.sku as itemSku, i.uom as itemUom, i.unitCost as itemUnitCost 
+         FROM stock_ledger sl 
+         LEFT JOIN inventory i ON sl.inventoryId = i.id 
+         WHERE sl.type = 'OUT' AND (sl.reference LIKE 'WO-%' OR sl.reference IS NOT NULL)`
+      );
+      ledgerRows = ledgers || [];
+    } catch (e) {
+      console.error('Error fetching stock_ledger for work orders:', e);
+    }
+
+    // Resolve customer names from customers & leads tables
+    let customerMap: Record<string, string> = {};
+    try {
+      const [custs]: any = await db.query('SELECT id, name, company FROM customers');
+      custs.forEach((c: any) => { customerMap[c.id] = c.company ? `${c.name} (${c.company})` : c.name || c.id; });
+    } catch(e) {}
     try {
       const [leads]: any = await db.query('SELECT id, name, company FROM leads');
-      leads.forEach((l: any) => { leadMap[l.id] = l.name || l.company || l.id; });
+      leads.forEach((l: any) => { 
+        if (!customerMap[l.id]) customerMap[l.id] = l.company ? `${l.name} (${l.company})` : l.name || l.id; 
+      });
     } catch(e) {}
 
-    const enriched = (wos as any[]).map((wo: any) => ({
-      ...wo,
-      customerName: leadMap[wo.customerId] || wo.customerId || null,
-      operations: (ops as any[]).filter((o: any) => o.workOrderId === wo.id).map((o: any) => ({
-        ...o,
-        employeeName: empRows.find((e: any) => e.id === o.employeeId)?.name || null,
-        qc: (qcs as any[]).filter((q: any) => q.operationId === o.id)
-      }))
-    }));
-    
+    const enriched = wos.map((wo: any) => {
+      // 1. Matched operations
+      const woOps = ops.filter((o: any) => o.workOrderId === wo.id).map((o: any) => {
+        const emp = empRows.find((e: any) => e.id === o.employeeId);
+        const mac = machRows.find((m: any) => m.id === o.machineId);
+        const opQc = qcs.filter((q: any) => q.operationId === o.id || q.workOrderId === wo.id && q.operationId == o.id);
+        const opReworks = reworks.filter((r: any) => r.operationId === o.id);
+
+        const laborRate = Number(o.hourlyLaborRate || emp?.hourlyRate || 750);
+        const machineRate = Number(o.hourlyMachineRate || mac?.hourlyCost || 1200);
+        const actHrs = Number(o.actualHours || 0);
+
+        return {
+          ...o,
+          employeeName: emp?.name || null,
+          employeeHourlyRate: laborRate,
+          machineName: mac ? `${mac.name} (${mac.type || ''})` : null,
+          machineStatus: mac?.status || 'Active',
+          machineHourlyCost: machineRate,
+          actualLaborCost: actHrs * laborRate,
+          actualMachineCost: actHrs * machineRate,
+          qc: opQc,
+          reworks: opReworks
+        };
+      });
+
+      // 2. Matched QC inspections & Reworks for this WO
+      const woQcs = qcs.filter((q: any) => q.workOrderId === wo.id);
+      const woReworks = reworks.filter((r: any) => r.workOrderId === wo.id).map((r: any) => {
+        const emp = empRows.find((e: any) => e.id === r.assignedEmployeeId);
+        const mac = machRows.find((m: any) => m.id === r.machineId);
+        return {
+          ...r,
+          assignedEmployeeName: emp?.name || null,
+          machineName: mac ? mac.name : null
+        };
+      });
+
+      // 3. Matched issued materials from stock_ledger
+      const woIdRef = String(wo.id || '').trim().toLowerCase();
+      const woOrderNo = String(wo.orderNo || '').trim().toLowerCase();
+      const woMaterials = ledgerRows.filter((l: any) => {
+        const ref = String(l.reference || '').trim().toLowerCase();
+        return ref === woIdRef || (woOrderNo && ref === woOrderNo) || ref.includes(woIdRef);
+      });
+
+      // 4. Financial Cost Rollup
+      const materialCost = woMaterials.reduce((acc: number, m: any) => {
+        const cost = Number(m.totalCost || (Number(m.qty || 0) * Number(m.unitCost || m.itemUnitCost || 0)));
+        return acc + cost;
+      }, 0);
+
+      const laborCost = woOps.reduce((acc: number, o: any) => acc + (o.actualLaborCost || 0), 0);
+      const machineCost = woOps.reduce((acc: number, o: any) => acc + (o.actualMachineCost || 0), 0);
+      const reworkCost = woReworks.reduce((acc: number, r: any) => {
+        const directCost = Number(r.cost || 0);
+        const laborRwk = Number(r.hours || 0) * 800; // standard technician rate for rework
+        return acc + directCost + laborRwk;
+      }, 0);
+
+      const overheadPct = Number(wo.overheadPct !== undefined && wo.overheadPct !== null ? wo.overheadPct : 15);
+      const overheadCost = (laborCost + machineCost) * (overheadPct / 100);
+      const actualTotalCost = materialCost + laborCost + machineCost + reworkCost + overheadCost;
+
+      // Planned / Estimated totals
+      let bomItems: any[] = [];
+      try {
+        bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+      } catch (e) {}
+
+      const estBomCost = bomItems.reduce((acc: number, b: any) => acc + (Number(b.qty || 1) * Number(b.unitCost || 0)), 0);
+      const estMachLabor = woOps.reduce((acc: number, o: any) => {
+        const hrs = Number(o.plannedHours || 0);
+        return acc + (hrs * o.employeeHourlyRate) + (hrs * o.machineHourlyCost);
+      }, 0);
+      const estimatedCost = Number(wo.estimatedCost || (estBomCost + estMachLabor));
+
+      // Progress calculation
+      const validOps = woOps.filter((o: any) => Number(o.plannedHours || 0) > 0 || o.status === 'Completed');
+      const totalSteps = validOps.length || woOps.length;
+      const completedSteps = woOps.filter((o: any) => o.status === 'Completed').length;
+      const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
+
+      return {
+        ...wo,
+        customerName: customerMap[wo.customerId] || wo.customer || wo.customerId || null,
+        operations: woOps,
+        qcInspections: woQcs,
+        reworkLogs: woReworks,
+        issuedMaterials: woMaterials,
+        progress,
+        costSummary: {
+          materialCost,
+          laborCost,
+          machineCost,
+          reworkCost,
+          overheadPct,
+          overheadCost,
+          actualTotalCost,
+          estimatedCost,
+          variance: actualTotalCost - estimatedCost,
+          completedSteps,
+          totalSteps
+        }
+      };
+    });
+
     res.json(enriched);
-  } catch (error) {
+  } catch (error: any) {
+    console.error('Error fetching work orders:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Single Work Order Fetch with full details
+app.get('/api/production/work-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    const [ops]: any = await db.query('SELECT * FROM work_order_operations WHERE workOrderId = ? ORDER BY stepNumber ASC', [id]);
+    const [qcs]: any = await db.query('SELECT * FROM qc_inspections WHERE workOrderId = ? ORDER BY id DESC', [id]);
+    const [reworks]: any = await db.query('SELECT * FROM rework_logs WHERE workOrderId = ? ORDER BY id DESC', [id]);
+    const [empRows]: any = await db.query('SELECT id, name, role, hourlyRate FROM employees');
+    const [machRows]: any = await db.query('SELECT id, name, type, hourlyCost, status FROM machineries');
+
+    // Fetch stock ledger materials
+    const [materials]: any = await db.query(
+      `SELECT sl.*, i.name as itemName, i.sku as itemSku, i.uom as itemUom, i.unitCost as itemUnitCost 
+       FROM stock_ledger sl 
+       LEFT JOIN inventory i ON sl.inventoryId = i.id 
+       WHERE sl.type = 'OUT' AND (sl.reference = ? OR sl.reference = ? OR sl.reference LIKE ?)`,
+      [id, wo.orderNo || id, `%${id}%`]
+    );
+
+    res.json({
+      ...wo,
+      operations: ops.map((o: any) => {
+        const emp = empRows.find((e: any) => e.id === o.employeeId);
+        const mac = machRows.find((m: any) => m.id === o.machineId);
+        return {
+          ...o,
+          employeeName: emp?.name || null,
+          machineName: mac?.name || null,
+          machineHourlyCost: mac?.hourlyCost || 1200,
+          employeeHourlyRate: emp?.hourlyRate || 750
+        };
+      }),
+      qcInspections: qcs,
+      reworkLogs: reworks,
+      issuedMaterials: materials || []
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create Work Order
 app.post('/api/production/work-orders', async (req, res) => {
   try {
-    const { title, customerId, priority, deadline, operations, bom, sourceQuoteId, notes, attachments } = req.body;
+    const { 
+      title, customerId, customer, priority, plannedStartDate, deadline, 
+      operations, bom, sourceQuoteId, notes, attachments, jobQty, overheadPct, estimatedCost 
+    } = req.body;
 
-    // Duplicate check
+    // Duplicate check for quote
     if (sourceQuoteId) {
-      const [existing] = await db.query('SELECT id FROM work_orders WHERE quoteId = ? LIMIT 1', [sourceQuoteId]);
-      if (existing.length > 0) {
+      const [existing]: any = await db.query('SELECT id FROM work_orders WHERE quoteId = ? LIMIT 1', [sourceQuoteId]);
+      if (existing && existing.length > 0) {
         return res.status(409).json({ error: 'DUPLICATE', existingId: existing[0].id, message: 'A Work Order already exists for this quotation.' });
       }
     }
 
     const woId = 'WO-' + Date.now().toString().slice(-5);
+    const orderNo = req.body.orderNo || `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
 
     await db.query(
-      'INSERT INTO work_orders (id, title, customerId, quoteId, priority, plannedStartDate, deadline, bom, notes, attachments) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)',
-      [woId, title, customerId || null, sourceQuoteId || null, priority || 'Normal', deadline || null, bom ? JSON.stringify(bom) : null, notes || null, attachments ? JSON.stringify(attachments) : null]
+      `INSERT INTO work_orders 
+       (id, orderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, attachments, overheadPct, estimatedCost, createdAt, updatedAt) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        woId, orderNo, title, customerId || null, customer || null, sourceQuoteId || null, 
+        priority || 'Normal', plannedStartDate || new Date(), deadline || null, 
+        Math.max(1, Number(jobQty || 1)), bom ? JSON.stringify(bom) : null, 
+        notes || null, attachments ? JSON.stringify(attachments) : null,
+        Number(overheadPct || 15), Number(estimatedCost || 0)
+      ]
     );
 
     if (operations && operations.length > 0) {
-      const opValues = operations.map((op, i) => [
+      const opValues = operations.map((op: any, i: number) => [
         'OP-' + Date.now().toString().slice(-4) + '-' + i,
-        woId, i + 1, op.operationName, op.machineId || null, op.employeeId || null, op.plannedHours || 0
+        woId,
+        i + 1,
+        op.operationName,
+        op.machineId || null,
+        op.employeeId || null,
+        Number(op.plannedHours || 1),
+        0, // actualHours
+        'Pending',
+        Number(op.hourlyLaborRate || 750),
+        Number(op.hourlyMachineRate || 1200),
+        op.notes || null
       ]);
+
       await db.query(
-        'INSERT INTO work_order_operations (id, workOrderId, stepNumber, operationName, machineId, employeeId, plannedHours) VALUES ?',
+        `INSERT INTO work_order_operations 
+         (id, workOrderId, stepNumber, operationName, machineId, employeeId, plannedHours, actualHours, status, hourlyLaborRate, hourlyMachineRate, notes) 
+         VALUES ?`,
         [opValues]
       );
     }
 
-    res.json({ success: true, id: woId });
-  } catch (error) {
+    res.json({ success: true, id: woId, orderNo });
+  } catch (error: any) {
+    console.error('Error creating work order:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Update Work Order Details
+app.put('/api/production/work-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      title, customerId, priority, status, jobQty, completedQty, scrapQty, 
+      plannedStartDate, deadline, notes, overheadPct, estimatedCost 
+    } = req.body;
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (title !== undefined) { fields.push('title = ?'); values.push(title); }
+    if (customerId !== undefined) { fields.push('customerId = ?'); values.push(customerId || null); }
+    if (priority !== undefined) { fields.push('priority = ?'); values.push(priority); }
+    if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+    if (jobQty !== undefined) { fields.push('jobQty = ?'); values.push(Number(jobQty)); }
+    if (completedQty !== undefined) { fields.push('completedQty = ?'); values.push(Number(completedQty)); }
+    if (scrapQty !== undefined) { fields.push('scrapQty = ?'); values.push(Number(scrapQty)); }
+    if (plannedStartDate !== undefined) { fields.push('plannedStartDate = ?'); values.push(plannedStartDate); }
+    if (deadline !== undefined) { fields.push('deadline = ?'); values.push(deadline); }
+    if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
+    if (overheadPct !== undefined) { fields.push('overheadPct = ?'); values.push(Number(overheadPct)); }
+    if (estimatedCost !== undefined) { fields.push('estimatedCost = ?'); values.push(Number(estimatedCost)); }
+
+    fields.push('updatedAt = NOW()');
+    values.push(id);
+
+    await db.query(`UPDATE work_orders SET ${fields.join(', ')} WHERE id = ?`, values);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update Work Order Status
+app.put('/api/production/work-orders/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    let extraSet = '';
+    const params: any[] = [status];
+
+    if (status === 'In Progress') {
+      extraSet = ', actualStartDate = IFNULL(actualStartDate, NOW())';
+    } else if (status === 'Completed') {
+      extraSet = ', completedDate = NOW()';
+    }
+    params.push(id);
+
+    await db.query(`UPDATE work_orders SET status = ?, updatedAt = NOW() ${extraSet} WHERE id = ?`, params);
+    res.json({ success: true, status });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete Work Order
 app.delete('/api/production/work-orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    await db.query('DELETE FROM qc_inspections WHERE workOrderId = ?', [id]);
+    await db.query('DELETE FROM rework_logs WHERE workOrderId = ?', [id]);
     await db.query('DELETE FROM work_order_operations WHERE workOrderId = ?', [id]);
     await db.query('DELETE FROM work_orders WHERE id = ?', [id]);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Update Work Order Attachments
 app.patch('/api/production/work-orders/:id/attachments', async (req, res) => {
   try {
     const { attachments } = req.body;
-    await db.query('UPDATE work_orders SET attachments = ? WHERE id = ?', [JSON.stringify(attachments), req.params.id]);
+    await db.query('UPDATE work_orders SET attachments = ?, updatedAt = NOW() WHERE id = ?', [JSON.stringify(attachments), req.params.id]);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// DIRECT MATERIAL ISSUE TO WORK ORDER
+app.post('/api/production/work-orders/:id/issue-material', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { inventoryId, materialName, qty, unit, unitCost, notes, user } = req.body;
+
+    const issueQty = Math.max(0.01, Number(qty || 1));
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    let invItem: any = null;
+    let effectiveCost = Number(unitCost || 0);
+
+    if (inventoryId) {
+      const [invRows]: any = await db.query('SELECT * FROM inventory WHERE id = ?', [inventoryId]);
+      if (invRows && invRows.length > 0) {
+        invItem = invRows[0];
+        if (!effectiveCost) effectiveCost = Number(invItem.unitCost || 0);
+        // Decrement stock
+        await db.query('UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE id = ?', [issueQty, inventoryId]);
+      }
+    }
+
+    const totalCost = Number((issueQty * effectiveCost).toFixed(2));
+    const ledgerId = 'LGR-' + Date.now().toString().slice(-6);
+
+    await db.query(
+      `INSERT INTO stock_ledger (id, inventoryId, date, type, qty, unitCost, totalCost, balance, reference, notes, user) 
+       VALUES (?, ?, ?, 'OUT', ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        ledgerId,
+        inventoryId || null,
+        now,
+        issueQty,
+        effectiveCost,
+        totalCost,
+        invItem ? Math.max(0, invItem.quantity - issueQty) : 0,
+        id,
+        notes || `Direct Material Issue for Job #${id}: ${materialName || invItem?.name || 'Raw Material'} (${issueQty} ${unit || invItem?.uom || 'pcs'})`,
+        user || 'Workshop Storekeeper'
+      ]
+    );
+
+    res.json({
+      success: true,
+      ledgerId,
+      materialName: materialName || invItem?.name,
+      issuedQty: issueQty,
+      unitCost: effectiveCost,
+      totalCost,
+      message: `Successfully issued ${issueQty} ${unit || 'units'} of ${materialName || invItem?.name} for Job #${id}.`
+    });
+  } catch (error: any) {
+    console.error('Error issuing material to work order:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET ISSUED MATERIALS FOR WORK ORDER
+app.get('/api/production/work-orders/:id/materials', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [materials]: any = await db.query(
+      `SELECT sl.*, i.name as itemName, i.sku as itemSku, i.uom as itemUom, i.unitCost as defaultUnitCost 
+       FROM stock_ledger sl 
+       LEFT JOIN inventory i ON sl.inventoryId = i.id 
+       WHERE sl.type = 'OUT' AND (sl.reference = ? OR sl.reference LIKE ?) 
+       ORDER BY sl.date DESC`,
+      [id, `%${id}%`]
+    );
+    res.json(materials || []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ADD OPERATION STEP TO WORK ORDER
+app.post('/api/production/work-orders/:id/operations', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { operationName, machineId, employeeId, plannedHours, hourlyLaborRate, hourlyMachineRate, notes } = req.body;
+
+    const [existingOps]: any = await db.query('SELECT MAX(stepNumber) as maxStep FROM work_order_operations WHERE workOrderId = ?', [id]);
+    const nextStep = (existingOps[0]?.maxStep || 0) + 1;
+    const opId = 'OP-' + Date.now().toString().slice(-4) + '-' + nextStep;
+
+    await db.query(
+      `INSERT INTO work_order_operations 
+       (id, workOrderId, stepNumber, operationName, machineId, employeeId, plannedHours, actualHours, status, hourlyLaborRate, hourlyMachineRate, notes) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Pending', ?, ?, ?)`,
+      [
+        opId, id, nextStep, operationName, machineId || null, employeeId || null,
+        Number(plannedHours || 1), Number(hourlyLaborRate || 750), Number(hourlyMachineRate || 1200), notes || null
+      ]
+    );
+
+    res.json({ success: true, id: opId, stepNumber: nextStep });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// UPDATE OPERATION DETAILS
+app.put('/api/production/operations/:id', async (req, res) => {
+  try {
+    const { operationName, machineId, employeeId, plannedHours, actualHours, hourlyLaborRate, hourlyMachineRate, notes } = req.body;
+    const fields: string[] = [];
+    const params: any[] = [];
+
+    if (operationName !== undefined) { fields.push('operationName=?'); params.push(operationName); }
+    if (machineId !== undefined) { fields.push('machineId=?'); params.push(machineId || null); }
+    if (employeeId !== undefined) { fields.push('employeeId=?'); params.push(employeeId || null); }
+    if (plannedHours !== undefined) { fields.push('plannedHours=?'); params.push(Number(plannedHours)); }
+    if (actualHours !== undefined) { fields.push('actualHours=?'); params.push(Number(actualHours)); }
+    if (hourlyLaborRate !== undefined) { fields.push('hourlyLaborRate=?'); params.push(Number(hourlyLaborRate)); }
+    if (hourlyMachineRate !== undefined) { fields.push('hourlyMachineRate=?'); params.push(Number(hourlyMachineRate)); }
+    if (notes !== undefined) { fields.push('notes=?'); params.push(notes || null); }
+
+    if (fields.length > 0) {
+      params.push(req.params.id);
+      await db.query(`UPDATE work_order_operations SET ${fields.join(', ')} WHERE id=?`, params);
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE OPERATION
+app.delete('/api/production/operations/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM work_order_operations WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ASSIGN OPERATION
 app.put('/api/production/operations/:id/assign', async (req, res) => {
   try {
     const { employeeId, machineId, scheduledStart, scheduledEnd, isLocked } = req.body;
     
-    const toMysqlDt = (iso) => {
+    const toMysqlDt = (iso: string) => {
       if (!iso) return null;
       const d = new Date(iso);
-      const pad = (n) => n.toString().padStart(2, '0');
+      const pad = (n: number) => n.toString().padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
     };
 
     let query = 'UPDATE work_order_operations SET employeeId=?, machineId=?';
-    let params = [employeeId || null, machineId || null];
+    let params: any[] = [employeeId || null, machineId || null];
     
     if (scheduledStart !== undefined) {
       query += ', scheduledStart=?, scheduledEnd=?';
@@ -5679,56 +6100,304 @@ app.put('/api/production/operations/:id/assign', async (req, res) => {
     
     await db.query(query, params);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// OPERATION STATUS & LIVE TIMER (START / PAUSE / COMPLETE)
 app.put('/api/production/operations/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, actualHours } = req.body;
     const opId = req.params.id;
-    
+
+    // Fetch current operation
+    const [ops]: any = await db.query('SELECT * FROM work_order_operations WHERE id=?', [opId]);
+    if (!ops.length) return res.status(404).json({ error: 'Operation not found' });
+    const currentOp = ops[0];
+
     if (status === 'In Progress') {
-      await db.query('UPDATE work_order_operations SET status=?, startTime=NOW() WHERE id=?', [status, opId]);
+      // Start or Resume operation
+      await db.query(
+        'UPDATE work_order_operations SET status = ?, startTime = IFNULL(startTime, NOW()) WHERE id = ?',
+        [status, opId]
+      );
+      // Auto-update work order status to In Progress
+      if (currentOp.workOrderId) {
+        await db.query(
+          "UPDATE work_orders SET status = 'In Progress', actualStartDate = IFNULL(actualStartDate, NOW()), updatedAt = NOW() WHERE id = ? AND status IN ('Pending', 'Draft', 'Released')",
+          [currentOp.workOrderId]
+        );
+      }
+    } else if (status === 'Paused') {
+      // Pause operation: accumulate elapsed time
+      if (currentOp.startTime) {
+        await db.query(
+          `UPDATE work_order_operations 
+           SET status = 'Paused', 
+               actualHours = actualHours + TIMESTAMPDIFF(SECOND, startTime, NOW()) / 3600.0, 
+               startTime = NULL 
+           WHERE id = ?`,
+          [opId]
+        );
+      } else {
+        await db.query("UPDATE work_order_operations SET status = 'Paused' WHERE id = ?", [opId]);
+      }
     } else if (status === 'Completed' || status === 'QC Pending') {
-      // Calculate actual hours if startTime exists
-      await db.query('UPDATE work_order_operations SET status=?, endTime=NOW(), actualHours=TIMESTAMPDIFF(MINUTE, startTime, NOW())/60.0 WHERE id=?', [status, opId]);
+      // Finish operation: compute final elapsed time
+      if (currentOp.startTime) {
+        await db.query(
+          `UPDATE work_order_operations 
+           SET status = ?, 
+               actualHours = actualHours + TIMESTAMPDIFF(SECOND, startTime, NOW()) / 3600.0, 
+               endTime = NOW(), 
+               startTime = NULL 
+           WHERE id = ?`,
+          [status, opId]
+        );
+      } else {
+        await db.query('UPDATE work_order_operations SET status = ?, endTime = NOW() WHERE id = ?', [status, opId]);
+      }
     } else {
-      await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [status, opId]);
+      await db.query('UPDATE work_order_operations SET status = ? WHERE id = ?', [status, opId]);
     }
-    
-    res.json({ success: true });
-  } catch (error) {
+
+    // Direct actual hours override if supplied
+    if (actualHours !== undefined && Number(actualHours) >= 0) {
+      await db.query('UPDATE work_order_operations SET actualHours = ? WHERE id = ?', [Number(actualHours), opId]);
+    }
+
+    res.json({ success: true, status });
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// QUALITY CONTROL INSPECTION & AUTO-REWORK LOGGING
 app.post('/api/production/operations/:id/qc', async (req, res) => {
   try {
-    const { inspectedBy, status, defectReason, notes } = req.body;
-    const qcId = 'QC-' + Date.now().toString().slice(-4);
     const opId = req.params.id;
-    
+    const { inspectedBy, status, defectReason, notes, sampleQty, defectQty, severity } = req.body;
+    const qcId = 'QC-' + Date.now().toString().slice(-4);
+
+    const [ops]: any = await db.query('SELECT * FROM work_order_operations WHERE id=?', [opId]);
+    if (!ops.length) return res.status(404).json({ error: 'Operation not found' });
+    const op = ops[0];
+    const woId = op.workOrderId;
+
     await db.query(
-      'INSERT INTO qc_inspections (id, operationId, inspectedBy, status, defectReason, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [qcId, opId, inspectedBy, status, defectReason, notes]
+      `INSERT INTO qc_inspections 
+       (id, workOrderId, operationId, inspectedBy, status, defectReason, notes, sampleQty, defectQty, severity, createdAt) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        qcId, woId, opId, inspectedBy || 'QA Inspector', status, 
+        defectReason || null, notes || null, 
+        Number(sampleQty || 1), Number(defectQty || 0), severity || 'Normal'
+      ]
     );
-    
-    // Update operation status based on QC
-    const nextOpStatus = status === 'Pass' ? 'Completed' : 'Rework Required';
-    await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [nextOpStatus, opId]);
-    
-    if (status === 'Fail') {
-       // Log Rework
-       await db.query('INSERT INTO rework_logs (id, qcId, status) VALUES (?, ?, ?)', ['RWK-' + Date.now().toString().slice(-4), qcId, 'Pending']);
+
+    let nextOpStatus = 'Completed';
+    let rwkId = null;
+
+    if (status === 'Pass') {
+      nextOpStatus = 'Completed';
+      await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [nextOpStatus, opId]);
+    } else if (status === 'Fail' || status === 'Conditional' || status === 'Rework Required') {
+      nextOpStatus = 'Rework Required';
+      await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [nextOpStatus, opId]);
+      
+      // Update WO status to Rework
+      if (woId) {
+        await db.query("UPDATE work_orders SET status = 'Rework', updatedAt = NOW() WHERE id = ?", [woId]);
+      }
+
+      // Generate Rework Ticket
+      rwkId = 'RWK-' + Date.now().toString().slice(-5);
+      await db.query(
+        `INSERT INTO rework_logs 
+         (id, workOrderId, qcId, operationId, defectCategory, reason, status, assignedEmployeeId, machineId, hours, cost, createdAt) 
+         VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?, ?, 0.00, 0.00, NOW())`,
+        [
+          rwkId, woId, qcId, opId, 
+          defectReason || 'Out of tolerance', 
+          notes || `QC Inspection failed on ${op.operationName}: ${defectReason}`,
+          op.employeeId || null, op.machineId || null
+        ]
+      );
+    } else if (status === 'Scrap') {
+      nextOpStatus = 'Scrapped';
+      await db.query('UPDATE work_order_operations SET status=? WHERE id=?', [nextOpStatus, opId]);
+      // Increment scrap count on work order
+      if (woId) {
+        await db.query('UPDATE work_orders SET scrapQty = scrapQty + ?, updatedAt = NOW() WHERE id = ?', [Math.max(1, Number(defectQty || 1)), woId]);
+      }
     }
-    
-    res.json({ success: true, qcId });
-  } catch (error) {
+
+    res.json({ success: true, qcId, reworkId: rwkId, nextOpStatus });
+  } catch (error: any) {
+    console.error('Error recording QC inspection:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
+// GET REWORK LOGS (ALL OR FILTERED BY WO)
+app.get('/api/production/rework-logs', async (req, res) => {
+  try {
+    const { workOrderId } = req.query;
+    let query = `
+      SELECT rl.*, wo.title as workOrderTitle, wo.orderNo as workOrderNo, 
+             op.operationName, e.name as assignedEmployeeName, m.name as machineName
+      FROM rework_logs rl 
+      LEFT JOIN work_orders wo ON rl.workOrderId = wo.id 
+      LEFT JOIN work_order_operations op ON rl.operationId = op.id 
+      LEFT JOIN employees e ON rl.assignedEmployeeId = e.id 
+      LEFT JOIN machineries m ON rl.machineId = m.id
+    `;
+    const params: any[] = [];
+    if (workOrderId) {
+      query += ' WHERE rl.workOrderId = ?';
+      params.push(workOrderId);
+    }
+    query += ' ORDER BY rl.createdAt DESC';
+
+    const [rows]: any = await db.query(query, params);
+    res.json(rows || []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// UPDATE REWORK LOG (ACTION TAKEN, HOURS, COST, RESOLUTION)
+app.put('/api/production/rework-logs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, actionTaken, assignedEmployeeId, machineId, hours, cost, notes, resolvedBy } = req.body;
+
+    const fields: string[] = [];
+    const params: any[] = [];
+
+    if (status !== undefined) { 
+      fields.push('status = ?'); 
+      params.push(status);
+      if (status === 'Resolved') {
+        fields.push('resolvedAt = NOW()');
+        fields.push('resolvedBy = ?');
+        params.push(resolvedBy || 'QA Supervisor');
+      }
+    }
+    if (actionTaken !== undefined) { fields.push('actionTaken = ?'); params.push(actionTaken); }
+    if (assignedEmployeeId !== undefined) { fields.push('assignedEmployeeId = ?'); params.push(assignedEmployeeId || null); }
+    if (machineId !== undefined) { fields.push('machineId = ?'); params.push(machineId || null); }
+    if (hours !== undefined) { fields.push('hours = ?'); params.push(Number(hours)); }
+    if (cost !== undefined) { fields.push('cost = ?'); params.push(Number(cost)); }
+    if (notes !== undefined) { fields.push('notes = ?'); params.push(notes || null); }
+
+    if (fields.length > 0) {
+      params.push(id);
+      await db.query(`UPDATE rework_logs SET ${fields.join(', ')} WHERE id = ?`, params);
+    }
+
+    // If resolved, check if operation can be sent back to QC or Completed
+    if (status === 'Resolved') {
+      const [rwkRows]: any = await db.query('SELECT operationId, workOrderId FROM rework_logs WHERE id = ?', [id]);
+      if (rwkRows && rwkRows[0]) {
+        const { operationId, workOrderId } = rwkRows[0];
+        if (operationId) {
+          await db.query("UPDATE work_order_operations SET status = 'QC Pending' WHERE id = ?", [operationId]);
+        }
+        if (workOrderId) {
+          // Check if any other pending reworks exist for this WO
+          const [pending]: any = await db.query("SELECT id FROM rework_logs WHERE workOrderId = ? AND status != 'Resolved'", [workOrderId]);
+          if (!pending.length) {
+            await db.query("UPDATE work_orders SET status = 'In Progress', updatedAt = NOW() WHERE id = ?", [workOrderId]);
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Rework log updated successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// COMPLETE WORK ORDER & FINANCIAL SIGN-OFF
+app.post('/api/production/work-orders/:id/complete', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { completedQty, scrapQty, notes, finalHandoverLocation } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    // Mark all operations as Completed if not already
+    await db.query("UPDATE work_order_operations SET status = 'Completed', endTime = IFNULL(endTime, NOW()) WHERE workOrderId = ? AND status != 'Completed'", [id]);
+
+    // Final financial rollup calculation
+    const [ledger]: any = await db.query("SELECT SUM(totalCost) as matCost FROM stock_ledger WHERE type='OUT' AND reference = ?", [id]);
+    const matCost = Number(ledger[0]?.matCost || 0);
+
+    const [ops]: any = await db.query(
+      `SELECT SUM(actualHours * hourlyLaborRate) as labCost, 
+              SUM(actualHours * hourlyMachineRate) as machCost 
+       FROM work_order_operations WHERE workOrderId = ?`,
+      [id]
+    );
+    const labCost = Number(ops[0]?.labCost || 0);
+    const machCost = Number(ops[0]?.machCost || 0);
+
+    const [rwk]: any = await db.query("SELECT SUM(cost + (hours * 800)) as rwkCost FROM rework_logs WHERE workOrderId = ?", [id]);
+    const rwkCost = Number(rwk[0]?.rwkCost || 0);
+
+    const overheadPct = Number(wo.overheadPct || 15);
+    const overheadCost = (labCost + machCost) * (overheadPct / 100);
+    const finalTotal = matCost + labCost + machCost + rwkCost + overheadCost;
+
+    const goodQty = completedQty !== undefined ? Number(completedQty) : Number(wo.jobQty || 1);
+    const badQty = scrapQty !== undefined ? Number(scrapQty) : Number(wo.scrapQty || 0);
+
+    await db.query(
+      `UPDATE work_orders 
+       SET status = 'Completed', 
+           completedDate = NOW(), 
+           completedQty = ?, 
+           scrapQty = ?, 
+           actualMaterialCost = ?, 
+           actualLaborCost = ?, 
+           actualMachineCost = ?, 
+           actualReworkCost = ?, 
+           actualTotalCost = ?, 
+           notes = CONCAT(IFNULL(notes, ''), ?), 
+           updatedAt = NOW() 
+       WHERE id = ?`,
+      [
+        goodQty, badQty, matCost, labCost, machCost, rwkCost, finalTotal,
+        notes ? ` | Completion: ${notes}` : '', id
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: `Work Order #${id} completed and signed off. Final costing rollup calculated.`,
+      summary: {
+        completedQty: goodQty,
+        scrapQty: badQty,
+        actualMaterialCost: matCost,
+        actualLaborCost: labCost,
+        actualMachineCost: machCost,
+        actualReworkCost: rwkCost,
+        overheadCost,
+        actualTotalCost: finalTotal
+      }
+    });
+  } catch (error: any) {
+    console.error('Error completing work order:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 // GLOBAL SEARCH API
 // ==========================

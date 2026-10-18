@@ -75,6 +75,7 @@ interface LinearStockCutStudioProps {
   onRefreshInventory?: () => void
   showToast?: (type: any, title: string, message?: string) => void
   initialInventoryId?: string
+  initialJobRef?: string
   onBackToInventory?: () => void
 }
 
@@ -83,6 +84,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
   onRefreshInventory,
   showToast = () => {},
   initialInventoryId,
+  initialJobRef,
   onBackToInventory
 }) => {
   // 1. Data Hooks
@@ -184,8 +186,15 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
   const [sawKerf, setSawKerf] = useState<number>(0.01) // blade kerf (~1/8" in ft)
 
   // STRICT REQUIREMENT: Job Number / Work Order # is strictly mandatory for Material Issue!
-  const [jobRef, setJobRef] = useState<string>('')
-  const [manualJobMode, setManualJobMode] = useState<boolean>(false)
+  const [jobRef, setJobRef] = useState<string>(initialJobRef || '')
+  const [manualJobMode, setManualJobMode] = useState<boolean>(!!initialJobRef)
+
+  useEffect(() => {
+    if (initialJobRef) {
+      setJobRef(initialJobRef)
+      setManualJobMode(true)
+    }
+  }, [initialJobRef])
 
   const [selectedSourceType, setSelectedSourceType] = useState<'remnant' | 'full_bar'>('remnant')
   const [selectedRemnantId, setSelectedRemnantId] = useState<string>('')

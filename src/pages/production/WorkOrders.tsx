@@ -1,2035 +1,658 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
-  Download, Plus, Play, CheckCircle, AlertTriangle, Settings, Layers, 
-  Trash2, Users, ArrowUp, ArrowDown, Tag, Calculator, Package, Wrench, 
-  ListChecks, ClipboardList, ChevronRight, Clock, Zap, TrendingUp, Archive, 
-  Image as ImageIcon, Filter, UserCheck, UserX, AlertCircle, BarChart2,
-  GitPullRequest, ExternalLink, CheckCircle2, ArrowRight
+  Factory, Plus, Search, Filter, Layers, Wrench, Clock, CheckCircle2, 
+  AlertTriangle, RotateCcw, DollarSign, Package, ClipboardList, Play, 
+  Scissors, ExternalLink, Trash2, Kanban, List, Calendar, Building, 
+  RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Eye, Sparkles
 } from 'lucide-react'
-import { createMR, fetchMRs } from '@/lib/api'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
+import { formatCurrency } from '@/lib/utils'
+import { fetchWorkOrders, deleteWorkOrder } from '@/lib/api'
+import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
+import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 
-type PlannerTab = 'details' | 'bom' | 'routing' | 'machineworks'
-type TrackTab = 'overview' | 'stores' | 'operations' | 'drawings'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
-const TABS: { id: PlannerTab; label: string }[] = [
-  { id: 'details',      label: 'Job Details' },
-  { id: 'bom',          label: 'Bill of Materials' },
-  { id: 'routing',      label: 'Operations & Routing' },
-  { id: 'machineworks', label: 'Machine Works' },
-]
-
-const TAB_ICONS: Record<PlannerTab, React.ReactNode> = {
-  details:      <ClipboardList size={14}/>,
-  bom:          <Package size={14}/>,
-  routing:      <Layers size={14}/>,
-  machineworks: <Wrench size={14}/>,
-}
+type StatusFilter = 'all' | 'planned' | 'in_progress' | 'qc_rework' | 'completed'
 
 export const WorkOrders: React.FC = () => {
-  const navigate = useNavigate();
+  const navigate = useNavigate()
+
+  // Data State
   const [workOrders, setWorkOrders] = useState<any[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [machineries, setMachineries] = useState<any[]>([])
-  const [quotations, setQuotations] = useState<any[]>([])
   const [inventory, setInventory] = useState<any[]>([])
-  const [materialRequests, setMaterialRequests] = useState<any[]>([])
+  const [customers, setCustomers] = useState<any[]>([])
+  const [quotations, setQuotations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Filter & Search State
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [priorityFilter, setPriorityFilter] = useState<string>('all')
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
 
-  const [showModal, setShowModal] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [errorModal, setErrorModal] = useState<string | null>(null);
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
-  const [inspectorOp, setInspectorOp] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<PlannerTab>('details')
-  const [viewMode, setViewMode] = useState<'dashboard'|'planning'>('dashboard')
-  const [planningFilter, setPlanningFilter] = useState<'all'|'pending'|'in_progress'>('all')
+  // Modals
+  const [activeStudioWO, setActiveStudioWO] = useState<any>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [deleteWoId, setDeleteWoId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
-  const [newWO, setNewWO] = useState<{ title: string; customerId: string; priority: string; deadline: string; notes: string; sourceQuoteId: string; jobQty: number; docNo: string; subject: string; attachments: any[] }>({
-    title: '', customerId: '', priority: 'Normal', deadline: '',
-    notes: '', sourceQuoteId: '', jobQty: 1, docNo: '', subject: '', attachments: []
-  })
-  const [bomRows, setBomRows] = useState<any[]>([{ material: '', qty: 1, unit: 'pcs', unitCost: 0, notes: '' }])
-  const [autoPromptMr, setAutoPromptMr] = useState(true)
-  const [operations, setOperations] = useState<any[]>([{ operationName: '', machineId: '', employeeId: '', plannedHours: 1, notes: '' }])
-  const [machineWorks, setMachineWorks] = useState<any[]>([])
-  const [quoteData, setQuoteData] = useState<any>(null)
-
-  const [trackWO, setTrackWO] = useState<any>(null)
-  const [trackTab, setTrackTab] = useState<TrackTab>('overview')
-  const [accId, setAccId] = useState('')
-  const [accQty, setAccQty] = useState(1)
-  const [accSearch, setAccSearch] = useState('')
-  const [accOpen, setAccOpen] = useState(false)
-  const [dispatchedHistory, setDispatchedHistory] = useState<any[]>([])
-  const [showQcModal, setShowQcModal] = useState<any>(null)
-
-  // MR Generation Modal State
-  interface MrGenItem {
-    selected: boolean;
-    material: string;
-    requiredQty: number;
-    availableStock: number;
-    requestQty: number;
-    unit: string;
-    unitCost: number;
-    inventoryId: string;
-    notes: string;
-  }
-  const [mrGenModal, setMrGenModal] = useState<{
-    isOpen: boolean;
-    woId: string;
-    woTitle: string;
-    priority: string;
-    deadline: string;
-    items: MrGenItem[];
-    requiredDate: string;
-    requestedBy: string;
-    notes: string;
-  } | null>(null);
-  const [isGeneratingMr, setIsGeneratingMr] = useState(false);
-  const [generatedMrSuccess, setGeneratedMrSuccess] = useState<{ id: string; itemCount: number; woId: string } | null>(null);
-
-  const API = `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
-
-  // Inventory Matching & BOM Stock Analysis Helpers
-  const matchInventoryItem = (materialName: string) => {
-    if (!materialName || !inventory || inventory.length === 0) return null;
-    const nameNorm = materialName.trim().toLowerCase();
-    
-    // 1. Exact match on name
-    let found = inventory.find((i: any) => i.name && i.name.trim().toLowerCase() === nameNorm);
-    if (found) return found;
-
-    // 2. Exact match on sku
-    found = inventory.find((i: any) => i.sku && i.sku.trim().toLowerCase() === nameNorm);
-    if (found) return found;
-
-    // 3. Substring match
-    if (nameNorm.length >= 3) {
-      found = inventory.find((i: any) => i.name && (i.name.toLowerCase().includes(nameNorm) || nameNorm.includes(i.name.toLowerCase())));
-      if (found) return found;
-    }
-    return null;
-  };
-
-  const analyzeBomStock = (bomList: any[]) => {
-    if (!Array.isArray(bomList)) return [];
-    return bomList.map((item: any, idx: number) => {
-      const inv = matchInventoryItem(item.material);
-      const availableStock = inv ? Number(inv.quantity) || 0 : 0;
-      const requiredQty = Number(item.qty) || 0;
-      const shortageQty = Math.max(0, requiredQty - availableStock);
-      const unit = item.unit || inv?.uom || 'pcs';
-      const unitCost = Number(item.unitCost) || Number(inv?.unitCost) || 0;
-      const isFullyInStock = availableStock >= requiredQty && requiredQty > 0;
-      const isPartialStock = availableStock > 0 && availableStock < requiredQty;
-
-      return {
-        index: idx,
-        material: item.material,
-        notes: item.notes || '',
-        requiredQty,
-        availableStock,
-        shortageQty,
-        unit,
-        unitCost,
-        inventoryId: inv ? inv.id : '',
-        isMatched: !!inv,
-        status: isFullyInStock ? 'in_stock' : isPartialStock ? 'partial' : 'out_of_stock'
-      };
-    });
-  };
-
-  const getLinkedMRs = (woId: string) => {
-    if (!woId || !Array.isArray(materialRequests)) return [];
-    return materialRequests.filter((mr: any) => {
-      if (mr.workOrderNo === woId) return true;
-      if (Array.isArray(mr.workOrderNos) && mr.workOrderNos.includes(woId)) return true;
-      if (typeof mr.workOrderNos === 'string') {
-        try {
-          const parsed = JSON.parse(mr.workOrderNos);
-          if (Array.isArray(parsed) && parsed.includes(woId)) return true;
-        } catch (e) {}
-      }
-      if (mr.items) {
-        try {
-          const parsedItems = typeof mr.items === 'string' ? JSON.parse(mr.items) : mr.items;
-          if (Array.isArray(parsedItems) && parsedItems.some((it: any) => Array.isArray(it.workOrderNos) && it.workOrderNos.includes(woId))) {
-            return true;
-          }
-        } catch (e) {}
-      }
-      return false;
-    });
-  };
-
-  const openMrGeneratorForWO = (wo: any) => {
-    let bomList: any[] = [];
-    try {
-      if (typeof wo.bom === 'string') {
-        bomList = JSON.parse(wo.bom || '[]');
-      } else if (Array.isArray(wo.bom)) {
-        bomList = wo.bom;
-      }
-    } catch (e) {
-      bomList = [];
-    }
-
-    const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
-    if (validBom.length === 0) {
-      setErrorModal(`Work Order ${wo.id} does not have any Bill of Materials (BOM) items.`);
-      return;
-    }
-
-    const analysis = analyzeBomStock(validBom);
-    const hasAnyShortage = analysis.some(a => a.shortageQty > 0);
-    const genItems: MrGenItem[] = analysis.map(a => ({
-      selected: hasAnyShortage ? a.shortageQty > 0 : true,
-      material: a.material,
-      requiredQty: a.requiredQty,
-      availableStock: a.availableStock,
-      requestQty: a.shortageQty > 0 ? a.shortageQty : a.requiredQty,
-      unit: a.unit,
-      unitCost: a.unitCost,
-      inventoryId: a.inventoryId,
-      notes: a.notes || `For Work Order ${wo.id}`
-    }));
-
-    setMrGenModal({
-      isOpen: true,
-      woId: wo.id,
-      woTitle: wo.title,
-      priority: wo.priority || 'Normal',
-      deadline: wo.deadline ? wo.deadline.split('T')[0] : '',
-      requiredDate: wo.deadline ? wo.deadline.split('T')[0] : new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-      requestedBy: 'Production Planning',
-      notes: `Generated from Work Order ${wo.id} BOM shortage.`,
-      items: genItems
-    });
-  };
-
-  const handleConfirmGenerateMR = async () => {
-    if (!mrGenModal) return;
-    const selectedItems = mrGenModal.items.filter(it => it.selected && Number(it.requestQty) > 0);
-    if (selectedItems.length === 0) {
-      alert('Please select at least one material item with a quantity greater than 0.');
-      return;
-    }
-
-    setIsGeneratingMr(true);
-    try {
-      let nextNum = 1001;
-      if (materialRequests.length > 0) {
-        const numbers = materialRequests
-          .map(m => parseInt((m.id || '').replace(/\D/g, ''), 10))
-          .filter(n => !isNaN(n));
-        if (numbers.length > 0) nextNum = Math.max(...numbers) + 1;
-      }
-      const newMrId = `MR-${nextNum}`;
-
-      const mrItems = selectedItems.map((it, idx) => ({
-        id: `mri_${Date.now()}_${idx}`,
-        inventoryId: it.inventoryId || '',
-        desc: it.material,
-        qty: Number(it.requestQty),
-        uom: it.unit || 'pcs',
-        unitCost: Number(it.unitCost) || 0,
-        workOrderNos: [mrGenModal.woId]
-      }));
-
-      const payload = {
-        id: newMrId,
-        date: new Date().toISOString().split('T')[0],
-        requiredDate: mrGenModal.requiredDate,
-        requestedBy: mrGenModal.requestedBy,
-        department: 'Production',
-        priority: mrGenModal.priority,
-        status: 'pending',
-        poId: null,
-        poIds: JSON.stringify([]),
-        workOrderNo: mrGenModal.woId,
-        workOrderNos: JSON.stringify([mrGenModal.woId]),
-        items: mrItems,
-        notes: mrGenModal.notes
-      };
-
-      const res = await createMR(payload);
-      if (res && res.error) {
-        alert(`Error creating Material Request: ${res.error}`);
-        return;
-      }
-
-      setGeneratedMrSuccess({ id: newMrId, itemCount: selectedItems.length, woId: mrGenModal.woId });
-      setMrGenModal(null);
-      fetchData();
-    } catch (err: any) {
-      console.error(err);
-      alert('Failed to generate Material Request: ' + (err.message || err));
-    } finally {
-      setIsGeneratingMr(false);
-    }
-  };
-
-  const fetchData = async () => {
+  // Fetch all primary datasets
+  const loadAllData = async () => {
     setLoading(true)
     try {
-      const [woRes, empRes, machRes, quoRes, invRes, mrRes] = await Promise.all([
-        fetch(API + '/production/work-orders').then(r => r.json()),
-        fetch(API + '/hr/employees').then(r => r.json()),
-        fetch(API + '/production/machineries').then(r => r.json()),
-        fetch(API + '/quotations').then(r => r.json()),
-        fetch(API + '/inventory').then(r => r.json()),
-        fetch(API + '/purchasing/mrs').then(r => r.json()).catch(() => [])
+      const [wos, emps, machs, invs, custs, quotes] = await Promise.all([
+        fetchWorkOrders().catch(() => []),
+        fetch(`${API_URL}/hr/employees`).then(r => r.json()).catch(() => []),
+        fetch(`${API_URL}/production/machineries`).then(r => r.json()).catch(() => []),
+        fetch(`${API_URL}/inventory`).then(r => r.json()).catch(() => []),
+        fetch(`${API_URL}/customers`).then(r => r.json()).catch(() => []),
+        fetch(`${API_URL}/quotations`).then(r => r.json()).catch(() => [])
       ])
-      setWorkOrders(Array.isArray(woRes) ? woRes : [])
-      setEmployees(Array.isArray(empRes) ? empRes : [])
-      setMachineries(Array.isArray(machRes) ? machRes : [])
-      setQuotations(Array.isArray(quoRes) ? quoRes.map(q => {
-        let snap = {};
-        try { snap = JSON.parse(q.data || '{}'); } catch(e){}
-        return { ...q, snapshot: snap };
-      }) : [])
-      setInventory(Array.isArray(invRes) ? invRes : [])
-      setMaterialRequests(Array.isArray(mrRes) ? mrRes : [])
-    } catch (e) { console.error(e) }
-    finally { setLoading(false) }
-  }
 
-  useEffect(() => { fetchData() }, [])
+      setWorkOrders(Array.isArray(wos) ? wos : [])
+      setEmployees(Array.isArray(emps) ? emps : [])
+      setMachineries(Array.isArray(machs) ? machs : [])
+      setInventory(Array.isArray(invs) ? invs : [])
+      setCustomers(Array.isArray(custs) ? custs : [])
+      setQuotations(Array.isArray(quotes) ? quotes : [])
 
-  const handleApplyQuotation = (qId: string) => {
-    setNewWO(prev => ({ ...prev, sourceQuoteId: qId }))
-    if (!qId) { setQuoteData(null); setMachineWorks([]); return }
-    const q = quotations.find(x => x.id === qId)
-    if (!q) return
-    setQuoteData(q)
-    setNewWO(prev => ({
-      ...prev,
-      title: q.snapshot?.subject || q.id,
-      customerId: q.leadId || '',
-      docNo: q.snapshot?.docNo || '',
-      jobQty: q.snapshot?.jobQty || 1,
-      attachments: q.snapshot?.attachments || [],
-      notes: q.snapshot?.jobItems?.map((ji:any, i:number) => `${i+1}. ${ji.text}`).join('\n') || ('Imported from quotation ' + q.id)
-    }))
-    const newBom: any[] = []
-    if (q.snapshot?.autoMats?.length) q.snapshot.autoMats.forEach((m: any) => newBom.push({ material: m.material||m.name||'', qty: 1, unit: 'pcs', unitCost: m.platePrice||m.shaftPrice||m.unitPrice||m.cost||0, notes: m.supplier||m.notes||'' }))
-    if (q.snapshot?.manualMats?.length) q.snapshot.manualMats.forEach((m: any) => newBom.push({ material: m.material||m.name||'', qty: m.qty||1, unit: m.priceMode||m.unit||'pcs', unitCost: m.unitPrice||m.cost||0, notes: m.supplier||m.notes||'' }))
-    if (newBom.length) setBomRows(newBom)
-    const ws: any[] = []
-    if (q.snapshot?.procState) {
-      Object.keys(q.snapshot.procState).forEach(proc => {
-        const p = q.snapshot.procState[proc]
-        const estHr = parseFloat(p.estHr || '0')
-        const quoHr = parseFloat(p.quoHr || '0')
-        if (estHr > 0 || quoHr > 0) ws.push({ process: proc, estHours: estHr, quoHours: quoHr, rate: p.rate||0, setTime: p.setTime||'' })
-      })
+      // Update active studio WO if one is currently open
+      if (activeStudioWO) {
+        const refreshed = (wos as any[]).find((w: any) => w.id === activeStudioWO.id)
+        if (refreshed) setActiveStudioWO(refreshed)
+      }
+    } catch (err) {
+      console.error('Failed to load production data:', err)
+    } finally {
+      setLoading(false)
     }
-    setMachineWorks(ws)
-    if (ws.length > 0) setOperations(ws.map(w => { const mm = machineries.find(m => m.name.toLowerCase().includes(w.process.toLowerCase()) || m.type.toLowerCase().includes(w.process.toLowerCase())); return { operationName: w.process, machineId: mm ? mm.id : '', employeeId: '', plannedHours: w.estHours || w.quoHours || 1, notes: 'Rate: LKR ' + w.rate + '/hr' } }))
   }
 
-  const resetForm = () => {
-    setNewWO({ title:'', customerId:'', priority:'Normal', deadline:'', notes:'', sourceQuoteId:'', jobQty:1, docNo:'', subject:'', attachments:[] })
-    setBomRows([{ material:'', qty:1, unit:'pcs', unitCost:0, notes:'' }])
-    setOperations([{ operationName:'', machineId:'', employeeId:'', plannedHours:1, notes:'' }])
-    setMachineWorks([]); setQuoteData(null); setActiveTab('details')
-  }
+  useEffect(() => {
+    loadAllData()
+  }, [])
 
-  const moveOp = (i: number, dir: 'up'|'down') => {
-    const o = [...operations]; const ti = dir === 'up' ? i-1 : i+1
-    if (ti < 0 || ti >= o.length) return
-    ;[o[i], o[ti]] = [o[ti], o[i]]; setOperations(o)
-  }
-
-  const totalEstHours = operations.reduce((s, o) => s + (parseFloat(o.plannedHours)||0), 0)
-  const totalEstMach = operations.reduce((s, op) => { const m = machineries.find(m => m.id === op.machineId); return s + (parseFloat(op.plannedHours)||0) * (m ? parseFloat(m.hourlyCost||0) : 0) }, 0)
-  const totalBomCost = bomRows.reduce((s, r) => s + (parseFloat(r.qty)||0)*(parseFloat(r.unitCost)||0), 0)
-  const grandTotal = totalEstMach + totalBomCost
-
-  
-  const handleDeleteWO = (id: string) => {
-    setDeleteConfirmModal(id);
-  };
-  
-  const executeDeleteWO = async () => {
-    if (!deleteConfirmModal) return;
-    await fetch(API + '/production/work-orders/' + deleteConfirmModal, { method: 'DELETE' });
-    setDeleteConfirmModal(null);
-    fetchData();
-  };
-
-  const handleSaveWO = async (e: React.FormEvent) => {
-    e.preventDefault(); setSubmitting(true)
+  // Delete Work Order Handler
+  const handleDeleteConfirm = async () => {
+    if (!deleteWoId) return
     try {
-      const res = await fetch(API + '/production/work-orders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...newWO, operations, bom: bomRows, totalEstimatedCost: grandTotal }) });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.error === 'DUPLICATE') {
-           setErrorModal(data.message);
-        } else {
-           setErrorModal(data.error || 'Failed to create work order');
-        }
-        return;
-      }
-      
-      const createdWoId = data.id;
-      const validBom = bomRows.filter(r => r.material && r.material.trim() && Number(r.qty) > 0);
-      const shouldPromptMr = autoPromptMr && validBom.length > 0;
-      const analysis = shouldPromptMr ? analyzeBomStock(validBom) : [];
-      const hasShortage = analysis.some(a => a.shortageQty > 0);
-
-      setShowModal(false); 
-      resetForm(); 
-      await fetchData();
-
-      if (shouldPromptMr && hasShortage) {
-        openMrGeneratorForWO({
-          id: createdWoId,
-          title: newWO.title || createdWoId,
-          priority: newWO.priority,
-          deadline: newWO.deadline,
-          bom: validBom
-        });
-      }
-    } catch (err) { console.error(err) }
-    finally { setSubmitting(false) }
-  }
-
-  const openTrackModal = async (row: any) => {
-    setTrackWO(row); setTrackTab('overview'); setAccId(''); setAccSearch(''); setAccQty(1)
-    try { const history = await fetch(API + '/inventory/ledger/wo/' + row.id).then(r => r.json()); setDispatchedHistory(Array.isArray(history) ? history : []) } catch(e) {}
-  }
-
-  const refreshTrackWO = async () => {
-    fetchData()
-    if (trackWO) { const u = await fetch(API + '/production/work-orders').then(r => r.json()); const fresh = u.find((w: any) => w.id === trackWO.id); if (fresh) setTrackWO(fresh) }
-  }
-
-  const refreshHistory = async () => {
-    if (!trackWO) return
-    try { const history = await fetch(API + '/inventory/ledger/wo/' + trackWO.id).then(r => r.json()); setDispatchedHistory(Array.isArray(history) ? history : []) } catch(e) {}
-  }
-
-  const handleUpdateOpStatus = async (opId: string, status: string) => {
-    await fetch(API + '/production/operations/' + opId + '/status', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) })
-    refreshTrackWO()
-  }
-
-  const handleAssignOperation = async (opId: string, field: 'employeeId'|'machineId', val: string, scheduledStart?: string, isLocked?: boolean) => {
-    let op = trackWO?.operations?.find((o:any) => o.id === opId);
-    if (!op) {
-      for (const wo of workOrders) {
-        if (wo.operations) {
-          const found = wo.operations.find((o:any) => o.id === opId);
-          if (found) { op = found; break; }
-        }
-      }
+      setDeleting(true)
+      await deleteWorkOrder(deleteWoId)
+      setDeleteWoId(null)
+      loadAllData()
+    } catch (err) {
+      console.error('Failed to delete work order:', err)
+    } finally {
+      setDeleting(false)
     }
-    if (!op) return;
+  }
 
-    const payload: any = {
-      employeeId: field === 'employeeId' ? val : op.employeeId,
-      machineId: field === 'machineId' ? val : op.machineId
-    };
-    if (isLocked !== undefined) payload.isLocked = isLocked;
+  // Filtered Work Orders
+  const filteredWorkOrders = useMemo(() => {
+    return workOrders.filter(wo => {
+      // 1. Search filter
+      const q = search.trim().toLowerCase()
+      const matchSearch = !q || 
+        (wo.title || '').toLowerCase().includes(q) ||
+        (wo.id || '').toLowerCase().includes(q) ||
+        (wo.orderNo || '').toLowerCase().includes(q) ||
+        (wo.customerName || '').toLowerCase().includes(q) ||
+        (wo.notes || '').toLowerCase().includes(q)
 
-    if (scheduledStart !== undefined) {
-      if (scheduledStart === '') {
-        payload.scheduledStart = null;
-        payload.scheduledEnd = null;
-      } else {
-        payload.scheduledStart = scheduledStart;
-        const d = new Date(scheduledStart);
-        d.setMinutes(d.getMinutes() + (Number(op.plannedHours) * 60));
-        payload.scheduledEnd = d.toISOString();
+      // 2. Status filter
+      let matchStatus = true
+      if (statusFilter === 'planned') {
+        matchStatus = wo.status === 'Draft' || wo.status === 'Pending' || wo.status === 'Released'
+      } else if (statusFilter === 'in_progress') {
+        matchStatus = wo.status === 'In Progress'
+      } else if (statusFilter === 'qc_rework') {
+        matchStatus = wo.status === 'QC Pending' || wo.status === 'Rework' || wo.status === 'Rework Required'
+      } else if (statusFilter === 'completed') {
+        matchStatus = wo.status === 'Completed' || wo.status === 'Closed'
       }
-    }
 
-    await fetch(API + '/production/operations/' + opId + '/assign', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    
-    fetchData(); // Refresh Gantt chart
-    if (trackWO) refreshTrackWO();
-  }
+      // 3. Priority filter
+      const matchPriority = priorityFilter === 'all' || (wo.priority || '').toLowerCase() === priorityFilter.toLowerCase()
 
-  const handleDispatchAccessory = async () => {
-    if (!accId || accQty <= 0) return
-    const invItem = inventory.find(i => i.id === accId)
-    if (!invItem) return
-    try {
-      await fetch(API + '/inventory/' + invItem.id + '/ledger', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ date: new Date().toISOString().split('T')[0], type: 'OUT', qty: accQty, reference: trackWO.id, notes: 'Dispatched for Work Order ' + trackWO.id }) })
-      setAccId(''); setAccQty(1); setAccSearch(''); fetchData(); refreshHistory()
-    } catch(e) { console.error(e) }
-  }
+      return matchSearch && matchStatus && matchPriority
+    })
+  }, [workOrders, search, statusFilter, priorityFilter])
 
-  const handleDispatch = async (bomItem: any, woId: string) => {
-    const invItem = inventory.find(i => i.name?.toLowerCase() === bomItem.material?.toLowerCase())
-    if (!invItem) { setErrorModal('Material "' + bomItem.material + '" not found in inventory stock.'); return }
-    try {
-      await fetch(API + '/inventory/' + invItem.id + '/ledger', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ date: new Date().toISOString().split('T')[0], type: 'OUT', qty: bomItem.qty, reference: woId, notes: 'BOM Dispatch for Work Order ' + woId }) })
-      fetchData(); refreshHistory()
-    } catch(e) { console.error(e) }
-  }
+  // Summary Metrics KPIs
+  const metrics = useMemo(() => {
+    const total = workOrders.length
+    const active = workOrders.filter(w => w.status !== 'Completed' && w.status !== 'Closed').length
+    const inMachining = workOrders.filter(w => w.status === 'In Progress').length
+    const qcRework = workOrders.filter(w => 
+      w.status === 'QC Pending' || w.status === 'Rework' || 
+      (w.reworkLogs && w.reworkLogs.some((r: any) => r.status !== 'Resolved'))
+    ).length
+    const completed = workOrders.filter(w => w.status === 'Completed' || w.status === 'Closed').length
 
-  const handleLogQC = async (e: React.FormEvent) => {
-    e.preventDefault(); setSubmitting(true)
-    const fd = new FormData(e.target as HTMLFormElement)
-    await fetch(API + '/production/operations/' + showQcModal.id + '/qc', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ inspectedBy: 'QA Admin', status: fd.get('status'), defectReason: fd.get('defectReason'), notes: fd.get('notes') }) })
-    setShowQcModal(null); refreshTrackWO(); setSubmitting(false)
-  }
+    const totalWipCost = workOrders
+      .filter(w => w.status !== 'Completed' && w.status !== 'Closed')
+      .reduce((sum, w) => sum + Number(w.costSummary?.actualTotalCost || 0), 0)
 
-  const filtered = workOrders.filter(w => w.title?.toLowerCase().includes(search.toLowerCase()) || w.id?.toLowerCase().includes(search.toLowerCase()))
+    return { total, active, inMachining, qcRework, completed, totalWipCost }
+  }, [workOrders])
 
+  // Data Table Columns
   const columns: Column<any>[] = [
-    { key: 'title', header: 'Work Order & Job Scope', sortable: true, render: (_: any, row: any) => {
-      const linkedMRs = getLinkedMRs(row.id);
-      let bomList: any[] = [];
-      try {
-        bomList = typeof row.bom === 'string' ? JSON.parse(row.bom || '[]') : (row.bom || []);
-      } catch (e) {}
-      const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
-      const analysis = analyzeBomStock(validBom);
-      const shortages = analysis.filter(a => a.shortageQty > 0);
-      const hasBom = validBom.length > 0;
+    {
+      key: 'orderNo',
+      header: 'Job & Work Scope',
+      sortable: true,
+      render: (_: any, row: any) => {
+        const ops = row.operations || []
+        const currentOp = ops.find((o: any) => o.status === 'In Progress') || ops.find((o: any) => o.status === 'Pending')
 
-      return (
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center mt-1">
-            <Layers size={14} className="text-white"/>
-          </div>
-          <div className="min-w-0 max-w-sm">
-            <p className="text-sm font-semibold text-primary truncate">{row.title}</p>
-            <div className="flex items-center gap-1.5 flex-wrap my-0.5">
-              <span className="text-[10px] text-muted font-mono">{row.id}</span>
-              {hasBom && (
-                shortages.length > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title={`${shortages.length} material(s) have stock shortage`}>
-                    <AlertTriangle size={9}/> Shortage ({shortages.length})
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20" title="All BOM materials in stock">
-                    <CheckCircle size={9}/> In Stock
-                  </span>
-                )
-              )}
-              {linkedMRs.map(mr => (
-                <button 
-                  key={mr.id} 
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/mr-builder/${mr.id}`); }} 
-                  className="cursor-pointer inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20"
-                  title={`Linked MR: ${mr.id} (${mr.status || 'pending'}) - Click to View`}
-                >
-                  <GitPullRequest size={9}/> {mr.id}
-                </button>
-              ))}
+        return (
+          <div className="flex items-start gap-3 min-w-0 max-w-md py-1">
+            <div className="w-9 h-9 rounded-xl bg-rex-600/10 border border-rex-500/20 text-rex-600 flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
+              <Factory size={16}/>
             </div>
-            {row.notes && <div className="text-[10px] text-secondary/90 line-clamp-2 leading-relaxed bg-surface2/30 p-1.5 rounded border border-theme-subtle">{row.notes}</div>}
-          </div>
-        </div>
-      );
-    } },
-    { key: 'priority', header: 'Priority', render: (v: any) => <Badge value={String(v)} variant={v==='High'?'error':v==='Urgent'?'warning':'default'}/> },
-    { key: 'deadline', header: 'Deadline', render: (v: any) => <span className="text-xs text-secondary">{v ? new Date(v as string).toLocaleDateString() : '-'}</span> },
-    { key: 'operations', header: 'Progress', render: (_: any, row: any) => { const ops = row.operations?.filter((o: any) => parseFloat(o.plannedHours) > 0) || []; const total = ops.length; const done = ops.filter((o: any) => o.status === 'Completed').length; const pct = total === 0 ? 0 : Math.round((done/total)*100); return ( <div className="w-36"><div className="flex justify-between text-[10px] mb-1"><span className="text-muted">{done}/{total} Steps</span><span className="font-bold text-rex-600">{pct}%</span></div><div className="h-1.5 w-full bg-surface2 rounded-full overflow-hidden"><div className="h-full bg-rex-600 rounded-full transition-all" style={{ width: pct + '%' }}/></div></div> ) } },
-    { key: 'status', header: 'Status', render: (v: any) => <span className="text-xs font-semibold text-secondary">{String(v)}</span> },
-    { key: 'actions', header: '', align: 'right', render: (_: any, row: any) => {
-      let bomList: any[] = [];
-      try {
-        bomList = typeof row.bom === 'string' ? JSON.parse(row.bom || '[]') : (row.bom || []);
-      } catch (e) {}
-      const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
-      const hasBom = validBom.length > 0;
-      const analysis = analyzeBomStock(validBom);
-      const hasShortage = analysis.some(a => a.shortageQty > 0);
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono font-bold text-xs text-primary">{row.orderNo || row.id}</span>
+                <span className="text-[10px] text-muted font-mono bg-surface2 px-1.5 py-0.2 rounded border border-theme-subtle">
+                  {row.id}
+                </span>
+                {row.customerName && (
+                  <span className="text-[11px] font-medium text-secondary truncate flex items-center gap-1">
+                    <Building size={11} className="text-rex-600"/> {row.customerName}
+                  </span>
+                )}
+              </div>
 
-      return (
-        <div className="flex justify-end items-center gap-1.5">
-          {hasBom && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => openMrGeneratorForWO(row)} 
-              className={`text-xs px-2.5 h-8 font-bold ${hasShortage ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30' : 'text-rex-600 hover:bg-rex-500/10'}`}
-              title={hasShortage ? "Generate Material Requisition (MR) for BOM shortage" : "Generate MR from BOM"}
-            >
-              <Package size={13} className="mr-1"/> {hasShortage ? 'Create MR' : 'MR'}
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => openTrackModal(row)} className="text-rex-600 hover:bg-rex-500/10">
-            <Settings size={14} className="mr-1.5"/> Track
+              <h4 className="text-xs font-bold text-primary truncate hover:text-rex-600 transition-colors mt-0.5">
+                {row.title}
+              </h4>
+
+              {currentOp && (
+                <div className="text-[11px] text-muted mt-0.5 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rex-500 animate-pulse"/>
+                  <span>Current: <strong>{currentOp.operationName}</strong></span>
+                  {currentOp.machineName && (
+                    <span className="text-[10px] text-secondary">({currentOp.machineName})</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'priority',
+      header: 'Priority & Due',
+      sortable: true,
+      render: (_: any, row: any) => {
+        const isUrgent = row.priority === 'Urgent'
+        const isHigh = row.priority === 'High'
+        const deadlineDate = row.deadline ? new Date(row.deadline) : null
+        const isOverdue = deadlineDate && deadlineDate < new Date() && row.status !== 'Completed'
+
+        return (
+          <div className="space-y-1">
+            <Badge 
+              value={row.priority || 'Normal'} 
+              variant={isUrgent ? 'error' : isHigh ? 'warning' : 'default'} 
+            />
+            {deadlineDate && (
+              <span className={`text-[11px] block font-mono ${
+                isOverdue ? 'text-rose-500 font-bold' : 'text-muted'
+              }`}>
+                {deadlineDate.toLocaleDateString()} {isOverdue ? '⚠️ Overdue' : ''}
+              </span>
+            )}
+          </div>
+        )
+      }
+    },
+    {
+      key: 'progress',
+      header: 'Routing Progress',
+      render: (_: any, row: any) => {
+        const ops = row.operations || []
+        const total = ops.length
+        const completed = ops.filter((o: any) => o.status === 'Completed').length
+        const pct = row.progress !== undefined ? row.progress : (total > 0 ? Math.round((completed / total) * 100) : 0)
+
+        return (
+          <div className="w-36 space-y-1">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted font-mono">{completed}/{total} Steps</span>
+              <span className="font-mono font-bold text-rex-600 dark:text-rex-400">{pct}%</span>
+            </div>
+            <div className="h-2 w-full bg-surface2 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-rex-600 to-emerald-500 rounded-full transition-all duration-300" 
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'materials',
+      header: 'Material Issue',
+      render: (_: any, row: any) => {
+        const issued = row.issuedMaterials || []
+        const matCost = row.costSummary?.materialCost || 0
+
+        return (
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+              <Package size={12} className="text-emerald-500"/> {issued.length} Material{issued.length !== 1 ? 's' : ''}
+            </span>
+            <span className="text-[11px] font-mono text-muted block">
+              {formatCurrency(matCost)}
+            </span>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'costing',
+      header: 'Actual Cost / Budget',
+      render: (_: any, row: any) => {
+        const cost = row.costSummary || {}
+        const actual = Number(cost.actualTotalCost || 0)
+        const budget = Number(cost.estimatedCost || 0)
+
+        return (
+          <div className="space-y-0.5">
+            <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 block">
+              {formatCurrency(actual)}
+            </span>
+            {budget > 0 && (
+              <span className="text-[10px] font-mono text-muted block">
+                Target: {formatCurrency(budget)}
+              </span>
+            )}
+          </div>
+        )
+      }
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      render: (v: any) => {
+        switch (v) {
+          case 'Completed':
+          case 'Closed':
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Completed</span>
+          case 'In Progress':
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> In Production</span>
+          case 'QC Pending':
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Pending</span>
+          case 'Rework':
+          case 'Rework Required':
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
+          case 'Released':
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
+          default:
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
+        }
+      }
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (_: any, row: any) => (
+        <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setActiveStudioWO(row)}
+            className="text-xs font-bold text-rex-600 border-rex-500/30 hover:bg-rex-500/10"
+          >
+            <Eye size={12} className="mr-1"/> Execution Studio
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleDeleteWO(row.id)} className="text-red-500 hover:bg-red-500/10">
-            <Trash2 size={14}/>
-          </Button>
+
+          <button 
+            type="button" 
+            onClick={() => setDeleteWoId(row.id)}
+            className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+            title="Delete Work Order"
+          >
+            <Trash2 size={13}/>
+          </button>
         </div>
-      );
-    } }
+      )
+    }
   ]
 
-  const tabComplete: Record<PlannerTab, boolean> = {
-    details: !!(newWO.title && newWO.customerId), bom: bomRows.some(r => r.material),
-    routing: operations.some(o => o.operationName), machineworks: machineWorks.length > 0,
-  }
-
-  const trackOps = trackWO?.operations?.filter((o: any) => parseFloat(o.plannedHours) > 0) || []
-  const trackDone = trackOps.filter((o: any) => o.status === 'Completed').length
-  const trackInProgress = trackOps.filter((o: any) => o.status === 'In Progress').length
-  const trackPct = trackOps.length === 0 ? 0 : Math.round((trackDone / trackOps.length) * 100)
-  const trackTotalHrs = trackOps.reduce((s: number, o: any) => s + parseFloat(o.plannedHours || 0), 0)
+  // Kanban Columns
+  const kanbanStages = [
+    { id: 'planned', label: '1. Planned / Released', statuses: ['Draft', 'Pending', 'Released'], color: 'border-purple-500/40 text-purple-600' },
+    { id: 'in_progress', label: '2. In Floor Machining', statuses: ['In Progress'], color: 'border-blue-500/40 text-blue-600' },
+    { id: 'qc_rework', label: '3. QC & Rework Loop', statuses: ['QC Pending', 'Rework', 'Rework Required'], color: 'border-amber-500/40 text-amber-600' },
+    { id: 'completed', label: '4. Completed & Handover', statuses: ['Completed', 'Closed'], color: 'border-emerald-500/40 text-emerald-600' }
+  ]
 
   return (
-    <div className="space-y-4 animate-fade-in pb-10">
-      <div className="flex items-center justify-between">
-        <div><h1 className="text-lg font-bold text-primary">Work Orders & Production Planning</h1><p className="text-xs text-muted mt-0.5">BOM, routing, machine allocation and shop floor tracking</p></div>
-          <div className="flex border border-theme-subtle rounded overflow-hidden mr-auto ml-4">
-            <button onClick={() => setViewMode('dashboard')} className={`px-3 py-1.5 text-xs transition-colors ${viewMode === 'dashboard' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>Dashboard</button>
-            <button onClick={() => setViewMode('planning')} className={`px-3 py-1.5 text-xs transition-colors ${viewMode === 'planning' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>Labor Planning</button>
+    <div className="space-y-6">
+      {/* ── TOP HERO BANNER ──────────────────────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-rex-950 to-indigo-950 p-6 text-white border border-rex-500/20 shadow-xl">
+        <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-rex-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-1/3 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rex-500/20 border border-rex-400/30 text-rex-300 text-xs font-semibold">
+              <Factory size={14} className="text-emerald-400" />
+              <span>Shop Floor Execution & Job Costing Suite</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </div>
+            <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+              Production Work Order Management
+            </h1>
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              Complete end-to-end manufacturing lifecycle: Material requisition & offcut cutting, machine operation routing, live timers, multi-gate QC inspection, rework tracking, and real-time financial costing rollup.
+            </p>
           </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
-          <Button variant="primary" size="sm" icon={Plus} onClick={() => { resetForm(); setShowModal(true) }}>New Work Order</Button>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button 
+              variant="outline" 
+              onClick={loadAllData} 
+              disabled={loading}
+              className="text-xs bg-slate-800/80 hover:bg-slate-700 text-white border-slate-700 font-semibold"
+            >
+              <RefreshCw size={13} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`}/> Refresh
+            </Button>
+
+            <Button 
+              variant="primary" 
+              onClick={() => setShowCreateModal(true)}
+              className="text-xs bg-rex-600 hover:bg-rex-700 font-bold shadow-lg shadow-rex-600/20"
+            >
+              <Plus size={14} className="mr-1.5"/> Create Work Order
+            </Button>
+          </div>
+        </div>
+
+        {/* Top 5 KPI Metrics */}
+        <div className="mt-6 pt-5 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Active Jobs</span>
+            <p className="text-xl font-mono font-black text-white">{metrics.active}</p>
+            <span className="text-[10px] text-slate-400">Total in system: {metrics.total}</span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">In Production</span>
+            <p className="text-xl font-mono font-black text-blue-400">{metrics.inMachining}</p>
+            <span className="text-[10px] text-slate-400">Active machine floor</span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">QC & Rework</span>
+            <p className="text-xl font-mono font-black text-amber-400">{metrics.qcRework}</p>
+            <span className="text-[10px] text-slate-400">Attention required</span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Completed Jobs</span>
+            <p className="text-xl font-mono font-black text-emerald-400">{metrics.completed}</p>
+            <span className="text-[10px] text-slate-400">Successfully closed</span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Active WIP Value</span>
+            <p className="text-base font-mono font-black text-rex-300">{formatCurrency(metrics.totalWipCost)}</p>
+            <span className="text-[10px] text-slate-400">Material + labor + machine</span>
+          </div>
         </div>
       </div>
 
-      <GlassCard className="p-2 flex items-center gap-2 flex-wrap">
-        <SearchBar placeholder="Search work orders..." value={search} onChange={setSearch} className="w-80"/>
+      {/* ── SEARCH & FILTER CONTROLS ─────────────────────────────────────────────── */}
+      <GlassCard className="p-4 border-theme-subtle">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Status Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+            {[
+              { id: 'all', label: 'All Jobs', count: metrics.total },
+              { id: 'planned', label: 'Planned / Released', count: workOrders.filter(w => w.status === 'Draft' || w.status === 'Pending' || w.status === 'Released').length },
+              { id: 'in_progress', label: 'In Production', count: metrics.inMachining },
+              { id: 'qc_rework', label: 'QC & Rework', count: metrics.qcRework },
+              { id: 'completed', label: 'Completed', count: metrics.completed }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id as StatusFilter)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  statusFilter === tab.id
+                    ? 'bg-rex-600 text-white shadow-md shadow-rex-600/20'
+                    : 'text-secondary hover:text-primary hover:bg-surface2/60'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-surface2 text-muted'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Search & View Switch */}
+          <div className="flex items-center gap-3">
+            <div className="w-64">
+              <SearchBar 
+                value={search} 
+                onChange={setSearch} 
+                placeholder="Search job #, title, customer..." 
+              />
+            </div>
+
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="input-base text-xs py-1.5 px-2.5 font-medium"
+            >
+              <option value="all">Priority: All</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+
+            <div className="flex items-center rounded-xl bg-surface2 p-1 border border-theme-subtle">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  viewMode === 'list' ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'
+                }`}
+                title="Table List View"
+              >
+                <List size={14}/>
+              </button>
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  viewMode === 'kanban' ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'
+                }`}
+                title="Kanban Pipeline Board"
+              >
+                <Kanban size={14}/>
+              </button>
+            </div>
+          </div>
+        </div>
       </GlassCard>
 
-      {viewMode === 'dashboard' && (<>
-        <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-        {loading ? <div className="p-10 text-center animate-pulse text-xs text-muted">Loading...</div> : <DataTable columns={columns} data={filtered} keyExtractor={r => r.id} emptyMessage="No work orders found."/>}
-      </GlassCard>
-
-      </>)}
-
-      {viewMode === 'planning' && (() => {
-        const allActiveOps = workOrders.flatMap((wo:any) =>
-          wo.status !== 'Completed' && wo.operations
-            ? wo.operations
-                .filter((o:any) => Number(o.plannedHours) > 0 && o.status !== 'Completed')
-                .map((o:any) => ({
-                  ...o,
-                  woTitle: wo.title,
-                  woId: wo.id,
-                  woPriority: wo.priority,
-                  woDeadline: wo.deadline,
-                  woNotes: wo.notes,
-                }))
-            : []
-        );
-        const unassigned = allActiveOps.filter((o:any) => !o.employeeId);
-        const assigned   = allActiveOps.filter((o:any) => !!o.employeeId);
-
-        const START_HOUR = 6;
-        const END_HOUR   = 22;
-        const HOURS      = END_HOUR - START_HOUR;
-        const PPH        = 80;
-        const ROW_H      = 72;
-
-        const prioStyle: Record<string, { bg: string; border: string; dot: string; badgeCls: string }> = {
-          Urgent: { bg: '#fef2f2', border: '#f87171', dot: '#ef4444', badgeCls: 'bg-red-100 text-red-700 border-red-200' },
-          High:   { bg: '#fff7ed', border: '#fb923c', dot: '#f97316', badgeCls: 'bg-orange-100 text-orange-700 border-orange-200' },
-          Normal: { bg: '#eff6ff', border: '#60a5fa', dot: '#3b82f6', badgeCls: 'bg-blue-100 text-blue-700 border-blue-200' },
-        };
-
-        return (
-          <div className="flex flex-col gap-5 animate-in fade-in duration-200">
-
-            {/* STATS ROW */}
-            <div className="grid grid-cols-4 gap-3">
-              {[
-                { label: 'Employees',   value: employees.length,                                                                    icon: <Users size={15}/>,         color: 'text-blue-600',   bg: 'bg-blue-500/10' },
-                { label: 'Unscheduled', value: unassigned.length,                                                                   icon: <AlertTriangle size={15}/>,  color: unassigned.length > 0 ? 'text-amber-600' : 'text-green-600', bg: unassigned.length > 0 ? 'bg-amber-500/10' : 'bg-green-500/10' },
-                { label: 'Scheduled',   value: assigned.length,                                                                     icon: <CheckCircle size={15}/>,    color: 'text-green-600',  bg: 'bg-green-500/10' },
-                { label: 'Total Hours', value: allActiveOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0).toFixed(1) + 'h', icon: <Clock size={15}/>,     color: 'text-rex-500',    bg: 'bg-rex-500/10' },
-              ].map((kpi, i) => (
-                <GlassCard key={i} className="p-4 flex items-center gap-3.5 border border-theme-subtle hover:border-rex-500/30 transition-colors">
-                  <div className={"w-10 h-10 rounded-xl " + kpi.bg + " flex items-center justify-center " + kpi.color + " shrink-0"}>{kpi.icon}</div>
-                  <div>
-                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">{kpi.label}</p>
-                    <p className="text-2xl font-black text-primary leading-none mt-0.5">{kpi.value}</p>
-                  </div>
-                </GlassCard>
-              ))}
+      {/* ── MAIN CONTENT (TABLE OR KANBAN) ───────────────────────────────────────── */}
+      {viewMode === 'list' ? (
+        <GlassCard className="p-0 border-theme-subtle overflow-hidden">
+          {loading ? (
+            <div className="p-16 text-center text-xs text-muted">
+              <RefreshCw size={24} className="mx-auto mb-2 animate-spin text-rex-600"/>
+              Loading work orders and floor operations...
             </div>
+          ) : (
+            <DataTable
+              data={filteredWorkOrders}
+              columns={columns}
+              keyExtractor={(row: any) => row.id}
+              emptyMessage="No work orders matching your filters. Click '+ Create Work Order' to begin a new job."
+              onRowClick={(row: any) => setActiveStudioWO(row)}
+            />
+          )}
+        </GlassCard>
+      ) : (
+        /* KANBAN PIPELINE VIEW */
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {kanbanStages.map(stage => {
+            const stageWos = filteredWorkOrders.filter(w => stage.statuses.includes(w.status || 'Draft'))
 
-            {/* MAIN BOARD */}
-            <div className="flex gap-4 items-start">
-
-              {/* GANTT CHART */}
-              <GlassCard className="flex-1 min-w-0 p-0 overflow-hidden border border-theme-subtle flex flex-col min-h-[420px]">
-
-                {/* Chart Header */}
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2/20 shrink-0">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-rex-500/10 flex items-center justify-center">
-                      <Layers size={15} className="text-rex-500"/>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-primary leading-none">Daily Resource Planner</p>
-                      <p className="text-[10px] text-muted mt-0.5">{new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 text-[10px] font-semibold text-muted">
-                    {([['#3b82f6','Normal'],['#f97316','High'],['#ef4444','Urgent']] as [string,string][]).map(([c,l]) => (
-                      <span key={l} className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-sm inline-block border" style={{background: c + '44', borderColor: c}}/>
-                        {l}
-                      </span>
-                    ))}
-                  </div>
+            return (
+              <div key={stage.id} className="space-y-3">
+                <div className={`p-3 rounded-xl bg-surface2/60 border ${stage.color} flex items-center justify-between`}>
+                  <h3 className="text-xs font-bold uppercase tracking-wider">{stage.label}</h3>
+                  <span className="font-mono text-xs font-black px-2 py-0.5 rounded-full bg-surface">
+                    {stageWos.length}
+                  </span>
                 </div>
 
-                {/* Scrollable grid */}
-                <div className="overflow-auto flex-1">
-                  <div style={{ minWidth: HOURS * PPH + 220 + 'px' }}>
-
-                    {/* Time Ruler */}
-                    <div className="flex border-b-2 border-theme-subtle sticky top-0 z-30 bg-surface shadow-sm">
-                      <div className="w-[220px] shrink-0 border-r border-theme-subtle bg-surface2/50 flex items-center px-4" style={{ height: 36 }}>
-                        <span className="text-[9px] font-black text-muted uppercase tracking-widest">Operator</span>
-                      </div>
-                      <div className="flex-1 relative bg-surface2/20" style={{ height: 36 }}>
-                        {Array.from({length: HOURS}).map((_,i) => {
-                          const h = START_HOUR + i;
-                          return (
-                            <div key={i} className="absolute top-0 bottom-0 flex items-center border-l border-theme-subtle/50 pl-1.5" style={{ left: i * PPH, width: PPH }}>
-                              <span className="text-[9px] font-mono font-semibold text-muted">{h.toString().padStart(2,'0')}:00</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Employee rows */}
-                    {employees.length === 0 ? (
-                      <div className="py-20 text-center text-sm text-muted">No employees. Add employees in HR module.</div>
-                    ) : employees.map((emp:any) => {
-                      const empOps = allActiveOps.filter((o:any) => o.employeeId === emp.id);
-                      const totalHr = empOps.reduce((a:number,o:any) => a + Number(o.plannedHours), 0);
-                      const pct = Math.min((totalHr / 10) * 100, 100);
-                      const isOver = totalHr > 10;
-                      const isOpt  = totalHr >= 6 && totalHr <= 10;
-                      const loadColor = isOver ? '#ef4444' : isOpt ? '#f59e0b' : '#22c55e';
-
-                      return (
-                        <div
-                          key={emp.id}
-                          className="flex border-b border-theme-subtle/30 group"
-                          style={{ height: ROW_H }}
-                          onDragEnter={(e) => e.preventDefault()}
-                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0.05)'; }}
-                          onDragLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = ''; }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            (e.currentTarget as HTMLDivElement).style.background = '';
-                            const opId = e.dataTransfer.getData('opId');
-                            if (!opId) return;
-                            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                            const dropX = e.clientX - rect.left - 220;
-                            let dropHour = Math.floor(dropX / PPH) + START_HOUR;
-                            const dropMin = Math.round(((dropX % PPH) / PPH) * 2) * 30;
-                            if (dropHour < START_HOUR) dropHour = START_HOUR;
-                            if (dropHour >= END_HOUR) dropHour = END_HOUR - 1;
-                            const d = new Date();
-                            d.setHours(dropHour, dropMin, 0, 0);
-                            
-                            const draggedOp = allActiveOps.find((o:any) => o.id === opId);
-                            if (draggedOp && (draggedOp.woPriority === 'Emergency' || draggedOp.woPriority === 'Urgent')) {
-                              const pHrs = Number(draggedOp.plannedHours) || 1;
-                              const dEnd = new Date(d.getTime() + pHrs * 3600000);
-                              
-                              const overlappingOps = empOps.filter((o:any) => {
-                                if (o.id === opId || !o.scheduledStart || o.isLocked) return false;
-                                const oS = new Date(o.scheduledStart).getTime();
-                                const oE = oS + (Number(o.plannedHours)||1)*3600000;
-                                return (d.getTime() < oE && dEnd.getTime() > oS);
-                              });
-                              
-                              overlappingOps.forEach(ov => {
-                                const ovS = new Date(dEnd.getTime());
-                                handleAssignOperation(ov.id, 'employeeId', emp.id, ovS.toISOString());
-                              });
-                            }
-
-                            handleAssignOperation(opId, 'employeeId', emp.id, d.toISOString());
-                          }}
-                        >
-                          {/* Employee Info */}
-                          <div className="w-[220px] shrink-0 border-r border-theme-subtle/50 px-3 flex flex-col justify-center sticky left-0 z-20 bg-surface group-hover:bg-surface2/40 transition-colors">
-                            <div className="flex items-center gap-2.5 mb-2">
-                              <div
-                                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0"
-                                style={{ background: ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444'][emp.name.charCodeAt(0) % 5] }}
-                              >
-                                {emp.name?.[0] || '?'}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-primary truncate leading-tight">{emp.name}</p>
-                                <p className="text-[9px] text-muted truncate">{emp.role || 'Operator'}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <div className="flex-1 h-1 rounded-full bg-surface2 overflow-hidden">
-                                <div className="h-full rounded-full transition-all" style={{ width: pct + '%', background: loadColor }}/>
-                              </div>
-                              <span className="text-[8px] font-bold shrink-0 tabular-nums" style={{ color: loadColor }}>{totalHr.toFixed(1)}h</span>
-                            </div>
-                          </div>
-
-                          {/* Timeline Track */}
-                          <div className="flex-1 relative overflow-hidden">
-                            {Array.from({length: HOURS}).map((_,i) => (
-                              <div key={i} className="absolute top-0 bottom-0 border-l border-theme-subtle/20" style={{ left: i * PPH, width: PPH, background: i%2===0?'transparent':'rgba(0,0,0,0.01)' }}/>
-                            ))}
-                            {empOps.map((op:any) => {
-                              const hrs = Number(op.plannedHours);
-                              const w = Math.max(hrs * PPH - 6, 24);
-                              const prio = op.woPriority || 'Normal';
-                              const isEmerg = prio === 'Emergency' || prio === 'Urgent';
-                              const ps = prioStyle[prio] || prioStyle.Normal;
-                              
-                              let hasConflict = false;
-                              if (op.scheduledStart) {
-                                const s1 = new Date(op.scheduledStart).getTime();
-                                const e1 = s1 + hrs * 3600000;
-                                hasConflict = empOps.some((other:any) => {
-                                  if (other.id === op.id || !other.scheduledStart) return false;
-                                  const s2 = new Date(other.scheduledStart).getTime();
-                                  const e2 = s2 + Number(other.plannedHours)*3600000;
-                                  return (s1 < e2 && e1 > s2);
-                                });
-                              }
-
-                              let leftPx = 8;
-                              if (op.scheduledStart) {
-                                const sd = new Date(op.scheduledStart);
-                                leftPx = (sd.getHours() - START_HOUR + sd.getMinutes() / 60) * PPH + 3;
-                              }
-                              
-                              const bgStyle = hasConflict ? 'repeating-linear-gradient(45deg, #fef2f2, #fef2f2 5px, #fee2e2 5px, #fee2e2 10px)' : isEmerg ? 'repeating-linear-gradient(45deg, #fffbeb, #fffbeb 5px, #fef3c7 5px, #fef3c7 10px)' : ps.bg;
-                              const borderCol = hasConflict ? '#ef4444' : isEmerg ? '#f59e0b' : ps.border;
-
-                              return (
-                                <div
-                                  key={op.id}
-                                  draggable={!op.isLocked}
-                                  onDragStart={(e) => { e.dataTransfer.setData('opId', op.id); e.dataTransfer.effectAllowed = 'move'; }}
-                                  onDoubleClick={() => setInspectorOp(op)}
-                                  title={op.operationName + ' - ' + op.woTitle + ' - ' + hrs + 'h' + (hasConflict ? ' (CONFLICT!)' : '')}
-                                  className={`absolute top-2.5 bottom-2.5 rounded-xl overflow-hidden select-none transition-all hover:z-40 hover:shadow-lg hover:-translate-y-px ${op.isLocked ? 'cursor-not-allowed opacity-80' : 'cursor-grab active:cursor-grabbing'} ${hasConflict ? 'ring-2 ring-red-500 animate-pulse' : ''} ${isEmerg ? 'ring-2 ring-amber-500' : ''}`}
-                                  style={{ left: leftPx, width: w, background: bgStyle, border: '1.5px solid ' + borderCol }}
-                                >
-                                  <div className="flex flex-col h-full px-2 py-1.5 justify-between">
-                                    <div className="flex items-center gap-1 justify-between">
-                                      <div className="flex items-center gap-1">
-                                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ps.dot }}/>
-                                      <span className="text-[8px] font-mono font-bold text-gray-400 truncate flex-1">{op.woId}</span>
-                                      {op.isLocked && <span className="text-red-500 shrink-0" title="Locked"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>}
-                                      <span className="text-[9px] font-black text-gray-700 shrink-0">{hrs}h</span>
-                                    </div>
-                                    </div>
-                                    <p className="text-[10px] font-bold text-gray-800 truncate leading-tight">{op.operationName}</p>
-                                    {op.scheduledStart && w > 80 && (
-                                      <p className="text-[7px] font-mono text-gray-400">
-                                        {new Date(op.scheduledStart).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} – {new Date(op.scheduledEnd).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </GlassCard>
-
-              {/* SIDEBAR */}
-              <div className="w-64 shrink-0 flex flex-col gap-3">
-
-                {/* Unassigned Queue */}
-                <div
-                  className="rounded-2xl border border-theme-subtle bg-surface flex flex-col overflow-hidden transition-all"
-                  onDragEnter={(e) => e.preventDefault()}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('ring-2','ring-rex-400'); }}
-                  onDragLeave={(e) => e.currentTarget.classList.remove('ring-2','ring-rex-400')}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.currentTarget.classList.remove('ring-2','ring-rex-400');
-                    const opId = e.dataTransfer.getData('opId');
-                    if (opId) handleAssignOperation(opId, 'employeeId', '', '');
-                  }}
-                >
-                  <div className="px-4 py-3 border-b border-theme-subtle shrink-0 flex items-center justify-between bg-surface2/20">
-                    <div className="flex items-center gap-2">
-                      <ListChecks size={13} className="text-rex-500"/>
-                      <span className="text-sm font-bold text-primary">Unscheduled</span>
-                    </div>
-                    <span className={"text-[9px] font-black px-2 py-0.5 rounded-full border " + (unassigned.length > 0 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-green-100 text-green-700 border-green-200')}>{unassigned.length} pending</span>
-                  </div>
-                  <p className="text-[9px] text-muted px-4 py-1.5 bg-surface2/10 border-b border-theme-subtle/50">Drag onto timeline to schedule · Drop here to unschedule</p>
-
-                  <div className="overflow-y-auto p-2 space-y-2" style={{ maxHeight: 420 }}>
-                    {unassigned.length === 0 ? (
-                      <div className="py-10 flex flex-col items-center gap-2">
-                        <div className="w-11 h-11 rounded-full bg-green-500/10 border border-green-200 flex items-center justify-center">
-                          <CheckCircle size={20} className="text-green-500"/>
-                        </div>
-                        <p className="text-xs font-bold text-primary mt-1">All Scheduled!</p>
-                        <p className="text-[10px] text-muted text-center leading-relaxed">No pending operations.</p>
-                      </div>
-                    ) : [...unassigned].sort((a:any,b:any) => {
-                        const o: Record<string,number> = { Urgent:0, High:1, Normal:2 };
-                        return (o[a.woPriority]??2) - (o[b.woPriority]??2);
-                      }).map((op:any) => {
-                        const prio = op.woPriority || 'Normal';
-                        const ps = prioStyle[prio] || prioStyle.Normal;
-                        return (
-                          <div
-                            key={op.id}
-                            draggable
-                            onDragStart={(e) => { e.dataTransfer.setData('opId', op.id); e.dataTransfer.effectAllowed = 'move'; }}
-                            className="cursor-grab active:cursor-grabbing rounded-xl border p-3 transition-all hover:shadow-md hover:-translate-y-0.5 select-none"
-                            style={{ background: ps.bg, borderColor: ps.border }}
-                          >
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className={"text-[9px] font-black px-1.5 py-0.5 rounded border " + ps.badgeCls}>{prio}</span>
-                              <span className="text-[10px] font-mono font-black text-gray-700">{Number(op.plannedHours).toFixed(1)}h</span>
-                            </div>
-                            <p className="text-[11px] font-bold text-gray-800 leading-snug mb-0.5">{op.operationName}</p>
-                            <p className="text-[9px] text-gray-500 truncate mb-2">{op.woId} · {op.woTitle}</p>
-                            {op.woNotes && (
-                              <p className="text-[8px] text-gray-500 bg-white/60 rounded px-1.5 py-1 mb-2 line-clamp-2 leading-relaxed border border-black/5">{op.woNotes}</p>
-                            )}
-                            <select
-                              className="w-full input-base text-[10px] py-1"
-                              value=""
-                              onChange={(e) => { if(e.target.value) handleAssignOperation(op.id,'employeeId',e.target.value); }}
-                            >
-                              <option value="">Quick assign to…</option>
-                              {employees.map((em:any) => <option key={em.id} value={em.id}>{em.name}</option>)}
-                            </select>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-
-                {/* How to use */}
-                <GlassCard className="p-4 border border-theme-subtle">
-                  <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-2.5">How to use</p>
-                  <div className="space-y-2">
-                    {['Drag queue card onto an employee row','Drop at exact hour for precise scheduling','Drag block back here to unschedule','Drag block to another row to reassign'].map((t,i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="w-4 h-4 rounded-full bg-rex-500/10 text-rex-600 text-[8px] font-black flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
-                        <p className="text-[9px] text-muted leading-relaxed">{t}</p>
-                      </div>
-                    ))}
-                  </div>
-                </GlassCard>
-
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* PRODUCTION PLANNER MODAL */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Advanced Production Planner" size="2xl">
-        <form onSubmit={handleSaveWO} className="flex flex-col h-full">
-          <div className="flex items-center gap-0 px-2 border-b border-theme-subtle bg-surface flex-shrink-0 overflow-x-auto mb-4">
-            {TABS.map(t => ( <button key={t.id} type="button" onClick={() => setActiveTab(t.id)} className={'flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ' + (activeTab === t.id ? 'border-rex-500 text-rex-600 bg-rex-500/5' : 'border-transparent text-muted hover:text-secondary hover:bg-surface2/30')}>{TAB_ICONS[t.id]} {t.label}{tabComplete[t.id] && <span className="w-2 h-2 rounded-full bg-green-500 ml-1"/>}</button> ))}
-            <div className="ml-auto flex items-center gap-2 py-2 pl-6 border-l border-theme-subtle shrink-0">
-              <Calculator size={13} className="text-blue-500"/>
-              <label className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Source Quote:</label>
-              <select className="input-base text-xs py-1 min-w-[280px]" value={newWO.sourceQuoteId} onChange={e => handleApplyQuotation(e.target.value)}>
-                <option value="">-- Start from scratch --</option>
-                {quotations.filter(q => q.type === 'job' || q.status === 'Accepted' || q.status === 'Won').map(q => ( <option key={q.id} value={q.id}>{q.leadName||'Unknown'} — {q.id} ({q.snapshot?.subject||'No Subject'})</option> ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="flex-1">
-              {activeTab === 'details' && (
-                <div className="max-w-4xl space-y-5">
-                  <h3 className="text-xs font-black text-primary uppercase tracking-widest pb-2 border-b border-theme-subtle flex items-center gap-2"><Tag size={14} className="text-rex-500"/> Job & Order Information</h3>
-                  <div className="grid grid-cols-3 gap-5">
-                    <div className="col-span-3"><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">Job Title / Description *</label><input required value={newWO.title} onChange={e => setNewWO({...newWO, title: e.target.value})} className="w-full input-base text-base font-semibold py-3" placeholder="e.g. Engine Block Precision Machining"/></div>
-                    <div><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">WO / Document Number</label><input value={newWO.docNo} onChange={e => setNewWO({...newWO, docNo: e.target.value})} className="w-full input-base font-mono" placeholder="REX-WO-2024"/></div>
-                    <div><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">Customer / Lead *</label><input value={newWO.customerId} onChange={e => setNewWO({...newWO, customerId: e.target.value})} className="w-full input-base" placeholder="Customer name or Lead ID"/></div>
-                    <div><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">Job Quantity</label><input type="number" min="1" value={newWO.jobQty} onChange={e => setNewWO({...newWO, jobQty: parseInt(e.target.value)||1})} className="w-full input-base font-mono"/></div>
-                    <div><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">Priority</label><select value={newWO.priority} onChange={e => setNewWO({...newWO, priority: e.target.value})} className="w-full input-base"><option value="Normal">Normal</option><option value="High">High</option><option value="Urgent">Urgent</option></select></div>
-                    <div><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">Target Deadline</label><input type="date" value={newWO.deadline} onChange={e => setNewWO({...newWO, deadline: e.target.value})} className="w-full input-base"/></div>
-                    <div className="col-span-3"><label className="text-[10px] font-bold text-secondary uppercase tracking-wider block mb-1.5">Internal Notes / Special Instructions</label><textarea value={newWO.notes} onChange={e => setNewWO({...newWO, notes: e.target.value})} className="w-full input-base h-28 resize-none" placeholder="Customer requirements, quality standards, special handling instructions..."/></div>
-                  </div>
-                </div>
-              )}
-              {activeTab === 'bom' && (() => {
-                const currentBomAnalysis = analyzeBomStock(bomRows.filter(r => r.material && r.material.trim()));
-                const bomShortageCount = currentBomAnalysis.filter(a => a.shortageQty > 0).length;
-
-                return (
-                  <div className="max-w-5xl space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2">
-                          <Package size={14} className="text-rex-500"/> Bill of Materials & Stock Check
-                        </h3>
-                        <p className="text-[10px] text-muted mt-0.5">
-                          Materials are automatically cross-checked with warehouse stock levels.
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" type="button" onClick={() => setBomRows([...bomRows, { material:'', qty:1, unit:'pcs', unitCost:0, notes:'' }])}>
-                        + Add Material
-                      </Button>
-                    </div>
-
-                    <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-surface2/40 border-b border-theme-subtle text-xs text-secondary">
-                            <th className="text-left py-2.5 px-3 font-bold w-8">#</th>
-                            <th className="text-left py-2.5 px-3 font-bold">Material / Part Name</th>
-                            <th className="text-left py-2.5 px-3 font-bold w-20">Qty</th>
-                            <th className="text-left py-2.5 px-3 font-bold w-20">Unit</th>
-                            <th className="text-left py-2.5 px-3 font-bold w-28">Stock Level</th>
-                            <th className="text-left py-2.5 px-3 font-bold w-32">Unit Cost (LKR)</th>
-                            <th className="text-left py-2.5 px-3 font-bold w-28">Line Total</th>
-                            <th className="text-left py-2.5 px-3 font-bold">Notes / Supplier</th>
-                            <th className="w-10"/>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {bomRows.map((row, i) => { 
-                            const lt = (parseFloat(row.qty)||0)*(parseFloat(row.unitCost)||0);
-                            const inv = matchInventoryItem(row.material);
-                            const avail = inv ? Number(inv.quantity) || 0 : 0;
-                            const req = Number(row.qty) || 0;
-                            const short = Math.max(0, req - avail);
-
-                            return ( 
-                              <tr key={i} className="border-b border-theme-subtle/60 last:border-0 hover:bg-surface/50">
-                                <td className="py-1.5 px-3 text-xs font-mono text-muted">{i+1}</td>
-                                <td className="py-1.5 px-3">
-                                  <input 
-                                    value={row.material} 
-                                    onChange={e => { const r=[...bomRows]; r[i].material=e.target.value; setBomRows(r) }} 
-                                    className="w-full input-base text-xs py-1" 
-                                    placeholder="e.g. EN8 Steel Bar"
-                                  />
-                                </td>
-                                <td className="py-1.5 px-3">
-                                  <input 
-                                    type="number" 
-                                    value={row.qty} 
-                                    onChange={e => { const r=[...bomRows]; r[i].qty=e.target.value; setBomRows(r) }} 
-                                    className="w-full input-base text-xs py-1 font-mono"
-                                  />
-                                </td>
-                                <td className="py-1.5 px-3">
-                                  <select 
-                                    value={row.unit} 
-                                    onChange={e => { const r=[...bomRows]; r[i].unit=e.target.value; setBomRows(r) }} 
-                                    className="w-full input-base text-xs py-1"
-                                  >
-                                    {['pcs','kg','m','L','mm','set','lot'].map(u => <option key={u}>{u}</option>)}
-                                  </select>
-                                </td>
-                                <td className="py-1.5 px-3">
-                                  {row.material && row.material.trim() ? (
-                                    inv ? (
-                                      avail >= req ? (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20 whitespace-nowrap">
-                                          <CheckCircle size={10}/> {avail} {row.unit}
-                                        </span>
-                                      ) : avail > 0 ? (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 whitespace-nowrap" title={`Available: ${avail}, Shortage: ${short}`}>
-                                          <AlertTriangle size={10}/> Short: {short}
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 whitespace-nowrap">
-                                          <AlertCircle size={10}/> Out of Stock
-                                        </span>
-                                      )
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500/80 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 whitespace-nowrap">
-                                        No Stock (0)
-                                      </span>
-                                    )
-                                  ) : (
-                                    <span className="text-[10px] text-muted">-</span>
-                                  )}
-                                </td>
-                                <td className="py-1.5 px-3">
-                                  <input 
-                                    type="number" 
-                                    value={row.unitCost} 
-                                    onChange={e => { const r=[...bomRows]; r[i].unitCost=e.target.value; setBomRows(r) }} 
-                                    className="w-full input-base text-xs py-1 font-mono"
-                                  />
-                                </td>
-                                <td className="py-1.5 px-3 text-xs font-mono font-bold text-primary">
-                                  {lt.toLocaleString(undefined,{minimumFractionDigits:2})}
-                                </td>
-                                <td className="py-1.5 px-3">
-                                  <input 
-                                    value={row.notes} 
-                                    onChange={e => { const r=[...bomRows]; r[i].notes=e.target.value; setBomRows(r) }} 
-                                    className="w-full input-base text-xs py-1" 
-                                    placeholder="Supplier / spec..."
-                                  />
-                                </td>
-                                <td className="py-1.5 px-2">
-                                  <button 
-                                    type="button" 
-                                    onClick={() => setBomRows(bomRows.filter((_,idx) => idx!==i))} 
-                                    className="w-7 h-7 bg-red-500/10 text-red-500 hover:bg-red-500/20 flex items-center justify-center rounded"
-                                  >
-                                    <Trash2 size={12}/>
-                                  </button>
-                                </td>
-                              </tr> 
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-surface2/30 border-t-2 border-theme-subtle">
-                            <td colSpan={6} className="py-2.5 px-3 text-xs font-bold text-secondary uppercase text-right">Total BOM Cost</td>
-                            <td className="py-2.5 px-3 text-sm font-black text-primary font-mono">LKR {totalBomCost.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-                            <td colSpan={2}/>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </GlassCard>
-
-                    {bomShortageCount > 0 && (
-                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle size={16} className="text-amber-500 shrink-0"/>
-                          <div>
-                            <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                              Stock Shortage: {bomShortageCount} material(s) are not available in inventory stock
-                            </p>
-                            <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
-                              A Material Requisition (MR) will be auto-prompted upon creating this Work Order so you can order missing materials.
-                            </p>
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-secondary cursor-pointer bg-surface/80 px-3 py-1.5 rounded-lg border border-theme-subtle">
-                          <input 
-                            type="checkbox" 
-                            checked={autoPromptMr} 
-                            onChange={e => setAutoPromptMr(e.target.checked)} 
-                            className="rounded text-rex-600 focus:ring-rex-500 cursor-pointer"
-                          />
-                          Auto-prompt MR generation on save
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              {activeTab === 'routing' && (
-                <div className="max-w-5xl space-y-4">
-                  <div className="flex items-center justify-between"><h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2"><Layers size={14} className="text-rex-500"/> Operations Routing Sequence</h3><Button variant="ghost" size="sm" type="button" onClick={() => setOperations([...operations, { operationName:'', machineId:'', employeeId:'', plannedHours:1, notes:'' }])}>+ Add Step</Button></div>
-                  <div className="space-y-3">{operations.map((op, i) => { const sm = machineries.find(m => m.id === op.machineId); const sc = (parseFloat(op.plannedHours)||0) * (sm ? parseFloat(sm.hourlyCost||0) : 0); const isMaint = sm?.status === 'Maintenance'; return ( <div key={i} className={'p-4 rounded-lg border bg-surface shadow-sm ' + (isMaint ? 'border-red-500/40' : 'border-theme-subtle')}><div className="flex gap-3"><div className="flex flex-col items-center gap-1 pt-1"><div className="w-8 h-8 rounded-full bg-rex-500/10 border border-rex-500/20 flex items-center justify-center text-xs font-black text-rex-600">{i+1}</div><button type="button" onClick={() => moveOp(i,'up')} disabled={i===0} className="text-muted disabled:opacity-20 hover:text-primary"><ArrowUp size={11}/></button><button type="button" onClick={() => moveOp(i,'down')} disabled={i===operations.length-1} className="text-muted disabled:opacity-20 hover:text-primary"><ArrowDown size={11}/></button></div><div className="flex-1 space-y-3"><div className="grid grid-cols-3 gap-3"><div><label className={'text-[9px] uppercase font-bold ' + (isMaint ? 'text-muted' : 'text-muted')}>Operation Name *</label><input required value={op.operationName} onChange={e => { const o=[...operations]; o[i].operationName=e.target.value; setOperations(o) }} className="w-full input-base text-xs py-1.5" placeholder="e.g. CNC Roughing"/></div><div><label className={'text-[9px] uppercase font-bold ' + (isMaint ? 'text-red-500' : 'text-muted')}>Machine {isMaint ? '⚠ Maintenance' : ''}</label><select value={op.machineId} onChange={e => { const o=[...operations]; o[i].machineId=e.target.value; setOperations(o) }} className={'w-full input-base text-xs py-1.5 ' + (isMaint ? 'border-red-500/50' : '')}><option value="">-- Any Available --</option>{machineries.map(m => ( <option key={m.id} value={m.id}>{m.name} — {m.type} {m.status==='Maintenance'?'⚠':''}</option> ))}</select></div><div><label className="text-[9px] text-muted uppercase font-bold">Assigned Operator</label><select value={op.employeeId} onChange={e => { const o=[...operations]; o[i].employeeId=e.target.value; setOperations(o) }} className="w-full input-base text-xs py-1.5"><option value="">-- Any Available --</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name} ({e.role})</option>)}</select></div></div><div className="flex gap-3 items-center"><div className="w-28"><label className="text-[9px] text-muted uppercase font-bold">Plan. Hours</label><input type="number" step="0.25" value={op.plannedHours} onChange={e => { const o=[...operations]; o[i].plannedHours=e.target.value; setOperations(o) }} className="w-full input-base text-xs py-1 font-mono"/></div><div className="flex-1 flex items-center gap-3 bg-surface2/30 rounded-lg border border-theme-subtle px-3 py-2"><input value={op.notes} onChange={e => { const o=[...operations]; o[i].notes=e.target.value; setOperations(o) }} className="flex-1 bg-transparent border-none outline-none text-xs text-secondary placeholder:text-muted/60" placeholder="Operator instructions, tolerances..."/><div className="shrink-0 text-right border-l border-theme-subtle pl-3"><div className="text-[9px] text-muted uppercase font-bold">Step Cost</div><div className="text-xs font-mono font-bold text-primary">LKR {sc.toLocaleString(undefined,{minimumFractionDigits:2})}</div></div></div><button type="button" onClick={() => setOperations(operations.filter((_,idx) => idx!==i))} className="w-8 h-8 bg-red-500/10 text-red-500 hover:bg-red-500/20 flex items-center justify-center rounded transition-colors"><Trash2 size={13}/></button></div></div></div></div> ) })}</div>
-                </div>
-              )}
-              {activeTab === 'machineworks' && (
-                <div className="max-w-5xl space-y-4">
-                  <h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2"><Wrench size={14} className="text-rex-500"/> Machine Works (from Quotation)</h3>
-                  {machineWorks.length === 0 ? ( <GlassCard className="p-16 text-center border border-dashed border-theme-subtle"><Wrench size={36} className="text-muted mx-auto mb-3 opacity-20"/><p className="text-sm text-muted font-semibold">No machine works imported yet.</p><p className="text-xs text-muted mt-1">Select a BOM in the top-right — processes will auto-populate here.</p></GlassCard> ) : ( <GlassCard className="overflow-hidden p-0 border border-theme-subtle"><table className="w-full text-sm"><thead><tr className="bg-surface2/40 border-b border-theme-subtle text-xs text-secondary"><th className="text-left py-3 px-4 font-bold">Process / Operation</th><th className="text-right py-3 px-4 font-bold">Est. Hrs</th><th className="text-right py-3 px-4 font-bold">Quo. Hrs</th><th className="text-right py-3 px-4 font-bold">Set Time</th><th className="text-right py-3 px-4 font-bold">Rate (LKR/hr)</th><th className="text-right py-3 px-4 font-bold">Quoted Cost</th><th className="text-left py-3 px-4 font-bold">Auto-Matched Machine</th></tr></thead><tbody>{machineWorks.map((w, i) => { const qc = (parseFloat(w.quoHours)||parseFloat(w.estHours)||0) * (parseFloat(w.rate)||0); const matchedOp = operations.find(op => op.operationName === w.process); const mm = matchedOp ? machineries.find(m => m.id === matchedOp.machineId) : null; return ( <tr key={i} className="border-b border-theme-subtle/60 last:border-0 hover:bg-surface/50"><td className="py-2.5 px-4 font-semibold text-primary text-xs">{w.process}</td><td className="py-2.5 px-4 text-right font-mono text-xs text-secondary">{w.estHours||'-'}</td><td className="py-2.5 px-4 text-right font-mono text-xs font-bold text-primary">{w.quoHours||'-'}</td><td className="py-2.5 px-4 text-right font-mono text-xs text-secondary">{w.setTime||'-'}</td><td className="py-2.5 px-4 text-right font-mono text-xs text-secondary">{parseFloat(w.rate||0).toLocaleString()}</td><td className="py-2.5 px-4 text-right font-mono text-xs font-bold text-primary">{qc.toLocaleString(undefined,{minimumFractionDigits:2})}</td><td className="py-2.5 px-4">{mm ? ( <span className="px-2 py-0.5 bg-green-500/10 text-green-600 border border-green-500/20 text-[10px] rounded font-bold">{mm.name}</span> ) : ( <span className="text-[10px] text-muted italic">Assign in Routing tab</span> )}</td></tr> ) })}</tbody><tfoot><tr className="bg-surface2/30 border-t-2 border-theme-subtle"><td colSpan={5} className="py-3 px-4 text-xs font-bold text-secondary uppercase text-right">Quoted Machining Total</td><td className="py-3 px-4 text-right text-sm font-black text-primary font-mono">LKR {machineWorks.reduce((s,w) => s + ((parseFloat(w.quoHours)||parseFloat(w.estHours)||0)*(parseFloat(w.rate)||0)),0).toLocaleString(undefined,{minimumFractionDigits:2})}</td><td/></tr></tfoot></table></GlassCard> )}
-                </div>
-              )}
-            </div>
-            <div className="w-full md:w-72 flex-shrink-0 md:border-l border-theme-subtle bg-surface/50 rounded-xl p-4 flex flex-col h-fit">
-              <div className="space-y-4">
-                <p className="text-[10px] font-black text-secondary uppercase tracking-widest flex items-center gap-2"><ListChecks size={12}/> Production Summary</p>
-                <div className="p-3 bg-surface border border-theme-subtle rounded-lg"><p className="text-[10px] text-muted uppercase font-bold">Total Planned Hours</p><p className="text-2xl font-mono font-light text-primary">{totalEstHours.toFixed(1)} <span className="text-xs text-muted">hrs</span></p></div>
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg"><p className="text-[10px] text-blue-600 uppercase font-bold">Est. Machining Cost</p><p className="text-base font-mono font-bold text-blue-700">LKR {totalEstMach.toLocaleString(undefined,{minimumFractionDigits:2})}</p></div>
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg"><p className="text-[10px] text-amber-600 uppercase font-bold">Total Material (BOM)</p><p className="text-base font-mono font-bold text-amber-700">LKR {totalBomCost.toLocaleString(undefined,{minimumFractionDigits:2})}</p></div>
-                <div className="p-3 bg-rex-500/10 border border-rex-500/20 rounded-lg"><p className="text-[10px] text-rex-600 uppercase font-bold">Grand Total (Est.)</p><p className="text-xl font-mono font-black text-rex-700">LKR {grandTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</p></div>
-                {quoteData?.amount && ( <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg"><p className="text-[10px] text-green-600 uppercase font-bold">Quoted Revenue</p><p className="text-base font-mono font-bold text-green-700">LKR {parseFloat(quoteData.amount||0).toLocaleString(undefined,{minimumFractionDigits:2})}</p><div className="mt-2 pt-2 border-t border-green-500/20"><p className="text-[10px] text-green-600/70 uppercase font-bold">Est. Gross Margin</p><p className={'text-sm font-mono font-bold ' + ((parseFloat(quoteData.amount||0)-grandTotal)>=0 ? 'text-green-600' : 'text-red-500')}>LKR {(parseFloat(quoteData.amount||0)-grandTotal).toLocaleString(undefined,{minimumFractionDigits:2})}</p></div></div> )}
-                <div className="w-full h-px bg-theme-subtle"/>
-                <div><p className="text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Planner Completion</p>{TABS.map(t => ( <button key={t.id} type="button" onClick={() => setActiveTab(t.id)} className={'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold mb-1 transition-colors ' + (activeTab===t.id ? 'bg-rex-500/10 text-rex-600' : 'hover:bg-surface2 text-secondary')}><div className={'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ' + (tabComplete[t.id] ? 'bg-green-500 border-green-500' : 'border-muted')}>{tabComplete[t.id] && <CheckCircle size={10} className="text-white"/>}</div>{t.label}<ChevronRight size={12} className="ml-auto"/></button> ))}</div>
-              </div>
-              <div className="mt-6 pt-5 border-t border-theme-subtle"><Button variant="primary" type="submit" disabled={submitting} className="w-full py-3 text-sm font-bold">{submitting ? 'Generating...' : 'Generate Work Order'}</Button><p className="text-[10px] text-muted text-center mt-2">All sections will be saved to production DB</p></div>
-            </div>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ============ SHOP FLOOR DASHBOARD ============ */}
-      <Modal isOpen={!!trackWO} onClose={() => setTrackWO(null)} title="" size="2xl">
-        {trackWO && (
-          <div className="flex flex-col" style={{ height: '88vh' }}>
-
-            {/* Header */}
-            <div className="shrink-0 px-6 pt-5 pb-0 border-b border-theme-subtle">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${trackWO.priority === 'High' || trackWO.priority === 'Urgent' ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-surface2 text-muted border border-theme-subtle'}`}><Zap size={9}/> {trackWO.priority}</span>
-                    <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${trackWO.status === 'Completed' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-surface2 text-muted border border-theme-subtle'}`}>{trackWO.status}</span>
-                    <span className="text-[10px] font-mono text-muted">{trackWO.id}</span>
-                  </div>
-                  <h2 className="text-lg font-bold text-primary truncate">{trackWO.title}</h2>
-                    <p className="text-xs text-muted mt-0.5">{trackWO.customerName || trackWO.customerId || 'No customer assigned'}</p>
-                    {trackWO.notes && <div className="mt-2 text-xs text-secondary/90 bg-surface2/40 p-2 rounded-lg border border-theme-subtle max-h-20 overflow-y-auto whitespace-pre-wrap"><span className="font-bold uppercase tracking-wider text-[9px] block mb-0.5">Job Scope:</span>{trackWO.notes}</div>}
-                </div>
-                <div className="flex gap-3 ml-4 shrink-0">
-                  {[{label:'Done', val: trackPct + '%', sub: null}, {label:'Ops', val: trackDone + '/' + trackOps.length, sub: trackInProgress > 0 ? trackInProgress + ' active' : 'none active'}, {label:'Est. Hrs', val: trackTotalHrs.toFixed(1), sub: 'planned'}, {label:'Dispatched', val: String(dispatchedHistory.length), sub: 'items'}].map((kpi, i) => (
-                    <div key={i} className="text-center px-4 py-2 bg-surface2/40 border border-theme-subtle rounded-xl">
-                      <p className="text-[9px] text-muted font-bold uppercase tracking-wider">{kpi.label}</p>
-                      <p className="text-xl font-black text-primary">{kpi.val}</p>
-                      {kpi.sub && <p className="text-[9px] text-muted">{kpi.sub}</p>}
-                      {i === 0 && <div className="mt-1 h-1 w-14 bg-surface2 rounded-full overflow-hidden"><div className={`h-full rounded-full ${trackPct === 100 ? 'bg-green-500' : 'bg-rex-500'}`} style={{ width: trackPct + '%' }}/></div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-0 -mb-px">
-                {([{id:'overview' as TrackTab, label:'Overview', icon:<TrendingUp size={13}/>},{id:'stores' as TrackTab, label:'Stores & Dispatch', icon:<Archive size={13}/>},{id:'operations' as TrackTab, label:'Operations', icon:<ListChecks size={13}/>},{id:'drawings' as TrackTab, label:'Drawings/Photos', icon:<ImageIcon size={13}/>}]).map(t => (
-                  <button key={t.id} onClick={() => setTrackTab(t.id)} className={`flex items-center gap-2 px-5 py-2.5 text-xs font-semibold border-b-2 transition-colors ${trackTab === t.id ? 'border-rex-500 text-rex-600 bg-rex-500/5' : 'border-transparent text-muted hover:text-secondary hover:bg-surface2/30'}`}>{t.icon} {t.label}</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {/* OVERVIEW TAB */}
-                {trackTab === 'overview' && (() => {
-                  const activeOps = trackOps.filter((o:any) => o.status === 'In Progress' || o.status === 'QC Pending' || o.status === 'Rework Required');
-                  const nextOp = trackOps.find((o:any) => o.status === 'Pending');
-                  const daysLeft = trackWO.deadline ? Math.ceil((new Date(trackWO.deadline).getTime() - new Date().getTime()) / (1000 * 3600 * 24)) : null;
-
-                  return (
-                    <div className="p-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        
-                        {/* LEFT COLUMN - Progress & Workflow */}
-                        <div className="lg:col-span-2 space-y-6">
-                          
-                          {/* Progress Section */}
-                          <div className="bg-surface border border-theme-subtle rounded-xl p-6 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-8 opacity-5">
-                              <TrendingUp size={100} />
-                            </div>
-                            <div className="relative z-10">
-                              <div className="flex justify-between items-end mb-3">
-                                <div>
-                                  <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-1">Production Progress</h4>
-                                  <p className="text-2xl font-black text-primary font-mono">{trackPct}% <span className="text-xs text-muted font-sans font-medium">Completed</span></p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-xs font-bold text-primary">{trackDone} of {trackOps.length} steps done</p>
-                                  <p className="text-[10px] text-muted">Est. {trackTotalHrs.toFixed(1)}h total effort</p>
-                                </div>
-                              </div>
-                              <div className="h-4 bg-surface2 rounded-full overflow-hidden border border-theme-subtle/50">
-                                <div className={`h-full rounded-full transition-all ${trackPct === 100 ? 'bg-green-500' : trackPct > 50 ? 'bg-blue-500' : 'bg-rex-500'}`} style={{ width: trackPct + '%' }}/>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Current Status Callout */}
-                          {activeOps.length > 0 ? (
-                            <div className="space-y-3">
-                              <h4 className="text-xs font-bold text-secondary uppercase tracking-widest flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"/> Currently Active Operations
-                              </h4>
-                              {activeOps.map((op:any, i:number) => {
-                                const m = machineries.find((mc:any) => mc.id === op.machineId);
-                                const e = employees.find((em:any) => em.id === op.employeeId);
-                                return (
-                                  <div key={i} className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div>
-                                      <span className="text-[9px] font-black text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider mb-2 inline-block">Step {op.stepNumber || i+1}</span>
-                                      <p className="text-sm font-bold text-primary">{op.operationName}</p>
-                                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-secondary">
-                                        <span className="flex items-center gap-1"><UserCheck size={12}/> {op.employeeName || e?.name || 'Unassigned Operator'}</span>
-                                        <span className="flex items-center gap-1"><Settings size={12}/> {m?.name || 'Any Machine'}</span>
-                                      </div>
-                                    </div>
-                                    <button onClick={() => setTrackTab('operations')} className="shrink-0 px-3 py-1.5 bg-blue-500 text-white text-xs font-bold rounded-md whitespace-nowrap hover:bg-blue-600 transition-colors shadow-sm">Manage Operation</button>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          ) : nextOp ? (
-                            <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-5 flex items-center justify-between border-dashed">
-                              <div>
-                                <p className="text-xs font-bold text-primary mb-1">Ready for next step: <span className="text-rex-600">{nextOp.operationName}</span></p>
-                                <p className="text-[10px] text-muted">No operations are currently in progress.</p>
-                              </div>
-                              <button onClick={() => setTrackTab('operations')} className="px-3 py-1.5 bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-bold text-primary rounded-md whitespace-nowrap shrink-0 transition-colors">Start Step</button>
-                            </div>
-                          ) : trackPct === 100 ? (
-                            <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-5 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-600">
-                                  <CheckCircle size={20}/>
-                                </div>
-                                <div>
-                                  <p className="text-sm font-bold text-green-700">All Operations Completed</p>
-                                  <p className="text-xs text-green-600/70">This work order is ready for final delivery or invoicing.</p>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {/* Timeline View */}
-                          <div>
-                            <h4 className="text-xs font-bold text-secondary uppercase tracking-widest mb-4">Production Timeline</h4>
-                            <div className="relative pl-3 space-y-0">
-                              <div className="absolute top-2 bottom-4 left-[15px] w-0.5 bg-surface2"/>
-                              {trackOps.map((op:any, i:number) => {
-                                const isDone = op.status === 'Completed';
-                                const isActive = op.status === 'In Progress' || op.status === 'QC Pending' || op.status === 'Rework Required';
-                                const colorClass = isDone ? 'bg-green-500' : isActive ? 'bg-blue-500 ring-4 ring-blue-500/20' : 'bg-surface2 border-2 border-theme-subtle';
-                                
-                                return (
-                                  <div key={i} className="relative flex gap-4 pb-5 group">
-                                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 z-10 ${colorClass}`}/>
-                                    <div className="flex-1 min-w-0 bg-surface border border-theme-subtle rounded-lg p-3 group-hover:border-primary/30 transition-colors">
-                                      <div className="flex justify-between items-start mb-1">
-                                        <p className={`text-xs font-bold ${isDone ? 'text-secondary line-through opacity-70' : isActive ? 'text-blue-600' : 'text-primary'}`}>{op.operationName}</p>
-                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isDone ? 'bg-green-500/10 text-green-600' : isActive ? 'bg-blue-500/10 text-blue-600' : 'bg-surface2 text-muted'}`}>{op.status}</span>
-                                      </div>
-                                      <div className="flex items-center gap-3 text-[10px] text-muted font-mono">
-                                        <span>Op {i+1}</span>
-                                        <span>•</span>
-                                        <span>{Number(op.plannedHours).toFixed(1)}h</span>
-                                        {op.employeeName && <span>• {op.employeeName}</span>}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-
-                        </div>
-
-                        {/* RIGHT COLUMN - Meta & Options */}
-                        <div className="space-y-4">
-                          
-                          {/* Quick Info Card */}
-                          <GlassCard className="p-4 border-theme-subtle space-y-4">
-                            <div>
-                              <p className="text-[9px] text-muted uppercase font-bold tracking-wider mb-1">Work Order Deadline</p>
-                              {trackWO.deadline ? (
-                                <div className="flex items-center gap-2">
-                                  <Clock size={14} className={daysLeft && daysLeft < 3 ? 'text-red-500' : 'text-primary'}/>
-                                  <span className="text-sm font-bold text-primary">{new Date(trackWO.deadline).toLocaleDateString()}</span>
-                                  {daysLeft !== null && (
-                                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${daysLeft < 0 ? 'bg-red-500/10 text-red-600' : daysLeft <= 3 ? 'bg-orange-500/10 text-orange-600' : 'bg-green-500/10 text-green-600'}`}>
-                                      {daysLeft < 0 ? `Overdue by ${Math.abs(daysLeft)}d` : `${daysLeft} days left`}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : <span className="text-xs text-muted">No deadline set</span>}
-                            </div>
-                            
-                            <hr className="border-theme-subtle"/>
-                            
-                            <div>
-                              <p className="text-[9px] text-muted uppercase font-bold tracking-wider mb-1">Customer / Lead</p>
-                              <div className="flex items-center gap-2">
-                                <UserCheck size={14} className="text-muted"/>
-                                <span className="text-sm font-bold text-primary truncate">{trackWO.customerName || trackWO.customerId || 'Internal Job'}</span>
-                              </div>
-                            </div>
-                            
-                            <hr className="border-theme-subtle"/>
-
-                            <div>
-                              <p className="text-[9px] text-muted uppercase font-bold tracking-wider mb-2">Manager Options</p>
-                              <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => alert('Change Priority dialog would open here')} className="px-2 py-1.5 text-[10px] font-bold bg-surface2 border border-theme-subtle hover:bg-surface2/80 rounded transition-colors text-primary flex items-center justify-center gap-1.5"><AlertCircle size={12}/> Priority</button>
-                                <button onClick={() => alert('Change Deadline dialog would open here')} className="px-2 py-1.5 text-[10px] font-bold bg-surface2 border border-theme-subtle hover:bg-surface2/80 rounded transition-colors text-primary flex items-center justify-center gap-1.5"><Clock size={12}/> Deadline</button>
-                                <button onClick={() => setTrackTab('operations')} className="px-2 py-1.5 text-[10px] font-bold bg-surface2 border border-theme-subtle hover:bg-surface2/80 rounded transition-colors text-primary flex items-center justify-center gap-1.5"><Settings size={12}/> Re-assign</button>
-                                <button onClick={() => alert('Cancel Work Order dialog would open here')} className="px-2 py-1.5 text-[10px] font-bold bg-red-500/5 border border-red-500/20 hover:bg-red-500/10 rounded transition-colors text-red-600 flex items-center justify-center gap-1.5"><Trash2 size={12}/> Cancel WO</button>
-                              </div>
-                            </div>
-                          </GlassCard>
-
-                          {/* Notes Section */}
-                          <GlassCard className="p-4 border-theme-subtle flex flex-col">
-                            <h4 className="text-[9px] text-muted uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5"><Layers size={12}/> Job Notes & Instructions</h4>
-                            <div className="text-xs text-secondary bg-surface2/30 p-3 rounded-lg border border-theme-subtle whitespace-pre-wrap max-h-48 overflow-y-auto">
-                              {trackWO.notes || <span className="text-muted italic">No specific instructions provided.</span>}
-                            </div>
-                          </GlassCard>
-
-                          {/* Dispatches Summary */}
-                          {dispatchedHistory.length > 0 && (
-                            <GlassCard className="p-4 border-theme-subtle">
-                              <div className="flex justify-between items-center mb-3">
-                                <h4 className="text-[9px] text-muted uppercase font-bold tracking-wider flex items-center gap-1.5"><Archive size={12}/> Inventory Pulled</h4>
-                                <button onClick={() => setTrackTab('stores')} className="text-[9px] text-rex-500 font-bold hover:underline">View All</button>
-                              </div>
-                              <div className="space-y-1.5">
-                                {dispatchedHistory.slice(0,3).map((h:any, i:number) => (
-                                  <div key={i} className="flex justify-between items-center text-xs">
-                                    <span className="text-secondary truncate pr-2">{h.materialName}</span>
-                                    <span className="font-mono font-bold text-primary shrink-0">{h.qty} {h.unit}</span>
-                                  </div>
-                                ))}
-                                {dispatchedHistory.length > 3 && <div className="text-[10px] text-muted text-center pt-2">+{dispatchedHistory.length - 3} more items</div>}
-                              </div>
-                            </GlassCard>
-                          )}
-
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* STORES TAB */}
-              {trackTab === 'stores' && (
-                <div className="flex flex-col md:flex-row h-full divide-x divide-theme-subtle">
-                  <div className="w-full md:w-1/2 p-6 space-y-6 overflow-y-auto">
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-primary flex items-center gap-2"><Wrench size={15} className="text-rex-500"/> Issue from Stores</h3>
-                        <span className="text-[9px] bg-rex-500/10 text-rex-600 border border-rex-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Live Stock</span>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="relative">
-                          <label className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-1.5 block">Search Inventory Item</label>
-                          <input value={accSearch} onChange={e => { setAccSearch(e.target.value); setAccOpen(true); if (!e.target.value) setAccId('') }} onFocus={() => setAccOpen(true)} className="w-full input-base text-sm" placeholder="e.g. End Mill, Coolant, Bolt M8..."/>
-                          {accOpen && accSearch && (
-                            <div className="absolute z-50 top-full left-0 mt-1 w-full bg-surface border border-theme-subtle shadow-2xl rounded-xl overflow-hidden max-h-52 overflow-y-auto">
-                              {inventory.filter(i => i.name && i.name.toLowerCase().includes(accSearch.toLowerCase())).length > 0
-                                ? inventory.filter(i => i.name && i.name.toLowerCase().includes(accSearch.toLowerCase())).map(inv => (
-                                  <button key={inv.id} className="w-full text-left px-4 py-2.5 hover:bg-surface2/50 flex justify-between items-center border-b border-theme-subtle/40 last:border-0 transition-colors" onClick={() => { setAccId(inv.id); setAccSearch(inv.name); setAccOpen(false) }}>
-                                    <div><p className="text-sm font-semibold text-primary">{inv.name}</p><p className="text-[10px] text-muted">{inv.sku || inv.type || 'Stock Item'}</p></div>
-                                    <div className="text-right"><p className={`text-sm font-mono font-bold ${inv.quantity <= (inv.reorderLevel || 0) ? 'text-red-500' : 'text-green-500'}`}>{inv.quantity}</p><p className="text-[10px] text-muted">{inv.uom || 'pcs'} in stock</p></div>
-                                  </button>
-                                ))
-                                : <div className="px-4 py-3 text-xs text-muted">No matches found in inventory.</div>
-                              }
-                            </div>
-                          )}
-                        </div>
-                        {accId && (
-                          <div className="p-4 bg-rex-500/5 border border-rex-500/20 rounded-xl space-y-3 animate-fade-in">
-                            <div className="flex items-center gap-2"><Package size={14} className="text-rex-500 shrink-0"/><div><p className="text-sm font-bold text-primary">{accSearch}</p><p className="text-[10px] text-muted">{(() => { const inv = inventory.find(i => i.id === accId); return inv ? `${inv.quantity} ${inv.uom || 'pcs'} available` : '' })()}</p></div></div>
-                            <div className="flex gap-3 items-end">
-                              <div className="flex-1"><label className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-1 block">Quantity to Dispatch</label><input type="number" min="0.01" step="any" value={accQty} onChange={e => setAccQty(Number(e.target.value))} className="w-full input-base font-mono font-bold text-base"/></div>
-                              <Button variant="primary" size="sm" className="h-10 px-5 bg-rex-600 hover:bg-rex-700 text-white border-none font-bold" onClick={handleDispatchAccessory}>Confirm Issue</Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {trackWO.bom && trackWO.bom !== 'null' && trackWO.bom !== '[]' && (() => {
-                      let bomList: any[] = [];
-                      try {
-                        bomList = typeof trackWO.bom === 'string' ? JSON.parse(trackWO.bom || '[]') : trackWO.bom;
-                      } catch (e) { bomList = []; }
-                      const validBom = bomList.filter((b: any) => b && (b.material || '').trim());
-                      const analysis = analyzeBomStock(validBom);
-                      const shortageItems = analysis.filter(a => a.shortageQty > 0);
-                      const linkedMRs = getLinkedMRs(trackWO.id);
-
-                      return (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <div>
-                              <h4 className="text-xs font-bold text-secondary uppercase tracking-widest flex items-center gap-2">
-                                <Package size={13}/> BOM Stock & Material Requirements
-                              </h4>
-                              <p className="text-[10px] text-muted">
-                                {analysis.length} BOM component(s) defined for this job
-                              </p>
-                            </div>
-                            <Button 
-                              variant={shortageItems.length > 0 ? "primary" : "ghost"}
-                              size="sm" 
-                              onClick={() => openMrGeneratorForWO(trackWO)}
-                              className={`text-xs font-bold flex items-center gap-1.5 ${shortageItems.length > 0 ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' : 'text-rex-600 hover:bg-rex-500/10'}`}
-                            >
-                              <Zap size={13}/> {shortageItems.length > 0 ? `Generate MR for Shortage (${shortageItems.length})` : 'Generate MR from BOM'}
-                            </Button>
-                          </div>
-
-                          {shortageItems.length > 0 && (
-                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3 flex-wrap">
-                              <div className="flex items-center gap-2">
-                                <AlertTriangle size={15} className="text-amber-500 shrink-0"/>
-                                <div>
-                                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                                    Stock Shortage: {shortageItems.length} material(s) unavailable in inventory
-                                  </p>
-                                  <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
-                                    Current warehouse balance cannot fulfill this job. Generate a Material Requisition (MR) to request purchase.
-                                  </p>
-                                </div>
-                              </div>
-                              <Button 
-                                variant="primary" 
-                                size="sm" 
-                                onClick={() => openMrGeneratorForWO(trackWO)} 
-                                className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold h-8 px-3"
-                              >
-                                Create MR
-                              </Button>
-                            </div>
-                          )}
-
-                          <div className="border border-theme-subtle rounded-xl overflow-hidden">
-                            <table className="w-full text-xs">
-                              <thead className="bg-surface2/30 border-b border-theme-subtle">
-                                <tr className="text-[10px] text-muted uppercase font-semibold">
-                                  <th className="px-3 py-2 text-left">Material & Spec</th>
-                                  <th className="px-3 py-2 text-right w-16">Required</th>
-                                  <th className="px-3 py-2 text-right w-20">In Stock</th>
-                                  <th className="px-3 py-2 text-right w-20">Shortage</th>
-                                  <th className="px-3 py-2 text-right w-28">Action</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-theme-subtle/40">
-                                {analysis.map((b: any, i: number) => {
-                                  const originalBomItem = validBom[i] || { material: b.material, qty: b.requiredQty, unit: b.unit };
-                                  return (
-                                    <tr key={i} className="hover:bg-surface2/20 transition-colors">
-                                      <td className="px-3 py-2">
-                                        <p className="font-semibold text-primary">{b.material}</p>
-                                        {b.notes && <p className="text-[9px] text-muted italic">{b.notes}</p>}
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-mono font-bold text-secondary">
-                                        {b.requiredQty} {b.unit}
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-mono">
-                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${b.availableStock <= 0 ? 'text-red-500 bg-red-500/10' : b.availableStock < b.requiredQty ? 'text-amber-500 bg-amber-500/10' : 'text-green-500 bg-green-500/10'}`}>
-                                          {b.availableStock}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-mono text-[11px]">
-                                        {b.shortageQty > 0 ? (
-                                          <span className="text-red-500 font-bold">-{b.shortageQty} {b.unit}</span>
-                                        ) : (
-                                          <span className="text-green-600 font-bold text-[10px]">✓ Available</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2 text-right">
-                                        <div className="flex justify-end gap-1">
-                                          {b.availableStock > 0 && (
-                                            <button 
-                                              onClick={() => handleDispatch(originalBomItem, trackWO.id)} 
-                                              className="text-[10px] font-bold px-2 py-0.5 rounded border border-rex-500/30 text-rex-600 hover:bg-rex-600 hover:text-white transition-all"
-                                              title="Issue available inventory to this job"
-                                            >
-                                              Dispatch
-                                            </button>
-                                          )}
-                                          {b.shortageQty > 0 && (
-                                            <button 
-                                              onClick={() => openMrGeneratorForWO(trackWO)} 
-                                              className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/30 text-amber-600 hover:bg-amber-600 hover:text-white transition-all"
-                                              title="Generate Material Requisition (MR)"
-                                            >
-                                              + MR
-                                            </button>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* Linked Material Requisitions */}
-                          {linkedMRs.length > 0 && (
-                            <div className="mt-3 p-3 bg-surface2/30 border border-theme-subtle rounded-xl space-y-2">
-                              <div className="flex items-center justify-between">
-                                <h5 className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                                  <GitPullRequest size={12} className="text-blue-500"/> Linked Material Requisitions ({linkedMRs.length})
-                                </h5>
-                                <button 
-                                  onClick={() => { setTrackWO(null); navigate('/purchasing/mr-builder?wo=' + trackWO.id); }}
-                                  className="text-[10px] font-bold text-rex-600 hover:underline"
-                                >
-                                  + New MR
-                                </button>
-                              </div>
-                              <div className="space-y-1.5">
-                                {linkedMRs.map(mr => (
-                                  <div key={mr.id} className="flex items-center justify-between p-2 rounded-lg bg-surface border border-theme-subtle/80 text-xs hover:border-blue-500/30 transition-colors">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-mono font-bold text-primary">{mr.id}</span>
-                                      <Badge value={mr.status || 'pending'} variant={mr.status === 'ordered' ? 'success' : mr.status === 'approved' ? 'default' : 'warning'} />
-                                      <span className="text-[10px] text-muted">
-                                        {new Date(mr.date || mr.createdAt).toLocaleDateString()}
-                                      </span>
-                                    </div>
-                                    <button 
-                                      onClick={() => { setTrackWO(null); navigate(`/purchasing/mr-builder/${mr.id}`); }}
-                                      className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1"
-                                    >
-                                      Open MR <ExternalLink size={10}/>
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div className="w-full md:w-1/2 p-6 overflow-y-auto bg-surface2/5">
-                    <h3 className="text-sm font-bold text-primary flex items-center gap-2 mb-4"><Clock size={15} className="text-rex-500"/> Dispatch Ledger</h3>
-                    <div className="space-y-2">
-                      {dispatchedHistory.length > 0 ? dispatchedHistory.map((h, i) => (
-                        <div key={i} className="flex items-center justify-between px-4 py-3 bg-surface border border-theme-subtle rounded-xl hover:border-rex-500/20 transition-colors">
-                          <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-primary truncate">{h.materialName}</p><p className="text-[10px] text-muted mt-0.5">{new Date(h.createdAt).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>{h.notes && <p className="text-[9px] text-muted italic mt-0.5">{h.notes}</p>}</div>
-                          <div className="text-right ml-3"><p className="text-sm font-mono font-bold text-rex-500">-{h.qty}</p><p className="text-[10px] text-muted">{h.unit || 'pcs'}</p></div>
-                        </div>
-                      )) : (
-                        <div className="text-center py-12 border border-dashed border-theme-subtle rounded-xl"><Archive size={28} className="text-muted mx-auto mb-2 opacity-30"/><p className="text-sm text-muted font-medium">No dispatches yet</p><p className="text-xs text-muted mt-1">Use the form on the left to issue items</p></div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* OPERATIONS TAB */}
-              {trackTab === 'operations' && (
-                <div className="p-8">
-                  <div className="relative border-l-2 border-theme-subtle ml-4 space-y-6 pb-6">
-                    {trackOps.length === 0 && <div className="pl-8 text-xs text-muted py-8">No operations found for this work order.</div>}
-                    {trackOps.map((op: any, i: number) => {
-                      const m = machineries.find(m => m.id === op.machineId)
-                      const emp = employees.find(e => e.id === op.employeeId)
-                      const isComplete = op.status === 'Completed'; const isProgress = op.status === 'In Progress'
-                      const isFailed = op.status === 'Rework Required'; const isQc = op.status === 'QC Pending'
-                      const dotColor = isComplete ? 'bg-green-500' : isProgress ? 'bg-blue-500 ring-4 ring-blue-500/20' : isFailed ? 'bg-red-500' : isQc ? 'bg-amber-500' : 'bg-surface2 border border-theme-subtle'
-                      const cardStyle = isComplete ? 'border-green-500/25 bg-green-500/5' : isProgress ? 'border-blue-500/40 bg-blue-500/5 shadow-lg shadow-blue-500/5' : isFailed ? 'border-red-500/30 bg-red-500/5' : isQc ? 'border-amber-500/30 bg-amber-500/5' : 'border-theme-subtle bg-surface'
-                      return (
-                        <div key={op.id} className="relative pl-10">
-                          <div className={`absolute -left-[14px] top-4 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow ${dotColor}`}>{isComplete ? <CheckCircle size={12}/> : isFailed ? <AlertTriangle size={12}/> : isProgress ? <Play size={10}/> : (i + 1)}</div>
-                          <div className={`rounded-2xl border p-5 transition-all ${cardStyle}`}>
-                            <div className="flex items-start justify-between gap-4 mb-4">
-                              <div className="flex-1 min-w-0">
-                                <h4 className="text-base font-bold text-primary">{op.operationName}</h4>
-                                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2 text-xs text-secondary">
-                                    <div className="flex items-center gap-1.5 font-medium">
-                                      <Settings size={12} className="text-muted shrink-0"/> 
-                                      {!isComplete ? (
-                                        <select value={op.machineId || ''} onChange={(e) => handleAssignOperation(op.id, 'machineId', e.target.value)} className="bg-transparent border-b border-theme-subtle focus:border-rex-500 outline-none pb-0.5 text-xs w-32 truncate">
-                                          <option value="">Any Machine</option>
-                                          {machineries.map(mach => <option key={mach.id} value={mach.id}>{mach.name}</option>)}
-                                        </select>
-                                      ) : <span>{m?.name || 'Any Machine'}</span>}
-                                    </div>
-                                    <div className="flex items-center gap-1.5 font-medium">
-                                      <Users size={12} className="text-muted shrink-0"/>
-                                      {!isComplete ? (
-                                        <select value={op.employeeId || ''} onChange={(e) => handleAssignOperation(op.id, 'employeeId', e.target.value)} className="bg-transparent border-b border-theme-subtle focus:border-rex-500 outline-none pb-0.5 text-xs w-32 truncate">
-                                          <option value="">Any Operator</option>
-                                          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                        </select>
-                                      ) : <span>{op.employeeName || emp?.name || 'Any Operator'}</span>}
-                                    </div>
-                                  </div>
-                              </div>
-                              <div className="text-right shrink-0 flex gap-2">
-                                <span className="text-[10px] font-mono font-medium px-2 py-0.5 bg-surface2 border border-theme-subtle rounded-md text-secondary">Est <span className="font-bold text-primary">{op.plannedHours}h</span></span>
-                                {op.actualHours > 0 && <span className="text-[10px] font-mono font-medium px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-md text-blue-500">Act <span className="font-bold">{Number(op.actualHours).toFixed(1)}h</span></span>}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2 pt-3 border-t border-theme-subtle/60 items-center">
-                              {op.status === 'Pending' && <button onClick={() => handleUpdateOpStatus(op.id, 'In Progress')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 border border-blue-500/30 text-blue-600 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all"><Play size={11}/> Start Operation</button>}
-                              {op.status === 'In Progress' && <button onClick={() => handleUpdateOpStatus(op.id, 'QC Pending')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 border border-green-500/30 text-green-600 hover:bg-green-500 hover:text-white hover:border-green-500 transition-all"><CheckCircle size={11}/> Mark as Done</button>}
-                              {op.status === 'QC Pending' && <button onClick={() => setShowQcModal(op)} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-md whitespace-nowrap shrink-0 bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm"><AlertTriangle size={11}/> QC Inspection Required</button>}
-                              {op.qc?.map((q: any) => ( <div key={q.id} className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-0.5 rounded-md border ${q.status === 'Pass' ? 'bg-green-500/5 text-green-600 border-green-500/20' : 'bg-red-500/5 text-red-600 border-red-500/20'}`}><CheckCircle size={10}/>QC {q.status}{q.notes ? `: ${q.notes}` : ''}{q.defectReason ? ` — ${q.defectReason}` : ''}</div> ))}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            
-              {trackTab === 'drawings' && (
-                <div className="p-8 space-y-6">
-                  <h3 className="text-sm font-bold text-primary flex items-center gap-2"><ImageIcon size={15} className="text-rex-500"/> Reference Drawings & Photos</h3>
-                  {trackWO.attachments && trackWO.attachments !== 'null' ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                      {JSON.parse(trackWO.attachments).map((att: any, i: number) => (
-                        <div key={i} className="border border-theme-subtle rounded-xl overflow-hidden bg-surface group">
-                          {att.type?.includes('image') ? (
-                            <img src={att.dataUrl} className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500" />
-                          ) : (
-                            <div className="w-full h-48 bg-surface2 flex items-center justify-center p-4 text-center break-words text-xs font-bold text-muted">{att.name}</div>
-                          )}
-                          <div className="p-3 bg-surface border-t border-theme-subtle">
-                            <p className="text-xs font-semibold text-primary truncate">{att.name}</p>
-                          </div>
-                        </div>
-                      ))}
+                <div className="space-y-3 min-h-[400px]">
+                  {stageWos.length === 0 ? (
+                    <div className="p-8 text-center bg-surface2/20 rounded-xl border border-dashed border-theme-subtle text-xs text-muted">
+                      No jobs in this stage
                     </div>
                   ) : (
-                    <div className="text-center py-16 border border-dashed border-theme-subtle rounded-xl">
-                      <ImageIcon size={32} className="text-muted mx-auto mb-3 opacity-30"/>
-                      <p className="text-sm font-semibold text-muted">No drawings or photos attached.</p>
-                      <p className="text-xs text-muted mt-1">Attachments from the quotation would appear here.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
+                    stageWos.map(wo => {
+                      const cost = wo.costSummary || {}
+                      const ops = wo.operations || []
+                      const completedOps = ops.filter((o: any) => o.status === 'Completed').length
 
-      {/* QC MODAL */}
-      <Modal isOpen={!!showQcModal} onClose={() => setShowQcModal(null)} title="Quality Control Inspection" size="md">
-        {showQcModal && (
-          <form onSubmit={handleLogQC} className="p-4 space-y-4">
-            <p className="text-sm text-secondary border-b border-theme-subtle pb-3">Inspecting: <span className="font-bold text-primary">{showQcModal.operationName}</span></p>
-            <div className="space-y-1.5"><label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Result *</label><select name="status" required className="w-full input-base" onChange={e => { const w = document.getElementById('defectWrap'); if (w) (w as HTMLElement).style.display = e.target.value==='Fail' ? 'block' : 'none' }}><option value="">-- Select --</option><option value="Pass">Pass</option><option value="Fail">Fail (Rework / Scrap)</option></select></div>
-            <div id="defectWrap" style={{display:'none'}} className="space-y-1.5"><label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Defect Reason</label><select name="defectReason" className="w-full input-base"><option value="Tolerance/Dimensions">Tolerance/Dimensions mismatch</option><option value="Surface Finish">Surface finish poor</option><option value="Material Flaw">Material flaw / Crack</option><option value="Assembly Error">Assembly error</option><option value="Other">Other</option></select></div>
-            <div className="space-y-1.5"><label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Inspector Notes</label><textarea name="notes" className="w-full input-base h-20 resize-none" placeholder="Measurements, findings..."/></div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-theme-subtle"><Button variant="ghost" type="button" onClick={() => setShowQcModal(null)}>Cancel</Button><Button variant="primary" type="submit" disabled={submitting}>{submitting?'Saving...':'Submit QC Report'}</Button></div>
-          </form>
-        )}
-      </Modal>
-
-      <Modal isOpen={!!errorModal} onClose={() => setErrorModal(null)} title="Notice" size="sm">
-        <div className="p-6 text-center">
-          <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle size={24} />
-          </div>
-          <p className="text-sm font-bold text-primary mb-2">{errorModal}</p>
-          <Button variant="primary" onClick={() => setErrorModal(null)} className="mt-4 w-full">Understood</Button>
-        </div>
-      </Modal>
-
-      <Modal isOpen={!!deleteConfirmModal} onClose={() => setDeleteConfirmModal(null)} title="Confirm Deletion" size="sm">
-        <div className="p-6 text-center">
-          <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mx-auto mb-4">
-            <Trash2 size={24} />
-          </div>
-          <p className="text-sm font-bold text-primary mb-2">Are you absolutely sure?</p>
-          <p className="text-xs text-muted mb-6">This will permanently delete this work order and all its operations.</p>
-          <div className="flex gap-3 justify-end">
-            <Button variant="ghost" onClick={() => setDeleteConfirmModal(null)}>Cancel</Button>
-            <Button variant="primary" className="bg-red-500 hover:bg-red-600 border-none text-white" onClick={executeDeleteWO}>Delete Work Order</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* TIME INSPECTOR MODAL */}
-      <Modal isOpen={!!inspectorOp} onClose={() => setInspectorOp(null)} title="Operation Scheduler" size="sm">
-        {inspectorOp && (() => {
-          const sT = inspectorOp.scheduledStart ? inspectorOp.scheduledStart.slice(0, 16) : '';
-          const submitInspector = async (e: any) => {
-            e.preventDefault();
-            const f = new FormData(e.target);
-            await handleAssignOperation(inspectorOp.id, 'employeeId', inspectorOp.employeeId || '', f.get('start') as string, f.get('isLocked') === 'on');
-            setInspectorOp(null);
-            fetchData();
-          };
-          return (
-            <form onSubmit={submitInspector} className="p-4 space-y-4">
-              <div>
-                <label className="text-xs font-bold text-secondary mb-1 block">Start Time</label>
-                <input type="datetime-local" name="start" defaultValue={sT} className="input-base w-full" required />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-secondary mb-1 block">Lock Schedule</label>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" name="isLocked" defaultChecked={!!inspectorOp.isLocked} className="rounded text-rex-500 focus:ring-rex-500 bg-surface2 border-theme-subtle" />
-                  <span className="text-xs text-muted">Pin this operation (prevents drag-and-drop changes)</span>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-theme-subtle">
-                <Button variant="ghost" type="button" onClick={() => setInspectorOp(null)}>Cancel</Button>
-                <Button variant="primary" type="submit">Save Changes</Button>
-              </div>
-            </form>
-          );
-        })()}
-      </Modal>
-
-      {/* ============ GENERATE MR FROM BOM MODAL ============ */}
-      <Modal 
-        isOpen={!!mrGenModal} 
-        onClose={() => setMrGenModal(null)} 
-        title="Generate Material Requisition (MR) from BOM"
-        size="xl"
-      >
-        {mrGenModal && (
-          <div className="space-y-4 p-1">
-            {/* Header info banner */}
-            <div className="p-3 bg-surface2/40 border border-theme-subtle rounded-xl flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-mono font-bold text-rex-600 dark:text-rex-400 bg-rex-500/10 px-2 py-0.5 rounded border border-rex-500/20">
-                    {mrGenModal.woId}
-                  </span>
-                  <Badge value={mrGenModal.priority} variant={mrGenModal.priority === 'High' || mrGenModal.priority === 'Urgent' ? 'error' : 'default'} />
-                  {mrGenModal.deadline && (
-                    <span className="text-[10px] text-muted flex items-center gap-1">
-                      <Clock size={10} /> Deadline: {new Date(mrGenModal.deadline).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-sm font-bold text-primary">{mrGenModal.woTitle}</h3>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-muted uppercase font-bold block">Items Selected for MR</span>
-                <span className="text-lg font-mono font-bold text-primary">
-                  {mrGenModal.items.filter(i => i.selected).length} / {mrGenModal.items.length}
-                </span>
-              </div>
-            </div>
-
-            {/* Requisition Settings */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-surface border border-theme-subtle rounded-xl text-xs">
-              <div>
-                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Required Date *</label>
-                <input 
-                  type="date" 
-                  value={mrGenModal.requiredDate} 
-                  onChange={e => setMrGenModal({ ...mrGenModal, requiredDate: e.target.value })} 
-                  className="w-full input-base text-xs py-1.5"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Priority</label>
-                <select 
-                  value={mrGenModal.priority} 
-                  onChange={e => setMrGenModal({ ...mrGenModal, priority: e.target.value })} 
-                  className="w-full input-base text-xs py-1.5"
-                >
-                  <option value="Normal">Normal</option>
-                  <option value="High">High</option>
-                  <option value="Urgent">Urgent</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Requested By</label>
-                <input 
-                  type="text" 
-                  value={mrGenModal.requestedBy} 
-                  onChange={e => setMrGenModal({ ...mrGenModal, requestedBy: e.target.value })} 
-                  className="w-full input-base text-xs py-1.5"
-                />
-              </div>
-              <div className="col-span-1 md:col-span-3">
-                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Requisition Notes</label>
-                <input 
-                  type="text" 
-                  value={mrGenModal.notes} 
-                  onChange={e => setMrGenModal({ ...mrGenModal, notes: e.target.value })} 
-                  className="w-full input-base text-xs py-1.5"
-                  placeholder="Notes for purchasing team..."
-                />
-              </div>
-            </div>
-
-            {/* Materials Table */}
-            <div className="border border-theme-subtle rounded-xl overflow-hidden">
-              <div className="bg-surface2/50 px-3 py-2 border-b border-theme-subtle flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="selectAllMrItems"
-                    checked={mrGenModal.items.length > 0 && mrGenModal.items.every(i => i.selected)}
-                    onChange={e => {
-                      const chk = e.target.checked;
-                      setMrGenModal({
-                        ...mrGenModal,
-                        items: mrGenModal.items.map(it => ({ ...it, selected: chk }))
-                      });
-                    }}
-                    className="rounded text-rex-600 focus:ring-rex-500 cursor-pointer"
-                  />
-                  <label htmlFor="selectAllMrItems" className="font-bold text-secondary cursor-pointer select-none">
-                    Select All Items
-                  </label>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-muted">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"/> Shortage / Out of Stock</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"/> In Stock</span>
-                </div>
-              </div>
-
-              <div className="max-h-72 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-surface2/20 text-muted uppercase text-[10px] font-bold border-b border-theme-subtle/60 sticky top-0 bg-surface">
-                    <tr>
-                      <th className="py-2 px-3 text-center w-8">Include</th>
-                      <th className="py-2 px-3 text-left">Material & Notes</th>
-                      <th className="py-2 px-3 text-right w-20">Req. Qty</th>
-                      <th className="py-2 px-3 text-right w-24">Avail. Stock</th>
-                      <th className="py-2 px-3 text-right w-28">Order Qty</th>
-                      <th className="py-2 px-3 text-left w-16">Unit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-theme-subtle/40">
-                    {mrGenModal.items.map((it, idx) => {
                       return (
-                        <tr key={idx} className={`hover:bg-surface2/40 transition-colors ${it.selected ? 'bg-rex-500/[0.02]' : 'opacity-60'}`}>
-                          <td className="py-2 px-3 text-center">
-                            <input 
-                              type="checkbox" 
-                              checked={it.selected} 
-                              onChange={e => {
-                                const newItems = [...mrGenModal.items];
-                                newItems[idx].selected = e.target.checked;
-                                setMrGenModal({ ...mrGenModal, items: newItems });
-                              }}
-                              className="rounded text-rex-600 focus:ring-rex-500 cursor-pointer"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <p className="font-bold text-primary">{it.material}</p>
-                            {it.notes && <p className="text-[10px] text-muted italic">{it.notes}</p>}
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono font-medium text-secondary">
-                            {it.requiredQty}
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${it.availableStock <= 0 ? 'text-red-600 bg-red-500/10' : it.availableStock < it.requiredQty ? 'text-amber-600 bg-amber-500/10' : 'text-green-600 bg-green-500/10'}`}>
-                              {it.availableStock}
+                        <GlassCard
+                          key={wo.id}
+                          onClick={() => setActiveStudioWO(wo)}
+                          className="p-4 border-theme-subtle hover:border-rex-500/40 hover:shadow-md transition-all cursor-pointer space-y-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-mono text-xs font-bold text-rex-600 dark:text-rex-400">
+                              {wo.orderNo || wo.id}
                             </span>
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            <input 
-                              type="number" 
-                              min="0.01" 
-                              step="any"
-                              value={it.requestQty} 
-                              disabled={!it.selected}
-                              onChange={e => {
-                                const newItems = [...mrGenModal.items];
-                                newItems[idx].requestQty = Number(e.target.value);
-                                setMrGenModal({ ...mrGenModal, items: newItems });
-                              }}
-                              className="w-20 input-base text-xs py-1 px-2 font-mono text-right font-bold focus:border-rex-500 disabled:opacity-40"
+                            <Badge 
+                              value={wo.priority || 'Normal'} 
+                              variant={wo.priority === 'Urgent' ? 'error' : wo.priority === 'High' ? 'warning' : 'default'} 
                             />
-                          </td>
-                          <td className="py-2 px-3 text-muted font-medium">
-                            {it.unit}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                          </div>
 
-            {/* Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-theme-subtle">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => {
-                  const woId = mrGenModal.woId;
-                  setMrGenModal(null);
-                  navigate(`/purchasing/mr-builder?wo=${woId}`);
-                }}
-                className="text-xs text-rex-600 hover:underline flex items-center gap-1"
-              >
-                Open in MR Builder instead <ExternalLink size={12} />
-              </Button>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setMrGenModal(null)} disabled={isGeneratingMr}>
-                  Cancel
-                </Button>
-                <Button 
-                  variant="primary" 
-                  size="sm" 
-                  disabled={isGeneratingMr || mrGenModal.items.filter(i => i.selected).length === 0}
-                  onClick={handleConfirmGenerateMR}
-                  className="bg-rex-600 hover:bg-rex-700 text-white font-bold flex items-center gap-1.5 px-4"
-                >
-                  {isGeneratingMr ? 'Generating...' : (
-                    <>
-                      <Zap size={14} /> Generate Material Requisition (MR)
-                    </>
+                          <div>
+                            <h4 className="text-xs font-bold text-primary line-clamp-2">{wo.title}</h4>
+                            {wo.customerName && (
+                              <p className="text-[11px] text-muted truncate mt-0.5 flex items-center gap-1">
+                                <Building size={10}/> {wo.customerName}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Progress */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-muted">{completedOps}/{ops.length} Steps</span>
+                              <span className="font-mono font-bold text-rex-600">{wo.progress || 0}%</span>
+                            </div>
+                            <div className="h-1.5 bg-surface2 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-rex-600 to-emerald-500 rounded-full" 
+                                style={{ width: `${wo.progress || 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-theme-subtle flex items-center justify-between text-[11px]">
+                            <span className="text-muted font-mono">
+                              {formatCurrency(cost.actualTotalCost || 0)}
+                            </span>
+                            <span className="text-rex-600 dark:text-rex-400 font-bold flex items-center gap-0.5">
+                              Studio <ArrowRight size={11}/>
+                            </span>
+                          </div>
+                        </GlassCard>
+                      )
+                    })
                   )}
-                </Button>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+            )
+          })}
+        </div>
+      )}
 
-      {/* ============ MR CREATED SUCCESS MODAL ============ */}
-      <Modal
-        isOpen={!!generatedMrSuccess}
-        onClose={() => setGeneratedMrSuccess(null)}
-        title="Material Request Generated"
-        size="md"
-      >
-        {generatedMrSuccess && (
-          <div className="p-4 text-center space-y-4">
-            <div className="w-14 h-14 bg-green-500/10 border border-green-500/20 text-green-600 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle2 size={32} />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-primary">Requisition Created Successfully!</h3>
-              <p className="text-xs text-secondary mt-1">
-                Document <span className="font-mono font-bold text-rex-600">{generatedMrSuccess.id}</span> was created with {generatedMrSuccess.itemCount} items linked to Work Order <span className="font-mono font-bold text-primary">{generatedMrSuccess.woId}</span>.
-              </p>
-            </div>
-            <div className="p-3 bg-surface2/40 border border-theme-subtle rounded-xl text-left text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="text-muted">Document Number:</span>
-                <span className="font-mono font-bold text-primary">{generatedMrSuccess.id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Target Work Order:</span>
-                <span className="font-mono font-bold text-primary">{generatedMrSuccess.woId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Status:</span>
-                <span className="font-bold text-amber-600">Pending Approval</span>
-              </div>
-            </div>
-            <div className="flex justify-center gap-2 pt-2">
-              <Button variant="ghost" size="sm" onClick={() => setGeneratedMrSuccess(null)}>
-                Dismiss
-              </Button>
-              <Button 
-                variant="primary" 
-                size="sm" 
-                onClick={() => {
-                  const mrId = generatedMrSuccess.id;
-                  setGeneratedMrSuccess(null);
-                  navigate(`/purchasing/mr-builder/${mrId}`);
-                }}
-                className="bg-rex-600 hover:bg-rex-700 text-white font-bold flex items-center gap-1.5"
-              >
-                Open in MR Builder <ExternalLink size={13} />
-              </Button>
-            </div>
+      {/* ── EXECUTION STUDIO MODAL ───────────────────────────────────────────────── */}
+      <WorkOrderStudioModal
+        isOpen={!!activeStudioWO}
+        onClose={() => setActiveStudioWO(null)}
+        workOrder={activeStudioWO}
+        employees={employees}
+        machineries={machineries}
+        inventory={inventory}
+        onRefresh={loadAllData}
+        onNavigateToCutStudio={(jobRef) => {
+          navigate('/inventory', { state: { openCutStudioWithJobRef: jobRef } })
+        }}
+        onNavigateToMR={(mrId) => {
+          navigate(`/purchasing/mr-builder/${mrId}`)
+        }}
+      />
+
+      {/* ── CREATE WORK ORDER MODAL ──────────────────────────────────────────────── */}
+      <WorkOrderCreateModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        customers={customers}
+        machineries={machineries}
+        employees={employees}
+        inventory={inventory}
+        quotations={quotations}
+        onSuccess={(woId) => {
+          loadAllData()
+        }}
+      />
+
+      {/* ── DELETE CONFIRMATION MODAL ────────────────────────────────────────────── */}
+      <Modal isOpen={!!deleteWoId} onClose={() => setDeleteWoId(null)} title="Delete Work Order" size="sm">
+        <div className="p-4 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+            <Trash2 size={24}/>
           </div>
-        )}
+          <div>
+            <h4 className="text-sm font-bold text-primary">Delete Work Order #{deleteWoId}?</h4>
+            <p className="text-xs text-muted mt-1">
+              This will permanently delete this work order, operations routing, QC inspection records, and rework tickets.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
+            <Button variant="ghost" onClick={() => setDeleteWoId(null)}>Cancel</Button>
+            <Button 
+              variant="primary" 
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            >
+              {deleting ? 'Deleting...' : 'Confirm Delete'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
