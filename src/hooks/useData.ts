@@ -197,3 +197,25 @@ export function useFinishedGoodsOrders(params?: { productId?: string; status?: s
   return { data, setData, loading, refetch };
 }
 
+export function useStockRemnants(params?: { materialName?: string; status?: string }) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(() => {
+    return api.fetchStockRemnants(params).then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      setData(arr);
+      setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch stock remnants:', err);
+      setData([]);
+      setLoading(false);
+      return [];
+    });
+  }, [params?.materialName, params?.status]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, setData, loading, refetch };
+}

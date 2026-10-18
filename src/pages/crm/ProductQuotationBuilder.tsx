@@ -627,6 +627,8 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   // --- Calculations ---
   const totalProductCost = custItems.reduce((s, i) => s + (Number(i.qty || 0) * Number(i.unitCost || 0)), 0);
+  const jobTotalCost = totalProductCost;
+
   const custSubtotal = custItems.reduce((s, i) => s + Number(i.qty || 0) * Number(i.unitPrice || 0), 0);
   const custDiscountAmt = custDiscountType === 'amount'
     ? Math.min(custSubtotal, Math.max(0, Number(custDiscountAmount) || 0))
@@ -670,31 +672,32 @@ export const ProductQuotationBuilder: React.FC = () => {
     }
   };
 
-  // Taxes
-  const selectedProfile = useMemo(() => {
-    return (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
-  }, [taxEnabled, selectedProfileId, taxProfiles]);
+  // Taxes & Financials (Exact same formula as QuotationBuilder)
+  let jobTaxAmount = 0; let jobSscl = 0; let jobVat = 0;
+  let custTaxAmount = 0; let custSscl = 0; let custVat = 0;
 
-  let custSscl = 0;
-  let custVat = 0;
-  let custTaxAmount = 0;
+  const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
 
-  if (taxEnabled && selectedProfile) {
-    const baseCustTotal = custTotal;
-    const custT1 = baseCustTotal * (Number(selectedProfile.tax1_rate) / 100);
-    if (selectedProfile.tax1_show_separately === 1) custSscl = custT1;
-    
-    const baseForCustVat = selectedProfile.tax2_compound ? (baseCustTotal + custT1) : baseCustTotal;
-    const custT2 = baseForCustVat * (Number(selectedProfile.tax2_rate) / 100);
-    if (selectedProfile.tax2_show_separately === 1) custVat = custT2;
-    
+  if (selectedProfile) {
+    const t1 = Number(selectedProfile.tax1_rate) / 100;
+    const t2 = Number(selectedProfile.tax2_rate) / 100;
+
+    // Job Taxes (Internal Product Cost Basis)
+    jobSscl = jobTotalCost * t1;
+    jobVat = selectedProfile.tax2_compound ? (jobTotalCost + jobSscl) * t2 : jobTotalCost * t2;
+    jobTaxAmount = jobSscl + jobVat;
+
+    // Cust Taxes (Customer Selling Price Basis)
+    custSscl = custTotal * t1;
+    custVat = selectedProfile.tax2_compound ? (custTotal + custSscl) * t2 : custTotal * t2;
     custTaxAmount = custSscl + custVat;
   }
-  
+
+  const jobWithSSCL = jobTotalCost + jobTaxAmount;
   const custWithSSCL = custTotal + custTaxAmount;
-  
-  const expectedProfit = custSubtotal - totalProductCost;
-  const expectedMargin = custSubtotal > 0 ? (expectedProfit / custSubtotal) * 100 : 0;
+
+  const expectedProfit = custWithSSCL - jobWithSSCL;
+  const expectedMargin = custWithSSCL > 0 ? (expectedProfit / custWithSSCL) * 100 : 0;
 
   const restoreSnapshot = (snap: any) => {
     setDocNo(snap.docNo || 'FO/PD/02');
@@ -751,8 +754,9 @@ export const ProductQuotationBuilder: React.FC = () => {
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-        productTotals: { totalCost: totalProductCost, revenue: custSubtotal, margin: expectedMargin, profit: expectedProfit },
-        selectedProfile, custSscl, custVat,
+        jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+        productTotals: { totalCost: totalProductCost, revenue: custTotal, margin: expectedMargin, profit: expectedProfit },
+        selectedProfile, custSscl, custVat, jobSscl, jobVat,
         customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
       };
       
@@ -868,8 +872,9 @@ export const ProductQuotationBuilder: React.FC = () => {
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-        productTotals: { totalCost: totalProductCost, revenue: custSubtotal, margin: expectedMargin, profit: expectedProfit },
-        taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat,
+        jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
+        productTotals: { totalCost: totalProductCost, revenue: custTotal, margin: expectedMargin, profit: expectedProfit },
+        taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
         customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
       };
 
@@ -1769,6 +1774,30 @@ export const ProductQuotationBuilder: React.FC = () => {
                 <span className="text-[10px] text-muted">Will appear on print & PDF</span>
               </div>
 
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface2/60 border border-theme-subtle/60 rounded-xl p-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <FileText size={15} className="text-emerald-500" />
+                  <div>
+                    <span className="text-xs font-bold text-primary block">Quotation Terms & Conditions Preset</span>
+                    <span className="text-[10px] text-muted">Select a pre-saved term preset or customize the fields below</span>
+                  </div>
+                </div>
+                <div className="w-full sm:w-80">
+                  <select
+                    value={selectedTermsPresetId}
+                    onChange={e => handleSelectTermsPreset(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-2.5 py-1.5 text-xs text-primary focus:border-emerald-500 outline-none font-medium"
+                  >
+                    <option value="">-- Choose Terms Preset --</option>
+                    {termsPresets.map(tp => (
+                      <option key={tp.id} value={tp.id}>
+                        {tp.name} ({tp.validity}) {tp.isDefault ? '★ (Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="border border-theme-subtle/50 rounded-xl bg-surface/20 shadow-sm p-4">
                   <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-2">Payment Terms</label>
@@ -1784,15 +1813,40 @@ export const ProductQuotationBuilder: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bank Details Indicator */}
-              {selectedBank && (
-                <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
-                  <span><strong>Bank:</strong> {selectedBank.bankName}</span>
-                  <span><strong>A/C No:</strong> <span className="font-mono font-bold text-primary">{selectedBank.accountNumber}</span></span>
-                  <span><strong>Branch:</strong> {selectedBank.branchName || '-'}</span>
-                  {selectedBank.swiftCode && <span><strong>SWIFT:</strong> {selectedBank.swiftCode}</span>}
+              {/* Bank Account for Remittance */}
+              <div className="bg-surface2/60 border border-theme-subtle/60 rounded-xl p-3 mt-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Landmark size={15} className="text-emerald-500" />
+                    <div>
+                      <span className="text-xs font-bold text-primary block">Remittance Bank Account</span>
+                      <span className="text-[10px] text-muted">Select bank account to display on quotation print/PDF</span>
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-80">
+                    <select
+                      value={bankDetailId}
+                      onChange={e => setBankDetailId(e.target.value)}
+                      className="w-full bg-surface border border-theme-subtle rounded-lg px-2.5 py-1.5 text-xs text-primary focus:border-emerald-500 outline-none font-medium"
+                    >
+                      {bankAccounts.map((b: any) => (
+                        <option key={b.id} value={b.id}>
+                          {b.bankName} — A/C {b.accountNumber} ({b.branchName || 'Main'}{b.isDefault ? ' · Default' : ''})
+                        </option>
+                      ))}
+                      <option value="none">— Do Not Show Bank Details on Quotation —</option>
+                    </select>
+                  </div>
                 </div>
-              )}
+                {selectedBank && (
+                  <div className="mt-2 pt-2 border-t border-theme-subtle/40 text-[11px] text-muted flex flex-wrap items-center justify-between gap-2 px-1">
+                    <span><strong>A/C Name:</strong> {selectedBank.accountName}</span>
+                    <span><strong>A/C No:</strong> <span className="font-mono font-bold text-primary">{selectedBank.accountNumber}</span></span>
+                    <span><strong>Branch:</strong> {selectedBank.branchName || '-'}</span>
+                    {selectedBank.swiftCode && <span><strong>SWIFT:</strong> <span className="font-mono">{selectedBank.swiftCode}</span></span>}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           
@@ -1925,7 +1979,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setTaxEnabled(t => !t)}
-                    className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-emerald-500' : 'bg-surface2 border border-theme-subtle'}`}
+                    className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-blue-500' : 'bg-surface2 border border-theme-subtle'}`}
                     title={taxEnabled ? 'Tax enabled' : 'Tax disabled'}
                   >
                     <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
@@ -1934,65 +1988,62 @@ export const ProductQuotationBuilder: React.FC = () => {
 
                 {taxEnabled && (
                   <div className="space-y-1.5 pb-2 border-b border-theme-subtle/50">
-                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Tax Option</span>
-                    {taxProfiles && taxProfiles.length > 0 ? (
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex gap-1.5">
-                          {taxProfiles.slice(0, 2).map((tp: any) => {
-                            const isSelected = selectedProfileId === tp.id;
-                            return (
-                              <button
-                                key={tp.id}
-                                type="button"
-                                onClick={() => setSelectedProfileId(tp.id)}
-                                className={`flex-1 py-1 px-1.5 rounded-md text-[10px] font-bold transition-all text-center border truncate ${
-                                  isSelected
-                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                    : 'bg-surface2 text-muted border-theme-subtle hover:text-primary hover:border-theme-subtle/80'
-                                }`}
-                                title={tp.description || tp.name}
-                              >
-                                {tp.name.length > 18 ? tp.name.slice(0, 16) + '..' : tp.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {taxProfiles.length > 2 && (
-                          <div className="flex gap-1.5">
-                            {taxProfiles.slice(2).map((tp: any) => {
-                              const isSelected = selectedProfileId === tp.id;
-                              return (
-                                <button
-                                  key={tp.id}
-                                  type="button"
-                                  onClick={() => setSelectedProfileId(tp.id)}
-                                  className={`flex-1 py-1 px-1.5 rounded-md text-[10px] font-bold transition-all text-center border truncate ${
-                                    isSelected
-                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                      : 'bg-surface2 text-muted border-theme-subtle hover:text-primary hover:border-theme-subtle/80'
-                                  }`}
-                                  title={tp.description || tp.name}
-                                >
-                                  {tp.name.length > 18 ? tp.name.slice(0, 16) + '..' : tp.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-muted italic">No tax profiles found.</p>
-                    )}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          selectedProfileId === 'tp_opt1_absorbed'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                        }`}
+                        title="Option 1: VAT & SSCL Absorbed (Total Value)"
+                      >
+                        Opt 1: Absorbed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileId('tp_opt2_sscl_absorbed_vat_sep')}
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          selectedProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || selectedProfileId === 'tp_vat_sscl'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                        }`}
+                        title="Option 2: SSCL Absorbed + VAT Separate"
+                      >
+                        Opt 2: SSCL In, VAT Sep
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
+                        className={`col-span-2 px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          selectedProfileId === 'tp_opt3_both_separate'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                        }`}
+                        title="Option 3: Both SSCL & VAT Separate (2 Lines)"
+                      >
+                        Opt 3: Both 2 Lines
+                      </button>
+                    </div>
+                    <select
+                      value={selectedProfileId}
+                      onChange={e => setSelectedProfileId(e.target.value)}
+                      className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-lg text-[10px] outline-none focus:border-blue-500"
+                    >
+                      <option value="">- Select Tax Profile -</option>
+                      {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
                   </div>
                 )}
 
                 <div className="flex justify-between items-center text-xs">
-                   <span className="text-muted font-medium">Total Product Cost</span>
-                   <span className="font-mono text-muted">{formatCurrency(totalProductCost)}</span>
+                   <span className="text-muted font-medium">Total Cost</span>
+                   <span className="font-mono text-muted">{formatCurrency(jobTotalCost)}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                    <span className="text-muted font-medium">Revenue</span>
-                   <span className="font-mono text-primary font-bold">{formatCurrency(custSubtotal)}</span>
+                   <span className="font-mono text-primary font-bold">{formatCurrency(custTotal)}</span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-theme-subtle/50">
                    <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Margin</span>
@@ -2018,6 +2069,13 @@ export const ProductQuotationBuilder: React.FC = () => {
                  <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 rounded-md shadow-sm border border-emerald-500/20 whitespace-nowrap shrink-0">
                    Live Preview
                  </button>
+                 <button 
+                   onClick={() => handleAiPolishAll()}
+                   className="flex-1 py-1.5 text-xs font-bold text-muted hover:text-emerald-600 transition-colors flex items-center justify-center gap-1.5 rounded-md hover:bg-surface2 whitespace-nowrap shrink-0"
+                   title="Use Groq AI to polish all line item descriptions"
+                 >
+                   <span className="text-emerald-500"><Wand2 size={13} /></span> AI Co-Pilot
+                 </button>
                </div>
                <button 
                  onClick={() => setPreviewCollapsed(true)}
@@ -2037,9 +2095,9 @@ export const ProductQuotationBuilder: React.FC = () => {
                            docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
                            custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
                            custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-                           jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: totalProductCost, withSSCL: custWithSSCL },
+                           jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
                            taxEnabled, selectedProfileId,
-                           custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat,
+                           custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat,
                            customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
                            bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
                         }}
@@ -2084,9 +2142,9 @@ export const ProductQuotationBuilder: React.FC = () => {
                  docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
                  custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
                  custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
-                 jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: totalProductCost, withSSCL: custWithSSCL },
+                 jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
                  taxEnabled, selectedProfileId,
-                 custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat,
+                 custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat,
                  customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
                  bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
               }}

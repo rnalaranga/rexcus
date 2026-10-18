@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye } from 'lucide-react'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { useInventory, useSuppliers, useStockLedger, useLeads, useFinishedGoodsOrders } from '@/hooks/useData'
+import { useInventory, useSuppliers, useStockLedger, useLeads, useFinishedGoodsOrders, useStockRemnants } from '@/hooks/useData'
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN, fetchGatePasses, createGatePass, deleteGatePass, fetchQuotations, createCustomerGRN } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -20,9 +20,10 @@ import { AssetRegistryHub } from '@/components/inventory/AssetRegistryHub'
 import { StockLedgerHub } from '@/components/inventory/StockLedgerHub'
 import { ItemFormStudio } from '@/components/inventory/ItemFormStudio'
 import { ItemDetailModal } from '@/components/inventory/ItemDetailModal'
+import { LinearStockCutStudio } from '@/components/inventory/LinearStockCutStudio'
 import html2pdf from 'html2pdf.js'
 
-type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'all'
+type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'linear_remnants' | 'all'
 
 const StockLedgerView = ({ inventoryId, onUpdate }: { inventoryId: string, onUpdate: () => void }) => {
   const { data: ledger, loading, refetch } = useStockLedger(inventoryId)
@@ -130,6 +131,8 @@ export const Inventory: React.FC = () => {
   const [finishedProductModalOpen, setFinishedProductModalOpen] = useState(false)
   const [selectedFinishedProduct, setSelectedFinishedProduct] = useState<any | null>(null)
   const { data: fgOrders = [], refetch: refetchFgOrders } = useFinishedGoodsOrders()
+  const { data: stockRemnants = [], refetch: refetchStockRemnants } = useStockRemnants()
+  const [selectedLinearItem, setSelectedLinearItem] = useState<any | null>(null)
 
   const [printGrnData, setPrintGrnData] = useState<any | null>(null)
   const [printGatePassData, setPrintGatePassData] = useState<any | null>(null)
@@ -679,6 +682,17 @@ export const Inventory: React.FC = () => {
       key: 'id',
       render: (_: any, item: any) => (
         <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedLinearItem(item)
+              setActiveTab('linear_remnants')
+            }}
+            className="p-1.5 hover:bg-emerald-500/10 rounded text-muted hover:text-emerald-500 transition-colors"
+            title="Cut & Remnant Studio"
+          >
+            <Scissors size={14}/>
+          </button>
           <button
             type="button"
             onClick={() => setLedgerModalItem(item)}
@@ -1347,9 +1361,10 @@ export const Inventory: React.FC = () => {
                 Add Ready-Made Product
               </Button>
             </div>
-          ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : (
+          ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : activeTab === 'linear_remnants' ? null : (
             <>
               <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
+              <Button variant="ghost" icon={Scissors} onClick={() => setActiveTab('linear_remnants')}>Cut Studio</Button>
               <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
               <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>
                 {activeTab === 'service' ? 'Add Service' : 'Add Raw Material'}
@@ -1369,6 +1384,12 @@ export const Inventory: React.FC = () => {
                 label: 'Raw Materials', 
                 count: inventory.filter(i => i.type === 'raw_material' || (!isItemFinishedProduct(i.type) && i.type !== 'company_asset' && i.type !== 'service')).length,
                 icon: Layers 
+              },
+              { 
+                id: 'linear_remnants' as TabType, 
+                label: 'Bar Stock & Offcuts', 
+                count: stockRemnants.filter(r => r.status === 'available').length,
+                icon: Scissors 
               },
               { 
                 id: 'finished_product' as TabType, 
@@ -1522,6 +1543,18 @@ export const Inventory: React.FC = () => {
           inventoryList={inventory}
           showToast={showToast}
           onUpdateInventory={refetch}
+        />
+      ) : activeTab === 'linear_remnants' ? (
+        <LinearStockCutStudio
+          inventoryList={inventory}
+          onRefreshInventory={() => {
+            refetch()
+            refetchStockRemnants()
+          }}
+          showToast={(type: any, title: string, message?: string) => {
+            showToast(type === 'error' ? 'error' : 'success', message ? `${title}: ${message}` : title)
+          }}
+          initialInventoryId={selectedLinearItem?.id}
         />
       ) : activeTab === 'finished_product' && finishedSubTab === 'orders' ? (
         <FinishedGoodsOrdersView

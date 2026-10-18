@@ -540,6 +540,24 @@ async function runDatabaseSync() {
       isSystem TINYINT(1) DEFAULT 0,
       createdAt DATETIME DEFAULT NULL,
       updatedAt DATETIME DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS stock_remnants (
+      id VARCHAR(50) PRIMARY KEY,
+      inventoryId VARCHAR(50) NULL,
+      materialName VARCHAR(255) NOT NULL,
+      sku VARCHAR(100) NULL,
+      profileType VARCHAR(50) DEFAULT 'shaft',
+      dimension VARCHAR(100) NULL,
+      standardLength DECIMAL(10,2) DEFAULT 12.00,
+      length DECIMAL(10,2) NOT NULL,
+      unit VARCHAR(20) DEFAULT 'feet',
+      location VARCHAR(100) DEFAULT 'Offcut Rack A',
+      sourceBarId VARCHAR(100) NULL,
+      jobRef VARCHAR(100) NULL,
+      status VARCHAR(50) DEFAULT 'available',
+      notes TEXT NULL,
+      createdAt DATETIME NULL,
+      updatedAt DATETIME NULL
     )`
   ];
 
@@ -547,6 +565,30 @@ async function runDatabaseSync() {
     try {
       await db.query(tbl);
     } catch (err) {}
+  }
+
+  // Linear Stock Remnants Seeding (8mm Shaft Scenario)
+  try {
+    const [remRows]: any = await db.query('SELECT COUNT(*) as cnt FROM stock_remnants');
+    if (remRows && remRows[0]?.cnt === 0) {
+      const [shaftRows]: any = await db.query("SELECT id FROM inventory WHERE name LIKE '%8mm%' OR name LIKE '%Shaft%' LIMIT 1");
+      let shaftId = shaftRows.length > 0 ? shaftRows[0].id : 'INV-SHAFT-8MM';
+      if (shaftRows.length === 0) {
+        await db.query(`
+          INSERT INTO inventory (id, name, sku, unitCost, unitPrice, quantity, uom, type, description, location)
+          VALUES ('INV-SHAFT-8MM', '8mm Mild Steel Shaft (12 ft)', 'SFT-08MM-12FT', 1200.00, 1850.00, 10, 'bars', 'raw_material', 'Standard 12 feet long 8mm precision ground shafting bar', 'Bar Rack R-1')
+        `);
+      }
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      await db.query(`
+        INSERT INTO stock_remnants (id, inventoryId, materialName, sku, profileType, dimension, standardLength, length, unit, location, sourceBarId, jobRef, status, notes, createdAt, updatedAt)
+        VALUES 
+        ('REM-001', ?, '8mm Mild Steel Shaft', 'SFT-08MM-12FT', 'shaft', 'Ø 8mm', 12.00, 8.00, 'feet', 'Offcut Rack B-1', 'BAR-01', 'Cut 4ft for Job #101', 'available', 'Remaining 8 ft offcut from previous 4 ft cut', ?, ?),
+        ('REM-002', ?, '8mm Mild Steel Shaft', 'SFT-08MM-12FT', 'shaft', 'Ø 8mm', 12.00, 3.00, 'feet', 'Offcut Rack B-2', 'BAR-02', 'Cut 9ft for Job #102', 'available', 'Remaining 3 ft offcut from previous 9 ft cut', ?, ?)
+      `, [shaftId, now, now, shaftId, now, now]);
+    }
+  } catch (e) {
+    console.error('Remnant seeding error:', e);
   }
 
   // 3. Default Roles Seeding
@@ -2392,6 +2434,235 @@ app.post('/api/inventory/reconcile', async (req, res) => {
     res.json({ success: true, entry, targetCount, variance: diff });
   } catch (error: any) {
     console.error('Stock reconciliation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// -- LINEAR STOCK REMNANTS & CUT OPTIMIZER --
+app.get('/api/inventory/remnants', async (req, res) => {
+  try {
+    const { materialName, status } = req.query;
+    let query = 'SELECT * FROM stock_remnants WHERE 1=1';
+    const params: any[] = [];
+    if (materialName) {
+      query += ' AND materialName LIKE ?';
+      params.push(`%${materialName}%`);
+    }
+    if (status && status !== 'all') {
+      query += ' AND status = ?';
+      params.push(status);
+    } else {
+      query += " AND status != 'consumed'";
+    }
+    query += ' ORDER BY length DESC, createdAt DESC';
+    const [rows] = await db.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/inventory/remnants', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const id = data.id || `REM-${Date.now().toString().slice(-6)}`;
+    const remnant = {
+      id,
+      inventoryId: data.inventoryId || null,
+      materialName: data.materialName || 'Linear Material',
+      sku: data.sku || '',
+      profileType: data.profileType || 'shaft',
+      dimension: data.dimension || '',
+      standardLength: Number(data.standardLength) || 12.0,
+      length: Number(data.length) || 0,
+      unit: data.unit || 'feet',
+      location: data.location || 'Offcut Rack A',
+      sourceBarId: data.sourceBarId || '',
+      jobRef: data.jobRef || '',
+      status: data.status || 'available',
+      notes: data.notes || '',
+      createdAt: now,
+      updatedAt: now
+    };
+    await db.query('INSERT INTO stock_remnants SET ?', remnant);
+    res.json({ success: true, remnant });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/inventory/remnants/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = { ...req.body };
+    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('UPDATE stock_remnants SET ? WHERE id = ?', [data, id]);
+    res.json({ success: true, id });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/inventory/remnants/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM stock_remnants WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/inventory/cut-issue', async (req, res) => {
+  try {
+    const { 
+      cutMode, // 'from_remnant' | 'from_full_bar'
+      remnantId, 
+      inventoryId, 
+      materialName, 
+      requiredLength, 
+      standardLength, 
+      unit = 'feet', 
+      jobRef = 'Job Issue',
+      kerfLoss = 0,
+      location = 'Offcut Rack A',
+      user = 'Storekeeper'
+    } = req.body;
+
+    const reqLen = Number(requiredLength);
+    const stdLen = Number(standardLength) || 12.0;
+    const kerf = Number(kerfLoss) || 0;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    if (!reqLen || reqLen <= 0) {
+      return res.status(400).json({ error: 'Invalid required cut length' });
+    }
+
+    if (cutMode === 'from_remnant') {
+      if (!remnantId) return res.status(400).json({ error: 'Remnant ID required' });
+      const [remRows]: any = await db.query('SELECT * FROM stock_remnants WHERE id = ?', [remnantId]);
+      if (!remRows.length) return res.status(404).json({ error: 'Remnant not found' });
+      
+      const rem = remRows[0];
+      const curLen = Number(rem.length);
+      if (curLen < reqLen) {
+        return res.status(400).json({ error: `Remnant is too short (${curLen}${unit}) for required length (${reqLen}${unit})` });
+      }
+
+      const leftover = Number((curLen - reqLen - kerf).toFixed(2));
+
+      if (leftover > 0.05) {
+        await db.query(
+          'UPDATE stock_remnants SET length = ?, jobRef = ?, notes = ?, updatedAt = ? WHERE id = ?',
+          [
+            leftover,
+            jobRef,
+            `${rem.notes || ''} | Cut ${reqLen} ${unit} for ${jobRef} on ${now.slice(0,10)}`.trim(),
+            now,
+            remnantId
+          ]
+        );
+      } else {
+        await db.query("UPDATE stock_remnants SET status = 'consumed', length = 0, updatedAt = ? WHERE id = ?", [now, remnantId]);
+      }
+
+      // Record Stock Ledger audit
+      if (rem.inventoryId) {
+        await db.query('INSERT INTO stock_ledger SET ?', {
+          id: 'LGR-' + Date.now().toString().slice(-6),
+          inventoryId: rem.inventoryId,
+          date: now,
+          type: 'OUT',
+          qty: reqLen,
+          balance: 0,
+          user,
+          reference: jobRef,
+          notes: `Cut ${reqLen} ${unit} from Remnant #${remnantId} (Initial: ${curLen} ${unit}, Leftover: ${Math.max(0, leftover)} ${unit})`
+        });
+      }
+
+      return res.json({
+        success: true,
+        cutMode: 'from_remnant',
+        consumedLength: reqLen,
+        leftoverLength: Math.max(0, leftover),
+        isRemnantFullyUsed: leftover <= 0.05,
+        remnantId,
+        message: `Successfully cut ${reqLen} ${unit} from Remnant #${remnantId}. Remaining piece: ${Math.max(0, leftover)} ${unit}.`
+      });
+
+    } else {
+      // Cut from fresh full stock bar
+      let invItem: any = null;
+      if (inventoryId) {
+        const [invRows]: any = await db.query('SELECT * FROM inventory WHERE id = ?', [inventoryId]);
+        if (invRows.length) invItem = invRows[0];
+      }
+
+      if (invItem) {
+        const currentQty = Number(invItem.quantity || 0);
+        if (currentQty <= 0) {
+          return res.status(400).json({ error: `Out of stock for ${invItem.name}. No full bars available.` });
+        }
+        await db.query('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?', [inventoryId]);
+      }
+
+      const leftover = Number((stdLen - reqLen - kerf).toFixed(2));
+      let newRemnantId = null;
+
+      if (leftover > 0.05) {
+        newRemnantId = `REM-${Date.now().toString().slice(-6)}`;
+        await db.query('INSERT INTO stock_remnants SET ?', {
+          id: newRemnantId,
+          inventoryId: inventoryId || null,
+          materialName: materialName || invItem?.name || 'Linear Bar',
+          sku: invItem?.sku || '',
+          profileType: 'shaft',
+          dimension: invItem?.name?.match(/(\d+\s*mm|Ø\s*\d+|[\d./]+")/i)?.[0] || '',
+          standardLength: stdLen,
+          length: leftover,
+          unit,
+          location: location || invItem?.location || 'Offcut Rack A',
+          sourceBarId: inventoryId || 'Full Bar',
+          jobRef,
+          status: 'available',
+          notes: `Cut ${reqLen} ${unit} from full ${stdLen} ${unit} bar for ${jobRef}`,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+
+      // Record Stock Ledger audit
+      if (inventoryId) {
+        await db.query('INSERT INTO stock_ledger SET ?', {
+          id: 'LGR-' + Date.now().toString().slice(-6),
+          inventoryId,
+          date: now,
+          type: 'OUT',
+          qty: 1,
+          balance: invItem ? invItem.quantity - 1 : 0,
+          user,
+          reference: jobRef,
+          notes: `Issued 1 full bar (${stdLen} ${unit}) -> Cut ${reqLen} ${unit} for ${jobRef}. New remnant created: ${leftover} ${unit}`
+        });
+      }
+
+      return res.json({
+        success: true,
+        cutMode: 'from_full_bar',
+        consumedLength: reqLen,
+        leftoverLength: Math.max(0, leftover),
+        newRemnantId,
+        message: `Cut 1 full bar of ${stdLen} ${unit}. Issued ${reqLen} ${unit}. Stored new leftover remnant of ${leftover} ${unit} in ${location}.`
+      });
+    }
+  } catch (error: any) {
+    console.error('Cut issue error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -609,3 +609,49 @@ export const deleteGatePass = async (id: string) => {
   const res = await fetch(`${API_URL}/gate-passes/${id}`, { method: 'DELETE' });
   return res.json();
 };
+
+// -- LINEAR STOCK REMNANTS & CUT OPTIMIZER --
+export const fetchStockRemnants = async (params?: { materialName?: string; status?: string }) => {
+  let url = `${API_URL}/inventory/remnants`;
+  if (params) {
+    const q = new URLSearchParams();
+    if (params.materialName) q.append('materialName', params.materialName);
+    if (params.status) q.append('status', params.status);
+    url += `?${q.toString()}`;
+  }
+  const res = await fetch(url);
+  return res.json();
+};
+
+export const createStockRemnant = async (data: any) => {
+  const res = await fetch(`${API_URL}/inventory/remnants`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const updateStockRemnant = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/inventory/remnants/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deleteStockRemnant = async (id: string) => {
+  const res = await fetch(`${API_URL}/inventory/remnants/${id}`, { method: 'DELETE' });
+  return res.json();
+};
+
+export const executeCutIssue = async (data: any) => {
+  const res = await fetch(`${API_URL}/inventory/cut-issue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
