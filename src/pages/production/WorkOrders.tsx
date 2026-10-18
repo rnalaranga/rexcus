@@ -157,7 +157,7 @@ export const WorkOrders: React.FC = () => {
 
         return (
           <div className="flex items-start gap-3 min-w-0 max-w-md py-1">
-            <div className="w-9 h-9 rounded-none bg-rex-600/10 border border-rex-500/20 text-rex-600 flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
+            <div className="w-9 h-9 rounded-none bg-surface2 border border-theme-subtle text-primary flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
               <Factory size={16}/>
             </div>
             <div className="min-w-0 flex-1">
@@ -168,18 +168,18 @@ export const WorkOrders: React.FC = () => {
                 </span>
                 {row.customerName && (
                   <span className="text-[11px] font-medium text-secondary truncate flex items-center gap-1">
-                    <Building size={11} className="text-rex-600"/> {row.customerName}
+                    <Building size={11} className="text-secondary"/> {row.customerName}
                   </span>
                 )}
               </div>
 
-              <h4 className="text-xs font-bold text-primary truncate hover:text-rex-600 transition-colors mt-0.5">
+              <h4 className="text-xs font-bold text-primary truncate hover:text-secondary transition-colors mt-0.5">
                 {row.title}
               </h4>
 
               {currentOp && (
                 <div className="text-[11px] text-muted mt-0.5 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-none bg-rex-500 animate-pulse"/>
+                  <span className="w-1.5 h-1.5 rounded-none bg-blue-500 animate-pulse"/>
                   <span>Current: <strong>{currentOp.operationName}</strong></span>
                   {currentOp.machineName && (
                     <span className="text-[10px] text-secondary">({currentOp.machineName})</span>
@@ -248,11 +248,11 @@ export const WorkOrders: React.FC = () => {
           <div className="w-36 space-y-1">
             <div className="flex justify-between text-[11px]">
               <span className="text-muted font-mono">{completed}/{total} Steps</span>
-              <span className="font-mono font-bold text-rex-600 dark:text-rex-400">{pct}%</span>
+              <span className="font-mono font-bold text-primary">{pct}%</span>
             </div>
             <div className="h-1.5 w-full bg-surface2 rounded-none overflow-hidden">
               <div 
-                className="h-full bg-rex-600 rounded-none transition-all duration-300" 
+                className="h-full bg-blue-600 rounded-none transition-all duration-300" 
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -334,9 +334,9 @@ export const WorkOrders: React.FC = () => {
             variant="outline" 
             size="sm" 
             onClick={() => navigate(`/production/work-orders/${row.id}`)}
-            className="text-xs font-bold text-rex-600 border-rex-500/30 hover:bg-rex-500/10 rounded-none"
+            className="text-xs font-bold text-primary border border-theme hover:bg-surface2 rounded-none"
           >
-            <Eye size={12} className="mr-1"/> Execution Studio
+            <Eye size={12} className="mr-1 text-secondary"/> Execution Studio
           </Button>
 
           <button 
@@ -421,7 +421,7 @@ export const WorkOrders: React.FC = () => {
 
         <GlassCard className="p-3.5 border-theme-subtle rounded-none">
           <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Active WIP Value</span>
-          <p className="text-base font-mono font-bold text-rex-600 dark:text-rex-300">{formatCurrency(metrics.totalWipCost)}</p>
+          <p className="text-base font-mono font-bold text-primary">{formatCurrency(metrics.totalWipCost)}</p>
           <span className="text-[10px] text-muted">Material + labor + machine</span>
         </GlassCard>
       </div>
@@ -443,13 +443,13 @@ export const WorkOrders: React.FC = () => {
                 onClick={() => setStatusFilter(tab.id as StatusFilter)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-none uppercase tracking-wider shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
                   statusFilter === tab.id
-                    ? 'bg-rex-500/10 border border-rex-500/40 text-rex-700 dark:text-rex-300 font-bold shadow-xs'
+                    ? 'border-b-2 border-primary text-primary font-bold bg-surface2/60 border-theme shadow-xs'
                     : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
                 }`}
               >
                 <span>{tab.label}</span>
                 <span className={`text-[10px] px-1 py-0.2 rounded-none font-mono ${
-                  statusFilter === tab.id ? 'bg-rex-500/20 text-rex-700 dark:text-rex-300 font-bold' : 'text-muted'
+                  statusFilter === tab.id ? 'bg-primary text-surface font-bold' : 'text-muted'
                 }`}>
                   {tab.count}
                 </span>
@@ -471,7 +471,7 @@ export const WorkOrders: React.FC = () => {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="bg-surface border border-theme-subtle rounded-none px-2.5 py-1.5 text-primary text-xs font-medium focus:border-rex-500 outline-none"
+              className="bg-surface border border-theme-subtle rounded-none px-2.5 py-1.5 text-primary text-xs font-medium focus:border-primary outline-none"
             >
               <option value="all">Priority: All</option>
               <option value="urgent">Urgent</option>
@@ -509,7 +509,7 @@ export const WorkOrders: React.FC = () => {
         <GlassCard className="p-0 border-theme-subtle overflow-hidden">
           {loading ? (
             <div className="p-16 text-center text-xs text-muted">
-              <RefreshCw size={24} className="mx-auto mb-2 animate-spin text-rex-600"/>
+              <RefreshCw size={24} className="mx-auto mb-2 animate-spin text-secondary"/>
               Loading work orders and floor operations...
             </div>
           ) : (
@@ -552,10 +552,10 @@ export const WorkOrders: React.FC = () => {
                         <GlassCard
                           key={wo.id}
                           onClick={() => navigate(`/production/work-orders/${wo.id}`)}
-                          className="p-4 border-theme-subtle hover:border-rex-500/40 hover:shadow-md transition-all cursor-pointer space-y-3 rounded-none"
+                          className="p-4 border-theme-subtle hover:border-theme hover:shadow-md transition-all cursor-pointer space-y-3 rounded-none"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <span className="font-mono text-xs font-bold text-rex-600 dark:text-rex-400">
+                            <span className="font-mono text-xs font-bold text-primary">
                               {wo.orderNo || wo.id}
                             </span>
                             <Badge 
@@ -583,11 +583,11 @@ export const WorkOrders: React.FC = () => {
                           <div className="space-y-1">
                             <div className="flex justify-between text-[10px]">
                               <span className="text-muted">{completedOps}/{ops.length} Steps</span>
-                              <span className="font-mono font-bold text-rex-600">{wo.progress || 0}%</span>
+                              <span className="font-mono font-bold text-primary">{wo.progress || 0}%</span>
                             </div>
                             <div className="h-1.5 bg-surface2 rounded-none overflow-hidden">
                               <div 
-                                className="h-full bg-rex-600 rounded-none transition-all duration-300" 
+                                className="h-full bg-blue-600 rounded-none transition-all duration-300" 
                                 style={{ width: `${wo.progress || 0}%` }}
                               />
                             </div>
@@ -597,7 +597,7 @@ export const WorkOrders: React.FC = () => {
                             <span className="text-muted font-mono">
                               {formatCurrency(cost.actualTotalCost || 0)}
                             </span>
-                            <span className="text-rex-600 dark:text-rex-400 font-bold flex items-center gap-0.5">
+                            <span className="text-secondary hover:text-primary font-bold flex items-center gap-0.5">
                               Studio <ArrowRight size={11}/>
                             </span>
                           </div>
