@@ -50,7 +50,35 @@
   }
 
   /* Explicit Rounded utility overrides to ensure rounded corners render reliably without being oversized */
-  .rounded-full, [class*="rounded-full"] { border-radius: 9999px !important; }
+  .rounded-full,
+  [class~="rounded-full"],
+  [class*=" rounded-full"],
+  [class^="rounded-full"] {
+    border-radius: 9999px !important;
+  }
+
+  .rounded-l-full,
+  [class~="rounded-l-full"],
+  [class*=" rounded-l-full"],
+  [class^="rounded-l-full"],
+  .rex-ai-trigger-btn,
+  button.rex-ai-trigger-btn {
+    border-top-left-radius: 9999px !important;
+    border-bottom-left-radius: 9999px !important;
+    border-top-right-radius: 0px !important;
+    border-bottom-right-radius: 0px !important;
+  }
+
+  .rounded-r-full,
+  [class~="rounded-r-full"],
+  [class*=" rounded-r-full"],
+  [class^="rounded-r-full"] {
+    border-top-right-radius: 9999px !important;
+    border-bottom-right-radius: 9999px !important;
+    border-top-left-radius: 0px !important;
+    border-bottom-left-radius: 0px !important;
+  }
+
   .rounded-3xl, [class*="rounded-3xl"]   { border-radius: 1rem !important; }
   .rounded-2xl, [class*="rounded-2xl"]   { border-radius: 0.75rem !important; }
   .rounded-xl, [class*="rounded-xl"]     { border-radius: 0.5rem !important; }
@@ -66,13 +94,22 @@
     border-radius: 0.25rem;
   }
 
-  button:not([class*="rounded-full"]):not([class*="rounded-none"]):not([class*="rounded-t-"]):not([class*="rounded-b-"]):not([class*="rounded-l-"]):not([class*="rounded-r-"]),
-  .btn:not([class*="rounded-full"]):not([class*="rounded-none"]) {
+  button:not([class*="rounded-full"]):not([class*="rounded-none"]):not([class*="rounded-t-"]):not([class*="rounded-b-"]):not([class*="rounded-l-"]):not([class*="rounded-r-"]):not(.rex-ai-trigger-btn),
+  .btn:not([class*="rounded-full"]):not([class*="rounded-none"]):not(.rex-ai-trigger-btn) {
     border-radius: 0.25rem !important;
   }
 
   button[class*="rounded-full"] {
     border-radius: 9999px !important;
+  }
+
+  button.rounded-l-full,
+  button[class*="rounded-l-full"],
+  button.rex-ai-trigger-btn {
+    border-top-left-radius: 9999px !important;
+    border-bottom-left-radius: 9999px !important;
+    border-top-right-radius: 0px !important;
+    border-bottom-right-radius: 0px !important;
   }
 
   button[class*="rounded-none"] {

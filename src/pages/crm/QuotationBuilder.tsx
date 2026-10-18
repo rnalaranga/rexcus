@@ -2633,59 +2633,69 @@ export const QuotationBuilder: React.FC = () => {
                    <span className={`text-[11px] font-bold uppercase tracking-widest ${expectedProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>Est. Financials</span>
                 </div>
                 
-                <div className="space-y-2 relative z-10">
-                  <div className="flex items-center gap-2 mb-3 border-b border-theme-subtle/50 pb-2">
-                    <button onClick={() => setTaxEnabled(t => !t)} className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-blue-500' : 'bg-surface2 border border-theme-subtle'}`}>
+                <div className="space-y-3 relative z-10">
+                  <div className="flex items-center justify-between border-b border-theme-subtle/50 pb-2">
+                    <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Applicable Tax</span>
+                    <button
+                      type="button"
+                      onClick={() => setTaxEnabled(t => !t)}
+                      className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-blue-500' : 'bg-surface2 border border-theme-subtle'}`}
+                      title={taxEnabled ? 'Tax enabled' : 'Tax disabled'}
+                    >
                       <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
                     </button>
-                    {taxEnabled && (
-                      <div className="flex-1 space-y-1.5">
-                        <div className="grid grid-cols-3 gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
-                            className={`px-1.5 py-1 text-[9px] font-bold rounded border transition-all text-center leading-tight ${
-                              selectedProfileId === 'tp_opt1_absorbed'
-                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                            }`}
-                            title="Option 1: VAT & SSCL Absorbed (Total Value)"
-                          >
-                            Opt 1: Absorbed
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedProfileId('tp_opt2_sscl_absorbed_vat_sep')}
-                            className={`px-1.5 py-1 text-[9px] font-bold rounded border transition-all text-center leading-tight ${
-                              selectedProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || selectedProfileId === 'tp_vat_sscl'
-                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                            }`}
-                            title="Option 2: SSCL Absorbed + VAT Separate"
-                          >
-                            Opt 2: SSCL In, VAT Sep
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
-                            className={`px-1.5 py-1 text-[9px] font-bold rounded border transition-all text-center leading-tight ${
-                              selectedProfileId === 'tp_opt3_both_separate'
-                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                            }`}
-                            title="Option 3: Both SSCL & VAT Separate (2 Lines)"
-                          >
-                            Opt 3: Both 2 Lines
-                          </button>
-                        </div>
-                        <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                          className="w-full bg-surface border border-theme-subtle px-1.5 py-1 rounded text-[10px] outline-none focus:border-blue-500">
-                          <option value="">- Select Tax Profile -</option>
-                          {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      </div>
-                    )}
                   </div>
+
+                  {taxEnabled && (
+                    <div className="space-y-1.5 pb-2 border-b border-theme-subtle/50">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
+                          className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            selectedProfileId === 'tp_opt1_absorbed'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                          title="Option 1: VAT & SSCL Absorbed (Total Value)"
+                        >
+                          Opt 1: Absorbed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfileId('tp_opt2_sscl_absorbed_vat_sep')}
+                          className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            selectedProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || selectedProfileId === 'tp_vat_sscl'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                          title="Option 2: SSCL Absorbed + VAT Separate"
+                        >
+                          Opt 2: SSCL In, VAT Sep
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
+                          className={`col-span-2 px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            selectedProfileId === 'tp_opt3_both_separate'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                          title="Option 3: Both SSCL & VAT Separate (2 Lines)"
+                        >
+                          Opt 3: Both 2 Lines
+                        </button>
+                      </div>
+                      <select
+                        value={selectedProfileId}
+                        onChange={e => setSelectedProfileId(e.target.value)}
+                        className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-lg text-[10px] outline-none focus:border-blue-500"
+                      >
+                        <option value="">- Select Tax Profile -</option>
+                        {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                      <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Margin</span>
                      <span className={`text-[13px] font-bold ${expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{expectedMargin.toFixed(1)}%</span>

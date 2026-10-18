@@ -794,18 +794,22 @@ export const InvoiceBuilder: React.FC = () => {
                 <div className="py-2 border-t border-theme-subtle space-y-3 mt-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
-                      <input type="checkbox" checked={taxEnabled} onChange={e => setTaxEnabled(e.target.checked)} className="rounded border-theme-subtle text-blue-500 bg-surface" />
-                      <span className="text-muted font-medium">Enable</span>
-                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setTaxEnabled(t => !t)}
+                      className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 ${taxEnabled ? 'bg-blue-500' : 'bg-surface2 border border-theme-subtle'}`}
+                      title={taxEnabled ? 'Tax enabled' : 'Tax disabled'}
+                    >
+                      <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
+                    </button>
                   </div>
                   {taxEnabled && (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
                         <button
                           type="button"
                           onClick={() => setTaxProfileId('tp_opt1_absorbed')}
-                          className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                             taxProfileId === 'tp_opt1_absorbed'
                               ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                               : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
@@ -816,7 +820,7 @@ export const InvoiceBuilder: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep')}
-                          className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                             taxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || taxProfileId === 'tp_vat_sscl'
                               ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                               : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
@@ -827,13 +831,13 @@ export const InvoiceBuilder: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setTaxProfileId('tp_opt3_both_separate')}
-                          className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          className={`col-span-2 p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                             taxProfileId === 'tp_opt3_both_separate'
                               ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                               : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
                           }`}
                         >
-                          Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines</span>
+                          Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines (SSCL & VAT Separate)</span>
                         </button>
                       </div>
                       <select value={taxProfileId} onChange={e => setTaxProfileId(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs outline-none focus:border-blue-500/50">

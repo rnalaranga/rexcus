@@ -269,13 +269,7 @@ export const RexAIAssistant: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          style={{
-            borderTopLeftRadius: '9999px',
-            borderBottomLeftRadius: '9999px',
-            borderTopRightRadius: '0px',
-            borderBottomRightRadius: '0px'
-          }}
-          className="fixed right-0 bottom-24 z-50 flex items-center h-[54px] cursor-pointer
+          className="rex-ai-trigger-btn rounded-l-full fixed right-0 bottom-24 z-50 flex items-center h-[54px] cursor-pointer
             w-[52px] hover:w-[255px]
             bg-zinc-950/90 dark:bg-zinc-900/90 
             backdrop-blur-xl 
@@ -286,13 +280,7 @@ export const RexAIAssistant: React.FC = () => {
         >
           {/* Ambient Glowing Gradient Background */}
           <div 
-            style={{
-              borderTopLeftRadius: '9999px',
-              borderBottomLeftRadius: '9999px',
-              borderTopRightRadius: '0px',
-              borderBottomRightRadius: '0px'
-            }}
-            className="absolute inset-0 bg-gradient-to-r from-rose-600/40 via-zinc-900/70 to-red-600/30 -z-10 group-hover:opacity-100 transition-opacity" 
+            className="rex-ai-trigger-btn rounded-l-full absolute inset-0 bg-gradient-to-r from-rose-600/40 via-zinc-900/70 to-red-600/30 -z-10 group-hover:opacity-100 transition-opacity" 
           />
 
           {/* Top-half Glass Sheen / Reflection */}
@@ -309,17 +297,14 @@ export const RexAIAssistant: React.FC = () => {
           {/* Left Rex AI Logo Emblem (Always visible in half-circle) */}
           <div className="relative flex items-center justify-center w-[52px] h-[54px] shrink-0">
             <div 
-              style={{ borderRadius: '9999px' }}
-              className="relative flex items-center justify-center p-1 bg-black/60 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-12 transition-all duration-300"
+              className="rounded-full w-9 h-9 relative flex items-center justify-center p-1 bg-black/60 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-12 transition-all duration-300"
             >
               <RexAILogo variant="icon" size={26} />
               <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
                 <span 
-                  style={{ borderRadius: '9999px' }}
                   className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
                 ></span>
                 <span 
-                  style={{ borderRadius: '9999px' }}
                   className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-black"
                 ></span>
               </span>
