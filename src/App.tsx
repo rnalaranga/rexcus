@@ -37,6 +37,7 @@ import { PayablesHub } from '@/pages/finance/PayablesHub'
 import { Machinery } from '@/pages/production/Machinery'
 
 import { WorkOrders } from '@/pages/production/WorkOrders'
+import { WorkOrderDetail } from '@/pages/production/WorkOrderDetail'
 import { Employees } from '@/pages/hr/Employees'
 import { Skills } from '@/pages/hr/Skills'
 import { LaborReport } from '@/pages/hr/LaborReport'
@@ -122,8 +123,10 @@ function AppRoutes() {
           {/* Finance */}
           <Route path="/finance/invoices" element={<Invoices />} />
 
-          {/* Placeholder modules */}
+          {/* Production */}
           <Route path="/production" element={<WorkOrders />} />
+          <Route path="/production/work-orders/:id" element={<WorkOrderDetail />} />
+          <Route path="/production/:id" element={<WorkOrderDetail />} />
           <Route path="/production/machinery" element={<Machinery />} />
             
           <Route path="/hr/employees" element={<Employees />} />

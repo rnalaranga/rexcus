@@ -1584,6 +1584,9 @@ export const Inventory: React.FC = () => {
           }}
           initialInventoryId={selectedLinearItem?.id}
           initialJobRef={location.state?.openCutStudioWithJobRef}
+          initialSearchTerm={location.state?.cutMaterial}
+          initialLength={location.state?.cutLength}
+          initialQty={location.state?.cutQty}
           onBackToInventory={() => {
             setSelectedLinearItem(null)
             setActiveTab('raw_material')

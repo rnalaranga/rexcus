@@ -32,7 +32,7 @@ interface WorkOrderStudioModalProps {
   inventory: any[]
   quotations?: any[]
   onRefresh: () => void
-  onNavigateToCutStudio?: (jobRef: string, inventoryId?: string) => void
+  onNavigateToCutStudio?: (target: any) => void
   onNavigateToMR?: (mrId: string) => void
 }
 
@@ -375,20 +375,38 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   const linkedQuote = useMemo(() => {
     if (!quotations || quotations.length === 0) return null
     return quotations.find((q: any) => {
-      if (wo.quoteId && String(q.id) === String(wo.quoteId)) return true
-      if (wo.sourceQuoteId && String(q.id) === String(wo.sourceQuoteId)) return true
+      const qData = typeof q.data === 'string' ? (() => { try { return JSON.parse(q.data) } catch(e) { return {} } })() : (q.data || {})
+      
+      const qId = String(q.id || '').trim().toLowerCase()
+      const qQuoNo = String(q.quotationNo || qData.quotationNo || '').trim().toLowerCase()
+      const qDocNo = String(q.docNo || qData.docNo || '').trim().toLowerCase()
 
-      const qDoc = (q.docNo || q.quotationNo || '').trim().toLowerCase()
-      const woTitle = (wo.title || '').toLowerCase()
-      const woOrder = (wo.orderNo || '').toLowerCase()
+      const woQuoteId = String(wo.quoteId || wo.sourceQuoteId || '').trim().toLowerCase()
+      const woTitle = String(wo.title || '').trim().toLowerCase()
+      const woOrder = String(wo.orderNo || '').trim().toLowerCase()
 
-      if (qDoc && (woTitle.includes(qDoc) || woOrder.includes(qDoc))) return true
+      // 1. Direct ID or Quotation Number match
+      if (woQuoteId) {
+        if (qId === woQuoteId) return true
+        if (qQuoNo && qQuoNo === woQuoteId) return true
+        if (qDocNo && qDocNo === woQuoteId) return true
+      }
 
-      const match = woTitle.match(/(ad-\d+)|(quo-\d+)|(q-\d+)/i)
+      // 2. Contains in WO Title or Order No
+      if (qId && (woTitle.includes(qId) || woOrder.includes(qId))) return true
+      if (qQuoNo && (woTitle.includes(qQuoNo) || woOrder.includes(qQuoNo))) return true
+      if (qDocNo && (woTitle.includes(qDocNo) || woOrder.includes(qDocNo))) return true
+
+      // 3. Token match: QT-XXXXX, QUO-XXXXX, AD-XXXXX, Q-XXXXX
+      const match = (woTitle + ' ' + woOrder + ' ' + woQuoteId).match(/(qt-\d+)|(quo-\d+)|(ad-\d+)|(q-\d+)/i)
       if (match) {
         const token = match[0].toLowerCase()
-        if (qDoc.includes(token) || String(q.id).toLowerCase().includes(token)) return true
+        if (qId.includes(token) || (qQuoNo && qQuoNo.includes(token)) || (qDocNo && qDocNo.includes(token))) return true
       }
+
+      // 4. Quotation No digits token (e.g. 0596)
+      if (qQuoNo && qQuoNo.length >= 3 && (woTitle.includes(qQuoNo) || woOrder.includes(qQuoNo))) return true
+
       return false
     })
   }, [quotations, wo])
@@ -478,22 +496,50 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
       : (Array.isArray(linkedQuote.items) ? linkedQuote.items : [])
 
     if (items.length === 0 && quoteItems.length > 0) {
+      // Check if item corresponds to an inventory item with BOMs
       quoteItems.forEach((ci: any) => {
-        const name = ci.name || ci.desc || ci.description
-        if (name) {
-          items.push({
-            material: name,
-            qty: Number(ci.qty || 1),
-            unit: ci.unit || 'pcs',
-            unitCost: Number(ci.unitPrice || ci.cost || 0) * 0.65,
-            notes: ci.notes || ci.description || 'Finished product specification'
-          })
+        const prod = (inventory || []).find((inv: any) => 
+          (ci.productId && inv.id === ci.productId) ||
+          (ci.name && (inv.name === ci.name || inv.sku === ci.name)) ||
+          (ci.desc && inv.name && ci.desc.includes(inv.name))
+        )
+        if (prod && prod.boms) {
+          try {
+            const pboms = typeof prod.boms === 'string' ? JSON.parse(prod.boms) : prod.boms
+            if (Array.isArray(pboms) && pboms.length > 0) {
+              pboms.forEach((pb: any) => {
+                items.push({
+                  material: pb.material || pb.name || pb.rawMaterial,
+                  qty: Number(pb.qty || 1) * Number(ci.qty || 1),
+                  unit: pb.unit || pb.uom || 'pcs',
+                  unitCost: Number(pb.unitCost || pb.cost || 0),
+                  notes: `Component for ${ci.name || ci.desc || prod.name}`
+                })
+              })
+            }
+          } catch(e) {}
         }
       })
+
+      // If still empty, use the finished product specification line
+      if (items.length === 0) {
+        quoteItems.forEach((ci: any) => {
+          const name = ci.name || ci.desc || ci.description
+          if (name) {
+            items.push({
+              material: name,
+              qty: Number(ci.qty || 1),
+              unit: ci.unit || 'pcs',
+              unitCost: Number(ci.unitPrice || ci.cost || 0) * 0.65,
+              notes: ci.notes || ci.description || 'Finished product specification'
+            })
+          }
+        })
+      }
     }
 
     return items
-  }, [linkedQuote])
+  }, [linkedQuote, inventory])
 
   // Quote Operations (if work order has no operations yet)
   const quoteOps: any[] = useMemo(() => {
@@ -622,7 +668,20 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 onClick={() => setShowIssueModal(true)}
                 className="text-xs rounded-none border-theme"
               >
-                <Plus size={13} className="mr-1 text-emerald-500"/> Issue Material
+                <Plus size={13} className="mr-1 text-rex-600"/> Issue Material
+              </Button>
+
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  onClose();
+                  window.location.href = `/production/work-orders/${wo.id}`;
+                }}
+                className="text-xs rounded-none border-theme text-rex-600"
+                title="Switch to dedicated full page view"
+              >
+                <ExternalLink size={13} className="mr-1"/> Full Page View
               </Button>
 
               {onNavigateToCutStudio && (
@@ -1153,9 +1212,9 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
                                 <Button
-                                  variant="outline"
+                                  variant="primary"
                                   size="sm"
                                   onClick={() => {
                                     setIssueForm({
@@ -1168,10 +1227,28 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                                     })
                                     setShowIssueModal(true)
                                   }}
-                                  className="text-[11px] py-1 px-2.5 h-auto text-rex-600 border-rex-500/30 hover:bg-rex-500/10 rounded-none font-bold"
+                                  className="text-[11px] py-1 px-2.5 h-auto bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold inline-flex items-center"
                                 >
-                                  Issue This
+                                  <Package size={11} className="mr-1"/> Issue Material
                                 </Button>
+                                {onNavigateToCutStudio && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      onNavigateToCutStudio({
+                                        jobRef: wo.orderNo || wo.id,
+                                        materialName: bom.material,
+                                        requiredLength: bom.notes?.match(/L:\s*(\d+(\.\d+)?)/i)?.[1] || null,
+                                        requiredQty: reqQty
+                                      })
+                                    }}
+                                    className="text-[11px] py-1 px-2 h-auto text-amber-600 border-amber-500/30 hover:bg-amber-500/10 rounded-none font-bold inline-flex items-center"
+                                    title="Cut & Issue via Linear Stock Cut Studio"
+                                  >
+                                    <Scissors size={11} className="mr-1"/> Cut & Issue
+                                  </Button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteBomItem(i)}
@@ -1631,6 +1708,61 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
           <div className="p-3 bg-rex-500/10 border border-rex-500/20 rounded-none text-rex-600 dark:text-rex-400">
             Issuing stock to Job <strong className="font-mono">#{wo.id}</strong> ({wo.title})
           </div>
+
+          {/* ── QUOTATION BOM QUICK SELECTOR ── */}
+          {bomItems.length > 0 && (
+            <div className="p-3 bg-surface2/80 border border-theme-subtle rounded-none space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-rex-600 dark:text-rex-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12}/> Select from Planned BOM Requirements
+                </label>
+                <span className="text-[10px] text-muted font-mono">{bomItems.length} planned items</span>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                {bomItems.map((b: any, bIdx: number) => {
+                  const isSelected = issueForm.materialName === b.material
+                  const matchedInv = inventory.find((inv: any) => 
+                    (inv.name || '').toLowerCase() === (b.material || '').toLowerCase() ||
+                    (inv.sku || '').toLowerCase() === (b.material || '').toLowerCase()
+                  )
+                  return (
+                    <button
+                      key={bIdx}
+                      type="button"
+                      onClick={() => {
+                        setIssueForm({
+                          ...issueForm,
+                          inventoryId: matchedInv ? matchedInv.id : '',
+                          materialName: b.material,
+                          qty: Number(b.qty || 1),
+                          unit: b.unit || matchedInv?.uom || 'pcs',
+                          unitCost: Number(b.unitCost || matchedInv?.unitCost || 0),
+                          notes: `Issued for BOM requirement: ${b.notes || b.material}`
+                        })
+                      }}
+                      className={`text-left p-2 border rounded-none transition-all flex items-center justify-between text-xs ${
+                        isSelected 
+                          ? 'bg-rex-600/15 border-rex-500 text-rex-600 font-bold shadow-sm' 
+                          : 'bg-surface border-theme-subtle hover:border-rex-500/50 text-primary'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="font-semibold truncate flex items-center gap-1.5">
+                          <Package size={12} className="text-amber-500 shrink-0"/>
+                          <span className="truncate">{b.material}</span>
+                        </div>
+                        {b.notes && <div className="text-[10px] text-muted truncate mt-0.5">{b.notes}</div>}
+                      </div>
+                      <div className="text-right shrink-0 font-mono">
+                        <span className="font-bold text-rex-600">{b.qty} {b.unit || 'pcs'}</span>
+                        <div className="text-[10px] text-muted">{formatCurrency(b.unitCost || 0)}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">

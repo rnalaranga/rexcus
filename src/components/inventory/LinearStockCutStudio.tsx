@@ -76,6 +76,9 @@ interface LinearStockCutStudioProps {
   showToast?: (type: any, title: string, message?: string) => void
   initialInventoryId?: string
   initialJobRef?: string
+  initialSearchTerm?: string
+  initialLength?: number | string
+  initialQty?: number
   onBackToInventory?: () => void
 }
 
@@ -85,28 +88,33 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
   showToast = () => {},
   initialInventoryId,
   initialJobRef,
+  initialSearchTerm,
+  initialLength,
+  initialQty,
   onBackToInventory
 }) => {
   // 1. Data Hooks
   const { data: remnants = [], loading: remnantsLoading, refetch: refetchRemnants } = useStockRemnants()
 
-  // Fetch Work Orders for Job Reference Dropdown
+  // Fetch Work Orders & Quotations for Job & BOM Resolution
   const [workOrders, setWorkOrders] = useState<any[]>([])
+  const [quotations, setQuotations] = useState<any[]>([])
   const [loadingWorkOrders, setLoadingWorkOrders] = useState(false)
 
   useEffect(() => {
     let isMounted = true
     setLoadingWorkOrders(true)
-    fetchWorkOrders()
-      .then((data: any) => {
-        if (isMounted && Array.isArray(data)) {
-          setWorkOrders(data)
-        }
-      })
-      .catch((err) => console.error('Failed to load work orders for studio:', err))
-      .finally(() => {
-        if (isMounted) setLoadingWorkOrders(false)
-      })
+    Promise.all([
+      fetchWorkOrders().catch(() => []),
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations`).then(r => r.json()).catch(() => [])
+    ]).then(([wos, quotes]) => {
+      if (isMounted) {
+        if (Array.isArray(wos)) setWorkOrders(wos)
+        if (Array.isArray(quotes)) setQuotations(quotes)
+      }
+    }).finally(() => {
+      if (isMounted) setLoadingWorkOrders(false)
+    })
     return () => { isMounted = false }
   }, [])
 
@@ -195,6 +203,140 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
       setManualJobMode(true)
     }
   }, [initialJobRef])
+
+  useEffect(() => {
+    if (initialSearchTerm) {
+      const match = linearItems.find(i => 
+        (i.name || '').toLowerCase().includes(initialSearchTerm.toLowerCase()) ||
+        initialSearchTerm.toLowerCase().includes((i.name || '').toLowerCase())
+      )
+      if (match) {
+        handleSelectInventory(match.id)
+      } else {
+        setMaterialName(initialSearchTerm)
+      }
+    }
+  }, [initialSearchTerm, linearItems])
+
+  useEffect(() => {
+    if (initialLength !== undefined && initialLength !== null) {
+      const parsed = parseFloat(String(initialLength))
+      if (!isNaN(parsed) && parsed > 0) {
+        handleDirectLengthChange(parsed)
+      }
+    }
+  }, [initialLength])
+
+  useEffect(() => {
+    if (initialQty !== undefined && initialQty !== null && Number(initialQty) > 0) {
+      setCutQuantity(Number(initialQty))
+    }
+  }, [initialQty])
+
+  // Resolve active work order object
+  const selectedWorkOrder = useMemo(() => {
+    if (!jobRef.trim()) return null
+    const cleanRef = jobRef.trim().toLowerCase()
+    return workOrders.find((wo: any) => {
+      const id = String(wo.id || '').toLowerCase()
+      const orderNo = String(wo.orderNo || '').toLowerCase()
+      return id === cleanRef || orderNo === cleanRef || cleanRef.includes(id) || (orderNo && cleanRef.includes(orderNo))
+    })
+  }, [jobRef, workOrders])
+
+  // Resolve BOM materials planned for selected work order
+  const selectedWoBoms: any[] = useMemo(() => {
+    if (!selectedWorkOrder) return []
+    try {
+      const b = typeof selectedWorkOrder.bom === 'string' 
+        ? JSON.parse(selectedWorkOrder.bom || '[]') 
+        : (selectedWorkOrder.bom || [])
+      if (Array.isArray(b) && b.length > 0) return b
+    } catch(e) {}
+
+    // Fallback to linked quotation
+    const quoteId = selectedWorkOrder.quoteId || selectedWorkOrder.sourceQuoteId
+    const quote = quotations.find((q: any) => {
+      const qData = typeof q.data === 'string' ? (() => { try { return JSON.parse(q.data) } catch(err) { return {} } })() : (q.data || {})
+      const qId = String(q.id || '').toLowerCase()
+      const qQuoNo = String(q.quotationNo || qData.quotationNo || '').toLowerCase()
+      const qDocNo = String(q.docNo || qData.docNo || '').toLowerCase()
+      const woTitle = String(selectedWorkOrder.title || '').toLowerCase()
+      const qTarget = String(quoteId || '').toLowerCase()
+
+      if (qTarget && (qId === qTarget || qQuoNo === qTarget || qDocNo === qTarget)) return true
+      if (qId && woTitle.includes(qId)) return true
+      if (qQuoNo && qQuoNo.length >= 3 && woTitle.includes(qQuoNo)) return true
+      return false
+    })
+
+    if (quote) {
+      const data = typeof quote.data === 'string' ? (() => { try { return JSON.parse(quote.data) } catch(e) { return {} } })() : (quote.data || {})
+      const items: any[] = []
+      if (Array.isArray(data.boms)) {
+        data.boms.forEach((bm: any, bIdx: number) => {
+          const partPrefix = bm.title ? `${bm.title}: ` : (data.boms.length > 1 ? `Part ${bIdx + 1}: ` : '')
+          ;(bm.autoMats || []).forEach((m: any) => {
+            if (m.material) {
+              const spec = [
+                m.length && m.width ? `${m.length}x${m.width}` : m.length ? `L:${m.length}` : '',
+                m.thick ? `${m.thick}mm` : m.dia ? `Ø${m.dia}mm` : ''
+              ].filter(Boolean).join(' ')
+              items.push({
+                material: m.material,
+                qty: Number(m.qty || 1),
+                unit: m.dia ? 'rods' : 'plates',
+                unitCost: Number(m.unitPrice || 0),
+                notes: `${partPrefix}${spec}`.trim()
+              })
+            }
+          })
+          ;(bm.manualMats || []).forEach((m: any) => {
+            if (m.material) {
+              items.push({
+                material: m.material,
+                qty: Number(m.qty || 1),
+                unit: 'pcs',
+                unitCost: Number(m.unitPrice || 0),
+                notes: `${partPrefix}${m.supplier || ''}`.trim()
+              })
+            }
+          })
+        })
+      }
+      return items
+    }
+    return []
+  }, [selectedWorkOrder, quotations])
+
+  const handlePickBomForCut = (bom: any) => {
+    // 1. Find matching inventory item if possible
+    const match = linearItems.find(i => 
+      (i.name || '').toLowerCase().includes((bom.material || '').toLowerCase()) ||
+      (bom.material || '').toLowerCase().includes((i.name || '').toLowerCase())
+    )
+    if (match) {
+      handleSelectInventory(match.id)
+    } else {
+      setMaterialName(bom.material)
+    }
+
+    // 2. Parse length if available in notes (e.g. L:48 or L: 4ft or 48mm)
+    const lenMatch = (bom.notes || '').match(/L:\s*(\d+(\.\d+)?)/i) || (bom.notes || '').match(/(\d+(\.\d+)?)\s*(ft|feet|inch|in|mm|m)\b/i)
+    if (lenMatch) {
+      const val = parseFloat(lenMatch[1])
+      if (!isNaN(val) && val > 0) {
+        handleDirectLengthChange(val)
+      }
+    }
+
+    // 3. Set cut quantity
+    if (bom.qty) {
+      setCutQuantity(Number(bom.qty))
+    }
+
+    showToast('info', `Loaded specs for ${bom.material}`, `Required: ${bom.qty} ${bom.unit || 'pcs'}`)
+  }
 
   const [selectedSourceType, setSelectedSourceType] = useState<'remnant' | 'full_bar'>('remnant')
   const [selectedRemnantId, setSelectedRemnantId] = useState<string>('')
@@ -946,6 +1088,37 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                       <span>
                         <strong>Material Issue Blocked:</strong> A Job Number / Work Order is strictly mandatory. Stock cannot be cut or issued without a valid job reference.
                       </span>
+                    </div>
+                  )}
+
+                  {/* Planned Quotation BOM Materials for Selected Work Order */}
+                  {selectedWoBoms.length > 0 && (
+                    <div className="p-3 bg-surface2/80 border border-theme-subtle rounded-none space-y-2 mt-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-rex-600 dark:text-rex-400">
+                        <span className="flex items-center gap-1.5"><Layers size={13}/> Planned Quotation BOM Materials ({selectedWoBoms.length})</span>
+                        <span className="text-[10px] text-muted font-normal">Click item to auto-populate cut specs</span>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                        {selectedWoBoms.map((b: any, bi: number) => (
+                          <button
+                            key={bi}
+                            type="button"
+                            onClick={() => handlePickBomForCut(b)}
+                            className="w-full text-left p-2 rounded-none bg-surface border border-theme-subtle hover:border-rex-500 hover:bg-rex-500/5 transition-all flex items-center justify-between text-xs"
+                          >
+                            <div className="min-w-0 pr-2">
+                              <span className="font-semibold text-primary flex items-center gap-1.5">
+                                <Package size={12} className="text-amber-500 shrink-0"/> {b.material}
+                              </span>
+                              {b.notes && <span className="block text-[10px] text-muted truncate mt-0.5">{b.notes}</span>}
+                            </div>
+                            <div className="text-right shrink-0 font-mono">
+                              <span className="font-bold text-rex-600 text-[11px]">{b.qty} {b.unit || 'pcs'}</span>
+                              <span className="block text-[9px] text-emerald-600 font-bold">Apply Specs →</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
 

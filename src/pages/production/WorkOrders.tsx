@@ -333,7 +333,7 @@ export const WorkOrders: React.FC = () => {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => setActiveStudioWO(row)}
+            onClick={() => navigate(`/production/work-orders/${row.id}`)}
             className="text-xs font-bold text-rex-600 border-rex-500/30 hover:bg-rex-500/10 rounded-none"
           >
             <Eye size={12} className="mr-1"/> Execution Studio
@@ -518,7 +518,7 @@ export const WorkOrders: React.FC = () => {
               columns={columns}
               keyExtractor={(row: any) => row.id}
               emptyMessage="No work orders matching your filters. Click '+ Create Work Order' to begin a new job."
-              onRowClick={(row: any) => setActiveStudioWO(row)}
+              onRowClick={(row: any) => navigate(`/production/work-orders/${row.id}`)}
             />
           )}
         </GlassCard>
@@ -551,7 +551,7 @@ export const WorkOrders: React.FC = () => {
                       return (
                         <GlassCard
                           key={wo.id}
-                          onClick={() => setActiveStudioWO(wo)}
+                          onClick={() => navigate(`/production/work-orders/${wo.id}`)}
                           className="p-4 border-theme-subtle hover:border-rex-500/40 hover:shadow-md transition-all cursor-pointer space-y-3 rounded-none"
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -622,8 +622,20 @@ export const WorkOrders: React.FC = () => {
         inventory={inventory}
         quotations={quotations}
         onRefresh={loadAllData}
-        onNavigateToCutStudio={(jobRef) => {
-          navigate('/inventory', { state: { openCutStudioWithJobRef: jobRef } })
+        onNavigateToCutStudio={(target: any) => {
+          const ref = typeof target === 'object' ? (target.jobRef || target.orderNo || target.id) : target
+          const material = typeof target === 'object' ? target.materialName : null
+          const length = typeof target === 'object' ? target.requiredLength : null
+          const qty = typeof target === 'object' ? target.requiredQty : null
+          navigate('/inventory', { 
+            state: { 
+              openCutStudioWithJobRef: ref,
+              cutMaterial: material,
+              cutLength: length,
+              cutQty: qty,
+              tab: 'linear_remnants' 
+            } 
+          })
         }}
         onNavigateToMR={(mrId) => {
           navigate(`/purchasing/mr-builder/${mrId}`)
