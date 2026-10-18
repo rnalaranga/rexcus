@@ -4,7 +4,7 @@ import {
   DollarSign, Package, ClipboardList, Play, Pause, Scissors, FileText, 
   ChevronRight, Plus, Trash2, Edit, ShieldCheck, AlertCircle, ArrowRight, 
   ExternalLink, Printer, Download, User, Cpu, TrendingUp, Calendar, 
-  Building, Check, X, RefreshCw, BarChart3, HelpCircle, Activity
+  Building, Check, X, RefreshCw, BarChart3, HelpCircle, Activity, Sparkles
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -30,6 +30,7 @@ interface WorkOrderStudioModalProps {
   employees: any[]
   machineries: any[]
   inventory: any[]
+  quotations?: any[]
   onRefresh: () => void
   onNavigateToCutStudio?: (jobRef: string, inventoryId?: string) => void
   onNavigateToMR?: (mrId: string) => void
@@ -44,6 +45,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   employees,
   machineries,
   inventory,
+  quotations = [],
   onRefresh,
   onNavigateToCutStudio,
   onNavigateToMR
@@ -55,6 +57,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   // Sub-Modals
   const [showIssueModal, setShowIssueModal] = useState(false)
   const [showAddOpModal, setShowAddOpModal] = useState(false)
+  const [showAddBomModal, setShowAddBomModal] = useState(false)
   const [showQcModal, setShowQcModal] = useState<any>(null)
   const [showReworkModal, setShowReworkModal] = useState<any>(null)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
@@ -63,6 +66,15 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   const [issueForm, setIssueForm] = useState({
     inventoryId: '',
     materialName: '',
+    qty: 1,
+    unit: 'pcs',
+    unitCost: 0,
+    notes: ''
+  })
+
+  // Add Planned BOM Form
+  const [addBomForm, setAddBomForm] = useState({
+    material: '',
     qty: 1,
     unit: 'pcs',
     unitCost: 0,
@@ -153,18 +165,18 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
     switch (status) {
       case 'Completed':
       case 'Closed':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/30 flex items-center gap-1.5"><CheckCircle2 size={12}/> Completed</span>
+        return <span className="px-2.5 py-1 rounded-none text-xs font-bold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/30 flex items-center gap-1.5"><CheckCircle2 size={12}/> Completed</span>
       case 'In Progress':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center gap-1.5"><Play size={12} className="fill-blue-500/30"/> In Production</span>
+        return <span className="px-2.5 py-1 rounded-none text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center gap-1.5"><Play size={12} className="fill-blue-500/30"/> In Production</span>
       case 'QC Pending':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5"><ShieldCheck size={12}/> QC Inspection</span>
+        return <span className="px-2.5 py-1 rounded-none text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5"><ShieldCheck size={12}/> QC Inspection</span>
       case 'Rework':
       case 'Rework Required':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1.5 animate-pulse"><RotateCcw size={12}/> Rework In Progress</span>
+        return <span className="px-2.5 py-1 rounded-none text-xs font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1.5 animate-pulse"><RotateCcw size={12}/> Rework In Progress</span>
       case 'Released':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex items-center gap-1.5"><ArrowRight size={12}/> Released</span>
+        return <span className="px-2.5 py-1 rounded-none text-xs font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex items-center gap-1.5"><ArrowRight size={12}/> Released</span>
       default:
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-surface2 text-muted border border-theme-subtle flex items-center gap-1.5"><Clock size={12}/> {status || 'Draft'}</span>
+        return <span className="px-2.5 py-1 rounded-none text-xs font-bold bg-surface2 text-muted border border-theme-subtle flex items-center gap-1.5"><Clock size={12}/> {status || 'Draft'}</span>
     }
   }
 
@@ -312,18 +324,219 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
     }
   }
 
-  // Parse BOM rows safely
-  let bomItems: any[] = []
-  try {
-    bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || [])
-  } catch (e) {}
+  // Save BOM to Work Order
+  const handleSaveBOMToWorkOrder = async (bomsToSave: any[]) => {
+    try {
+      setSubmitting(true)
+      await updateWorkOrder(wo.id, { bom: bomsToSave })
+      notify('success', `Saved ${bomsToSave.length} BOM requirement(s) to Work Order #${wo.id}`)
+      onRefresh()
+    } catch (e: any) {
+      notify('error', e.message || 'Failed to save BOM to Work Order')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Delete BOM Item
+  const handleDeleteBomItem = async (indexToDelete: number) => {
+    const updated = bomItems.filter((_, idx) => idx !== indexToDelete)
+    await handleSaveBOMToWorkOrder(updated)
+  }
+
+  // Add BOM Item Submit
+  const handleAddBomItemSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!addBomForm.material.trim()) {
+      notify('error', 'Please enter a material name.')
+      return
+    }
+    const updated = [...bomItems, { ...addBomForm }]
+    await handleSaveBOMToWorkOrder(updated)
+    setShowAddBomModal(false)
+    setAddBomForm({ material: '', qty: 1, unit: 'pcs', unitCost: 0, notes: '' })
+  }
+
+  // Sync Operations from Quotation if work order has no operations
+  const handleSyncOpsFromQuote = async (opsToSave: any[]) => {
+    try {
+      setSubmitting(true)
+      for (const op of opsToSave) {
+        await addWorkOrderOperation(wo.id, op)
+      }
+      notify('success', `Added ${opsToSave.length} operations from quotation to Work Order #${wo.id}`)
+      onRefresh()
+    } catch (e: any) {
+      notify('error', e.message || 'Failed to sync operations')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Linked Quotation Resolution
+  const linkedQuote = useMemo(() => {
+    if (!quotations || quotations.length === 0) return null
+    return quotations.find((q: any) => {
+      if (wo.quoteId && String(q.id) === String(wo.quoteId)) return true
+      if (wo.sourceQuoteId && String(q.id) === String(wo.sourceQuoteId)) return true
+
+      const qDoc = (q.docNo || q.quotationNo || '').trim().toLowerCase()
+      const woTitle = (wo.title || '').toLowerCase()
+      const woOrder = (wo.orderNo || '').toLowerCase()
+
+      if (qDoc && (woTitle.includes(qDoc) || woOrder.includes(qDoc))) return true
+
+      const match = woTitle.match(/(ad-\d+)|(quo-\d+)|(q-\d+)/i)
+      if (match) {
+        const token = match[0].toLowerCase()
+        if (qDoc.includes(token) || String(q.id).toLowerCase().includes(token)) return true
+      }
+      return false
+    })
+  }, [quotations, wo])
+
+  // Direct BOM items stored on the work order
+  const directBomItems: any[] = useMemo(() => {
+    try {
+      return typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || [])
+    } catch (e) {
+      return []
+    }
+  }, [wo.bom])
+
+  // BOM items extracted from linked quotation
+  const quoteBomItems: any[] = useMemo(() => {
+    if (!linkedQuote) return []
+    const data = typeof linkedQuote.data === 'string' 
+      ? (() => { try { return JSON.parse(linkedQuote.data) } catch(e) { return {} } })() 
+      : (linkedQuote.data || {})
+
+    const items: any[] = []
+
+    // Multi-part BOMs
+    if (Array.isArray(data.boms) && data.boms.length > 0) {
+      data.boms.forEach((b: any, bIdx: number) => {
+        const partPrefix = b.title ? `${b.title}: ` : (data.boms.length > 1 ? `Part ${bIdx + 1}: ` : '')
+        ;(b.autoMats || []).forEach((m: any) => {
+          if (m.material) {
+            const spec = [
+              m.length && m.width ? `${m.length}x${m.width}` : m.length ? `L:${m.length}` : '',
+              m.thick ? `${m.thick}mm` : m.dia ? `Ø${m.dia}mm` : ''
+            ].filter(Boolean).join(' ')
+            items.push({
+              material: m.material,
+              qty: Number(m.qty || 1),
+              unit: m.dia ? 'rods' : 'plates',
+              unitCost: Number(m.unitPrice || 0),
+              notes: `${partPrefix}${spec}`.trim()
+            })
+          }
+        })
+        ;(b.manualMats || []).forEach((m: any) => {
+          if (m.material) {
+            items.push({
+              material: m.material,
+              qty: Number(m.qty || 1),
+              unit: 'pcs',
+              unitCost: Number(m.unitPrice || 0),
+              notes: `${partPrefix}${m.supplier || ''}`.trim()
+            })
+          }
+        })
+      })
+    }
+
+    // Root-level autoMats / manualMats (legacy)
+    if (items.length === 0) {
+      ;(data.autoMats || linkedQuote.autoMats || []).forEach((m: any) => {
+        if (m.material) {
+          items.push({
+            material: m.material,
+            qty: Number(m.qty || 1),
+            unit: m.dia ? 'rods' : 'plates',
+            unitCost: Number(m.unitPrice || 0),
+            notes: `${m.length || ''}x${m.width || ''} ${m.thick || ''}mm`
+          })
+        }
+      })
+      ;(data.manualMats || linkedQuote.manualMats || []).forEach((m: any) => {
+        if (m.material) {
+          items.push({
+            material: m.material,
+            qty: Number(m.qty || 1),
+            unit: 'pcs',
+            unitCost: Number(m.unitPrice || 0),
+            notes: m.supplier || ''
+          })
+        }
+      })
+    }
+
+    // Finished items / custItems
+    const quoteItems: any[] = Array.isArray(data.custItems) 
+      ? data.custItems 
+      : Array.isArray(data.items) 
+      ? data.items 
+      : (Array.isArray(linkedQuote.items) ? linkedQuote.items : [])
+
+    if (items.length === 0 && quoteItems.length > 0) {
+      quoteItems.forEach((ci: any) => {
+        const name = ci.name || ci.desc || ci.description
+        if (name) {
+          items.push({
+            material: name,
+            qty: Number(ci.qty || 1),
+            unit: ci.unit || 'pcs',
+            unitCost: Number(ci.unitPrice || ci.cost || 0) * 0.65,
+            notes: ci.notes || ci.description || 'Finished product specification'
+          })
+        }
+      })
+    }
+
+    return items
+  }, [linkedQuote])
+
+  // Quote Operations (if work order has no operations yet)
+  const quoteOps: any[] = useMemo(() => {
+    if (!linkedQuote) return []
+    const data = typeof linkedQuote.data === 'string' 
+      ? (() => { try { return JSON.parse(linkedQuote.data) } catch(e) { return {} } })() 
+      : (linkedQuote.data || {})
+
+    const ops: any[] = []
+    if (Array.isArray(data.boms)) {
+      data.boms.forEach((b: any, bIdx: number) => {
+        const partPrefix = b.title ? `${b.title}: ` : (data.boms.length > 1 ? `Part ${bIdx + 1}: ` : '')
+        if (b.procState && typeof b.procState === 'object') {
+          Object.keys(b.procState).forEach(procName => {
+            const op = b.procState[procName]
+            const hrs = Number(op?.estHr) || Number(op?.quoHr) || 0
+            if (hrs > 0) {
+              ops.push({
+                operationName: `${partPrefix}${procName}`,
+                plannedHours: hrs,
+                hourlyLaborRate: Number(op?.hrRate || 750),
+                hourlyMachineRate: Number(op?.machineRate || 1200)
+              })
+            }
+          })
+        }
+      })
+    }
+    return ops
+  }, [linkedQuote])
+
+  const bomItems: any[] = directBomItems.length > 0 ? directBomItems : quoteBomItems
+  const isAutoDetectedFromQuote = directBomItems.length === 0 && quoteBomItems.length > 0
+  const isAutoDetectedOps = operations.length === 0 && quoteOps.length > 0
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="" size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="" size="5xl">
       <div className="space-y-6 pb-2">
         {/* Toast alert */}
         {toastMsg && (
-          <div className={`p-3 rounded-xl text-xs font-semibold flex items-center justify-between gap-3 shadow-md border ${
+          <div className={`p-3 rounded-none text-xs font-semibold flex items-center justify-between gap-3 shadow-sm border ${
             toastMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
             toastMsg.type === 'error' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' :
             'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
@@ -338,47 +551,45 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
           </div>
         )}
 
-        {/* ── TOP HERO HEADER ──────────────────────────────────────────────────────── */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-rex-950 to-indigo-950 p-6 text-white border border-rex-500/20 shadow-xl">
-          <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-rex-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute right-1/3 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-
-          <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-2">
+        {/* ── TOP HEADER (STANDARD REX ERP SYSTEM THEME) ───────────────────────── */}
+        <div className="bg-surface border border-theme-subtle rounded-none p-5 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-xs font-black tracking-wider bg-rex-500/20 text-rex-300 px-3 py-1 rounded-full border border-rex-400/30">
+                <span className="font-mono text-xs font-bold tracking-wider bg-rex-600/10 text-rex-600 px-2.5 py-0.5 rounded-none border border-rex-500/20">
                   {wo.orderNo || wo.id}
                 </span>
-                <span className="font-mono text-[10px] text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded">
+                <span className="font-mono text-[10px] text-muted bg-surface2 px-2 py-0.5 rounded-none border border-theme-subtle">
                   ID: {wo.id}
                 </span>
                 <Badge 
                   value={wo.priority || 'Normal'} 
                   variant={wo.priority === 'Urgent' ? 'error' : wo.priority === 'High' ? 'warning' : 'default'} 
+                  className="rounded-none"
                 />
                 {getStatusBadge(wo.status)}
               </div>
 
-              <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-primary flex items-center gap-2">
                 {wo.title || 'Precision Machining Job'}
               </h2>
 
-              <div className="flex items-center gap-4 text-xs text-slate-300 flex-wrap">
+              <div className="flex items-center gap-4 text-xs text-secondary flex-wrap">
                 {wo.customerName && (
-                  <span className="flex items-center gap-1.5 font-medium text-slate-200">
-                    <Building size={14} className="text-rex-400"/> {wo.customerName}
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Building size={14} className="text-rex-600"/> {wo.customerName}
                   </span>
                 )}
                 <span className="flex items-center gap-1.5 font-mono">
-                  <Package size={14} className="text-amber-400"/> Target: <strong className="text-white">{wo.jobQty || 1}</strong> pcs
+                  <Package size={14} className="text-amber-500"/> Target: <strong className="text-primary">{wo.jobQty || 1}</strong> pcs
                 </span>
                 {wo.deadline && (
-                  <span className="flex items-center gap-1.5 text-slate-300">
-                    <Calendar size={14} className="text-rose-400"/> Due: {new Date(wo.deadline).toLocaleDateString()}
+                  <span className="flex items-center gap-1.5">
+                    <Calendar size={14} className="text-rose-500"/> Due: {new Date(wo.deadline).toLocaleDateString()}
                   </span>
                 )}
                 {wo.quoteId && (
-                  <span className="text-[11px] text-slate-400 font-mono">
+                  <span className="text-[11px] text-muted font-mono">
                     Quote: {wo.quoteId}
                   </span>
                 )}
@@ -391,7 +602,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 value={wo.status || 'Pending'} 
                 onChange={(e) => handleStatusChange(e.target.value)}
                 disabled={submitting}
-                className="input-base text-xs py-1.5 px-3 bg-slate-800/90 text-white border-slate-700 rounded-xl font-bold cursor-pointer hover:border-rex-500 transition-colors"
+                className="input-base text-xs py-1.5 px-3 bg-surface2 text-primary border-theme-subtle rounded-none font-bold cursor-pointer hover:border-rex-500 transition-colors"
                 title="Change Work Order Status"
               >
                 <option value="Draft">Draft</option>
@@ -407,9 +618,9 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowIssueModal(true)}
-                className="text-xs bg-slate-800/80 hover:bg-slate-700 text-white border-slate-700"
+                className="text-xs rounded-none border-theme"
               >
-                <Plus size={13} className="mr-1 text-emerald-400"/> Issue Material
+                <Plus size={13} className="mr-1 text-emerald-500"/> Issue Material
               </Button>
 
               {onNavigateToCutStudio && (
@@ -417,10 +628,10 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                   variant="outline" 
                   size="sm" 
                   onClick={() => onNavigateToCutStudio(wo.id)}
-                  className="text-xs bg-slate-800/80 hover:bg-slate-700 text-white border-slate-700"
+                  className="text-xs rounded-none border-theme"
                   title="Cut raw bars or use offcuts in Cut Studio"
                 >
-                  <Scissors size={13} className="mr-1 text-amber-400"/> Cut Studio
+                  <Scissors size={13} className="mr-1 text-amber-500"/> Cut Studio
                 </Button>
               )}
 
@@ -429,7 +640,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                   variant="primary" 
                   size="sm" 
                   onClick={() => setShowCompleteModal(true)}
-                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-900/30 border-none"
+                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none"
                 >
                   <CheckCircle2 size={13} className="mr-1"/> Complete Job
                 </Button>
@@ -439,7 +650,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 variant="ghost" 
                 size="sm" 
                 onClick={() => window.print()} 
-                className="text-xs text-slate-300 hover:text-white"
+                className="text-xs text-muted hover:text-primary rounded-none"
                 title="Print Job Sheet / Traveler"
               >
                 <Printer size={14}/>
@@ -448,47 +659,47 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
           </div>
 
           {/* Quick Progress & Cost Bar */}
-          <div className="mt-6 pt-5 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Floor Progress</span>
+          <div className="pt-3 border-t border-theme-subtle grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+            <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
+              <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Floor Progress</span>
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div className="flex-1 h-2 bg-surface2 border border-theme-subtle rounded-none overflow-hidden">
                   <div 
-                    className="h-full bg-gradient-to-r from-rex-500 to-emerald-500 rounded-full transition-all duration-500"
+                    className="h-full bg-rex-600 transition-all duration-500"
                     style={{ width: `${cost.progress || 0}%` }}
                   />
                 </div>
-                <span className="font-mono font-bold text-emerald-400 text-sm">{cost.progress || 0}%</span>
+                <span className="font-mono font-bold text-rex-600 text-xs">{cost.progress || 0}%</span>
               </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">
+              <span className="text-[10px] text-muted mt-0.5 block">
                 {cost.completedSteps || 0} / {cost.totalSteps || operations.length} Steps Done
               </span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Direct Material</span>
-              <p className="text-sm font-mono font-bold text-white">
+            <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
+              <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Direct Material</span>
+              <p className="text-sm font-mono font-bold text-primary">
                 {formatCurrency(cost.materialCost || 0)}
               </p>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">{issuedMaterials.length} items logged</span>
+              <span className="text-[10px] text-muted mt-0.5 block">{issuedMaterials.length} items logged</span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Labor + Machining</span>
-              <p className="text-sm font-mono font-bold text-white">
+            <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
+              <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Labor + Machining</span>
+              <p className="text-sm font-mono font-bold text-primary">
                 {formatCurrency((cost.laborCost || 0) + (cost.machineCost || 0))}
               </p>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">
+              <span className="text-[10px] text-muted mt-0.5 block">
                 Lab: {formatCurrency(cost.laborCost || 0)} | Mac: {formatCurrency(cost.machineCost || 0)}
               </span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Total Actual Cost</span>
-              <p className="text-base font-mono font-black text-emerald-400">
+            <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
+              <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Total Actual Cost</span>
+              <p className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
                 {formatCurrency(cost.actualTotalCost || 0)}
               </p>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">
+              <span className="text-[10px] text-muted mt-0.5 block">
                 Target: {formatCurrency(cost.estimatedCost || 0)}
               </span>
             </div>
@@ -510,17 +721,17 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as StudioTab)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                className={`px-3.5 py-2 rounded-none text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border ${
                   isActive 
-                    ? 'bg-rex-600 text-white shadow-md shadow-rex-600/20' 
-                    : 'text-secondary hover:text-primary hover:bg-surface2/60'
+                    ? 'bg-rex-600 text-white border-rex-600 shadow-sm' 
+                    : 'bg-surface2/40 text-secondary border-theme-subtle hover:text-primary hover:bg-surface2'
                 }`}
               >
                 <Icon size={14} className={isActive ? 'text-white' : 'text-rex-600 dark:text-rex-400'}/>
                 <span>{tab.label}</span>
                 {tab.count !== undefined && tab.count > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-surface2 text-muted'
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-none font-bold ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-surface2 text-muted border border-theme-subtle'
                   }`}>
                     {tab.count}
                   </span>
@@ -559,9 +770,22 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 <Layers size={36} className="mx-auto text-muted mb-3 opacity-30" />
                 <p className="text-sm font-bold text-secondary">No operations defined yet</p>
                 <p className="text-xs text-muted mt-1">Add operations like Turning, Milling, Boring, Welding, or QC to this job routing.</p>
-                <Button variant="primary" size="sm" onClick={() => setShowAddOpModal(true)} className="mt-4">
-                  <Plus size={13} className="mr-1"/> Add First Operation
-                </Button>
+                <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
+                  {isAutoDetectedOps && (
+                    <Button 
+                      variant="primary" 
+                      size="sm" 
+                      onClick={() => handleSyncOpsFromQuote(quoteOps)} 
+                      disabled={submitting}
+                      className="bg-rex-600 hover:bg-rex-700 text-white font-bold rounded-none"
+                    >
+                      <Sparkles size={13} className="mr-1.5"/> Load {quoteOps.length} Operations from Quotation
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setShowAddOpModal(true)} className="rounded-none">
+                    <Plus size={13} className="mr-1"/> Add Operation Manually
+                  </Button>
+                </div>
               </GlassCard>
             ) : (
               <div className="space-y-3">
@@ -590,7 +814,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         {/* Step Sequence & Operation Details */}
                         <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
+                          <div className={`w-8 h-8 rounded-none flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
                             isDone ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30' :
                             isRunning ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 animate-pulse' :
                             isRework ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
@@ -606,27 +830,27 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                               </h4>
                               <span className="text-[10px] text-muted font-mono">{op.id}</span>
                               {isDone && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-green-500/10 text-green-600 border border-green-500/20">
                                   <Check size={10}/> Done
                                 </span>
                               )}
                               {isRunning && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse">
                                   <Play size={10} className="fill-blue-500"/> Machining Now
                                 </span>
                               )}
                               {isPaused && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20">
                                   <Pause size={10}/> Paused
                                 </span>
                               )}
                               {isQcPending && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20">
                                   <ShieldCheck size={10}/> QC Inspection Ready
                                 </span>
                               )}
                               {isRework && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-rose-500/10 text-rose-600 border border-rose-500/20">
                                   <RotateCcw size={10}/> Rework Required
                                 </span>
                               )}
@@ -652,7 +876,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                             </div>
 
                             {op.notes && (
-                              <p className="text-[11px] text-muted bg-surface2/40 px-2 py-1 rounded border border-theme-subtle inline-block mt-1">
+                              <p className="text-[11px] text-muted bg-surface2/40 px-2 py-1 rounded-none border border-theme-subtle inline-block mt-1">
                                 {op.notes}
                               </p>
                             )}
@@ -667,9 +891,9 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                               {actualHrs.toFixed(1)}h / {plannedHrs.toFixed(1)}h
                             </span>
                           </div>
-                          <div className="h-1.5 bg-surface2 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-surface2 rounded-none overflow-hidden border border-theme-subtle">
                             <div 
-                              className={`h-full rounded-full transition-all ${
+                              className={`h-full rounded-none transition-all ${
                                 actualHrs > plannedHrs ? 'bg-rose-500' : 'bg-rex-600'
                               }`}
                               style={{ width: `${timePct}%` }}
@@ -691,7 +915,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                                   size="sm" 
                                   onClick={() => handleOpTimerAction(op.id, 'In Progress')}
                                   disabled={submitting}
-                                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-none"
                                   title="Start live shopfloor timer"
                                 >
                                   <Play size={12} className="mr-1 fill-white"/> Start
@@ -702,7 +926,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                                   size="sm" 
                                   onClick={() => handleOpTimerAction(op.id, 'Paused')}
                                   disabled={submitting}
-                                  className="text-xs text-amber-500 border-amber-500/30 hover:bg-amber-500/10"
+                                  className="text-xs text-amber-500 border-amber-500/30 hover:bg-amber-500/10 rounded-none"
                                   title="Pause timer"
                                 >
                                   <Pause size={12} className="mr-1"/> Pause
@@ -714,7 +938,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                                 size="sm" 
                                 onClick={() => handleOpTimerAction(op.id, 'Completed')}
                                 disabled={submitting}
-                                className="text-xs text-green-600 border-green-500/30 hover:bg-green-500/10"
+                                className="text-xs text-green-600 border-green-500/30 hover:bg-green-500/10 rounded-none"
                                 title="Mark operation completed"
                               >
                                 <Check size={12} className="mr-1"/> Complete
@@ -737,7 +961,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                                 severity: 'Normal'
                               })
                             }}
-                            className="text-xs text-rex-600 border-rex-500/30 hover:bg-rex-500/10"
+                            className="text-xs text-rex-600 border-rex-500/30 hover:bg-rex-500/10 rounded-none"
                             title="Inspect quality and record pass/rework/scrap"
                           >
                             <ShieldCheck size={12} className="mr-1"/> QC
@@ -746,7 +970,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                           <button 
                             type="button" 
                             onClick={() => handleDeleteOp(op.id, op.operationName)}
-                            className="p-1.5 text-muted hover:text-rose-500 rounded-lg hover:bg-rose-500/10 transition-colors"
+                            className="p-1.5 text-muted hover:text-rose-500 rounded-none hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
                             title="Delete operation"
                           >
                             <Trash2 size={13}/>
@@ -800,16 +1024,79 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
 
             {/* Sub-Section A: Planned BOM Requirements */}
             <div className="space-y-3">
-              <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
-                <ClipboardList size={14} className="text-rex-600"/> Planned Bill of Materials (BOM)
-              </h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
+                  <ClipboardList size={14} className="text-rex-600"/> Planned Bill of Materials (BOM)
+                  {bomItems.length > 0 && (
+                    <Badge variant="default" size="sm" className="rounded-none">{bomItems.length} items</Badge>
+                  )}
+                </h4>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isAutoDetectedFromQuote && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleSaveBOMToWorkOrder(bomItems)}
+                      disabled={submitting}
+                      className="rounded-none text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <Sparkles size={13} className="mr-1"/> Save BOM to Work Order
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddBomModal(true)}
+                    className="rounded-none text-xs border-theme font-medium"
+                  >
+                    <Plus size={13} className="mr-1 text-rex-600"/> Add BOM Material
+                  </Button>
+                </div>
+              </div>
+
+              {/* Quotation Auto-detected Callout Banner */}
+              {isAutoDetectedFromQuote && (
+                <div className="p-3 bg-rex-500/10 border border-rex-500/30 rounded-none flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles size={16} className="text-rex-600 shrink-0"/>
+                    <div>
+                      <strong className="text-primary font-bold">Auto-detected from Quotation ({linkedQuote?.docNo || linkedQuote?.quotationNo || linkedQuote?.id}):</strong>
+                      <span className="text-secondary ml-1.5">Loaded {bomItems.length} material requirement(s) from quotation engineering specs.</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleSaveBOMToWorkOrder(bomItems)}
+                    disabled={submitting}
+                    className="rounded-none text-xs font-bold shrink-0 bg-rex-600 hover:bg-rex-700 text-white"
+                  >
+                    Sync & Persist to Job
+                  </Button>
+                </div>
+              )}
 
               {bomItems.length === 0 ? (
-                <div className="p-6 text-center bg-surface2/30 rounded-xl border border-dashed border-theme-subtle text-xs text-muted">
-                  No BOM items attached to this work order. You can still issue raw materials directly below.
+                <div className="p-8 text-center bg-surface2/30 rounded-none border border-dashed border-theme-subtle text-xs text-muted space-y-3">
+                  <ClipboardList size={28} className="mx-auto text-muted/60"/>
+                  <div>
+                    <p className="font-semibold text-primary">No BOM items attached to this work order.</p>
+                    <p className="text-secondary text-[11px] mt-0.5">
+                      You can add BOM items manually or issue raw materials directly below.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddBomModal(true)}
+                    className="rounded-none text-xs font-bold border-theme inline-flex items-center gap-1.5"
+                  >
+                    <Plus size={13}/> Add BOM Requirement
+                  </Button>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-theme-subtle">
+                <div className="overflow-x-auto rounded-none border border-theme-subtle">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-surface2/60 border-b border-theme-subtle text-left text-muted font-bold">
@@ -819,7 +1106,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                         <th className="py-2.5 px-3 text-right">Est. Unit Cost</th>
                         <th className="py-2.5 px-3 text-right">Total Est. Cost</th>
                         <th className="py-2.5 px-3 text-center">Stock Status</th>
-                        <th className="py-2.5 px-3 text-right">Action</th>
+                        <th className="py-2.5 px-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-theme-subtle">
@@ -851,11 +1138,11 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                             <td className="py-2.5 px-3 text-center">
                               {invMatch ? (
                                 hasStock ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-green-500/10 text-green-600 border border-green-500/20">
                                     <Check size={9}/> In Stock ({inStock})
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-rose-500/10 text-rose-600 border border-rose-500/20">
                                     <AlertTriangle size={9}/> Shortage (Stock: {inStock})
                                   </span>
                                 )
@@ -864,24 +1151,34 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setIssueForm({
-                                    inventoryId: invMatch ? invMatch.id : '',
-                                    materialName: bom.material,
-                                    qty: reqQty,
-                                    unit: bom.unit || 'pcs',
-                                    unitCost: Number(bom.unitCost || invMatch?.unitCost || 0),
-                                    notes: `Issued against BOM requirement for ${bom.material}`
-                                  })
-                                  setShowIssueModal(true)
-                                }}
-                                className="text-[11px] py-1 px-2.5 h-auto text-rex-600 border-rex-500/30 hover:bg-rex-500/10"
-                              >
-                                Issue This
-                              </Button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setIssueForm({
+                                      inventoryId: invMatch ? invMatch.id : '',
+                                      materialName: bom.material,
+                                      qty: reqQty,
+                                      unit: bom.unit || 'pcs',
+                                      unitCost: Number(bom.unitCost || invMatch?.unitCost || 0),
+                                      notes: `Issued against BOM requirement for ${bom.material}`
+                                    })
+                                    setShowIssueModal(true)
+                                  }}
+                                  className="text-[11px] py-1 px-2.5 h-auto text-rex-600 border-rex-500/30 hover:bg-rex-500/10 rounded-none font-bold"
+                                >
+                                  Issue This
+                                </Button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteBomItem(i)}
+                                  className="p-1 text-muted hover:text-rose-500 rounded-none transition-colors"
+                                  title="Remove BOM item"
+                                >
+                                  <Trash2 size={13}/>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -905,12 +1202,12 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
               </div>
 
               {issuedMaterials.length === 0 ? (
-                <div className="p-8 text-center bg-surface2/20 rounded-xl border border-dashed border-theme-subtle text-xs text-muted">
+                <div className="p-8 text-center bg-surface2/20 rounded-none border border-dashed border-theme-subtle text-xs text-muted">
                   <Package size={28} className="mx-auto text-muted mb-2 opacity-30"/>
                   No materials issued to this Work Order yet. Use the "Issue Material" or "Cut Studio" buttons to allocate stock.
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-theme-subtle">
+                <div className="overflow-x-auto rounded-none border border-theme-subtle">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-surface2/60 border-b border-theme-subtle text-left text-muted font-bold">
@@ -1014,7 +1311,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
               </h4>
 
               {reworkLogs.length === 0 ? (
-                <div className="p-6 text-center bg-surface2/20 rounded-xl border border-dashed border-theme-subtle text-xs text-muted">
+                <div className="p-6 text-center bg-surface2/20 rounded-none border border-dashed border-theme-subtle text-xs text-muted">
                   <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-2 opacity-60"/>
                   Zero defects recorded! No pending rework tickets for this Work Order.
                 </div>
@@ -1035,7 +1332,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-xs font-bold text-rose-500">{rwk.id}</span>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-none ${
                                 isResolved ? 'bg-green-500/10 text-green-600 border border-green-500/20' :
                                 'bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse'
                               }`}>
@@ -1052,7 +1349,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                           </span>
                         </div>
 
-                        <p className="text-[11px] text-secondary/90 bg-surface2/50 p-2 rounded-lg border border-theme-subtle mb-3">
+                        <p className="text-[11px] text-secondary/90 bg-surface2/50 p-2 rounded-none border border-theme-subtle mb-3">
                           {rwk.reason || 'Operation failed inspection standards.'}
                         </p>
 
@@ -1085,7 +1382,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                                   resolvedBy: 'QA Supervisor'
                                 })
                               }}
-                              className="text-[10px] py-1 px-2 h-auto text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                              className="text-[10px] py-1 px-2 h-auto text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 rounded-none"
                             >
                               <Check size={11} className="mr-1"/> Resolve Ticket
                             </Button>
@@ -1107,7 +1404,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
               {qcInspections.length === 0 ? (
                 <div className="p-4 text-center text-xs text-muted">No inspection records logged yet.</div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-theme-subtle">
+                <div className="overflow-x-auto rounded-none border border-theme-subtle">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-surface2/60 border-b border-theme-subtle text-left text-muted font-bold">
@@ -1125,7 +1422,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                           <td className="py-2 px-3 font-mono font-bold text-rex-600">{qc.id}</td>
                           <td className="py-2 px-3 text-primary">{qc.inspectedBy || 'QA Admin'}</td>
                           <td className="py-2 px-3">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none ${
                               qc.status === 'Pass' ? 'bg-green-500/10 text-green-600 border border-green-500/20' :
                               qc.status === 'Scrap' ? 'bg-slate-700 text-white' :
                               'bg-rose-500/10 text-rose-600 border border-rose-500/20'
@@ -1221,7 +1518,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-                <div className="space-y-2 p-4 bg-surface2/40 rounded-xl border border-theme-subtle">
+                <div className="space-y-2 p-4 bg-surface2/40 rounded-none border border-theme-subtle">
                   <span className="text-[10px] text-muted uppercase font-bold block">Quoted / Budget Target</span>
                   <p className="text-xl font-mono font-bold text-primary">
                     {formatCurrency(cost.estimatedCost || 0)}
@@ -1231,7 +1528,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                   </p>
                 </div>
 
-                <div className="space-y-2 p-4 bg-surface2/40 rounded-xl border border-theme-subtle">
+                <div className="space-y-2 p-4 bg-surface2/40 rounded-none border border-theme-subtle">
                   <span className="text-[10px] text-muted uppercase font-bold block">Final Incurred Actual Cost</span>
                   <p className="text-xl font-mono font-black text-emerald-500">
                     {formatCurrency(cost.actualTotalCost || 0)}
@@ -1241,7 +1538,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                   </p>
                 </div>
 
-                <div className="space-y-2 p-4 bg-surface2/40 rounded-xl border border-theme-subtle">
+                <div className="space-y-2 p-4 bg-surface2/40 rounded-none border border-theme-subtle">
                   <span className="text-[10px] text-muted uppercase font-bold block">Unit Cost Per Piece</span>
                   <p className="text-xl font-mono font-bold text-rex-600 dark:text-rex-400">
                     {formatCurrency((cost.actualTotalCost || 0) / Math.max(1, Number(wo.completedQty || wo.jobQty || 1)))}
@@ -1273,7 +1570,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">
                   Technical Specifications & Notes
                 </h4>
-                <div className="p-3 bg-surface2/40 rounded-xl text-xs text-secondary leading-relaxed border border-theme-subtle min-h-24">
+                <div className="p-3 bg-surface2/40 rounded-none text-xs text-secondary leading-relaxed border border-theme-subtle min-h-24">
                   {wo.notes || 'No special engineering notes recorded for this work order.'}
                 </div>
 
@@ -1306,11 +1603,11 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                   Blueprints & CAD Attachments
                 </h4>
                 {wo.attachments ? (
-                  <div className="p-3 bg-surface2/40 rounded-xl text-xs text-secondary border border-theme-subtle font-mono">
+                  <div className="p-3 bg-surface2/40 rounded-none text-xs text-secondary border border-theme-subtle font-mono">
                     {String(wo.attachments)}
                   </div>
                 ) : (
-                  <div className="p-8 text-center bg-surface2/20 rounded-xl border border-dashed border-theme-subtle text-xs text-muted">
+                  <div className="p-8 text-center bg-surface2/20 rounded-none border border-dashed border-theme-subtle text-xs text-muted">
                     <FileText size={28} className="mx-auto text-muted mb-2 opacity-30"/>
                     No CAD drawings attached yet.
                   </div>
@@ -1329,7 +1626,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
         size="md"
       >
         <form onSubmit={handleIssueMaterialSubmit} className="space-y-4 p-1 text-xs">
-          <div className="p-3 bg-rex-500/10 border border-rex-500/20 rounded-xl text-rex-600 dark:text-rex-400">
+          <div className="p-3 bg-rex-500/10 border border-rex-500/20 rounded-none text-rex-600 dark:text-rex-400">
             Issuing stock to Job <strong className="font-mono">#{wo.id}</strong> ({wo.title})
           </div>
 
@@ -1419,7 +1716,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
             />
           </div>
 
-          <div className="p-3 bg-surface2/60 rounded-xl flex items-center justify-between font-mono">
+          <div className="p-3 bg-surface2/60 rounded-none flex items-center justify-between font-mono border border-theme-subtle">
             <span className="text-muted">Total Cost to Job:</span>
             <span className="text-sm font-bold text-emerald-500">
               {formatCurrency(Number(issueForm.qty || 1) * Number(issueForm.unitCost || 0))}
@@ -1579,7 +1876,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
       >
         {showQcModal && (
           <form onSubmit={handleQcSubmit} className="space-y-4 p-1 text-xs">
-            <div className="p-3 bg-surface2/60 border border-theme-subtle rounded-xl flex items-center justify-between">
+            <div className="p-3 bg-surface2/60 border border-theme-subtle rounded-none flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-muted uppercase block font-bold">Inspecting Operation</span>
                 <span className="font-bold text-primary text-sm">{showQcModal.operationName}</span>
@@ -1619,7 +1916,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
             </div>
 
             {qcForm.status !== 'Pass' && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl space-y-3">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-none space-y-3">
                 <span className="text-xs font-bold text-rose-600 flex items-center gap-1.5">
                   <AlertTriangle size={14}/> Defect Categorisation
                 </span>
@@ -1697,12 +1994,12 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
       >
         {showReworkModal && (
           <form onSubmit={handleReworkSubmit} className="space-y-4 p-1 text-xs">
-            <div className="p-3 bg-surface2/60 border border-theme-subtle rounded-xl flex items-center justify-between">
+            <div className="p-3 bg-surface2/60 border border-theme-subtle rounded-none flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-muted uppercase block font-bold">Ticket Reference</span>
                 <span className="font-bold text-rose-500 font-mono text-sm">{showReworkModal.id}</span>
               </div>
-              <Badge value={showReworkModal.status} variant="warning" />
+              <Badge value={showReworkModal.status} variant="warning" className="rounded-none" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1768,8 +2065,8 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
             </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
-              <Button variant="ghost" type="button" onClick={() => setShowReworkModal(null)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={submitting}>
+              <Button variant="ghost" type="button" onClick={() => setShowReworkModal(null)} className="rounded-none">Cancel</Button>
+              <Button variant="primary" type="submit" disabled={submitting} className="rounded-none">
                 {submitting ? 'Saving...' : 'Save Rework Log'}
               </Button>
             </div>
@@ -1785,7 +2082,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
         size="md"
       >
         <form onSubmit={handleCompleteSubmit} className="space-y-4 p-1 text-xs">
-          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1">
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-none space-y-1">
             <h4 className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
               <CheckCircle2 size={16}/> Final Manufacturing Sign-Off
             </h4>
@@ -1850,6 +2147,131 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
             <Button variant="ghost" type="button" onClick={() => setShowCompleteModal(false)}>Cancel</Button>
             <Button variant="primary" type="submit" disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
               {submitting ? 'Completing...' : 'Sign Off & Complete Work Order'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── SUB-MODAL 6: ADD PLANNED BOM REQUIREMENT ─────────────────────────────── */}
+      <Modal 
+        isOpen={showAddBomModal} 
+        onClose={() => setShowAddBomModal(false)} 
+        title="Add Planned BOM Material Requirement" 
+        size="md"
+      >
+        <form onSubmit={handleAddBomItemSubmit} className="space-y-4 p-1 text-xs">
+          <div className="p-3 bg-rex-500/10 border border-rex-500/20 rounded-none text-rex-600 dark:text-rex-400">
+            Define material or component requirement planned for Job <strong className="font-mono">#{wo.id}</strong>.
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+              Select Warehouse Stock Catalog (Quick-fill)
+            </label>
+            <select
+              onChange={(e) => {
+                const picked = inventory.find(i => i.id === e.target.value)
+                if (picked) {
+                  setAddBomForm({
+                    ...addBomForm,
+                    material: picked.name,
+                    unit: picked.uom || addBomForm.unit,
+                    unitCost: Number(picked.unitCost || 0)
+                  })
+                }
+              }}
+              className="w-full input-base text-xs py-2 bg-surface2 font-medium rounded-none"
+            >
+              <option value="">-- Choose from Inventory Stock (Optional) --</option>
+              {inventory.map(inv => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.name} ({inv.sku || 'SKU'} - Stock: {inv.quantity} {inv.uom})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+              Material / Component Name *
+            </label>
+            <input 
+              required
+              type="text" 
+              value={addBomForm.material} 
+              onChange={e => setAddBomForm({ ...addBomForm, material: e.target.value })} 
+              className="w-full input-base text-xs py-2 font-semibold rounded-none"
+              placeholder="e.g. Mild Steel Round Bar 50mm, EN8 Shaft..."
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+                Required Qty *
+              </label>
+              <input 
+                required
+                type="number" 
+                step="0.01"
+                min="0.01" 
+                value={addBomForm.qty} 
+                onChange={e => setAddBomForm({ ...addBomForm, qty: Number(e.target.value) })} 
+                className="w-full input-base text-xs py-2 font-mono font-bold rounded-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+                Unit of Measure
+              </label>
+              <select
+                value={addBomForm.unit}
+                onChange={e => setAddBomForm({ ...addBomForm, unit: e.target.value })}
+                className="w-full input-base text-xs py-2 rounded-none"
+              >
+                <option value="pcs">Pieces (pcs)</option>
+                <option value="ft">Feet (ft)</option>
+                <option value="m">Meters (m)</option>
+                <option value="mm">Millimeters (mm)</option>
+                <option value="kg">Kilograms (kg)</option>
+                <option value="rods">Rods</option>
+                <option value="plates">Plates</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+                Est. Unit Cost (Rs.)
+              </label>
+              <input 
+                type="number" 
+                step="0.01" 
+                min="0" 
+                value={addBomForm.unitCost} 
+                onChange={e => setAddBomForm({ ...addBomForm, unitCost: Number(e.target.value) })} 
+                className="w-full input-base text-xs py-2 font-mono rounded-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+              Specification Notes / Cutting Dimensions
+            </label>
+            <input 
+              type="text" 
+              value={addBomForm.notes} 
+              onChange={e => setAddBomForm({ ...addBomForm, notes: e.target.value })} 
+              className="w-full input-base text-xs py-2 rounded-none"
+              placeholder="e.g. Cut to 450mm length, rough turned"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button variant="ghost" type="button" onClick={() => setShowAddBomModal(false)} className="rounded-none">Cancel</Button>
+            <Button variant="primary" type="submit" disabled={submitting} className="bg-rex-600 hover:bg-rex-700 text-white font-bold rounded-none">
+              {submitting ? 'Adding...' : 'Add BOM Requirement'}
             </Button>
           </div>
         </form>

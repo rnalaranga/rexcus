@@ -157,13 +157,13 @@ export const WorkOrders: React.FC = () => {
 
         return (
           <div className="flex items-start gap-3 min-w-0 max-w-md py-1">
-            <div className="w-9 h-9 rounded-xl bg-rex-600/10 border border-rex-500/20 text-rex-600 flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
+            <div className="w-9 h-9 rounded-none bg-rex-600/10 border border-rex-500/20 text-rex-600 flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5">
               <Factory size={16}/>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono font-bold text-xs text-primary">{row.orderNo || row.id}</span>
-                <span className="text-[10px] text-muted font-mono bg-surface2 px-1.5 py-0.2 rounded border border-theme-subtle">
+                <span className="text-[10px] text-muted font-mono bg-surface2 px-1.5 py-0.2 rounded-none border border-theme-subtle">
                   {row.id}
                 </span>
                 {row.customerName && (
@@ -179,7 +179,7 @@ export const WorkOrders: React.FC = () => {
 
               {currentOp && (
                 <div className="text-[11px] text-muted mt-0.5 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rex-500 animate-pulse"/>
+                  <span className="w-1.5 h-1.5 rounded-none bg-rex-500 animate-pulse"/>
                   <span>Current: <strong>{currentOp.operationName}</strong></span>
                   {currentOp.machineName && (
                     <span className="text-[10px] text-secondary">({currentOp.machineName})</span>
@@ -233,9 +233,9 @@ export const WorkOrders: React.FC = () => {
               <span className="text-muted font-mono">{completed}/{total} Steps</span>
               <span className="font-mono font-bold text-rex-600 dark:text-rex-400">{pct}%</span>
             </div>
-            <div className="h-2 w-full bg-surface2 rounded-full overflow-hidden">
+            <div className="h-1.5 w-full bg-surface2 rounded-none overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-rex-600 to-emerald-500 rounded-full transition-all duration-300" 
+                className="h-full bg-rex-600 rounded-none transition-all duration-300" 
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -292,18 +292,18 @@ export const WorkOrders: React.FC = () => {
         switch (v) {
           case 'Completed':
           case 'Closed':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Completed</span>
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Completed</span>
           case 'In Progress':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> In Production</span>
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> In Production</span>
           case 'QC Pending':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Pending</span>
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Pending</span>
           case 'Rework':
           case 'Rework Required':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
           case 'Released':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
           default:
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
+            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
         }
       }
     },
@@ -317,7 +317,7 @@ export const WorkOrders: React.FC = () => {
             variant="outline" 
             size="sm" 
             onClick={() => setActiveStudioWO(row)}
-            className="text-xs font-bold text-rex-600 border-rex-500/30 hover:bg-rex-500/10"
+            className="text-xs font-bold text-rex-600 border-rex-500/30 hover:bg-rex-500/10 rounded-none"
           >
             <Eye size={12} className="mr-1"/> Execution Studio
           </Button>
@@ -325,7 +325,7 @@ export const WorkOrders: React.FC = () => {
           <button 
             type="button" 
             onClick={() => setDeleteWoId(row.id)}
-            className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+            className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-colors border border-transparent hover:border-rose-500/20"
             title="Delete Work Order"
           >
             <Trash2 size={13}/>
@@ -344,85 +344,75 @@ export const WorkOrders: React.FC = () => {
   ]
 
   return (
-    <div className="space-y-6">
-      {/* ── TOP HERO BANNER ──────────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-rex-950 to-indigo-950 p-6 text-white border border-rex-500/20 shadow-xl">
-        <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-rex-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-1/3 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rex-500/20 border border-rex-400/30 text-rex-300 text-xs font-semibold">
-              <Factory size={14} className="text-emerald-400" />
-              <span>Shop Floor Execution & Job Costing Suite</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            </div>
-            <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-              Production Work Order Management
-            </h1>
-            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-              Complete end-to-end manufacturing lifecycle: Material requisition & offcut cutting, machine operation routing, live timers, multi-gate QC inspection, rework tracking, and real-time financial costing rollup.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <Button 
-              variant="outline" 
-              onClick={loadAllData} 
-              disabled={loading}
-              className="text-xs bg-slate-800/80 hover:bg-slate-700 text-white border-slate-700 font-semibold"
-            >
-              <RefreshCw size={13} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`}/> Refresh
-            </Button>
-
-            <Button 
-              variant="primary" 
-              onClick={() => setShowCreateModal(true)}
-              className="text-xs bg-rex-600 hover:bg-rex-700 font-bold shadow-lg shadow-rex-600/20"
-            >
-              <Plus size={14} className="mr-1.5"/> Create Work Order
-            </Button>
-          </div>
+    <div className="space-y-6 animate-fade-in pb-12">
+      {/* ── TOP HEADER (STANDARD REX ERP SYSTEM THEME) ───────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Work Orders & Manufacturing</h1>
+          <p className="text-sm text-secondary mt-1">
+            Shop floor routing, material traceability, live timers, QC inspection, rework tracking, and job costing.
+          </p>
         </div>
 
-        {/* Top 5 KPI Metrics */}
-        <div className="mt-6 pt-5 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Active Jobs</span>
-            <p className="text-xl font-mono font-black text-white">{metrics.active}</p>
-            <span className="text-[10px] text-slate-400">Total in system: {metrics.total}</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={loadAllData} 
+            disabled={loading}
+            className="rounded-none border-theme text-xs"
+          >
+            <RefreshCw size={13} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`}/> Refresh
+          </Button>
 
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">In Production</span>
-            <p className="text-xl font-mono font-black text-blue-400">{metrics.inMachining}</p>
-            <span className="text-[10px] text-slate-400">Active machine floor</span>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">QC & Rework</span>
-            <p className="text-xl font-mono font-black text-amber-400">{metrics.qcRework}</p>
-            <span className="text-[10px] text-slate-400">Attention required</span>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Completed Jobs</span>
-            <p className="text-xl font-mono font-black text-emerald-400">{metrics.completed}</p>
-            <span className="text-[10px] text-slate-400">Successfully closed</span>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Active WIP Value</span>
-            <p className="text-base font-mono font-black text-rex-300">{formatCurrency(metrics.totalWipCost)}</p>
-            <span className="text-[10px] text-slate-400">Material + labor + machine</span>
-          </div>
+          <Button 
+            variant="primary" 
+            size="sm"
+            onClick={() => setShowCreateModal(true)}
+            className="rounded-none text-xs font-bold"
+          >
+            <Plus size={14} className="mr-1.5"/> Create Work Order
+          </Button>
         </div>
       </div>
 
+      {/* ── TOP 5 KPI METRICS (STANDARD THEME CARDS) ───────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
+          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Active Jobs</span>
+          <p className="text-xl font-mono font-bold text-primary">{metrics.active}</p>
+          <span className="text-[10px] text-muted">{metrics.total} total recorded</span>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
+          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">In Production</span>
+          <p className="text-xl font-mono font-bold text-blue-600 dark:text-blue-400">{metrics.inMachining}</p>
+          <span className="text-[10px] text-muted">Floor machining now</span>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
+          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">QC & Rework</span>
+          <p className="text-xl font-mono font-bold text-amber-600 dark:text-amber-400">{metrics.qcRework}</p>
+          <span className="text-[10px] text-muted">Attention required</span>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
+          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Completed</span>
+          <p className="text-xl font-mono font-bold text-green-600 dark:text-green-400">{metrics.completed}</p>
+          <span className="text-[10px] text-muted">Signed off & closed</span>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
+          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Active WIP Value</span>
+          <p className="text-base font-mono font-bold text-rex-600 dark:text-rex-300">{formatCurrency(metrics.totalWipCost)}</p>
+          <span className="text-[10px] text-muted">Material + labor + machine</span>
+        </GlassCard>
+      </div>
+
       {/* ── SEARCH & FILTER CONTROLS ─────────────────────────────────────────────── */}
-      <GlassCard className="p-4 border-theme-subtle">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          {/* Status Filter Pills */}
+      <GlassCard className="p-3 space-y-3 rounded-none border-theme-subtle">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Status Filter Pills with Sharp Edges */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
             {[
               { id: 'all', label: 'All Jobs', count: metrics.total },
@@ -434,15 +424,15 @@ export const WorkOrders: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id as StatusFilter)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-xs font-semibold rounded-none uppercase tracking-wider shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
                   statusFilter === tab.id
-                    ? 'bg-rex-600 text-white shadow-md shadow-rex-600/20'
-                    : 'text-secondary hover:text-primary hover:bg-surface2/60'
+                    ? 'bg-rex-500/10 border border-rex-500/40 text-rex-700 dark:text-rex-300 font-bold shadow-xs'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
                 }`}
               >
                 <span>{tab.label}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-surface2 text-muted'
+                <span className={`text-[10px] px-1 py-0.2 rounded-none font-mono ${
+                  statusFilter === tab.id ? 'bg-rex-500/20 text-rex-700 dark:text-rex-300 font-bold' : 'text-muted'
                 }`}>
                   {tab.count}
                 </span>
@@ -451,19 +441,20 @@ export const WorkOrders: React.FC = () => {
           </div>
 
           {/* Search & View Switch */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="w-64">
               <SearchBar 
                 value={search} 
                 onChange={setSearch} 
                 placeholder="Search job #, title, customer..." 
+                className="rounded-none"
               />
             </div>
 
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="input-base text-xs py-1.5 px-2.5 font-medium"
+              className="bg-surface border border-theme-subtle rounded-none px-2.5 py-1.5 text-primary text-xs font-medium focus:border-rex-500 outline-none"
             >
               <option value="all">Priority: All</option>
               <option value="urgent">Urgent</option>
@@ -472,11 +463,11 @@ export const WorkOrders: React.FC = () => {
               <option value="low">Low</option>
             </select>
 
-            <div className="flex items-center rounded-xl bg-surface2 p-1 border border-theme-subtle">
+            <div className="flex items-center bg-surface border border-theme-subtle p-0.5 rounded-none">
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  viewMode === 'list' ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'
+                className={`p-1.5 rounded-none transition-colors cursor-pointer ${
+                  viewMode === 'list' ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
                 }`}
                 title="Table List View"
               >
@@ -484,8 +475,8 @@ export const WorkOrders: React.FC = () => {
               </button>
               <button
                 onClick={() => setViewMode('kanban')}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  viewMode === 'kanban' ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'
+                className={`p-1.5 rounded-none transition-colors cursor-pointer ${
+                  viewMode === 'kanban' ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
                 }`}
                 title="Kanban Pipeline Board"
               >
@@ -522,16 +513,16 @@ export const WorkOrders: React.FC = () => {
 
             return (
               <div key={stage.id} className="space-y-3">
-                <div className={`p-3 rounded-xl bg-surface2/60 border ${stage.color} flex items-center justify-between`}>
+                <div className={`p-3 rounded-none bg-surface2/60 border ${stage.color} flex items-center justify-between`}>
                   <h3 className="text-xs font-bold uppercase tracking-wider">{stage.label}</h3>
-                  <span className="font-mono text-xs font-black px-2 py-0.5 rounded-full bg-surface">
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-none bg-surface border border-theme-subtle">
                     {stageWos.length}
                   </span>
                 </div>
 
                 <div className="space-y-3 min-h-[400px]">
                   {stageWos.length === 0 ? (
-                    <div className="p-8 text-center bg-surface2/20 rounded-xl border border-dashed border-theme-subtle text-xs text-muted">
+                    <div className="p-8 text-center bg-surface2/20 rounded-none border border-dashed border-theme-subtle text-xs text-muted">
                       No jobs in this stage
                     </div>
                   ) : (
@@ -544,7 +535,7 @@ export const WorkOrders: React.FC = () => {
                         <GlassCard
                           key={wo.id}
                           onClick={() => setActiveStudioWO(wo)}
-                          className="p-4 border-theme-subtle hover:border-rex-500/40 hover:shadow-md transition-all cursor-pointer space-y-3"
+                          className="p-4 border-theme-subtle hover:border-rex-500/40 hover:shadow-md transition-all cursor-pointer space-y-3 rounded-none"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <span className="font-mono text-xs font-bold text-rex-600 dark:text-rex-400">
@@ -553,6 +544,7 @@ export const WorkOrders: React.FC = () => {
                             <Badge 
                               value={wo.priority || 'Normal'} 
                               variant={wo.priority === 'Urgent' ? 'error' : wo.priority === 'High' ? 'warning' : 'default'} 
+                              className="rounded-none"
                             />
                           </div>
 
@@ -571,9 +563,9 @@ export const WorkOrders: React.FC = () => {
                               <span className="text-muted">{completedOps}/{ops.length} Steps</span>
                               <span className="font-mono font-bold text-rex-600">{wo.progress || 0}%</span>
                             </div>
-                            <div className="h-1.5 bg-surface2 rounded-full overflow-hidden">
+                            <div className="h-1.5 bg-surface2 rounded-none overflow-hidden">
                               <div 
-                                className="h-full bg-gradient-to-r from-rex-600 to-emerald-500 rounded-full" 
+                                className="h-full bg-rex-600 rounded-none transition-all duration-300" 
                                 style={{ width: `${wo.progress || 0}%` }}
                               />
                             </div>
@@ -606,6 +598,7 @@ export const WorkOrders: React.FC = () => {
         employees={employees}
         machineries={machineries}
         inventory={inventory}
+        quotations={quotations}
         onRefresh={loadAllData}
         onNavigateToCutStudio={(jobRef) => {
           navigate('/inventory', { state: { openCutStudioWithJobRef: jobRef } })
@@ -632,7 +625,7 @@ export const WorkOrders: React.FC = () => {
       {/* ── DELETE CONFIRMATION MODAL ────────────────────────────────────────────── */}
       <Modal isOpen={!!deleteWoId} onClose={() => setDeleteWoId(null)} title="Delete Work Order" size="sm">
         <div className="p-4 text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 rounded-none bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto border border-rose-500/20">
             <Trash2 size={24}/>
           </div>
           <div>
@@ -642,12 +635,12 @@ export const WorkOrders: React.FC = () => {
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
-            <Button variant="ghost" onClick={() => setDeleteWoId(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setDeleteWoId(null)} className="rounded-none">Cancel</Button>
             <Button 
               variant="primary" 
               onClick={handleDeleteConfirm}
               disabled={deleting}
-              className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-none"
             >
               {deleting ? 'Deleting...' : 'Confirm Delete'}
             </Button>

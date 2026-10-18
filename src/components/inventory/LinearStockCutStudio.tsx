@@ -514,79 +514,76 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* ── TOP HERO HEADER ──────────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-rex-950 to-indigo-950 p-6 text-white border border-rex-500/20 shadow-xl">
-        <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-rex-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-1/3 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rex-500/20 border border-rex-400/30 text-rex-300 text-xs font-semibold">
-              <Scissors size={14} className="text-emerald-400" />
-              <span>Smart Bar Stock Cut & Offcut Studio</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            </div>
-            <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-              Linear Stock & Remnant Optimizer
-            </h1>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              Eliminate scrap and preserve full raw material bars. Intelligently matches incoming cut requirements with cataloged remnant offcuts, providing real-time 2D visual simulation of the cut bar.
-            </p>
+      {/* ── TOP HEADER (STANDARD REX ERP SYSTEM THEME) ───────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-none bg-rex-600/10 border border-rex-500/20 text-rex-600 dark:text-rex-400 text-xs font-semibold mb-1">
+            <Scissors size={13} className="text-rex-600 dark:text-rex-400" />
+            <span>Linear Stock & Remnant Optimizer</span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {onBackToInventory && (
-              <Button
-                variant="outline"
-                icon={ArrowLeft}
-                onClick={onBackToInventory}
-                className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur"
-              >
-                Back to Inventory
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              icon={Plus}
-              onClick={() => {
-                setManualMaterial(materialName)
-                setManualStandardLen(standardBarLength)
-                setManualUnit(unit)
-                setManualDimension(dimension)
-                setIsAddRemnantModalOpen(true)
-              }}
-              className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur"
-            >
-              Log Workshop Offcut
-            </Button>
-            <Button
-              variant="ghost"
-              icon={RefreshCw}
-              onClick={() => {
-                refetchRemnants()
-                if (onRefreshInventory) onRefreshInventory()
-              }}
-              className="text-slate-300 hover:text-white hover:bg-white/10"
-            >
-              Refresh
-            </Button>
-          </div>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">
+            Bar Stock Cut & Offcut Studio
+          </h1>
+          <p className="text-sm text-secondary mt-1">
+            Eliminate scrap and preserve full raw material bars. Intelligently match cut requirements with offcut remnants and simulate cutting in 2D.
+          </p>
         </div>
 
-        {/* Quick Scenario Spotlight: 8mm Shaft Example */}
-        <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
-          <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-amber-400 shrink-0" />
-            <span className="font-semibold text-slate-200">Active Preset:</span>
-            <span className="font-mono px-2 py-0.5 rounded bg-white/10 text-white">
-              {materialName} ({formatLinearDisplay(standardBarLength, unit)} Std)
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
-            <span>Active Offcuts in Rack: <strong className="text-emerald-400">{materialRemnants.length} pieces</strong></span>
-            <span>•</span>
-            <span>Total Cataloged Remnants: <strong className="text-rex-300">{remnants.filter(r => r.status === 'available').length} pieces</strong></span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {onBackToInventory && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={ArrowLeft}
+              onClick={onBackToInventory}
+              className="rounded-none text-xs border-theme"
+            >
+              Back to Inventory
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Plus}
+            onClick={() => {
+              setManualMaterial(materialName)
+              setManualStandardLen(standardBarLength)
+              setManualUnit(unit)
+              setManualDimension(dimension)
+              setIsAddRemnantModalOpen(true)
+            }}
+            className="rounded-none text-xs border-theme"
+          >
+            Log Workshop Offcut
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={RefreshCw}
+            onClick={() => {
+              refetchRemnants()
+              if (onRefreshInventory) onRefreshInventory()
+            }}
+            className="rounded-none text-xs border-theme"
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Quick Scenario Spotlight: 8mm Shaft Example */}
+      <div className="p-3.5 bg-surface2/40 border border-theme-subtle rounded-none flex flex-wrap items-center justify-between gap-4 text-xs text-secondary">
+        <div className="flex items-center gap-2">
+          <Sparkles size={15} className="text-amber-500 shrink-0" />
+          <span className="font-semibold text-primary">Active Preset:</span>
+          <span className="font-mono px-2 py-0.5 rounded-none bg-surface2 text-primary border border-theme-subtle font-bold">
+            {materialName} ({formatLinearDisplay(standardBarLength, unit)} Std)
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-muted font-mono text-[11px]">
+          <span>Active Offcuts in Rack: <strong className="text-emerald-600 dark:text-emerald-400">{materialRemnants.length} pieces</strong></span>
+          <span>•</span>
+          <span>Total Cataloged Remnants: <strong className="text-rex-600 dark:text-rex-400">{remnants.filter(r => r.status === 'available').length} pieces</strong></span>
         </div>
       </div>
 
@@ -598,7 +595,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
           <GlassCard className="p-6 border-rex-500/20 shadow-md">
             <div className="flex items-center justify-between pb-4 border-b border-theme-subtle">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-rex-500/10 text-rex-600 dark:text-rex-400 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-none bg-rex-500/10 text-rex-600 dark:text-rex-400 flex items-center justify-center font-bold">
                   1
                 </div>
                 <div>
@@ -606,7 +603,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   <p className="text-xs text-muted">1-Inch Precision Cutting & Mandatory Job Ref</p>
                 </div>
               </div>
-              <Badge variant="info" size="sm">
+              <Badge variant="info" size="sm" className="rounded-none">
                 Unit: {unit.toUpperCase()}
               </Badge>
             </div>
@@ -658,7 +655,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
               </div>
 
               {/* Standard Bar Length & Unit */}
-              <div className="grid grid-cols-2 gap-3 bg-surface2/40 p-3 rounded-lg border border-theme-subtle">
+              <div className="grid grid-cols-2 gap-3 bg-surface2/40 p-3 rounded-none border border-theme-subtle">
                 <div>
                   <label className="block text-[11px] font-medium text-secondary mb-1">
                     Standard Bar Length
@@ -699,7 +696,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
               </div>
 
               {/* ── REQUIRED CUT PARAMETERS (1-INCH PRECISION & DUAL UNIT SUPPORT) ── */}
-              <div className="p-4 rounded-xl bg-rex-500/5 border border-rex-500/20 space-y-3">
+              <div className="p-4 rounded-none bg-rex-500/5 border border-rex-500/20 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-rex-600 dark:text-rex-400 flex items-center gap-1.5">
                     <Scissors size={14} /> Cut Requirements (1-Inch Precision)
@@ -749,7 +746,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => handleAdjustInches(-1)}
-                          className="px-2 py-0.5 rounded bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
+                          className="px-2 py-0.5 rounded-none bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
                           title="Subtract 1 inch"
                         >
                           -1"
@@ -757,7 +754,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => handleAdjustInches(1)}
-                          className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[11px] font-mono font-bold border border-emerald-500/30"
+                          className="px-2 py-0.5 rounded-none bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[11px] font-mono font-bold border border-emerald-500/30"
                           title="Add 1 inch"
                         >
                           +1"
@@ -765,7 +762,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => handleAdjustInches(6)}
-                          className="px-2 py-0.5 rounded bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
+                          className="px-2 py-0.5 rounded-none bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
                           title="Add 6 inches"
                         >
                           +6"
@@ -773,7 +770,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => handleAdjustInches(12)}
-                          className="px-2 py-0.5 rounded bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
+                          className="px-2 py-0.5 rounded-none bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
                           title="Add 12 inches (1 foot)"
                         >
                           +1 ft
@@ -819,28 +816,28 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                           <button
                             type="button"
                             onClick={() => handleAdjustInches(-1)}
-                            className="px-2 py-0.5 rounded bg-surface2 text-[11px] font-mono border border-theme-subtle"
+                            className="px-2 py-0.5 rounded-none bg-surface2 text-[11px] font-mono border border-theme-subtle"
                           >
                             -1"
                           </button>
                           <button
                             type="button"
                             onClick={() => handleAdjustInches(1)}
-                            className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-[11px] font-mono font-bold border border-emerald-500/30"
+                            className="px-2 py-0.5 rounded-none bg-emerald-500/10 text-emerald-600 text-[11px] font-mono font-bold border border-emerald-500/30"
                           >
                             +1"
                           </button>
                           <button
                             type="button"
                             onClick={() => handleAdjustInches(6)}
-                            className="px-2 py-0.5 rounded bg-surface2 text-[11px] font-mono border border-theme-subtle"
+                            className="px-2 py-0.5 rounded-none bg-surface2 text-[11px] font-mono border border-theme-subtle"
                           >
                             +6"
                           </button>
                           <button
                             type="button"
                             onClick={() => handleAdjustInches(12)}
-                            className="px-2 py-0.5 rounded bg-surface2 text-[11px] font-mono border border-theme-subtle"
+                            className="px-2 py-0.5 rounded-none bg-surface2 text-[11px] font-mono border border-theme-subtle"
                           >
                             +12"
                           </button>
@@ -944,7 +941,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   </div>
 
                   {!jobRef.trim() && (
-                    <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-[11px] text-red-600 dark:text-red-400 flex items-start gap-1.5 leading-tight">
+                    <div className="p-2.5 rounded-none bg-red-500/10 border border-red-500/30 text-[11px] text-red-600 dark:text-red-400 flex items-start gap-1.5 leading-tight">
                       <ShieldAlert size={15} className="shrink-0 mt-0.5" />
                       <span>
                         <strong>Material Issue Blocked:</strong> A Job Number / Work Order is strictly mandatory. Stock cannot be cut or issued without a valid job reference.
@@ -957,7 +954,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                     <label className="block text-[11px] font-medium text-secondary mb-1">Return Remnant Location</label>
                     <input
                       type="text"
-                      className="w-full input-base text-xs"
+                      className="w-full input-base text-xs rounded-none"
                       value={targetLocation}
                       onChange={(e) => setTargetLocation(e.target.value)}
                       placeholder="Rack Shelf A-2"
@@ -969,10 +966,10 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
           </GlassCard>
 
           {/* ── SOURCE SELECTION: RECOMMENDATION BANNER & OFF-CUT CANDIDATES ── */}
-          <GlassCard className="p-6 border-rex-500/20 shadow-md">
+          <GlassCard className="p-6 border-rex-500/20 shadow-md rounded-none">
             <div className="flex items-center justify-between pb-3 border-b border-theme-subtle">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
                   2
                 </div>
                 <div>
@@ -985,9 +982,9 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
             <div className="mt-4 space-y-3">
               {/* Recommendation Callout */}
               {recommendedRemnant ? (
-                <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/5 border border-emerald-500/30">
+                <div className="p-4 rounded-none bg-surface2/60 border border-emerald-500/40">
                   <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
+                    <div className="p-2 rounded-none bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
                       <Sparkles size={18} />
                     </div>
                     <div className="space-y-1">
@@ -995,7 +992,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                         <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
                           Smart Remnant Recommended!
                         </span>
-                        <Badge variant="success" size="sm">Saves 1 Full Bar</Badge>
+                        <Badge variant="success" size="sm" className="rounded-none">Saves 1 Full Bar</Badge>
                       </div>
                       <p className="text-xs text-secondary leading-relaxed">
                         Found an offcut of <strong className="font-mono text-primary font-bold">{recommendedRemnant.length} {unit}</strong> (Location: {recommendedRemnant.location || 'Rack'}). 
@@ -1005,7 +1002,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <div className="p-4 rounded-none bg-amber-500/10 border border-amber-500/20">
                   <div className="flex items-start gap-3">
                     <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
                     <div>
@@ -1026,7 +1023,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   type="button"
                   onClick={() => setSelectedSourceType('remnant')}
                   disabled={usableRemnants.length === 0}
-                  className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  className={`p-3 rounded-none border text-left transition-all flex flex-col justify-between ${
                     selectedSourceType === 'remnant'
                       ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/20 shadow-sm'
                       : 'border-theme-subtle bg-surface2/30 hover:bg-surface2/60 opacity-80'
@@ -1046,7 +1043,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedSourceType('full_bar')}
-                  className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  className={`p-3 rounded-none border text-left transition-all flex flex-col justify-between ${
                     selectedSourceType === 'full_bar'
                       ? 'border-rex-600 bg-rex-500/10 ring-2 ring-rex-500/20 shadow-sm'
                       : 'border-theme-subtle bg-surface2/30 hover:bg-surface2/60'
@@ -1080,21 +1077,21 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                         <div
                           key={rem.id}
                           onClick={() => setSelectedRemnantId(rem.id)}
-                          className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                          className={`p-2.5 rounded-none border text-xs cursor-pointer transition-all flex items-center justify-between ${
                             isSelected
                               ? 'bg-emerald-500/15 border-emerald-500 text-primary font-semibold shadow-xs'
                               : 'bg-surface hover:bg-surface2 border-theme-subtle text-secondary'
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted'}`}>
+                            <div className={`w-3.5 h-3.5 rounded-none border flex items-center justify-center ${isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted'}`}>
                               {isSelected && <Check size={10} />}
                             </div>
                             <div>
                               <div className="font-mono font-bold text-primary flex items-center gap-1.5">
                                 <span>{formatLinearDisplay(rem.length, rem.unit || unit)}</span>
                                 {rem.id === recommendedRemnant?.id && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500 text-white font-bold uppercase">
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-none bg-emerald-500 text-white font-bold uppercase">
                                     Best Fit
                                   </span>
                                 )}
@@ -1145,11 +1142,11 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
         <div className="lg:col-span-7 space-y-6">
 
           {/* ── 2D VISUAL CUT SIMULATOR CANVAS ───────────────────────────────── */}
-          <GlassCard className="p-6 border-rex-500/20 shadow-lg relative overflow-hidden">
+          <GlassCard className="p-6 border-rex-500/20 shadow-lg relative overflow-hidden rounded-none">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-theme-subtle">
               <div>
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  <div className="w-8 h-8 rounded-none bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
                     3
                   </div>
                   <div>
@@ -1163,7 +1160,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-secondary">Scale:</span>
-                <Badge variant="default" size="sm">
+                <Badge variant="default" size="sm" className="rounded-none">
                   0 to {formatLinearDisplay(activeSourceLength, unit)}
                 </Badge>
               </div>
@@ -1194,11 +1191,11 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
               </div>
 
               {/* 2D Cut Bar Rendering */}
-              <div className="relative w-full h-18 sm:h-22 rounded-xl bg-slate-800 shadow-inner overflow-hidden border-2 border-slate-700/80 p-1 flex">
+              <div className="relative w-full h-18 sm:h-22 rounded-none bg-slate-800 shadow-inner overflow-hidden border-2 border-slate-700/80 p-1 flex">
 
                 {/* Segment 1: Cut Piece (Vibrant Emerald / Green) */}
                 <div
-                  className="relative h-full rounded-l-lg bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 text-white flex flex-col justify-center items-center px-2 shadow-md transition-all duration-300"
+                  className="relative h-full rounded-none bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 text-white flex flex-col justify-center items-center px-2 shadow-md transition-all duration-300"
                   style={{ width: `${Math.min(100, (totalCutNeeded / activeSourceLength) * 100)}%` }}
                 >
                   <div className="flex items-center gap-1 font-bold text-xs sm:text-sm drop-shadow-sm truncate">
@@ -1225,7 +1222,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 {/* Segment 2: Leftover Remnant (Cyan / Sky Blue) */}
                 {leftoverRemnantLength > 0 ? (
                   <div
-                    className="relative h-full flex-1 rounded-r-lg bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-700 text-white flex flex-col justify-center items-center px-2 shadow-inner transition-all duration-300"
+                    className="relative h-full flex-1 rounded-none bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-700 text-white flex flex-col justify-center items-center px-2 shadow-inner transition-all duration-300"
                   >
                     <div className="flex items-center gap-1 font-bold text-xs sm:text-sm drop-shadow-sm truncate">
                       <Warehouse size={14} className="shrink-0" />
@@ -1237,7 +1234,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                     <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
                   </div>
                 ) : (
-                  <div className="h-full flex-1 rounded-r-lg bg-slate-700/60 flex items-center justify-center text-[11px] text-slate-400 font-mono">
+                  <div className="h-full flex-1 rounded-none bg-slate-700/60 flex items-center justify-center text-[11px] text-slate-400 font-mono">
                     Zero Remnant (Exact Bar Consumed)
                   </div>
                 )}
@@ -1247,17 +1244,17 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 mt-4 text-xs">
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3.5 h-3.5 rounded bg-emerald-500 inline-block shadow-xs" />
+                    <span className="w-3.5 h-3.5 rounded-none bg-emerald-500 inline-block shadow-xs" />
                     <span className="text-secondary font-medium">Issued Cut ({formatLinearDisplay(requiredLength, unit)})</span>
                   </div>
                   {sawKerf > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <span className="w-3.5 h-3.5 rounded bg-amber-400 inline-block shadow-xs" />
+                      <span className="w-3.5 h-3.5 rounded-none bg-amber-400 inline-block shadow-xs" />
                       <span className="text-secondary font-medium">Blade Kerf ({sawKerf} {unit})</span>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3.5 h-3.5 rounded bg-cyan-600 inline-block shadow-xs" />
+                    <span className="w-3.5 h-3.5 rounded-none bg-cyan-600 inline-block shadow-xs" />
                     <span className="text-secondary font-medium">Re-usable Remnant ({formatLinearDisplay(leftoverRemnantLength, unit)})</span>
                   </div>
                 </div>
@@ -1270,7 +1267,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
             {/* ── KEY METRICS CARDS: YIELD & SAVINGS ───────────────────────────── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-theme-subtle">
-              <div className="p-3 rounded-xl bg-surface2/40 border border-theme-subtle">
+              <div className="p-3 rounded-none bg-surface2/40 border border-theme-subtle">
                 <span className="text-[10px] uppercase font-bold text-muted block">Required Cut</span>
                 <span className="text-base font-bold font-mono text-primary mt-0.5 block truncate">
                   {formatLinearDisplay(requiredLength, unit)}
@@ -1278,7 +1275,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 <span className="text-[10px] text-muted">Qty: {cutQuantity} pcs</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-surface2/40 border border-theme-subtle">
+              <div className="p-3 rounded-none bg-surface2/40 border border-theme-subtle">
                 <span className="text-[10px] uppercase font-bold text-muted block">Source Bar</span>
                 <span className="text-base font-bold font-mono text-primary mt-0.5 block truncate">
                   {formatLinearDisplay(activeSourceLength, unit)}
@@ -1288,7 +1285,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-surface2/40 border border-theme-subtle">
+              <div className="p-3 rounded-none bg-surface2/40 border border-theme-subtle">
                 <span className="text-[10px] uppercase font-bold text-muted block">New Remnant</span>
                 <span className="text-base font-bold font-mono text-cyan-600 dark:text-cyan-400 mt-0.5 block truncate">
                   {formatLinearDisplay(leftoverRemnantLength, unit)}
@@ -1296,7 +1293,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 <span className="text-[10px] text-muted">To offcut rack</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              <div className="p-3 rounded-none bg-emerald-500/10 border border-emerald-500/20">
                 <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">
                   Full Bars Saved
                 </span>
@@ -1334,10 +1331,10 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 icon={!jobRef.trim() ? Lock : Scissors}
                 onClick={handleExecuteCut}
                 disabled={isSubmitting || totalCutNeeded <= 0 || !jobRef.trim()}
-                className={`w-full sm:w-auto px-6 font-bold shadow-lg transition-all ${
+                className={`w-full sm:w-auto px-6 font-bold shadow-sm transition-all rounded-none ${
                   !jobRef.trim()
                     ? 'opacity-50 cursor-not-allowed bg-slate-700 text-slate-300 border border-slate-600'
-                    : 'bg-rex-600 hover:bg-rex-700 shadow-rex-600/20 text-white'
+                    : 'bg-rex-600 hover:bg-rex-700 text-white'
                 }`}
                 title={!jobRef.trim() ? 'Job Number / Work Order is strictly mandatory' : 'Execute Cut & Issue Material'}
               >
@@ -1424,7 +1421,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                             </span>
                           </td>
                           <td className="px-3 py-2.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface2 border border-theme-subtle text-[11px] text-secondary">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none bg-surface2 border border-theme-subtle text-[11px] text-secondary">
                               <Warehouse size={11} className="text-muted" />
                               {r.location || 'Rack Shelf'}
                             </span>
@@ -1433,7 +1430,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                             {r.jobRef || r.sourceBarId || 'Cut Offcut'}
                           </td>
                           <td className="px-3 py-2.5">
-                            <Badge variant={r.status === 'available' ? 'success' : 'default'} size="sm">
+                            <Badge variant={r.status === 'available' ? 'success' : 'default'} size="sm" className="rounded-none">
                               {r.status === 'available' ? 'Available' : r.status}
                             </Badge>
                           </td>
@@ -1451,7 +1448,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                                   setSelectedRemnantId(r.id)
                                   showToast('info', 'Loaded to Studio', `Offcut ${formatLinearDisplay(r.length, r.unit)} loaded for cutting.`)
                                 }}
-                                className="px-2 py-1 rounded bg-rex-600/10 hover:bg-rex-600/20 text-rex-600 text-[11px] font-semibold transition-colors flex items-center gap-1"
+                                className="px-2 py-1 rounded-none bg-rex-600/10 hover:bg-rex-600/20 text-rex-600 text-[11px] font-semibold transition-colors flex items-center gap-1 border border-rex-500/20"
                                 title="Use in Cut Studio"
                               >
                                 <Scissors size={11} /> Use Now
@@ -1459,7 +1456,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRemnant(r.id, `${r.materialName} (${r.length} ${r.unit})`)}
-                                className="p-1 hover:bg-red-500/10 text-muted hover:text-red-500 rounded transition-colors"
+                                className="p-1 hover:bg-red-500/10 text-muted hover:text-red-500 rounded-none transition-colors border border-transparent hover:border-red-500/20"
                                 title="Delete / Scrap Offcut"
                               >
                                 <Trash2 size={13} />
@@ -1485,7 +1482,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
         size="md"
       >
         <form onSubmit={handleCreateManualRemnant} className="space-y-4">
-          <div className="p-3 rounded-lg bg-surface2/50 text-xs text-secondary leading-relaxed">
+          <div className="p-3 rounded-none bg-surface2/50 text-xs text-secondary leading-relaxed border border-theme-subtle">
             Record physical offcut pieces found in your workshop racks or cut stations so the system can suggest them for future job cuts.
           </div>
 
@@ -1594,7 +1591,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
           size="md"
         >
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3">
+            <div className="p-4 rounded-none bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3">
               <CheckCircle2 size={24} className="text-emerald-500 shrink-0" />
               <div>
                 <h4 className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
@@ -1607,7 +1604,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
             </div>
 
             {/* Printable Slip Card */}
-            <div className="p-4 rounded-xl bg-surface border border-theme-subtle font-mono text-xs space-y-3">
+            <div className="p-4 rounded-none bg-surface border border-theme-subtle font-mono text-xs space-y-3">
               <div className="flex justify-between items-center pb-2 border-b border-theme-subtle">
                 <span className="font-bold text-primary">CUT TICKET SLIP</span>
                 <span className="text-muted text-[10px]">{new Date().toLocaleString()}</span>
@@ -1650,12 +1647,14 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 variant="outline"
                 icon={Printer}
                 onClick={() => window.print()}
+                className="rounded-none text-xs"
               >
                 Print Slip
               </Button>
               <Button
                 variant="primary"
                 onClick={() => setIsCutSuccessModalOpen(false)}
+                className="rounded-none text-xs"
               >
                 Done / Next Cut
               </Button>

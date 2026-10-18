@@ -107,66 +107,142 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
     const quote = quotations.find(q => q.id === qId)
     if (!quote) return
 
-    let quoteBoms: any[] = []
-    try {
-      quoteBoms = typeof quote.boms === 'string' ? JSON.parse(quote.boms || '[]') : (quote.boms || [])
-    } catch(e) {}
+    // Safely parse quote.data (where the quotation builder stores boms, items, etc.)
+    const data = typeof quote.data === 'string' 
+      ? JSON.parse(quote.data || '{}') 
+      : (quote.data || {})
 
-    // Pull items if boms empty
-    let quoteItems: any[] = []
-    try {
-      quoteItems = typeof quote.items === 'string' ? JSON.parse(quote.items || '[]') : (quote.items || [])
-    } catch(e) {}
+    const extractedBoms: Array<{ material: string; qty: number; unit: string; unitCost: number; notes: string }> = []
+    const extractedOps: Array<{ operationName: string; machineId: string; employeeId: string; plannedHours: number; hourlyLaborRate: number; hourlyMachineRate: number; notes: string }> = []
 
-    // Parse machineWorks if any
-    let quoteMach: any[] = []
-    try {
-      quoteMach = typeof quote.machineWorks === 'string' ? JSON.parse(quote.machineWorks || '[]') : (quote.machineWorks || [])
-    } catch(e) {}
+    // 1. Multi-part BOMs in data.boms
+    if (Array.isArray(data.boms) && data.boms.length > 0) {
+      data.boms.forEach((b: any, bIdx: number) => {
+        const partPrefix = b.title ? `${b.title}: ` : (data.boms.length > 1 ? `Part ${bIdx + 1}: ` : '')
+
+        // Auto raw materials (rods, shafts, plates)
+        ;(b.autoMats || []).forEach((m: any) => {
+          if (m.material) {
+            const specNotes = [
+              m.length && m.width ? `${m.length}x${m.width}` : m.length ? `L:${m.length}` : '',
+              m.thick ? `${m.thick}mm` : m.dia ? `Ø${m.dia}mm` : ''
+            ].filter(Boolean).join(' ')
+            extractedBoms.push({
+              material: m.material,
+              qty: Number(m.qty || 1),
+              unit: m.dia ? 'rods' : 'plates',
+              unitCost: Number(m.unitPrice || 0),
+              notes: `${partPrefix}${specNotes}`.trim()
+            })
+          }
+        })
+
+        // Manual items & components
+        ;(b.manualMats || []).forEach((m: any) => {
+          if (m.material) {
+            extractedBoms.push({
+              material: m.material,
+              qty: Number(m.qty || 1),
+              unit: 'pcs',
+              unitCost: Number(m.unitPrice || 0),
+              notes: `${partPrefix}${m.supplier || ''}`.trim()
+            })
+          }
+        })
+
+        // Machining operations
+        if (b.procState && typeof b.procState === 'object') {
+          Object.keys(b.procState).forEach(procName => {
+            const op = b.procState[procName]
+            const hrs = Number(op?.estHr) || Number(op?.quoHr) || 0
+            if (hrs > 0) {
+              extractedOps.push({
+                operationName: `${partPrefix}${procName}`,
+                machineId: '',
+                employeeId: '',
+                plannedHours: hrs,
+                hourlyLaborRate: Number(op?.hrRate || 750),
+                hourlyMachineRate: Number(op?.machineRate || 1200),
+                notes: op?.setTime ? `Setup: ${op.setTime}h` : ''
+              })
+            }
+          })
+        }
+      })
+    }
+
+    // 2. Legacy / Root-level autoMats & manualMats
+    if (extractedBoms.length === 0) {
+      ;(data.autoMats || quote.autoMats || []).forEach((m: any) => {
+        if (m.material) {
+          extractedBoms.push({
+            material: m.material,
+            qty: Number(m.qty || 1),
+            unit: m.dia ? 'rods' : 'plates',
+            unitCost: Number(m.unitPrice || 0),
+            notes: `${m.length || ''}x${m.width || ''} ${m.thick || ''}mm`
+          })
+        }
+      })
+      ;(data.manualMats || quote.manualMats || []).forEach((m: any) => {
+        if (m.material) {
+          extractedBoms.push({
+            material: m.material,
+            qty: Number(m.qty || 1),
+            unit: 'pcs',
+            unitCost: Number(m.unitPrice || 0),
+            notes: m.supplier || ''
+          })
+        }
+      })
+    }
+
+    // 3. Fallback for Product Quotations or Itemized Lines
+    const quoteItems: any[] = Array.isArray(data.custItems) 
+      ? data.custItems 
+      : Array.isArray(data.items) 
+      ? data.items 
+      : (Array.isArray(quote.items) ? quote.items : [])
+
+    if (extractedBoms.length === 0 && quoteItems.length > 0) {
+      quoteItems.forEach((item: any) => {
+        const matName = item.name || item.desc || item.description
+        if (matName) {
+          extractedBoms.push({
+            material: matName,
+            qty: Number(item.qty || 1),
+            unit: item.unit || 'pcs',
+            unitCost: Number(item.unitPrice || item.cost || 0) * 0.65,
+            notes: item.description || 'Product specification line'
+          })
+        }
+      })
+    }
 
     const firstItem = quoteItems[0] || {}
-    const title = quote.subject ? `${quote.subject}` : firstItem.name ? `Production: ${firstItem.name}` : `Job for Quote #${quote.id}`
+    const quoNoDisplay = quote.docNo || quote.quotationNo || `AD-${quote.id}`
+    const title = quote.subject 
+      ? `${quoNoDisplay} - ${quote.subject}` 
+      : firstItem.name || firstItem.desc
+      ? `WO: ${quoNoDisplay} - ${firstItem.name || firstItem.desc}` 
+      : `WO: ${quoNoDisplay} - ${quote.leadName || quote.customerName || 'Customer'}`
 
     setFormData(prev => ({
       ...prev,
       sourceQuoteId: quote.id,
       title,
       customerId: quote.leadId || quote.customerId || '',
-      customer: quote.customerName || '',
+      customer: quote.leadName || quote.customerName || '',
       deadline: quote.validUntil || quote.deliveryDate || '',
-      jobQty: Number(firstItem.qty || 1)
+      jobQty: Number(data.jobQty || firstItem.qty || 1)
     }))
 
-    // Populate BOM if present
-    if (quoteBoms.length > 0) {
-      setBomRows(quoteBoms.map((b: any) => ({
-        material: b.material || b.name || '',
-        qty: Number(b.qty || 1),
-        unit: b.unit || 'pcs',
-        unitCost: Number(b.unitCost || b.cost || 0),
-        notes: b.notes || ''
-      })))
-    } else if (quoteItems.length > 0) {
-      setBomRows(quoteItems.map((item: any) => ({
-        material: item.name || '',
-        qty: Number(item.qty || 1),
-        unit: item.unit || 'pcs',
-        unitCost: Number(item.unitPrice || 0) * 0.6, // estimated cost factor
-        notes: item.description || ''
-      })))
+    if (extractedBoms.length > 0) {
+      setBomRows(extractedBoms)
     }
 
-    // Populate machining operations if quote had machine works
-    if (quoteMach.length > 0) {
-      setOpRows(quoteMach.map((w: any) => ({
-        operationName: w.process || w.name || 'Machining',
-        machineId: '',
-        employeeId: '',
-        plannedHours: Number(w.estHours || w.quoHours || 1),
-        hourlyLaborRate: 750,
-        hourlyMachineRate: Number(w.rate || 1200),
-        notes: w.setTime ? `Set Time: ${w.setTime}` : ''
-      })))
+    if (extractedOps.length > 0) {
+      setOpRows(extractedOps)
     }
   }
 
@@ -252,19 +328,19 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create New Manufacturing Work Order" size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="Create New Manufacturing Work Order" size="4xl">
       <form onSubmit={handleSubmit} className="space-y-6 p-1 text-xs">
         {error && (
-          <div className="p-3 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-2">
+          <div className="p-3 rounded-none bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-2">
             <AlertTriangle size={16}/>
             <span>{error}</span>
           </div>
         )}
 
         {/* ── IMPORT FROM QUOTATION BANNER ────────────────────────────────────────── */}
-        <div className="p-4 bg-gradient-to-r from-rex-500/10 via-indigo-500/10 to-transparent border border-rex-500/20 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3.5 bg-surface2/40 border border-theme-subtle rounded-none flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-rex-600 text-white flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-none bg-rex-600 text-white flex items-center justify-center shrink-0">
               <Sparkles size={16}/>
             </div>
             <div>
@@ -399,14 +475,14 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
             <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
               <Package size={14} className="text-rex-600"/> 2. Bill of Materials (BOM) Requirements
             </h4>
-            <Button variant="outline" size="sm" type="button" onClick={addBomRow} className="text-[11px] h-auto py-1 px-2.5">
+            <Button variant="outline" size="sm" type="button" onClick={addBomRow} className="text-[11px] h-auto py-1 px-2.5 rounded-none">
               <Plus size={12} className="mr-1"/> Add Material
             </Button>
           </div>
 
           <div className="space-y-2">
             {bomRows.map((bom, idx) => (
-              <div key={idx} className="flex items-center gap-2 p-2 bg-surface2/30 rounded-xl border border-theme-subtle">
+              <div key={idx} className="flex items-center gap-2 p-2 bg-surface2/30 rounded-none border border-theme-subtle">
                 <div className="flex-1">
                   <input 
                     type="text" 
@@ -468,16 +544,16 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
             <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
               <Layers size={14} className="text-rex-600"/> 3. Shop Floor Routing & Operations
             </h4>
-            <Button variant="outline" size="sm" type="button" onClick={addOpRow} className="text-[11px] h-auto py-1 px-2.5">
+            <Button variant="outline" size="sm" type="button" onClick={addOpRow} className="text-[11px] h-auto py-1 px-2.5 rounded-none">
               <Plus size={12} className="mr-1"/> Add Process Step
             </Button>
           </div>
 
           <div className="space-y-2">
             {opRows.map((op, idx) => (
-              <div key={idx} className="p-2.5 bg-surface2/30 rounded-xl border border-theme-subtle space-y-2">
+              <div key={idx} className="p-2.5 bg-surface2/30 rounded-none border border-theme-subtle space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-rex-600/10 text-rex-600 font-mono font-bold flex items-center justify-center text-xs shrink-0">
+                  <span className="w-6 h-6 rounded-none bg-rex-600/10 text-rex-600 font-mono font-bold flex items-center justify-center text-xs shrink-0">
                     {idx + 1}
                   </span>
                   <div className="flex-1">
@@ -568,7 +644,7 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
           </div>
 
           {/* Cost Estimate Summary Card */}
-          <div className="p-4 bg-surface2/60 rounded-xl border border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono">
+          <div className="p-4 bg-surface2/60 rounded-none border border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono">
             <div>
               <span className="text-[10px] text-muted uppercase font-bold block">Estimated Production Cost (Budget)</span>
               <span className="text-base font-black text-emerald-500">
@@ -582,8 +658,8 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
         </div>
 
         <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
-          <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" disabled={submitting} className="bg-rex-600 hover:bg-rex-700 px-6 font-bold shadow-lg shadow-rex-600/20">
+          <Button variant="ghost" type="button" onClick={onClose} className="rounded-none">Cancel</Button>
+          <Button variant="primary" type="submit" disabled={submitting} className="bg-rex-600 hover:bg-rex-700 px-6 font-bold shadow-sm rounded-none">
             {submitting ? 'Creating Work Order...' : 'Create & Release Work Order'}
           </Button>
         </div>

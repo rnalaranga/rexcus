@@ -46,33 +46,143 @@ export const Quotations: React.FC = () => {
   const executeCreateWO = async () => {
     if (!woDialog?.group || !woDialog?.latestMain) return;
     try {
-      const data = JSON.parse(woDialog.latestMain.data || '{}');
-      const procState = data.procState || {};
-      const operations = Object.keys(procState).map(k => ({
-        operationName: k,
-        plannedHours: Number(procState[k].estHr) || Number(procState[k].quoHr) || 0
-      })).filter(op => op.plannedHours > 0);
+      const data = typeof woDialog.latestMain.data === 'string' 
+        ? JSON.parse(woDialog.latestMain.data || '{}') 
+        : (woDialog.latestMain.data || {});
       
+      const operations: any[] = [];
       const bom: any[] = [];
-      const autoMats = data.autoMats || [];
-      const manualMats = data.manualMats || [];
-      
-      autoMats.forEach((m: any) => {
-         if (m.material) {
-           bom.push({ material: m.material, qty: Number(m.qty) || 1, unit: m.dia ? 'rods' : 'plates', unitCost: Number(m.unitPrice) || 0, notes: `${m.length}x${m.width} ${m.thick}mm` });
-         }
-      });
-      
-      manualMats.forEach((m: any) => {
-         if (m.material) {
-           bom.push({ material: m.material, qty: Number(m.qty) || 1, unit: 'pcs', unitCost: Number(m.unitPrice) || 0, notes: m.supplier || '' });
-         }
-      });
-      
+
+      // 1. Check data.boms array (Modern multi-part BOM structure)
+      if (Array.isArray(data.boms) && data.boms.length > 0) {
+        data.boms.forEach((b: any, bIdx: number) => {
+          const partPrefix = b.title ? `${b.title}: ` : (data.boms.length > 1 ? `Part ${bIdx + 1}: ` : '');
+
+          // Auto Materials (Raw stock rods/plates/shafts)
+          (b.autoMats || []).forEach((m: any) => {
+            if (m.material) {
+              const specNotes = [
+                m.length && m.width ? `${m.length}x${m.width}` : m.length ? `L:${m.length}` : '',
+                m.thick ? `${m.thick}mm` : m.dia ? `Ø${m.dia}mm` : ''
+              ].filter(Boolean).join(' ');
+              bom.push({
+                material: m.material,
+                qty: Number(m.qty) || 1,
+                unit: m.dia ? 'rods' : 'plates',
+                unitCost: Number(m.unitPrice) || 0,
+                notes: `${partPrefix}${specNotes}`.trim()
+              });
+            }
+          });
+
+          // Manual Materials
+          (b.manualMats || []).forEach((m: any) => {
+            if (m.material) {
+              bom.push({
+                material: m.material,
+                qty: Number(m.qty) || 1,
+                unit: 'pcs',
+                unitCost: Number(m.unitPrice) || 0,
+                notes: `${partPrefix}${m.supplier || ''}`.trim()
+              });
+            }
+          });
+
+          // Machining Operations for this BOM part
+          if (b.procState && typeof b.procState === 'object') {
+            Object.keys(b.procState).forEach(procName => {
+              const op = b.procState[procName];
+              const hrs = Number(op?.estHr) || Number(op?.quoHr) || 0;
+              if (hrs > 0) {
+                operations.push({
+                  operationName: `${partPrefix}${procName}`,
+                  plannedHours: hrs,
+                  hourlyLaborRate: Number(op?.hrRate || 750),
+                  hourlyMachineRate: Number(op?.machineRate || 1200)
+                });
+              }
+            });
+          }
+        });
+      }
+
+      // 2. Fallback to root-level autoMats & manualMats (Legacy single-BOM format)
+      if (bom.length === 0) {
+        const autoMats = data.autoMats || [];
+        const manualMats = data.manualMats || [];
+
+        autoMats.forEach((m: any) => {
+          if (m.material) {
+            bom.push({
+              material: m.material,
+              qty: Number(m.qty) || 1,
+              unit: m.dia ? 'rods' : 'plates',
+              unitCost: Number(m.unitPrice) || 0,
+              notes: `${m.length}x${m.width} ${m.thick}mm`
+            });
+          }
+        });
+
+        manualMats.forEach((m: any) => {
+          if (m.material) {
+            bom.push({
+              material: m.material,
+              qty: Number(m.qty) || 1,
+              unit: 'pcs',
+              unitCost: Number(m.unitPrice) || 0,
+              notes: m.supplier || ''
+            });
+          }
+        });
+      }
+
+      // 3. Fallback to root-level procState (Legacy operations format)
+      if (operations.length === 0 && data.procState && typeof data.procState === 'object') {
+        const procState = data.procState || {};
+        Object.keys(procState).forEach(k => {
+          const hrs = Number(procState[k].estHr) || Number(procState[k].quoHr) || 0;
+          if (hrs > 0) {
+            operations.push({
+              operationName: k,
+              plannedHours: hrs,
+              hourlyLaborRate: 750,
+              hourlyMachineRate: 1200
+            });
+          }
+        });
+      }
+
+      // 4. Fallback for Product Quotations or Itemized Quotations with custItems
+      if (bom.length === 0 && Array.isArray(data.custItems)) {
+        data.custItems.forEach((ci: any) => {
+          if (ci.desc || ci.name) {
+            bom.push({
+              material: ci.desc || ci.name,
+              qty: Number(ci.qty) || 1,
+              unit: ci.unit || 'pcs',
+              unitCost: Number(ci.unitPrice) || 0,
+              notes: ci.notes || 'Product line item'
+            });
+          }
+        });
+      }
+
+      // Default operation if operations still empty
+      if (operations.length === 0) {
+        operations.push({
+          operationName: 'Precision Machining & Assembly',
+          plannedHours: 2,
+          hourlyLaborRate: 750,
+          hourlyMachineRate: 1200
+        });
+      }
+
       const woData = {
         title: `WO: ${woDialog.group.quoNo} - ${woDialog.group.leadName || 'Customer'}`,
         customerId: woDialog.group.leadId,
+        sourceQuoteId: woDialog.latestMain?.id || null,
         priority: 'Medium',
+        jobQty: Number(data.jobQty || (data.custItems && data.custItems[0]?.qty) || 1),
         operations,
         bom
       };
