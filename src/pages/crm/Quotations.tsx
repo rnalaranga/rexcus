@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye } from 'lucide-react'
 import { X } from 'lucide-react';
@@ -17,7 +17,7 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
-import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders } from '@/lib/api'
 import { Banknote, Mail } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 
@@ -26,6 +26,28 @@ export const Quotations: React.FC = () => {
   const { toast, showConfirm } = useDialog();
   const { user, can } = useAuth();
   const canApprove = can('approvals.quotations');
+
+  const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
+
+  const loadWorkOrders = useCallback(async () => {
+    try {
+      const wos = await fetchWorkOrders()
+      setWorkOrdersList(Array.isArray(wos) ? wos : [])
+    } catch(e) {}
+  }, [])
+
+  useEffect(() => {
+    loadWorkOrders()
+  }, [loadWorkOrders])
+
+  const getExistingWO = (group: any, latestMain: any) => {
+    if (!latestMain) return null
+    return workOrdersList.find((w: any) => 
+      (w.sourceQuoteId && String(w.sourceQuoteId) === String(latestMain.id)) ||
+      (w.quoteId && String(w.quoteId) === String(latestMain.id)) ||
+      (w.title && group.quoNo && w.title.includes(group.quoNo))
+    )
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -40,6 +62,11 @@ export const Quotations: React.FC = () => {
 
   
   const handleCreateWO = (group: any, latestMain: any) => {
+    const existing = getExistingWO(group, latestMain);
+    if (existing) {
+      toast(`A Work Order (${existing.orderNo || existing.id}) already exists for Quotation ${group.quoNo}! Duplicate work orders are not allowed.`, 'warning');
+      return;
+    }
     setWoDialog({ type: 'confirm', group, latestMain });
   }
 
@@ -177,20 +204,31 @@ export const Quotations: React.FC = () => {
         });
       }
 
+      const jobQty = Math.max(1, Number(data.jobQty || (data.custItems && data.custItems[0]?.qty) || (data.items && data.items[0]?.qty) || 1));
+
       const woData = {
         title: `WO: ${woDialog.group.quoNo} - ${woDialog.group.leadName || 'Customer'}`,
         customerId: woDialog.group.leadId,
         sourceQuoteId: woDialog.latestMain?.id || null,
         priority: 'Medium',
-        jobQty: Number(data.jobQty || (data.custItems && data.custItems[0]?.qty) || 1),
+        jobQty,
         operations,
         bom
       };
       
-      await createWorkOrder(woData);
-      setWoDialog({ type: 'success', msg: 'Work Order successfully created! Check Production module.' });
-    } catch(e) {
-      setWoDialog({ type: 'error', msg: 'Failed to create Work Order' });
+      const res = await createWorkOrder(woData);
+      if (res && res.error === 'DUPLICATE') {
+        setWoDialog({ type: 'error', msg: `A Work Order already exists (${res.existingId || ''}) for Quotation ${woDialog.group.quoNo}!` });
+        return;
+      }
+      try {
+        await updateQuotationStatus(woDialog.latestMain.id, 'In Production');
+      } catch (err) {}
+      await loadWorkOrders();
+      await refetch();
+      setWoDialog({ type: 'success', msg: `Work Order successfully created for ${woDialog.group.quoNo}! Quotation status updated to 'In Production'.` });
+    } catch(e: any) {
+      setWoDialog({ type: 'error', msg: e?.message || 'Failed to create Work Order' });
     }
   }
 
@@ -731,14 +769,14 @@ export const Quotations: React.FC = () => {
                           </div>
                         )}
                           
-                            {latestMain && latestMain.status === 'Approved' && (
+                            {latestMain && (latestMain.status === 'Approved' || latestMain.status === 'In Production') && (
                               <>
                               {quoteGrns[latestMain.id] && quoteGrns[latestMain.id].length > 0 ? (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none font-bold" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
                                      Print Sample GRN
                                    </Button>
                                 ) : (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain, items: [{description: '', qty: 1}] }); }}>
+                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none font-bold" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain, items: [{description: '', qty: 1}] }); }}>
                                      Receive Sample
                                    </Button>
                                 )}
@@ -746,20 +784,32 @@ export const Quotations: React.FC = () => {
                                 variant="primary" 
                                 size="sm" 
                                 icon={Banknote} 
-                                className="ml-4 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-500 text-white border-none"
+                                className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-500 text-white border-none font-bold"
                                 onClick={() => handlePaymentRequest(group, latestMain)}
                               >
                                 Request Advance
                               </Button>
-                              <Button 
-                                variant="primary" 
-                                size="sm" 
-                                icon={Factory} 
-                                className="ml-2 h-6 text-[9px] px-2 rounded-md whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none"
-                                onClick={() => handleCreateWO(group, latestMain)}
-                              >
-                                Create WO
-                              </Button>
+                              {(() => {
+                                const existingWO = getExistingWO(group, latestMain);
+                                if (existingWO || latestMain.status === 'In Production') {
+                                  return (
+                                    <span className="ml-2 inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-mono">
+                                      <Factory size={11}/> WO Issued ({existingWO?.orderNo || existingWO?.id || 'Active'})
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <Button 
+                                    variant="primary" 
+                                    size="sm" 
+                                    icon={Factory} 
+                                    className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold"
+                                    onClick={() => handleCreateWO(group, latestMain)}
+                                  >
+                                    Create WO
+                                  </Button>
+                                );
+                              })()}
                               </>
                             )}
 

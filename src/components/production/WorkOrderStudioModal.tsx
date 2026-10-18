@@ -141,9 +141,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
     }
   }, [workOrder])
 
-  if (!isOpen || !workOrder) return null
-
-  const wo = workOrder
+  const wo = workOrder || {}
   const operations: any[] = wo.operations || []
   const issuedMaterials: any[] = wo.issuedMaterials || []
   const reworkLogs: any[] = wo.reworkLogs || []
@@ -531,6 +529,8 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   const isAutoDetectedFromQuote = directBomItems.length === 0 && quoteBomItems.length > 0
   const isAutoDetectedOps = operations.length === 0 && quoteOps.length > 0
 
+  if (!isOpen || !workOrder) return null
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="" size="5xl">
       <div className="space-y-6 pb-2">
@@ -582,6 +582,8 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                 )}
                 <span className="flex items-center gap-1.5 font-mono">
                   <Package size={14} className="text-amber-500"/> Target: <strong className="text-primary">{wo.jobQty || 1}</strong> pcs
+                  {Number(wo.completedQty || 0) > 0 && <span className="text-emerald-600 font-bold ml-1">({wo.completedQty} completed)</span>}
+                  {Number(wo.scrapQty || 0) > 0 && <span className="text-rose-500 font-bold ml-1">({wo.scrapQty} scrap)</span>}
                 </span>
                 {wo.deadline && (
                   <span className="flex items-center gap-1.5">

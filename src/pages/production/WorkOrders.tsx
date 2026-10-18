@@ -192,6 +192,23 @@ export const WorkOrders: React.FC = () => {
       }
     },
     {
+      key: 'jobQty',
+      header: 'Batch Quantity',
+      sortable: true,
+      render: (_: any, row: any) => (
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5 font-mono">
+            <Package size={13} className="text-amber-500 shrink-0"/>
+            <span className="font-bold text-xs text-primary">{row.jobQty || 1} pcs</span>
+          </div>
+          <div className="text-[10px] text-muted flex items-center gap-1.5 font-mono">
+            <span className="text-emerald-600 font-bold">{row.completedQty || 0} done</span>
+            {Number(row.scrapQty || 0) > 0 && <span className="text-rose-500 font-bold">• {row.scrapQty} scrap</span>}
+          </div>
+        </div>
+      )
+    },
+    {
       key: 'priority',
       header: 'Priority & Due',
       sortable: true,
@@ -550,11 +567,16 @@ export const WorkOrders: React.FC = () => {
 
                           <div>
                             <h4 className="text-xs font-bold text-primary line-clamp-2">{wo.title}</h4>
-                            {wo.customerName && (
-                              <p className="text-[11px] text-muted truncate mt-0.5 flex items-center gap-1">
-                                <Building size={10}/> {wo.customerName}
-                              </p>
-                            )}
+                            <div className="flex items-center justify-between gap-2 mt-1.5">
+                              {wo.customerName ? (
+                                <p className="text-[11px] text-muted truncate flex items-center gap-1">
+                                  <Building size={10}/> {wo.customerName}
+                                </p>
+                              ) : <span />}
+                              <span className="font-mono text-[10px] font-bold text-primary flex items-center gap-1 shrink-0 bg-surface2 px-1.5 py-0.5 border border-theme-subtle">
+                                <Package size={11} className="text-amber-500"/> {wo.jobQty || 1} pcs
+                              </span>
+                            </div>
                           </div>
 
                           {/* Progress */}

@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { formatCurrency } from '@/lib/utils'
-import { createWorkOrder } from '@/lib/api'
+import { createWorkOrder, updateQuotationStatus } from '@/lib/api'
 
 interface WorkOrderCreateModalProps {
   isOpen: boolean
@@ -315,6 +315,11 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
 
       const res = await createWorkOrder(payload)
       if (res.success) {
+        if (formData.sourceQuoteId) {
+          try {
+            await updateQuotationStatus(formData.sourceQuoteId, 'In Production')
+          } catch (e) {}
+        }
         onSuccess(res.id)
         onClose()
       } else {
@@ -356,11 +361,14 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
               className="w-full input-base text-xs py-1.5 font-medium"
             >
               <option value="">-- Select Quotation --</option>
-              {quotations.map(q => (
-                <option key={q.id} value={q.id}>
-                  {q.quotationNo || q.id} - {q.customerName || q.leadName || 'Customer'}
-                </option>
-              ))}
+              {quotations.map(q => {
+                const isProd = q.status === 'In Production'
+                return (
+                  <option key={q.id} value={q.id} disabled={isProd}>
+                    {q.quotationNo || q.id} - {q.customerName || q.leadName || 'Customer'} {isProd ? '(WO Already Created)' : ''}
+                  </option>
+                )
+              })}
             </select>
           </div>
         </div>
