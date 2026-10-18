@@ -689,6 +689,7 @@ export const GRNBuilder: React.FC = () => {
                                 <input 
                                   type="number" 
                                   min="0"
+                                  step="any"
                                   value={item.qtyReceived} 
                                   onChange={e => {
                                     const newItems = [...items];

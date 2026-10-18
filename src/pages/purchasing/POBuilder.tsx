@@ -25,6 +25,8 @@ interface POItem {
   taxRate: number;
   discount: number;
   total: number;
+  unit?: string;
+  uom?: string;
   mrId?: string;
   mrItemId?: string;
   requestedQty?: number;
@@ -277,7 +279,7 @@ export const POBuilder: React.FC = () => {
     setItems(items.filter(i => i.mrId !== targetMrId));
   };
 
-  const addItem = () => setItems([...items, { id: Date.now().toString(), inventoryId: '', desc: '', qty: 1, unitPrice: 0, taxRate: 0, discount: 0, total: 0 }]);
+  const addItem = () => setItems([...items, { id: Date.now().toString(), inventoryId: '', desc: '', qty: 1, unitPrice: 0, taxRate: 0, discount: 0, total: 0, unit: 'Nos', uom: 'Nos' }]);
 
   const updateItem = (itemId: string, field: string, value: any) => {
     setItems(items.map(item => {
@@ -288,6 +290,8 @@ export const POBuilder: React.FC = () => {
           if (invItem) {
             updated.desc = invItem.name;
             updated.unitPrice = Number(invItem.unitCost) || 0;
+            updated.unit = invItem.uom || 'Nos';
+            updated.uom = invItem.uom || 'Nos';
           }
         }
         const base = (Number(updated.qty) || 0) * (Number(updated.unitPrice) || 0);
@@ -700,10 +704,22 @@ export const POBuilder: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-2 text-right align-top">
-                          <input type="number" min="1" value={item.qty} onChange={e => updateItem(item.id, 'qty', Number(e.target.value))} className="w-16 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-bold focus:border-primary" />
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              min="0.1"
+                              step="any"
+                              value={item.qty}
+                              onChange={e => updateItem(item.id, 'qty', Number(e.target.value))}
+                              className="w-16 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-bold focus:border-primary"
+                            />
+                            <span className="text-[10px] text-muted font-mono font-semibold w-8 text-left" title={item.unit || 'Unit'}>
+                              {item.unit || item.uom || 'Nos'}
+                            </span>
+                          </div>
                           {item.balanceToOrder !== undefined && (
                             <span className="text-[10px] text-muted block text-right font-mono mt-0.5" title={`Original Req: ${item.requestedQty || item.qty}`}>
-                              Bal: {item.balanceToOrder}
+                              Bal: {item.balanceToOrder} {item.unit || item.uom || ''}
                             </span>
                           )}
                         </td>
@@ -975,7 +991,9 @@ export const POBuilder: React.FC = () => {
                         {it.mrId || '-'}
                       </td>
                     )}
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>{it.qty}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>
+                      {it.qty} {it.unit || it.uom || inv?.uom || ''}
+                    </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(Number(it.unitPrice) || 0)}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>{Number(it.discount) > 0 ? formatCurrency(Number(it.discount)) : '-'}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>{Number(it.taxRate) > 0 ? `${it.taxRate}%` : '0%'}</td>

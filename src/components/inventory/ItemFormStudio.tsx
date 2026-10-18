@@ -69,11 +69,13 @@ const MATERIAL_SHAPES = [
 
 const UOMS = [
   { value: 'pcs', label: 'Pieces (Pcs)' },
+  { value: 'ft', label: 'Feet (ft)' },
+  { value: 'in', label: 'Inches (in)' },
+  { value: 'feet', label: 'Feet (ft - legacy)' },
   { value: 'kg', label: 'Kilograms (Kg)' },
   { value: 'm', label: 'Meters (m)' },
   { value: 'mm', label: 'Millimeters (mm)' },
   { value: 'sheet', label: 'Sheets' },
-  { value: 'feet', label: 'Feet (ft)' },
   { value: 'ltr', label: 'Liters (Ltr)' },
   { value: 'hr', label: 'Hours (Hr - Labor/Machining)' },
   { value: 'set', label: 'Sets' },

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Scissors,
   Ruler,
@@ -11,6 +11,7 @@ import {
   Printer,
   RefreshCw,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   Package,
   Layers,
@@ -20,7 +21,10 @@ import {
   Tag,
   Warehouse,
   History,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  ShieldAlert,
+  Wrench
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -31,25 +35,78 @@ import {
   executeCutIssue,
   createStockRemnant,
   updateStockRemnant,
-  deleteStockRemnant
+  deleteStockRemnant,
+  fetchWorkOrders
 } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+
+export const formatLinearDisplay = (val: number | string, currentUnit: string) => {
+  const num = Number(val) || 0
+  const u = (currentUnit || 'ft').toLowerCase()
+  if (u === 'ft' || u === 'feet') {
+    const totalInches = Math.round(num * 12)
+    const f = Math.floor(totalInches / 12)
+    const i = totalInches % 12
+    if (i === 0) return `${f} ft (${totalInches} in)`
+    return `${f} ft ${i} in (${totalInches} in)`
+  }
+  if (u === 'in' || u === 'inch' || u === 'inches') {
+    const totalInches = Math.round(num)
+    const f = Math.floor(totalInches / 12)
+    const i = totalInches % 12
+    if (f === 0) return `${totalInches} in`
+    return `${totalInches} in (${f} ft ${i} in)`
+  }
+  if (u === 'mm') {
+    const inches = (num / 25.4).toFixed(1)
+    return `${num} mm (~${inches}")`
+  }
+  if (u === 'm') {
+    const totalInches = Math.round(num * 39.3701)
+    const f = Math.floor(totalInches / 12)
+    const i = totalInches % 12
+    return `${num.toFixed(2)} m (${f} ft ${i} in)`
+  }
+  return `${num} ${currentUnit}`
+}
 
 interface LinearStockCutStudioProps {
   inventoryList: any[]
   onRefreshInventory?: () => void
   showToast?: (type: any, title: string, message?: string) => void
   initialInventoryId?: string
+  onBackToInventory?: () => void
 }
 
 export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
   inventoryList,
   onRefreshInventory,
   showToast = () => {},
-  initialInventoryId
+  initialInventoryId,
+  onBackToInventory
 }) => {
   // 1. Data Hooks
   const { data: remnants = [], loading: remnantsLoading, refetch: refetchRemnants } = useStockRemnants()
+
+  // Fetch Work Orders for Job Reference Dropdown
+  const [workOrders, setWorkOrders] = useState<any[]>([])
+  const [loadingWorkOrders, setLoadingWorkOrders] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+    setLoadingWorkOrders(true)
+    fetchWorkOrders()
+      .then((data: any) => {
+        if (isMounted && Array.isArray(data)) {
+          setWorkOrders(data)
+        }
+      })
+      .catch((err) => console.error('Failed to load work orders for studio:', err))
+      .finally(() => {
+        if (isMounted) setLoadingWorkOrders(false)
+      })
+    return () => { isMounted = false }
+  }, [])
 
   // 2. Linear inventory candidates (raw materials or bars, rods, shafts, pipes, plates)
   const linearItems = useMemo(() => {
@@ -86,8 +143,23 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
     const item = inventoryList.find(i => i.id === itemId)
     if (item) {
       setMaterialName(item.name || 'Linear Bar')
-      if (item.uom && ['ft', 'm', 'mm', 'in'].includes(item.uom.toLowerCase())) {
-        setUnit(item.uom.toLowerCase())
+      const itemUom = (item.uom || '').toLowerCase()
+      if (['ft', 'feet'].includes(itemUom)) {
+        setUnit('ft')
+        setStandardBarLength(12)
+        setSawKerf(0.01)
+      } else if (['in', 'inch', 'inches'].includes(itemUom)) {
+        setUnit('in')
+        setStandardBarLength(144)
+        setSawKerf(0.125)
+      } else if (['m', 'meter', 'meters'].includes(itemUom)) {
+        setUnit('m')
+        setStandardBarLength(6)
+        setSawKerf(0.003)
+      } else if (itemUom === 'mm') {
+        setUnit('mm')
+        setStandardBarLength(6000)
+        setSawKerf(3)
       }
       // Heuristic extraction for dimensions if present (e.g. "8mm", "12mm")
       const dimMatch = item.name.match(/\b\d+(\.\d+)?\s*(mm|inch|"|cm)\b/i)
@@ -97,14 +169,95 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
     }
   }
 
-  // Required cut inputs
+  // Sync initialInventoryId when passed or changed externally
+  useEffect(() => {
+    if (initialInventoryId) {
+      handleSelectInventory(initialInventoryId)
+    }
+  }, [initialInventoryId])
+
+  // Required cut inputs with 1-inch precision support
   const [requiredLength, setRequiredLength] = useState<number>(4)
+  const [cutFeet, setCutFeet] = useState<number>(4)
+  const [cutInches, setCutInches] = useState<number>(0)
   const [cutQuantity, setCutQuantity] = useState<number>(1)
-  const [sawKerf, setSawKerf] = useState<number>(0.05) // Saw blade kerf loss in unit
-  const [jobRef, setJobRef] = useState<string>('WO-8821 - Shaft Assembly')
+  const [sawKerf, setSawKerf] = useState<number>(0.01) // blade kerf (~1/8" in ft)
+
+  // STRICT REQUIREMENT: Job Number / Work Order # is strictly mandatory for Material Issue!
+  const [jobRef, setJobRef] = useState<string>('')
+  const [manualJobMode, setManualJobMode] = useState<boolean>(false)
+
   const [selectedSourceType, setSelectedSourceType] = useState<'remnant' | 'full_bar'>('remnant')
   const [selectedRemnantId, setSelectedRemnantId] = useState<string>('')
   const [targetLocation, setTargetLocation] = useState<string>('Rack-A2 (Offcuts Shelf)')
+
+  // Handlers for 1-inch and feet/inches precision
+  const handleFeetChange = (val: number) => {
+    const f = Math.max(0, val)
+    setCutFeet(f)
+    const totalFt = Number((f + (cutInches / 12)).toFixed(4))
+    setRequiredLength(totalFt)
+  }
+
+  const handleInchesChange = (val: number) => {
+    const i = Math.max(0, Math.min(11, val))
+    setCutInches(i)
+    const totalFt = Number((cutFeet + (i / 12)).toFixed(4))
+    setRequiredLength(totalFt)
+  }
+
+  const handleDirectLengthChange = (val: number) => {
+    const len = Math.max(0.01, val)
+    setRequiredLength(len)
+    if (unit === 'ft') {
+      const totalIn = Math.round(len * 12)
+      setCutFeet(Math.floor(totalIn / 12))
+      setCutInches(totalIn % 12)
+    }
+  }
+
+  const handleAdjustInches = (deltaInches: number) => {
+    if (unit === 'ft') {
+      const currentIn = Math.max(1, Math.round((cutFeet * 12 + cutInches) + deltaInches))
+      const f = Math.floor(currentIn / 12)
+      const i = currentIn % 12
+      setCutFeet(f)
+      setCutInches(i)
+      setRequiredLength(Number((currentIn / 12).toFixed(4)))
+    } else if (unit === 'in') {
+      setRequiredLength(Math.max(1, Math.round(requiredLength + deltaInches)))
+    } else {
+      setRequiredLength(Math.max(0.1, Number((requiredLength + (deltaInches * (unit === 'mm' ? 25.4 : 0.0254))).toFixed(2))))
+    }
+  }
+
+  const handleUnitChange = (newUnit: string) => {
+    if (newUnit === unit) return
+    const prevUnit = unit
+    setUnit(newUnit)
+
+    if (prevUnit === 'ft' && newUnit === 'in') {
+      const inVal = Math.round(requiredLength * 12)
+      setRequiredLength(inVal)
+      setStandardBarLength(Math.round(standardBarLength * 12))
+      setSawKerf(0.125)
+    } else if (prevUnit === 'in' && newUnit === 'ft') {
+      const ftVal = Number((requiredLength / 12).toFixed(4))
+      setRequiredLength(ftVal)
+      setCutFeet(Math.floor(ftVal))
+      setCutInches(Math.round((ftVal - Math.floor(ftVal)) * 12))
+      setStandardBarLength(Number((standardBarLength / 12).toFixed(2)))
+      setSawKerf(0.01)
+    } else if (newUnit === 'in') {
+      setSawKerf(0.125)
+    } else if (newUnit === 'ft') {
+      setSawKerf(0.01)
+    } else if (newUnit === 'mm') {
+      setSawKerf(3)
+    } else if (newUnit === 'm') {
+      setSawKerf(0.003)
+    }
+  }
 
   // Modals state
   const [isAddRemnantModalOpen, setIsAddRemnantModalOpen] = useState(false)
@@ -210,6 +363,12 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
   // 6. Handle Execute Cut & Issue
   const handleExecuteCut = async () => {
+    const trimmedJob = (jobRef || '').trim()
+    if (!trimmedJob) {
+      showToast('error', 'Job Number Mandatory', 'A valid Job / Work Order # is strictly required to execute Material Issue.')
+      return
+    }
+
     if (totalCutNeeded <= 0) {
       showToast('error', 'Invalid Cut Length', 'Please enter a valid cut length greater than 0.')
       return
@@ -221,13 +380,13 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
         return
       }
       if (activeSourceLength < totalCutNeeded) {
-        showToast('error', 'Insufficient Length', `Selected remnant (${activeSourceLength} ${unit}) is shorter than required cut (${totalCutNeeded} ${unit}).`)
+        showToast('error', 'Insufficient Length', `Selected remnant (${formatLinearDisplay(activeSourceLength, unit)}) is shorter than required cut (${formatLinearDisplay(totalCutNeeded, unit)}).`)
         return
       }
     } else {
       // Full bar cut
       if (standardBarLength < totalCutNeeded) {
-        showToast('error', 'Bar Too Short', `Standard full bar (${standardBarLength} ${unit}) is shorter than required cut (${totalCutNeeded} ${unit}).`)
+        showToast('error', 'Bar Too Short', `Standard full bar (${formatLinearDisplay(standardBarLength, unit)}) is shorter than required cut (${formatLinearDisplay(totalCutNeeded, unit)}).`)
         return
       }
     }
@@ -238,28 +397,40 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
         inventoryId: selectedInventoryId || null,
         materialName: materialName,
         sourceType: selectedSourceType,
+        cutMode: selectedSourceType === 'remnant' ? 'from_remnant' : 'from_full_bar',
         sourceRemnantId: selectedSourceType === 'remnant' ? selectedRemnantId : null,
+        remnantId: selectedSourceType === 'remnant' ? selectedRemnantId : null,
         standardLength: standardBarLength,
         cutLength: requiredLength,
+        requiredLength: requiredLength,
         cutQty: cutQuantity,
         sawKerf: sawKerf,
+        kerfLoss: sawKerf,
         unit: unit,
         dimension: dimension,
         profileType: profileType,
         location: targetLocation,
-        jobRef: jobRef,
-        notes: `Issued ${requiredLength} ${unit} for ${jobRef}`
+        jobRef: trimmedJob,
+        notes: `Material Issued: ${formatLinearDisplay(requiredLength, unit)} x ${cutQuantity} pcs for Job #${trimmedJob}`
       }
 
       const res = await executeCutIssue(payload)
       if (res.success) {
-        showToast('success', 'Cut Issued Successfully!', res.message)
-        setLastCutResult(res)
+        showToast('success', 'Material Issued Successfully!', res.message)
+        setLastCutResult({
+          ...res,
+          materialName,
+          unit,
+          jobRef: trimmedJob,
+          cutLengthDisplay: formatLinearDisplay(requiredLength, unit),
+          leftoverDisplay: formatLinearDisplay(res.leftoverLength, unit),
+          targetLocation
+        })
         setIsCutSuccessModalOpen(true)
         refetchRemnants()
         if (onRefreshInventory) onRefreshInventory()
       } else {
-        showToast('error', 'Cut Failed', res.message || 'Error processing cut issue.')
+        showToast('error', 'Cut Failed', res.message || res.error || 'Error processing cut issue.')
       }
     } catch (err: any) {
       console.error('Error executing cut issue:', err)
@@ -355,6 +526,16 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {onBackToInventory && (
+              <Button
+                variant="outline"
+                icon={ArrowLeft}
+                onClick={onBackToInventory}
+                className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur"
+              >
+                Back to Inventory
+              </Button>
+            )}
             <Button
               variant="outline"
               icon={Plus}
@@ -388,7 +569,9 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-amber-400 shrink-0" />
             <span className="font-semibold text-slate-200">Active Preset:</span>
-            <span className="font-mono px-2 py-0.5 rounded bg-white/10 text-white">8mm Mild Steel Shaft (12 ft Std)</span>
+            <span className="font-mono px-2 py-0.5 rounded bg-white/10 text-white">
+              {materialName} ({formatLinearDisplay(standardBarLength, unit)} Std)
+            </span>
           </div>
           <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
             <span>Active Offcuts in Rack: <strong className="text-emerald-400">{materialRemnants.length} pieces</strong></span>
@@ -411,11 +594,11 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-primary">Bar Stock & Cut Details</h3>
-                  <p className="text-xs text-muted">Select raw material & specify target cut length</p>
+                  <p className="text-xs text-muted">1-Inch Precision Cutting & Mandatory Job Ref</p>
                 </div>
               </div>
               <Badge variant="info" size="sm">
-                Unit: {unit}
+                Unit: {unit.toUpperCase()}
               </Badge>
             </div>
 
@@ -484,48 +667,185 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                       {unit}
                     </span>
                   </div>
+                  <span className="text-[10px] text-muted font-mono mt-0.5 block">
+                    = {formatLinearDisplay(standardBarLength, unit)}
+                  </span>
                 </div>
                 <div>
                   <label className="block text-[11px] font-medium text-secondary mb-1">Length Unit</label>
                   <select
                     className="w-full input-base text-xs font-semibold"
                     value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
+                    onChange={(e) => handleUnitChange(e.target.value)}
                   >
-                    <option value="ft">Feet (ft)</option>
-                    <option value="m">Meters (m)</option>
+                    <option value="ft">Feet (ft) - 1" Precision</option>
+                    <option value="in">Inches (in) - Exact Inches</option>
                     <option value="mm">Millimeters (mm)</option>
-                    <option value="in">Inches (in)</option>
+                    <option value="m">Meters (m)</option>
                   </select>
+                  <span className="text-[10px] text-muted font-mono mt-0.5 block">
+                    {unit === 'ft' ? '1 ft = 12 in' : unit === 'in' ? 'Exact 1-inch steps' : `${unit} standard`}
+                  </span>
                 </div>
               </div>
 
-              {/* Required Cut Parameters */}
+              {/* ── REQUIRED CUT PARAMETERS (1-INCH PRECISION & DUAL UNIT SUPPORT) ── */}
               <div className="p-4 rounded-xl bg-rex-500/5 border border-rex-500/20 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-rex-600 dark:text-rex-400 flex items-center gap-1.5">
-                    <Scissors size={14} /> Cut Piece Requirements
+                    <Scissors size={14} /> Cut Requirements (1-Inch Precision)
                   </span>
-                  <span className="text-[11px] text-muted">Total Cut: <strong className="text-primary font-mono">{totalCutNeeded.toFixed(2)} {unit}</strong></span>
+                  <span className="text-[11px] text-muted">
+                    Total: <strong className="text-primary font-mono">{formatLinearDisplay(totalCutNeeded, unit)}</strong>
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[10px] uppercase font-bold text-muted mb-1">
-                      Cut Length ({unit}) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      className="w-full input-base text-xs font-mono font-bold text-rex-600"
-                      value={requiredLength}
-                      onChange={(e) => setRequiredLength(Number(e.target.value))}
-                    />
+                {/* Dual Feet & Inches Input when unit is 'ft' */}
+                {unit === 'ft' ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-muted mb-1">
+                          Feet (ft)
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          className="w-full input-base text-xs font-mono font-bold text-rex-600"
+                          value={cutFeet}
+                          onChange={(e) => handleFeetChange(parseInt(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-muted mb-1">
+                          Inches (in) <span className="text-emerald-500 font-semibold">[0 - 11]</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="11"
+                          className="w-full input-base text-xs font-mono font-bold text-emerald-600"
+                          value={cutInches}
+                          onChange={(e) => handleInchesChange(parseInt(e.target.value) || 0)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick 1-Inch Stepper Buttons */}
+                    <div className="flex items-center justify-between gap-1 pt-1">
+                      <span className="text-[10px] text-muted font-mono font-bold">1" Steps:</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustInches(-1)}
+                          className="px-2 py-0.5 rounded bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
+                          title="Subtract 1 inch"
+                        >
+                          -1"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustInches(1)}
+                          className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[11px] font-mono font-bold border border-emerald-500/30"
+                          title="Add 1 inch"
+                        >
+                          +1"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustInches(6)}
+                          className="px-2 py-0.5 rounded bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
+                          title="Add 6 inches"
+                        >
+                          +6"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustInches(12)}
+                          className="px-2 py-0.5 rounded bg-surface2 hover:bg-surface2/80 text-[11px] font-mono border border-theme-subtle"
+                          title="Add 12 inches (1 foot)"
+                        >
+                          +1 ft
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] font-mono text-secondary flex items-center justify-between pt-0.5">
+                      <span>Decimal: <strong>{requiredLength.toFixed(2)} ft</strong></span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                        = {Math.round((cutFeet * 12) + cutInches)} inches
+                      </span>
+                    </div>
                   </div>
+                ) : (
+                  /* Single Unit Input (Inches / mm / m) */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-muted mb-1">
+                          Cut Length ({unit}) *
+                        </label>
+                        <input
+                          type="number"
+                          step={unit === 'in' ? '1' : '0.01'}
+                          min="0.01"
+                          className="w-full input-base text-xs font-mono font-bold text-rex-600"
+                          value={requiredLength}
+                          onChange={(e) => handleDirectLengthChange(Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="flex flex-col justify-end">
+                        <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 pb-2">
+                          = {formatLinearDisplay(requiredLength, unit)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {unit === 'in' && (
+                      <div className="flex items-center justify-between gap-1 pt-1">
+                        <span className="text-[10px] text-muted font-mono font-bold">1" Steps:</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustInches(-1)}
+                            className="px-2 py-0.5 rounded bg-surface2 text-[11px] font-mono border border-theme-subtle"
+                          >
+                            -1"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustInches(1)}
+                            className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-[11px] font-mono font-bold border border-emerald-500/30"
+                          >
+                            +1"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustInches(6)}
+                            className="px-2 py-0.5 rounded bg-surface2 text-[11px] font-mono border border-theme-subtle"
+                          >
+                            +6"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustInches(12)}
+                            className="px-2 py-0.5 rounded bg-surface2 text-[11px] font-mono border border-theme-subtle"
+                          >
+                            +12"
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Quantity & Saw Kerf */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-theme-subtle/50">
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-muted mb-1">
-                      Quantity (pcs)
+                      Quantity (Pieces to Cut)
                     </label>
                     <input
                       type="number"
@@ -537,33 +857,94 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-muted mb-1">
-                      Saw Kerf ({unit})
+                      Blade Saw Kerf ({unit})
                     </label>
                     <input
                       type="number"
-                      step="0.01"
+                      step="0.001"
                       min="0"
                       className="w-full input-base text-xs font-mono"
                       value={sawKerf}
                       onChange={(e) => setSawKerf(Number(e.target.value))}
-                      title="Blade thickness loss during cutting"
+                      title="Blade width loss during cutting"
                     />
                   </div>
                 </div>
 
-                {/* Job / Work Order Reference */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <label className="block text-[11px] font-medium text-secondary mb-1">Job / Work Order #</label>
+                {/* ── STRICT MANDATORY JOB NUMBER / WORK ORDER REFERENCE ── */}
+                <div className="pt-3 border-t border-theme-subtle/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-secondary">
+                      Job / Work Order # <span className="text-red-500 font-bold">* MANDATORY</span>
+                    </label>
+                    {jobRef.trim() ? (
+                      <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Job Linked
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-red-500 font-bold flex items-center gap-1">
+                        <AlertTriangle size={12} /> Required to Issue
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Dropdown of Active Work Orders */}
+                  <select
+                    className={`w-full input-base text-xs font-semibold ${
+                      !jobRef.trim() ? 'border-red-500/70 bg-red-500/5 focus:border-red-500' : ''
+                    }`}
+                    value={
+                      workOrders.some(wo => wo.id === jobRef || `${wo.id} - ${wo.title}` === jobRef)
+                        ? jobRef
+                        : (jobRef ? '__custom__' : '')
+                    }
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setManualJobMode(true)
+                      } else {
+                        setJobRef(e.target.value)
+                        setManualJobMode(false)
+                      }
+                    }}
+                  >
+                    <option value="">-- Select Active Work Order / Job * --</option>
+                    {workOrders.map((wo: any) => (
+                      <option key={wo.id} value={`${wo.id} - ${wo.title || 'Work Order'}`}>
+                        {wo.id}: {wo.title || 'Work Order'} {wo.customerName ? `(${wo.customerName})` : ''}
+                      </option>
+                    ))}
+                    <option value="__custom__">✏️ Type Manual Job #</option>
+                  </select>
+
+                  {/* Manual Entry or Direct Job Text */}
+                  <div className="relative">
                     <input
                       type="text"
-                      className="w-full input-base text-xs"
+                      className={`w-full input-base text-xs font-mono font-bold pr-8 ${
+                        !jobRef.trim()
+                          ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400 placeholder:text-red-400/60'
+                          : 'text-primary'
+                      }`}
                       value={jobRef}
                       onChange={(e) => setJobRef(e.target.value)}
-                      placeholder="e.g. WO-8821"
+                      placeholder="Enter Job # (e.g. WO-8821, JOB-402) *"
                     />
+                    {!jobRef.trim() && (
+                      <Lock size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-red-500 pointer-events-none" />
+                    )}
                   </div>
-                  <div>
+
+                  {!jobRef.trim() && (
+                    <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-[11px] text-red-600 dark:text-red-400 flex items-start gap-1.5 leading-tight">
+                      <ShieldAlert size={15} className="shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Material Issue Blocked:</strong> A Job Number / Work Order is strictly mandatory. Stock cannot be cut or issued without a valid job reference.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Return Location */}
+                  <div className="pt-1">
                     <label className="block text-[11px] font-medium text-secondary mb-1">Return Remnant Location</label>
                     <input
                       type="text"
@@ -702,7 +1083,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                             </div>
                             <div>
                               <div className="font-mono font-bold text-primary flex items-center gap-1.5">
-                                <span>{rem.length} {rem.unit || unit} Piece</span>
+                                <span>{formatLinearDisplay(rem.length, rem.unit || unit)}</span>
                                 {rem.id === recommendedRemnant?.id && (
                                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500 text-white font-bold uppercase">
                                     Best Fit
@@ -716,7 +1097,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                           </div>
                           <div className="text-right">
                             <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
-                              {afterCut} {unit} leftover
+                              {formatLinearDisplay(afterCut, unit)} leftover
                             </span>
                             <span className="block text-[9px] text-muted">will return to rack</span>
                           </div>
@@ -738,10 +1119,10 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                       <span
                         key={r.id}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface2 text-muted border border-theme-subtle text-[11px] font-mono"
-                        title={`Too short: Has ${r.length} ${unit}, needed ${totalCutNeeded} ${unit}`}
+                        title={`Too short: Has ${formatLinearDisplay(r.length, r.unit || unit)}, needed ${formatLinearDisplay(totalCutNeeded, unit)}`}
                       >
                         <X size={10} className="text-red-400" />
-                        {r.length} {r.unit || unit} ({r.location || 'Rack'})
+                        {formatLinearDisplay(r.length, r.unit || unit)} ({r.location || 'Rack'})
                       </span>
                     ))}
                   </div>
@@ -766,14 +1147,16 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                     <h3 className="text-sm font-bold text-primary flex items-center gap-2">
                       Interactive 2D Cut Simulation
                     </h3>
-                    <p className="text-xs text-muted">Visual representation of bar stock, cut segment & leftover remnant</p>
+                    <p className="text-xs text-muted">1-Inch calibrated visual representation of cut segment & leftover remnant</p>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-secondary">Scale:</span>
-                <Badge variant="default" size="sm">0 to {activeSourceLength} {unit}</Badge>
+                <Badge variant="default" size="sm">
+                  0 to {formatLinearDisplay(activeSourceLength, unit)}
+                </Badge>
               </div>
             </div>
 
@@ -785,7 +1168,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 <div className="absolute top-0 left-0 right-0 h-2 border-b border-slate-400/40" />
                 {/* 5 Tick marks across the bar */}
                 {[0, 0.25, 0.5, 0.75, 1.0].map((fraction, idx) => {
-                  const tickVal = (activeSourceLength * fraction).toFixed(1)
+                  const val = activeSourceLength * fraction
                   return (
                     <div
                       key={idx}
@@ -793,8 +1176,8 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                       style={{ left: `${fraction * 100}%` }}
                     >
                       <div className="w-px h-3 bg-slate-400/60" />
-                      <span className="text-[10px] font-mono text-muted mt-1">
-                        {tickVal} {unit}
+                      <span className="text-[10px] font-mono text-muted mt-1 whitespace-nowrap">
+                        {fraction === 0 ? '0' : formatLinearDisplay(val, unit)}
                       </span>
                     </div>
                   )
@@ -811,10 +1194,10 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 >
                   <div className="flex items-center gap-1 font-bold text-xs sm:text-sm drop-shadow-sm truncate">
                     <Scissors size={14} className="shrink-0" />
-                    <span>CUT: {requiredLength} {unit}</span>
+                    <span>CUT: {formatLinearDisplay(requiredLength, unit)}</span>
                   </div>
                   <span className="text-[10px] text-emerald-100 font-mono truncate max-w-full">
-                    {jobRef || 'Issued Part'}
+                    {jobRef ? `Job #${jobRef}` : '⚠️ Job Ref Required'}
                   </span>
                   {/* Subtle diagonal shine overlay */}
                   <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
@@ -837,7 +1220,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   >
                     <div className="flex items-center gap-1 font-bold text-xs sm:text-sm drop-shadow-sm truncate">
                       <Warehouse size={14} className="shrink-0" />
-                      <span>LEFTOVER: {leftoverRemnantLength} {unit}</span>
+                      <span>LEFTOVER: {formatLinearDisplay(leftoverRemnantLength, unit)}</span>
                     </div>
                     <span className="text-[10px] text-sky-100 font-mono truncate max-w-full">
                       Returns to {targetLocation}
@@ -856,7 +1239,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3.5 h-3.5 rounded bg-emerald-500 inline-block shadow-xs" />
-                    <span className="text-secondary font-medium">Issued Cut Piece ({requiredLength} {unit})</span>
+                    <span className="text-secondary font-medium">Issued Cut ({formatLinearDisplay(requiredLength, unit)})</span>
                   </div>
                   {sawKerf > 0 && (
                     <div className="flex items-center gap-1.5">
@@ -866,12 +1249,12 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   )}
                   <div className="flex items-center gap-1.5">
                     <span className="w-3.5 h-3.5 rounded bg-cyan-600 inline-block shadow-xs" />
-                    <span className="text-secondary font-medium">Re-usable Remnant ({leftoverRemnantLength} {unit})</span>
+                    <span className="text-secondary font-medium">Re-usable Remnant ({formatLinearDisplay(leftoverRemnantLength, unit)})</span>
                   </div>
                 </div>
 
                 <span className="text-muted font-mono text-[11px]">
-                  Total Source: {activeSourceLength} {unit}
+                  Total Source: {formatLinearDisplay(activeSourceLength, unit)}
                 </span>
               </div>
             </div>
@@ -880,16 +1263,16 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-theme-subtle">
               <div className="p-3 rounded-xl bg-surface2/40 border border-theme-subtle">
                 <span className="text-[10px] uppercase font-bold text-muted block">Required Cut</span>
-                <span className="text-base font-bold font-mono text-primary mt-0.5 block">
-                  {requiredLength} {unit}
+                <span className="text-base font-bold font-mono text-primary mt-0.5 block truncate">
+                  {formatLinearDisplay(requiredLength, unit)}
                 </span>
                 <span className="text-[10px] text-muted">Qty: {cutQuantity} pcs</span>
               </div>
 
               <div className="p-3 rounded-xl bg-surface2/40 border border-theme-subtle">
                 <span className="text-[10px] uppercase font-bold text-muted block">Source Bar</span>
-                <span className="text-base font-bold font-mono text-primary mt-0.5 block">
-                  {activeSourceLength} {unit}
+                <span className="text-base font-bold font-mono text-primary mt-0.5 block truncate">
+                  {formatLinearDisplay(activeSourceLength, unit)}
                 </span>
                 <span className="text-[10px] text-emerald-500 font-semibold">
                   {selectedSourceType === 'remnant' ? '★ Offcut Re-used' : 'Fresh Full Bar'}
@@ -898,8 +1281,8 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
               <div className="p-3 rounded-xl bg-surface2/40 border border-theme-subtle">
                 <span className="text-[10px] uppercase font-bold text-muted block">New Remnant</span>
-                <span className="text-base font-bold font-mono text-cyan-600 dark:text-cyan-400 mt-0.5 block">
-                  {leftoverRemnantLength} {unit}
+                <span className="text-base font-bold font-mono text-cyan-600 dark:text-cyan-400 mt-0.5 block truncate">
+                  {formatLinearDisplay(leftoverRemnantLength, unit)}
                 </span>
                 <span className="text-[10px] text-muted">To offcut rack</span>
               </div>
@@ -919,22 +1302,41 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
             {/* ── ACTION TRIGGER BUTTON ───────────────────────────────────────── */}
             <div className="mt-6 pt-5 border-t border-theme-subtle flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-xs text-secondary">
-                Ready to cut: <strong className="text-primary font-mono">{materialName}</strong> ({dimension}).
-                {selectedSourceType === 'remnant'
-                  ? ` Offcut piece will be updated to ${leftoverRemnantLength} ${unit}.`
-                  : ` Full bar stock will be deducted & new ${leftoverRemnantLength} ${unit} offcut added.`}
+              <div className="text-xs text-secondary max-w-md">
+                {!jobRef.trim() ? (
+                  <span className="text-red-500 font-bold flex items-center gap-1.5">
+                    <ShieldAlert size={16} className="shrink-0 text-red-500" />
+                    <span>A Job Number / Work Order is strictly required before issuing material.</span>
+                  </span>
+                ) : (
+                  <span>
+                    Ready to issue for <strong className="text-primary font-mono font-bold">Job #{jobRef}</strong>:
+                    Cutting <strong className="text-emerald-500 font-mono font-bold">{formatLinearDisplay(requiredLength, unit)}</strong> of <strong className="text-primary">{materialName}</strong>.
+                    {selectedSourceType === 'remnant'
+                      ? ` Offcut will be updated to ${formatLinearDisplay(leftoverRemnantLength, unit)}.`
+                      : ` Full bar deducted & new ${formatLinearDisplay(leftoverRemnantLength, unit)} offcut saved.`}
+                  </span>
+                )}
               </div>
 
               <Button
                 variant="primary"
                 size="lg"
-                icon={Scissors}
+                icon={!jobRef.trim() ? Lock : Scissors}
                 onClick={handleExecuteCut}
-                disabled={isSubmitting || totalCutNeeded <= 0}
-                className="w-full sm:w-auto px-6 font-bold shadow-lg shadow-rex-600/20"
+                disabled={isSubmitting || totalCutNeeded <= 0 || !jobRef.trim()}
+                className={`w-full sm:w-auto px-6 font-bold shadow-lg transition-all ${
+                  !jobRef.trim()
+                    ? 'opacity-50 cursor-not-allowed bg-slate-700 text-slate-300 border border-slate-600'
+                    : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 text-white'
+                }`}
+                title={!jobRef.trim() ? 'Job Number / Work Order is strictly mandatory' : 'Execute Cut & Issue Material'}
               >
-                {isSubmitting ? 'Cutting & Logging...' : '✂️ Execute Cut & Issue'}
+                {isSubmitting
+                  ? 'Cutting & Logging...'
+                  : !jobRef.trim()
+                  ? '🔒 Job # Required to Issue'
+                  : '✂️ Execute Cut & Issue'}
               </Button>
             </div>
           </GlassCard>
@@ -1006,10 +1408,10 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                           </td>
                           <td className="px-3 py-2.5 font-mono">
                             <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                              {r.length} {r.unit}
+                              {formatLinearDisplay(r.length, r.unit)}
                             </span>
                             <span className="text-[10px] text-muted ml-1.5">
-                              (Std: {r.standardLength || standardBarLength} {r.unit})
+                              (Std: {formatLinearDisplay(r.standardLength || standardBarLength, r.unit)})
                             </span>
                           </td>
                           <td className="px-3 py-2.5">
@@ -1033,12 +1435,12 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                                 onClick={() => {
                                   setMaterialName(r.materialName)
                                   if (r.dimension) setDimension(r.dimension)
-                                  if (r.unit) setUnit(r.unit)
+                                  if (r.unit) handleUnitChange(r.unit)
                                   if (r.standardLength) setStandardBarLength(Number(r.standardLength))
                                   if (r.inventoryId) setSelectedInventoryId(r.inventoryId)
                                   setSelectedSourceType('remnant')
                                   setSelectedRemnantId(r.id)
-                                  showToast('info', 'Loaded to Studio', `Offcut ${r.length} ${r.unit} loaded for cutting.`)
+                                  showToast('info', 'Loaded to Studio', `Offcut ${formatLinearDisplay(r.length, r.unit)} loaded for cutting.`)
                                 }}
                                 className="px-2 py-1 rounded bg-rex-600/10 hover:bg-rex-600/20 text-rex-600 text-[11px] font-semibold transition-colors flex items-center gap-1"
                                 title="Use in Cut Studio"
@@ -1213,7 +1615,9 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 </div>
                 <div>
                   <span className="text-muted block text-[10px]">ISSUED CUT PIECE:</span>
-                  <span className="font-bold text-emerald-600">{lastCutResult.cutLength} {lastCutResult.unit}</span>
+                  <span className="font-bold text-emerald-600">
+                    {lastCutResult.cutLengthDisplay || `${lastCutResult.cutLength} ${lastCutResult.unit}`}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted block text-[10px]">SOURCE USED:</span>
@@ -1221,7 +1625,9 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                 </div>
                 <div>
                   <span className="text-muted block text-[10px]">NEW OFFCUT RETURN:</span>
-                  <span className="font-bold text-cyan-600">{lastCutResult.leftoverLength} {lastCutResult.unit}</span>
+                  <span className="font-bold text-cyan-600">
+                    {lastCutResult.leftoverDisplay || `${lastCutResult.leftoverLength} ${lastCutResult.unit}`}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted block text-[10px]">RETURN RACK:</span>

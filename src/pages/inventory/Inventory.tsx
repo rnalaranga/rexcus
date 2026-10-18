@@ -516,46 +516,66 @@ export const Inventory: React.FC = () => {
       )
     },
     {
-      header: '',
+      header: 'Actions',
       key: 'id',
-      render: (_, item) => (
-        <div className="flex justify-end gap-2">
-          {item.type !== 'service' && item.type !== 'company_asset' && (
+      render: (_, item) => {
+        const isLinearOrRaw = item.type === 'raw_material' || 
+          ['shaft', 'bar', 'rod', 'pipe', 'tube', 'angle', 'channel', 'beam', 'plate', 'sheet'].some((k: string) => (item.name || '').toLowerCase().includes(k)) ||
+          ['ft', 'feet', 'in', 'inch', 'm', 'mm'].includes((item.uom || '').toLowerCase());
+
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {isLinearOrRaw && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedLinearItem(item)
+                  setActiveTab('linear_remnants')
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs shadow-xs transition-colors shrink-0"
+                title={`Execute Material Issue / Cut for ${item.name}`}
+              >
+                <Scissors size={13} className="shrink-0" />
+                <span>Material Issue</span>
+              </button>
+            )}
+            {item.type !== 'service' && item.type !== 'company_asset' && (
+              <button
+                type="button"
+                onClick={() => setLedgerModalItem(item)}
+                className="p-1 hover:bg-rex-500/10 rounded text-muted hover:text-rex-600 transition-colors"
+                title="View Stock Ledger & Movements"
+              >
+                <Layers size={14}/>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setLedgerModalItem(item)}
-              className="p-1 hover:bg-rex-500/10 rounded text-muted hover:text-rex-600 transition-colors"
-              title="View Stock Ledger & Movements"
+              onClick={() => setViewingItem(item)}
+              className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
+              title="View Details (Read-only)"
             >
-              <Layers size={14}/>
+              <Eye size={14}/>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setViewingItem(item)}
-            className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
-            title="View Details (Read-only)"
-          >
-            <Eye size={14}/>
-          </button>
-          <button 
-            type="button"
-            onClick={() => {
-              if (item.type === 'finished_product') {
-                setSelectedFinishedProduct(item)
-                setFinishedProductModalOpen(true)
-              } else {
-                handleOpenForm(item)
-              }
-            }} 
-            className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
-            title="Edit item"
-          >
-            <Edit size={14}/>
-          </button>
-          <button onClick={() => handleDelete(item.id)} className="p-1 hover:bg-red-500/20 rounded text-muted hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-        </div>
-      )
+            <button 
+              type="button"
+              onClick={() => {
+                if (item.type === 'finished_product') {
+                  setSelectedFinishedProduct(item)
+                  setFinishedProductModalOpen(true)
+                } else {
+                  handleOpenForm(item)
+                }
+              }} 
+              className="p-1 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
+              title="Edit item"
+            >
+              <Edit size={14}/>
+            </button>
+            <button onClick={() => handleDelete(item.id)} className="p-1 hover:bg-red-500/20 rounded text-muted hover:text-red-500 transition-colors" title="Delete item"><Trash2 size={14}/></button>
+          </div>
+        )
+      }
     }
   ]
 
@@ -688,10 +708,11 @@ export const Inventory: React.FC = () => {
               setSelectedLinearItem(item)
               setActiveTab('linear_remnants')
             }}
-            className="p-1.5 hover:bg-emerald-500/10 rounded text-muted hover:text-emerald-500 transition-colors"
-            title="Cut & Remnant Studio"
+            className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded text-xs font-semibold transition-colors"
+            title="Material Issue / Cut Studio"
           >
-            <Scissors size={14}/>
+            <Scissors size={13}/>
+            <span className="hidden sm:inline">Material Issue</span>
           </button>
           <button
             type="button"
@@ -1555,6 +1576,10 @@ export const Inventory: React.FC = () => {
             showToast(type === 'error' ? 'error' : 'success', message ? `${title}: ${message}` : title)
           }}
           initialInventoryId={selectedLinearItem?.id}
+          onBackToInventory={() => {
+            setSelectedLinearItem(null)
+            setActiveTab('raw_material')
+          }}
         />
       ) : activeTab === 'finished_product' && finishedSubTab === 'orders' ? (
         <FinishedGoodsOrdersView

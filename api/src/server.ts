@@ -2520,23 +2520,23 @@ app.delete('/api/inventory/remnants/:id', async (req, res) => {
 
 app.post('/api/inventory/cut-issue', async (req, res) => {
   try {
-    const { 
-      cutMode, // 'from_remnant' | 'from_full_bar'
-      remnantId, 
-      inventoryId, 
-      materialName, 
-      requiredLength, 
-      standardLength, 
-      unit = 'feet', 
-      jobRef = 'Job Issue',
-      kerfLoss = 0,
-      location = 'Offcut Rack A',
-      user = 'Storekeeper'
-    } = req.body;
+    const jobRef = (req.body.jobRef || '').trim();
+    if (!jobRef) {
+      return res.status(400).json({ error: 'Job number / Work Order reference is strictly mandatory to execute Material Issue.' });
+    }
 
-    const reqLen = Number(requiredLength);
-    const stdLen = Number(standardLength) || 12.0;
-    const kerf = Number(kerfLoss) || 0;
+    const cutMode = req.body.cutMode || (req.body.sourceType === 'remnant' ? 'from_remnant' : 'from_full_bar');
+    const remnantId = req.body.remnantId || req.body.sourceRemnantId;
+    const inventoryId = req.body.inventoryId || null;
+    const materialName = req.body.materialName || 'Linear Stock Bar';
+    const reqLen = Number(req.body.requiredLength !== undefined ? req.body.requiredLength : req.body.cutLength);
+    const cutQty = Math.max(1, Number(req.body.cutQty || 1));
+    const kerfPerCut = Number(req.body.kerfLoss !== undefined ? req.body.kerfLoss : (req.body.sawKerf || 0));
+    const totalCutNeeded = Number(((reqLen * cutQty) + (kerfPerCut * cutQty)).toFixed(3));
+    const stdLen = Number(req.body.standardLength) || 12.0;
+    const unit = req.body.unit || 'ft';
+    const location = req.body.location || 'Offcut Rack A';
+    const user = req.body.user || 'Storekeeper';
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     if (!reqLen || reqLen <= 0) {
@@ -2544,17 +2544,17 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
     }
 
     if (cutMode === 'from_remnant') {
-      if (!remnantId) return res.status(400).json({ error: 'Remnant ID required' });
+      if (!remnantId) return res.status(400).json({ error: 'Remnant ID is required' });
       const [remRows]: any = await db.query('SELECT * FROM stock_remnants WHERE id = ?', [remnantId]);
-      if (!remRows.length) return res.status(404).json({ error: 'Remnant not found' });
-      
+      if (!remRows.length) return res.status(404).json({ error: 'Remnant piece not found in database' });
+
       const rem = remRows[0];
       const curLen = Number(rem.length);
-      if (curLen < reqLen) {
-        return res.status(400).json({ error: `Remnant is too short (${curLen}${unit}) for required length (${reqLen}${unit})` });
+      if (curLen < totalCutNeeded) {
+        return res.status(400).json({ error: `Remnant piece (${curLen} ${unit}) is shorter than required total cut (${totalCutNeeded} ${unit})` });
       }
 
-      const leftover = Number((curLen - reqLen - kerf).toFixed(2));
+      const leftover = Number((curLen - totalCutNeeded).toFixed(2));
 
       if (leftover > 0.05) {
         await db.query(
@@ -2562,7 +2562,7 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
           [
             leftover,
             jobRef,
-            `${rem.notes || ''} | Cut ${reqLen} ${unit} for ${jobRef} on ${now.slice(0,10)}`.trim(),
+            `${rem.notes || ''} | Issued ${reqLen} ${unit} x ${cutQty} pcs for Job #${jobRef} on ${now.slice(0, 10)}`.trim(),
             now,
             remnantId
           ]
@@ -2578,22 +2578,27 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
           inventoryId: rem.inventoryId,
           date: now,
           type: 'OUT',
-          qty: reqLen,
+          qty: reqLen * cutQty,
           balance: 0,
           user,
           reference: jobRef,
-          notes: `Cut ${reqLen} ${unit} from Remnant #${remnantId} (Initial: ${curLen} ${unit}, Leftover: ${Math.max(0, leftover)} ${unit})`
+          notes: `Material Issue: Cut ${reqLen} ${unit} x ${cutQty} pcs for Job #${jobRef} from Remnant #${remnantId} (Initial: ${curLen} ${unit}, Leftover: ${Math.max(0, leftover)} ${unit})`
         });
       }
 
       return res.json({
         success: true,
         cutMode: 'from_remnant',
-        consumedLength: reqLen,
+        consumedLength: reqLen * cutQty,
+        cutLength: reqLen,
+        cutQty,
+        sourceType: 'remnant',
+        unit,
+        jobRef,
         leftoverLength: Math.max(0, leftover),
         isRemnantFullyUsed: leftover <= 0.05,
         remnantId,
-        message: `Successfully cut ${reqLen} ${unit} from Remnant #${remnantId}. Remaining piece: ${Math.max(0, leftover)} ${unit}.`
+        message: `Successfully issued ${reqLen} ${unit} (Qty: ${cutQty}) for Job #${jobRef} from Remnant #${remnantId}. Remaining piece: ${Math.max(0, leftover)} ${unit}.`
       });
 
     } else {
@@ -2612,7 +2617,7 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
         await db.query('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?', [inventoryId]);
       }
 
-      const leftover = Number((stdLen - reqLen - kerf).toFixed(2));
+      const leftover = Number((stdLen - totalCutNeeded).toFixed(2));
       let newRemnantId = null;
 
       if (leftover > 0.05) {
@@ -2622,8 +2627,8 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
           inventoryId: inventoryId || null,
           materialName: materialName || invItem?.name || 'Linear Bar',
           sku: invItem?.sku || '',
-          profileType: 'shaft',
-          dimension: invItem?.name?.match(/(\d+\s*mm|Ø\s*\d+|[\d./]+")/i)?.[0] || '',
+          profileType: req.body.profileType || 'shaft',
+          dimension: req.body.dimension || invItem?.name?.match(/(\d+\s*mm|Ø\s*\d+|[\d./]+")/i)?.[0] || '',
           standardLength: stdLen,
           length: leftover,
           unit,
@@ -2631,7 +2636,7 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
           sourceBarId: inventoryId || 'Full Bar',
           jobRef,
           status: 'available',
-          notes: `Cut ${reqLen} ${unit} from full ${stdLen} ${unit} bar for ${jobRef}`,
+          notes: `Material Issue: Cut ${reqLen} ${unit} x ${cutQty} pcs from full ${stdLen} ${unit} bar for Job #${jobRef}`,
           createdAt: now,
           updatedAt: now
         });
@@ -2648,17 +2653,22 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
           balance: invItem ? invItem.quantity - 1 : 0,
           user,
           reference: jobRef,
-          notes: `Issued 1 full bar (${stdLen} ${unit}) -> Cut ${reqLen} ${unit} for ${jobRef}. New remnant created: ${leftover} ${unit}`
+          notes: `Material Issue: 1 full bar (${stdLen} ${unit}) deducted -> Cut ${reqLen} ${unit} x ${cutQty} pcs for Job #${jobRef}. New offcut created: ${leftover} ${unit}`
         });
       }
 
       return res.json({
         success: true,
         cutMode: 'from_full_bar',
-        consumedLength: reqLen,
+        consumedLength: reqLen * cutQty,
+        cutLength: reqLen,
+        cutQty,
+        sourceType: 'full_bar',
+        unit,
+        jobRef,
         leftoverLength: Math.max(0, leftover),
         newRemnantId,
-        message: `Cut 1 full bar of ${stdLen} ${unit}. Issued ${reqLen} ${unit}. Stored new leftover remnant of ${leftover} ${unit} in ${location}.`
+        message: `Cut 1 full bar of ${stdLen} ${unit} for Job #${jobRef}. Issued ${reqLen} ${unit} (Qty: ${cutQty}). Stored new leftover remnant of ${leftover} ${unit} in ${location}.`
       });
     }
   } catch (error: any) {
