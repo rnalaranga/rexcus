@@ -1830,11 +1830,67 @@ app.get('/api/quotations', async (req, res) => {
 app.get('/api/quotations/:leadId', async (req, res) => {
   try {
     const { leadId } = req.params;
-    const [rows] = await db.query('SELECT * FROM quotations WHERE leadId = ? ORDER BY type ASC, version DESC', [leadId]);
-    res.json(rows);
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE leadId = ? ORDER BY type ASC, version DESC', [leadId]);
+    if (rows && rows.length > 0) {
+      return res.json(rows);
+    }
+
+    // Fallback: Check if leadId is actually a quotation id, quoNo, or docNo
+    const [byQuote]: any = await db.query(`
+      SELECT q.*, 
+        COALESCE(c.name, l.name) as leadName, 
+        COALESCE(c.company, l.company) as leadCompany,
+        COALESCE(c.address, '') as leadAddress,
+        COALESCE(c.phone, l.phone, '') as leadPhone,
+        COALESCE(c.email, l.email, '') as leadEmail,
+        COALESCE(c.vat, l.vat, '') as leadVat,
+        COALESCE(c.svat, l.svat, '') as leadSvat,
+        c.id as matchedCustomerId
+      FROM quotations q 
+      LEFT JOIN leads l ON q.leadId = l.id 
+      LEFT JOIN customers c ON (q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
+      WHERE q.id = ? OR q.docNo = ? OR q.quotationNo = ?
+      LIMIT 1
+    `, [leadId, leadId, leadId]);
+
+    if (byQuote && byQuote.length > 0) {
+      return res.json(byQuote[0]);
+    }
+
+    res.json([]);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.get('/api/quotations/single/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query(`
+      SELECT q.*, 
+        COALESCE(c.name, l.name) as leadName, 
+        COALESCE(c.company, l.company) as leadCompany,
+        COALESCE(c.address, '') as leadAddress,
+        COALESCE(c.phone, l.phone, '') as leadPhone,
+        COALESCE(c.email, l.email, '') as leadEmail,
+        COALESCE(c.vat, l.vat, '') as leadVat,
+        COALESCE(c.svat, l.svat, '') as leadSvat,
+        c.id as matchedCustomerId
+      FROM quotations q 
+      LEFT JOIN leads l ON q.leadId = l.id 
+      LEFT JOIN customers c ON (q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
+      WHERE q.id = ? OR q.docNo = ? OR q.quotationNo = ?
+      LIMIT 1
+    `, [id, id, id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    res.json(rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
 
@@ -2755,6 +2811,20 @@ app.get('/api/finished-goods-orders', async (req, res) => {
     query += ' ORDER BY createdAt DESC';
     const [rows] = await db.query(query, params);
     res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.get('/api/finished-goods-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1', [id, id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    res.json(rows[0]);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });

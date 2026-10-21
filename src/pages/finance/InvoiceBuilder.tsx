@@ -8,7 +8,7 @@ import {
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
-import { useCustomers, useInventory } from '@/hooks/useData';
+import { useCustomers, useLeads, useInventory } from '@/hooks/useData';
 import { useTaxes, useTaxProfiles } from '@/hooks/useFinance';
 import { createInvoice } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -24,7 +24,8 @@ const tableInputClass = "w-full bg-transparent border-b border-transparent hover
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const InvoiceBuilder: React.FC = () => {
   const navigate = useNavigate();
-  const { data: customers } = useCustomers();
+  const { data: customers = [] } = useCustomers();
+  const { data: leads = [] } = useLeads();
   const { data: taxRates } = useTaxes();
   const { data: taxProfiles } = useTaxProfiles();
   const { data: inventory } = useInventory();
@@ -32,6 +33,7 @@ export const InvoiceBuilder: React.FC = () => {
 
   const [docNo, setDocNo] = useState('');
   const [customerId, setCustomerId] = useState('');
+  const [customCustomer, setCustomCustomer] = useState<any>(null);
   const [attention, setAttention] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
@@ -78,68 +80,230 @@ export const InvoiceBuilder: React.FC = () => {
   useEffect(() => {
     if (!paramOrderId && !paramQuoteId) return;
 
+    let isMounted = true;
+
     const loadSourceData = async () => {
       try {
         if (paramOrderId) {
-          const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders`);
-          const orders = await res.json();
-          const ord = orders.find((o: any) => String(o.id) === String(paramOrderId) || String(o.orderNo) === String(paramOrderId));
-          if (ord) {
-            if (ord.customerId) setCustomerId(ord.customerId);
+          let ord: any = null;
+          // 1. Try single order endpoint
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${paramOrderId}`);
+            if (res.ok) {
+              ord = await res.json();
+            }
+          } catch (e) {}
+
+          // 2. Fallback to list search
+          if (!ord) {
+            try {
+              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders`);
+              if (res.ok) {
+                const orders = await res.json();
+                ord = (orders || []).find((o: any) => String(o.id) === String(paramOrderId) || String(o.orderNo) === String(paramOrderId));
+              }
+            } catch (e) {}
+          }
+
+          if (ord && isMounted) {
+            // Customer Matching
+            const ordCustId = ord.customerId || '';
+            const ordCustName = ord.customerName || '';
+            const ordCustPhone = ord.customerPhone || '';
+            const ordCustEmail = ord.customerEmail || '';
+            const ordCustAddress = ord.deliveryAddress || '';
+
+            const matchedCust = (ordCustId ? customers.find(c => c.id === ordCustId) : null) ||
+              (ordCustName ? customers.find(c => (c.name && c.name.toLowerCase() === ordCustName.toLowerCase()) || (c.company && c.company.toLowerCase() === ordCustName.toLowerCase())) : null) ||
+              (ordCustId ? leads.find(l => l.id === ordCustId) : null) ||
+              (ordCustName ? leads.find(l => (l.name && l.name.toLowerCase() === ordCustName.toLowerCase()) || (l.company && l.company.toLowerCase() === ordCustName.toLowerCase())) : null);
+
+            if (matchedCust) {
+              setCustomerId(matchedCust.id);
+              if (matchedCust.vat) setCustomerVat(matchedCust.vat);
+            } else {
+              const custId = ordCustId || `CUST-${ord.orderNo ? ord.orderNo.replace(/[^A-Za-z0-9_-]/g, '') : Date.now().toString().slice(-4)}`;
+              const custObj = {
+                id: custId,
+                name: ordCustName || 'Customer',
+                company: ordCustName || 'Customer',
+                phone: ordCustPhone,
+                email: ordCustEmail,
+                address: ordCustAddress
+              };
+              setCustomCustomer(custObj);
+              setCustomerId(custId);
+            }
+
             if (ord.orderNo) setOrderNo(ord.orderNo);
             if (ord.quotationNo) setQuotationNo(ord.quotationNo);
             if (ord.gatePassNo) setDispatchNo(ord.gatePassNo);
             if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
+            if (ord.deliveryAddress) setPlaceOfSupply(ord.deliveryAddress);
             if (ord.paymentTerms) setNotes(ord.paymentTerms);
 
+            // Parse items
             let parsedItems: any[] = [];
             if (ord.items) {
               try {
                 parsedItems = typeof ord.items === 'string' ? JSON.parse(ord.items) : ord.items;
               } catch (e) {}
             }
-            if (parsedItems.length > 0) {
-              setItems(parsedItems.map((it: any) => ({
-                id: crypto.randomUUID(),
-                inventoryId: it.productId || it.inventoryId || '',
-                description: it.description || it.productName || ord.productName || 'Order Item',
-                qty: Number(it.qty) || 1,
-                unitPrice: Number(it.unitPrice) || 0,
-                taxRateId: ''
-              })));
+
+            const lineItems: any[] = [];
+            if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+              for (const it of parsedItems) {
+                const desc = it.description || it.productName || it.desc || it.name || '';
+                lineItems.push({
+                  id: crypto.randomUUID(),
+                  inventoryId: it.productId || it.inventoryId || '',
+                  description: desc || ord.productName || 'Order Item',
+                  qty: Number(it.qty) || 1,
+                  unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+                  taxRateId: ''
+                });
+              }
             } else if (ord.productName) {
-              setItems([{
+              lineItems.push({
                 id: crypto.randomUUID(),
                 inventoryId: ord.productId || '',
-                description: ord.productName,
+                description: ord.productName + (ord.productSku ? ` (${ord.productSku})` : ''),
                 qty: Number(ord.qty) || 1,
                 unitPrice: Number(ord.unitPrice) || 0,
                 taxRateId: ''
-              }]);
+              });
             }
-            toast(`Loaded items from Sales Order ${ord.orderNo}!`, 'success');
+
+            if (lineItems.length > 0) {
+              setItems(lineItems);
+            }
+            toast(`Loaded details and ${lineItems.length} item(s) from Sales Order ${ord.orderNo || ord.id}!`, 'success');
           }
         } else if (paramQuoteId) {
-          const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${paramQuoteId}`);
-          const q = await res.json();
-          if (q) {
-            const parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
-            if (q.leadId || parsed.leadId) setCustomerId(q.leadId || parsed.leadId);
-            if (q.quoNo || q.docNo || parsed.quotationNo) setQuotationNo(q.quoNo || q.docNo || parsed.quotationNo);
-            if (parsed.custTerms || parsed.paymentTerms) setNotes(parsed.custTerms || parsed.paymentTerms);
+          let q: any = null;
 
-            const qItems = parsed.custItems || parsed.items || [];
-            if (qItems.length > 0) {
-              setItems(qItems.map((it: any) => ({
-                id: crypto.randomUUID(),
-                inventoryId: it.productId || it.inventoryId || '',
-                description: it.description || it.name || 'Quotation Item',
-                qty: Number(it.qty) || 1,
-                unitPrice: Number(it.unitPrice) || 0,
-                taxRateId: ''
-              })));
+          // 1. Dedicated single quotation endpoint
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/single/${paramQuoteId}`);
+            if (res.ok) {
+              q = await res.json();
             }
-            toast(`Loaded items from Quotation ${q.quoNo || q.id}!`, 'success');
+          } catch (e) {}
+
+          // 2. Standard quotation route with fallback
+          if (!q) {
+            try {
+              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${paramQuoteId}`);
+              if (res.ok) {
+                const data = await res.json();
+                q = Array.isArray(data) ? (data.find((d: any) => d.id === paramQuoteId || d.quotationNo === paramQuoteId) || data[0]) : data;
+              }
+            } catch (e) {}
+          }
+
+          // 3. Fallback to all quotations
+          if (!q) {
+            try {
+              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations`);
+              if (res.ok) {
+                const allQuotes = await res.json();
+                q = (allQuotes || []).find((it: any) => String(it.id) === String(paramQuoteId) || String(it.quotationNo) === String(paramQuoteId) || String(it.docNo) === String(paramQuoteId));
+              }
+            } catch (e) {}
+          }
+
+          if (q && isMounted) {
+            const parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
+
+            // Customer Resolution
+            const qCustId = q.matchedCustomerId || q.leadId || parsed.leadId || '';
+            const qCustName = q.leadCompany || q.leadName || parsed.customerCompany || parsed.customerName || '';
+            const qCustAddress = q.leadAddress || parsed.customerAddress || '';
+            const qCustPhone = q.leadPhone || '';
+            const qCustEmail = q.leadEmail || '';
+            const qVat = parsed.vatNo || parsed.tinNo || q.leadVat || '';
+
+            const matchedCust = (qCustId ? customers.find(c => c.id === qCustId) : null) ||
+              (qCustName ? customers.find(c => (c.name && c.name.toLowerCase() === qCustName.toLowerCase()) || (c.company && c.company.toLowerCase() === qCustName.toLowerCase())) : null) ||
+              (qCustId ? leads.find(l => l.id === qCustId) : null) ||
+              (qCustName ? leads.find(l => (l.name && l.name.toLowerCase() === qCustName.toLowerCase()) || (l.company && l.company.toLowerCase() === qCustName.toLowerCase())) : null);
+
+            if (matchedCust) {
+              setCustomerId(matchedCust.id);
+              if (matchedCust.vat || qVat) setCustomerVat(matchedCust.vat || qVat);
+            } else {
+              const fallbackCustId = qCustId || `CUST-QUO-${Date.now().toString().slice(-4)}`;
+              const custObj = {
+                id: fallbackCustId,
+                name: qCustName || 'Customer',
+                company: qCustName || 'Customer',
+                address: qCustAddress,
+                phone: qCustPhone,
+                email: qCustEmail,
+                vat: qVat
+              };
+              setCustomCustomer(custObj);
+              setCustomerId(fallbackCustId);
+              if (qVat) setCustomerVat(qVat);
+            }
+
+            const qNo = q.quotationNo || q.docNo || parsed.quotationNo || q.quoNo || '';
+            if (qNo) setQuotationNo(qNo);
+            if (parsed.attention || q.attention) setAttention(parsed.attention || q.attention);
+            if (parsed.custTerms || parsed.paymentTerms || parsed.terms) setNotes(parsed.custTerms || parsed.paymentTerms || parsed.terms);
+            if (parsed.selectedProfileId || parsed.taxProfileId) setTaxProfileId(parsed.selectedProfileId || parsed.taxProfileId);
+            if (parsed.taxEnabled !== undefined) setTaxEnabled(Boolean(parsed.taxEnabled));
+            if (parsed.bankDetailId) setBankDetailId(parsed.bankDetailId);
+
+            // Extract Line items
+            const rawCustItems = parsed.custItems || parsed.items || [];
+            const lineItems: any[] = [];
+
+            if (Array.isArray(rawCustItems) && rawCustItems.length > 0) {
+              for (const it of rawCustItems) {
+                const desc = it.desc || it.description || it.name || it.text || '';
+                if (!desc && !it.unitPrice && !it.amount) continue;
+                lineItems.push({
+                  id: crypto.randomUUID(),
+                  inventoryId: it.productId || it.inventoryId || '',
+                  description: desc || 'Quotation Item',
+                  qty: Number(it.qty) || 1,
+                  unitPrice: Number(it.unitPrice ?? it.price ?? it.unitCost ?? 0),
+                  taxRateId: ''
+                });
+              }
+            }
+
+            // Fallback: If no line items yet, check jobItems or subject
+            if (lineItems.length === 0) {
+              if (Array.isArray(parsed.jobItems) && parsed.jobItems.length > 0) {
+                const jiText = parsed.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join('\n• ');
+                const desc = (parsed.subject ? `${parsed.subject}\n• ` : '') + (jiText || 'Custom Machining Job');
+                lineItems.push({
+                  id: crypto.randomUUID(),
+                  inventoryId: '',
+                  description: desc,
+                  qty: Number(parsed.jobQty) || 1,
+                  unitPrice: Number(q.totalAmount || q.customAmount || parsed.custTotals?.total || 0),
+                  taxRateId: ''
+                });
+              } else if (parsed.subject || q.totalAmount) {
+                lineItems.push({
+                  id: crypto.randomUUID(),
+                  inventoryId: '',
+                  description: parsed.subject || `Quotation ${qNo || q.id}`,
+                  qty: Number(parsed.jobQty) || 1,
+                  unitPrice: Number(q.totalAmount || q.customAmount || 0),
+                  taxRateId: ''
+                });
+              }
+            }
+
+            if (lineItems.length > 0) {
+              setItems(lineItems);
+            }
+
+            toast(`Loaded details and ${lineItems.length} item(s) from Quotation ${qNo || q.id}!`, 'success');
           }
         }
       } catch (e) {
@@ -148,9 +312,18 @@ export const InvoiceBuilder: React.FC = () => {
     };
 
     loadSourceData();
-  }, [paramOrderId, paramQuoteId]);
+    return () => { isMounted = false; };
+  }, [paramOrderId, paramQuoteId, customers.length, leads.length]);
 
-  const selectedCustomer = customers.find(c => c.id === customerId);
+  const selectedCustomer = 
+    customers.find(c => c.id === customerId) ||
+    leads.find(l => l.id === customerId) ||
+    (customCustomer && (customCustomer.id === customerId || !customerId) ? customCustomer : null) ||
+    (customCustomer?.company ? (
+      customers.find(c => (c.company && c.company.toLowerCase() === customCustomer.company.toLowerCase()) || (c.name && c.name.toLowerCase() === customCustomer.company.toLowerCase())) ||
+      leads.find(l => (l.company && l.company.toLowerCase() === customCustomer.company.toLowerCase()) || (l.name && l.name.toLowerCase() === customCustomer.company.toLowerCase()))
+    ) : null);
+
   const selectedBank = bankDetailId === 'none' ? null : (bankAccounts.find(b => b.id === bankDetailId) || null);
 
   const handleSelectTermsPreset = (presetId: string) => {
@@ -186,7 +359,33 @@ export const InvoiceBuilder: React.FC = () => {
     }
   }, [notes, termsPresets]);
 
-  const customerOptions = customers.map(c => ({ value: c.id, label: c.company || c.name, group: c.segment || 'Customers', extra: c.email || '' }));
+  const customerOptions = [
+    ...customers.map(c => ({
+      value: c.id,
+      label: c.company ? (c.name && c.name !== c.company ? `${c.company} (${c.name})` : c.company) : (c.name || 'Unnamed Customer'),
+      group: c.segment || 'Customers',
+      extra: c.email || c.phone || ''
+    })),
+    ...leads
+      .filter(l => !customers.some(c => c.id === l.id || (l.customerId && c.id === l.customerId)))
+      .map(l => ({
+        value: l.id,
+        label: `${l.company || l.name || 'Lead'} (Lead)`,
+        group: 'Leads',
+        extra: l.email || l.phone || ''
+      })),
+    ...(customCustomer &&
+       !customers.some(c => c.id === customCustomer.id || (customCustomer.company && (c.company?.toLowerCase() === customCustomer.company.toLowerCase() || c.name?.toLowerCase() === customCustomer.company.toLowerCase()))) &&
+       !leads.some(l => l.id === customCustomer.id || (customCustomer.company && (l.company?.toLowerCase() === customCustomer.company.toLowerCase() || l.name?.toLowerCase() === customCustomer.company.toLowerCase())))
+      ? [{
+          value: customCustomer.id,
+          label: `${customCustomer.company || customCustomer.name} (Quotation/Order Party)`,
+          group: 'Quotation/Order Party',
+          extra: customCustomer.phone || customCustomer.email || ''
+        }]
+      : [])
+  ];
+
   const itemOptions = inventory.map(i => ({ value: i.id, label: `${i.sku} - ${i.name}`, group: i.category || 'Products', extra: `Stock: ${i.qtyOnHand}` }));
 
   useEffect(() => {
@@ -258,8 +457,8 @@ export const InvoiceBuilder: React.FC = () => {
     if (selectedCustomer) {
       const days = Number(selectedCustomer.creditDays) || 0;
       setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
-      setCustomerVat(selectedCustomer.vat || '');
-      if (selectedCustomer.paymentTerms) {
+      if (selectedCustomer.vat) setCustomerVat(selectedCustomer.vat);
+      if (selectedCustomer.paymentTerms && !notes) {
         setNotes(selectedCustomer.paymentTerms);
         if (/advance/i.test(selectedCustomer.paymentTerms)) setModeOfPayment('Advance');
         else if (/credit/i.test(selectedCustomer.paymentTerms)) setModeOfPayment('Credit');
@@ -267,8 +466,6 @@ export const InvoiceBuilder: React.FC = () => {
         setNotes(`${days} days credit`);
         setModeOfPayment('Credit');
       }
-    } else {
-      setCustomerVat('');
     }
   }, [selectedCustomer?.id, date]);
 
@@ -319,6 +516,26 @@ export const InvoiceBuilder: React.FC = () => {
     const cleanDocNo = (docNo || '').trim().replace(/\s+/g, '');
     if (!cleanDocNo) return showError('Please provide a valid invoice number.');
     try {
+      if (customCustomer && customCustomer.id === customerId && !customers.some(c => c.id === customerId) && !leads.some(l => l.id === customerId)) {
+        try {
+          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: customCustomer.id,
+              name: customCustomer.name || customCustomer.company,
+              company: customCustomer.company || customCustomer.name,
+              email: customCustomer.email || '',
+              phone: customCustomer.phone || '',
+              address: customCustomer.address || placeOfSupply || '',
+              vat: customerVat || customCustomer.vat || ''
+            })
+          });
+        } catch (custErr) {
+          console.warn('Could not auto-create customer:', custErr);
+        }
+      }
+
       const res = await createInvoice({ 
         id: cleanDocNo, 
         invoiceNo: cleanDocNo, 

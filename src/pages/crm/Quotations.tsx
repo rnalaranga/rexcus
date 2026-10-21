@@ -825,8 +825,9 @@ export const Quotations: React.FC = () => {
                                   icon={Banknote} 
                                   className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold"
                                   onClick={() => handlePaymentRequest(group, latestMain)}
+                                  title="Generate Invoice from Approved Quotation"
                                 >
-                                  Request Advance
+                                  Invoice
                                 </Button>
                               {(() => {
                                 const existingWO = getExistingWO(group, latestMain);
