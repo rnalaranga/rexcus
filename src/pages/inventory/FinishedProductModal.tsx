@@ -143,6 +143,9 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   
   const [activeTab, setActiveTab] = useState<'info' | 'boms' | 'spare_parts' | 'pricing' | 'ledger'>('info')
   const [spareParts, setSpareParts] = useState<ProductSparePart[]>([])
+  const [isSparePart, setIsSparePart] = useState(false)
+  const [parentProductId, setParentProductId] = useState('')
+  const [partNo, setPartNo] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   // Basic Product Info
@@ -206,6 +209,10 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
       }
       setBoms(Array.isArray(loadedBoms) ? loadedBoms : [])
 
+      setIsSparePart(Boolean(product.isSparePart || product.category === 'Spare Parts'))
+      setParentProductId(product.parentProductId || '')
+      setPartNo(product.partNo || '')
+
       let loadedSpares: ProductSparePart[] = []
       if (product.spareParts) {
         try {
@@ -245,6 +252,35 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
     }
     setActiveTab('info')
   }, [product, isOpen])
+
+  // Merge inventory items that are spare parts of this product
+  const matchingInventorySpares = useMemo(() => {
+    if (!product?.id) return []
+    return (inventory || []).filter((i: any) => i.parentProductId === product.id || (i.isSparePart && i.parentProductId === product.id))
+  }, [inventory, product?.id])
+
+  const allProductSpares = useMemo(() => {
+    const list: any[] = [...spareParts]
+    matchingInventorySpares.forEach((sp: any) => {
+      if (!list.some(s => s.id === sp.id || (s.inventoryId && s.inventoryId === sp.id))) {
+        list.push({
+          id: sp.id,
+          partNo: sp.partNo || 'SP',
+          name: sp.name,
+          sku: sp.sku,
+          inventoryId: sp.id,
+          qtyPerAssembly: 1,
+          unitCost: Number(sp.unitCost || 0),
+          unitPrice: Number(sp.unitPrice || 0),
+          uom: sp.uom || 'pcs',
+          stock: sp.quantity !== undefined ? Number(sp.quantity) : 0,
+          description: sp.description,
+          imageUrl: sp.imageUrl
+        })
+      }
+    })
+    return list
+  }, [spareParts, matchingInventorySpares])
 
   // Spare Parts Helpers
   const populateFromBOM = () => {
@@ -568,6 +604,9 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
       unitCost: totalBOMCost,       // Cost rollup from all BOMs
       boms: JSON.stringify(boms),
       spareParts: JSON.stringify(spareParts),
+      isSparePart: isSparePart ? 1 : 0,
+      parentProductId: isSparePart ? parentProductId : null,
+      partNo: isSparePart ? partNo : null,
       status: 'active'
     }
 
@@ -1704,7 +1743,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-theme-subtle/50">
-                        {spareParts.map((sp, idx) => {
+                        {allProductSpares.map((sp: any, idx: number) => {
                           const cost = Number(sp.unitCost || 0)
                           const price = Number(sp.unitPrice || 0)
                           const margin = price > 0 ? ((price - cost) / price) * 100 : 0

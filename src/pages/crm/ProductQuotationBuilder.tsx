@@ -34,15 +34,38 @@ import { useAuth } from '@/contexts/AuthContext'
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
 
-// Helper to parse spare parts from product
-export const getProductSpareParts = (prod: any): any[] => {
-  if (!prod || !prod.spareParts) return [];
-  try {
-    const parsed = typeof prod.spareParts === 'string' ? JSON.parse(prod.spareParts) : prod.spareParts;
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return [];
+// Helper to parse spare parts from product and inventory
+export const getProductSpareParts = (prod: any, allInventory?: any[]): any[] => {
+  if (!prod) return [];
+  const list: any[] = [];
+  if (prod.spareParts) {
+    try {
+      const parsed = typeof prod.spareParts === 'string' ? JSON.parse(prod.spareParts) : prod.spareParts;
+      if (Array.isArray(parsed)) list.push(...parsed);
+    } catch (e) {}
   }
+  if (allInventory && Array.isArray(allInventory)) {
+    const invSpares = allInventory.filter((i: any) => i.parentProductId === prod.id || (i.isSparePart && i.parentProductId === prod.id));
+    invSpares.forEach((sp: any) => {
+      if (!list.some(s => s.id === sp.id || (s.inventoryId && s.inventoryId === sp.id))) {
+        list.push({
+          id: sp.id,
+          partNo: sp.partNo || 'SP',
+          name: sp.name,
+          sku: sp.sku,
+          inventoryId: sp.id,
+          qtyPerAssembly: 1,
+          unitCost: Number(sp.unitCost || 0),
+          unitPrice: Number(sp.unitPrice || 0),
+          uom: sp.uom || 'pcs',
+          stock: sp.quantity !== undefined ? Number(sp.quantity) : 0,
+          description: sp.description,
+          imageUrl: sp.imageUrl
+        });
+      }
+    });
+  }
+  return list;
 };
 
 // Finished Product Quick Search Autocomplete
@@ -70,7 +93,7 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
       ) {
         results.push(p);
       }
-      const spares = getProductSpareParts(p);
+      const spares = getProductSpareParts(p, products);
       spares.forEach(sp => {
         if (
           (sp.name || '').toLowerCase().includes(q) || 
@@ -329,7 +352,7 @@ export const ProductQuotationBuilder: React.FC = () => {
   const openSparePartsModal = (prod: any) => {
     setSelectedProductForSpares(prod)
     setSparesSearch('')
-    const spares = getProductSpareParts(prod)
+    const spares = getProductSpareParts(prod, inventory)
     const initMap: Record<string | number, { selected: boolean; qty: number }> = {}
     spares.forEach(s => {
       initMap[s.id] = { selected: false, qty: 1 }
@@ -359,7 +382,7 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   const toggleSelectAllSpares = () => {
     if (!selectedProductForSpares) return
-    const spares = getProductSpareParts(selectedProductForSpares)
+    const spares = getProductSpareParts(selectedProductForSpares, inventory)
     const allSelected = spares.length > 0 && spares.every(s => selectedSpareMap[s.id]?.selected)
     const updated: Record<string | number, { selected: boolean; qty: number }> = {}
     spares.forEach(s => {
@@ -373,7 +396,7 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   const addSelectedSparesToQuote = () => {
     if (!selectedProductForSpares) return
-    const spares = getProductSpareParts(selectedProductForSpares)
+    const spares = getProductSpareParts(selectedProductForSpares, inventory)
     const selectedSpares = spares.filter(s => selectedSpareMap[s.id]?.selected)
     if (selectedSpares.length === 0) return
 
@@ -2408,7 +2431,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                 }`}
               >
                 <Wrench size={12} />
-                With Spare Parts ({finishedProducts.filter(p => getProductSpareParts(p).length > 0).length})
+                With Spare Parts ({finishedProducts.filter(p => getProductSpareParts(p, inventory).length > 0).length})
               </button>
             </div>
 
@@ -2427,13 +2450,13 @@ export const ProductQuotationBuilder: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
             {finishedProducts
               .filter(p => {
-                if (catalogFilter === 'spares' && getProductSpareParts(p).length === 0) return false;
+                if (catalogFilter === 'spares' && getProductSpareParts(p, inventory).length === 0) return false;
                 if (!catalogSearch.trim()) return true;
                 const q = catalogSearch.toLowerCase();
                 return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q);
               })
               .map(p => {
-                const pSpares = getProductSpareParts(p);
+                const pSpares = getProductSpareParts(p, inventory);
 
                 return (
                   <div key={p.id} className="p-3.5 rounded-xl border border-theme-subtle bg-surface hover:border-emerald-500/50 hover:bg-surface2/40 transition-all flex justify-between items-center group">
@@ -2505,7 +2528,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         size="3xl"
       >
         {selectedProductForSpares && (() => {
-          const allSpares = getProductSpareParts(selectedProductForSpares);
+          const allSpares = getProductSpareParts(selectedProductForSpares, inventory);
           const filteredSpares = allSpares.filter((sp: any) => {
             if (!sparesSearch.trim()) return true;
             const q = sparesSearch.toLowerCase();
@@ -2606,6 +2629,13 @@ export const ProductQuotationBuilder: React.FC = () => {
                             onClick={e => e.stopPropagation()}
                             className="rounded border-theme-subtle text-amber-600 focus:ring-amber-500/30 w-4 h-4 cursor-pointer"
                           />
+                          <div className="w-11 h-11 rounded-xl bg-surface2 border border-theme-subtle flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                            {sp.imageUrl ? (
+                              <img src={sp.imageUrl} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Wrench size={16} className="text-amber-500/70" />
+                            )}
+                          </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">

@@ -624,8 +624,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                               {sp.partNo || `SP-${idx + 1}`}
                             </td>
                             <td className="px-4 py-2.5 font-medium text-primary">
-                              <div>{sp.name}</div>
-                              {sp.description && <div className="text-[10px] text-muted">{sp.description}</div>}
+                              <div className="flex items-start gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-surface2 border border-theme-subtle flex items-center justify-center overflow-hidden shrink-0 mt-0.5 shadow-xs">
+                                  {sp.imageUrl ? (
+                                    <img src={sp.imageUrl} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Wrench size={14} className="text-amber-500/70" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="font-bold text-primary">{sp.name}</div>
+                                  {sp.description && (
+                                    <div className="text-[10px] text-muted whitespace-pre-line space-y-0.5 mt-0.5">
+                                      {sp.description.split('\n').map((l: string, i: number) => (
+                                        <div key={i}>{l}</div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                             <td className="px-3 py-2.5 font-mono text-muted">
                               {sp.sku || '—'}
