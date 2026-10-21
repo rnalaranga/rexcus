@@ -34,6 +34,43 @@ import { useAuth } from '@/contexts/AuthContext'
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
 
+// Format line-by-line specifications and description for quotation items
+export const buildQuotationLineDesc = (item: {
+  name: string
+  sku?: string
+  partNo?: string
+  isSparePart?: boolean
+  parentName?: string
+  description?: string
+}): string => {
+  let title = item.name || 'Finished Product'
+  if (item.partNo) {
+    title += ` [Part #${item.partNo}]`
+  }
+  if (item.sku && !title.includes(item.sku)) {
+    title += ` (SKU: ${item.sku})`
+  }
+
+  const lines: string[] = [title]
+
+  if (item.isSparePart && item.parentName) {
+    lines.push(`Component of: ${item.parentName}`)
+  }
+
+  if (item.description && item.description.trim()) {
+    const rawLines = item.description.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    rawLines.forEach(l => {
+      if (l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || l.toLowerCase().startsWith('line ')) {
+        lines.push(l)
+      } else {
+        lines.push(`• ${l}`)
+      }
+    })
+  }
+
+  return lines.join('\n')
+}
+
 // Helper to parse spare parts from product and inventory
 export const getProductSpareParts = (prod: any, allInventory?: any[]): any[] => {
   if (!prod) return [];
@@ -104,8 +141,8 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
             ...sp,
             isSparePart: true,
             parentProduct: p,
-            name: `${sp.name} [Part #${sp.partNo || 'SP'}]`,
-            description: `Spare part for ${p.name}`,
+            name: `${sp.name}${sp.partNo ? ` [Part #${sp.partNo}]` : ''}`,
+            description: sp.description || `Spare part for ${p.name}`,
             unitPrice: sp.unitPrice,
             unitCost: sp.unitCost,
             quantity: sp.stock !== undefined ? sp.stock : 0
@@ -314,11 +351,26 @@ export const ProductQuotationBuilder: React.FC = () => {
   const [taxEnabled, setTaxEnabled] = useState(true)
   const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep')
 
-  // Filter only finished goods / products from inventory
+  // Filter only finished goods / ready-made products & standard parts from inventory
   const finishedProducts = useMemo(() => {
-    return inventory.filter((item: any) => 
-      item.type === 'finished_product' || item.type === 'product' || !item.type
-    );
+    return (inventory || []).filter((item: any) => {
+      const isSpare = Boolean(
+        item.isSparePart === 1 || 
+        item.isSparePart === '1' || 
+        item.isSparePart === true || 
+        item.isSparePart === 'true' || 
+        item.category === 'Spare Parts'
+      );
+      if (isSpare) return true; // Include spare parts for direct selection
+
+      return (
+        item.type === 'finished_product' || 
+        item.type === 'product' || 
+        item.category === 'Standard Parts' || 
+        !item.type ||
+        (item.category && !['Raw Metals & Alloys', 'Plates & Sheets', 'Round & Hex Bars', 'Pipes & Hollow Tubes'].includes(item.category))
+      );
+    });
   }, [inventory]);
 
   useEffect(() => {
@@ -405,11 +457,20 @@ export const ProductQuotationBuilder: React.FC = () => {
       const price = Number(sp.unitPrice || 0)
       const cost = Number(sp.unitCost || 0)
 
+      const desc = buildQuotationLineDesc({
+        name: sp.name,
+        sku: sp.sku || (selectedProductForSpares.sku ? `${selectedProductForSpares.sku}-${sp.partNo || 'SP'}` : ''),
+        partNo: sp.partNo,
+        isSparePart: true,
+        parentName: selectedProductForSpares.name,
+        description: sp.description
+      })
+
       return {
         id: Date.now() + Math.floor(Math.random() * 10000),
-        productId: sp.inventoryId || selectedProductForSpares.id,
+        productId: sp.inventoryId || sp.id,
         sku: sp.sku || (selectedProductForSpares.sku ? `${selectedProductForSpares.sku}-${sp.partNo || 'SP'}` : ''),
-        desc: `${sp.name}${sp.partNo ? ` [Part #${sp.partNo}]` : ''} - Spare part for ${selectedProductForSpares.name}${sp.description ? `\n• ${sp.description}` : ''}`,
+        desc,
         qty,
         unitPrice: price,
         unitCost: cost,
@@ -681,17 +742,33 @@ export const ProductQuotationBuilder: React.FC = () => {
     if (prod.isSparePart) {
       const unitPrice = Number(prod.unitPrice || 0);
       const unitCost = Number(prod.unitCost || 0);
+
+      let parentName = prod.parentProduct?.name;
+      if (!parentName && prod.parentProductId) {
+        const parent = (inventory || []).find((i: any) => i.id === prod.parentProductId);
+        if (parent) parentName = parent.name;
+      }
+
+      const desc = buildQuotationLineDesc({
+        name: prod.name || 'Spare Part',
+        sku: prod.sku,
+        partNo: prod.partNo,
+        isSparePart: true,
+        parentName,
+        description: prod.description
+      });
+
       const newItem: ProductQuotationItem = {
         id: Date.now(),
-        productId: prod.inventoryId || prod.parentProduct?.id,
+        productId: prod.inventoryId || prod.id,
         sku: prod.sku || '',
-        desc: `${prod.name || 'Spare Part'} - Spare part for ${prod.parentProduct?.name || 'Finished Product'}${prod.description ? `\n• ${prod.description}` : ''}`,
+        desc,
         qty: 1,
         unitPrice,
         unitCost,
         uom: prod.uom || 'pcs',
         stock: Number(prod.quantity || prod.stock || 0),
-        note: `Spare part for ${prod.parentProduct?.name || ''}`
+        note: parentName ? `Spare part for ${parentName}` : ''
       };
       setCustItems(prev => {
         if (prev.length === 1 && !prev[0].desc && prev[0].unitPrice === 0) {
@@ -699,16 +776,24 @@ export const ProductQuotationBuilder: React.FC = () => {
         }
         return [...prev, newItem];
       });
-      showToast('success', `Added spare part "${prod.name}" to quotation lines`);
+      showToast('success', `Added spare part "${prod.name}" with line-by-line description`);
       return;
     }
+
     const unitPrice = Number(prod.unitPrice || prod.price || prod.sellingPrice || 0);
     const unitCost = Number(prod.unitCost || prod.cost || prod.costPrice || (unitPrice > 0 ? unitPrice * 0.7 : 0));
+    
+    const desc = buildQuotationLineDesc({
+      name: prod.name || 'Finished Product',
+      sku: prod.sku,
+      description: prod.description
+    });
+
     const newItem: ProductQuotationItem = {
       id: Date.now(),
       productId: prod.id,
       sku: prod.sku || '',
-      desc: `${prod.name || 'Finished Product'}${prod.sku ? ` (SKU: ${prod.sku})` : ''}${prod.description ? `\n${prod.description}` : ''}`,
+      desc,
       qty: 1,
       unitPrice,
       unitCost,
@@ -723,7 +808,7 @@ export const ProductQuotationBuilder: React.FC = () => {
       }
       return [...prev, newItem];
     });
-    showToast('success', `Added "${prod.name}" to quotation lines`);
+    showToast('success', `Added "${prod.name}" with line-by-line description`);
   };
   
   const [custTerms, setCustTerms] = useState('')

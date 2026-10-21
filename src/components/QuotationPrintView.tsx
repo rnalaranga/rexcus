@@ -270,35 +270,51 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             <div className="w-[20%] p-2">AMOUNT<br/>({data.currency || 'LKR'})</div>
           </div>
 
-          {/* Table Body */}
-          <div className="flex min-h-[350px] text-[13px] bg-white">
-            <div className="w-[55%] p-2 border-r border-black whitespace-pre-wrap flex flex-col gap-4">
-              {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                <div key={idx}>
-                  <div>{item.desc}</div>
-                  {item.note && <div className="text-xs text-gray-700">{item.note}</div>}
-                </div>
-              ))}
+          {/* Table Body - Aligned Row by Row */}
+          <div className="min-h-[350px] text-[13px] bg-white flex flex-col justify-between">
+            <div className="flex flex-col">
+              {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
+                const descLines = (item.desc || '').split('\n');
+                const titleLine = descLines[0] || '';
+                const detailLines = descLines.slice(1).join('\n');
+
+                return (
+                  <div key={idx} className="flex border-b border-gray-200 last:border-b-0 min-h-[38px]">
+                    <div className="w-[55%] p-2 border-r border-black whitespace-pre-wrap">
+                      <div className="font-semibold text-gray-900 leading-tight">
+                        {titleLine}
+                      </div>
+                      {detailLines && (
+                        <div className="text-[11.5px] text-gray-700 mt-1 leading-relaxed font-sans">
+                          {detailLines}
+                        </div>
+                      )}
+                      {item.note && <div className="text-xs text-gray-500 italic mt-0.5">{item.note}</div>}
+                    </div>
+                    <div className="w-[10%] p-2 border-r border-black text-center pt-2">
+                      {Number(item.qty).toFixed(2)}
+                    </div>
+                    <div className="w-[15%] p-2 border-r border-black text-right pt-2 font-mono">
+                      {((item.unitPrice || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                    <div className="w-[20%] p-2 text-right pt-2 font-mono font-semibold">
+                      {(((item.qty * item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                  </div>
+                );
+              })}
               {quotationType === 'job' && (
-                <div className="font-bold italic text-gray-500 text-center mt-10">
+                <div className="font-bold italic text-gray-500 text-center mt-10 p-4">
                   [Internal Job Items / Costing - Use Customer Quote for Print]
                 </div>
               )}
             </div>
-            <div className="w-[10%] p-2 border-r border-black text-center flex flex-col gap-4">
-              {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{Number(item.qty).toFixed(2)}</div>
-              ))}
-            </div>
-            <div className="w-[15%] p-2 border-r border-black text-right flex flex-col gap-4">
-               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{((item.unitPrice || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-              ))}
-            </div>
-            <div className="w-[20%] p-2 text-right flex flex-col gap-4">
-               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => (
-                 <div key={idx}>{(((item.qty * item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-              ))}
+            {/* Empty space vertical borders for continuous ledger aesthetic */}
+            <div className="flex flex-1 min-h-[40px]">
+              <div className="w-[55%] border-r border-black"></div>
+              <div className="w-[10%] border-r border-black"></div>
+              <div className="w-[15%] border-r border-black"></div>
+              <div className="w-[20%]"></div>
             </div>
           </div>
 

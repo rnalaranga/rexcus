@@ -2525,6 +2525,7 @@ export const Inventory: React.FC = () => {
         isOpen={finishedProductModalOpen}
         onClose={() => setFinishedProductModalOpen(false)}
         product={selectedFinishedProduct}
+        inventoryList={inventory}
         onSave={async (prodData) => {
           if (selectedFinishedProduct?.id) {
             await updateInventoryItem(selectedFinishedProduct.id, prodData)

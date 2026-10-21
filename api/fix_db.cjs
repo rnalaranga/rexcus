@@ -704,6 +704,59 @@ async function run() {
     // Ignore
   }
 
+  // 12. Seed standard products if not present
+  try {
+    const standardProducts = [
+      {
+        id: 'PRD-STD-LATHE-01',
+        name: 'Rex Heavy Lathe Spindle Assembly (Standard Unit)',
+        sku: 'REX-STD-LATHE50',
+        type: 'finished_product',
+        category: 'Standard Parts',
+        uom: 'pcs',
+        quantity: 5,
+        unitPrice: 145000,
+        unitCost: 88000,
+        location: 'FG-A-01',
+        reorderLevel: 2,
+        isSparePart: 0,
+        parentProductId: null,
+        description: 'Standard 50mm Precision Lathe Spindle Head Assembly with dual taper roller bearings and labyrinth seal.\nLine 1: High-tensile forged EN24T spindle shaft Ø50mm\nLine 2: Heavy-duty cast iron bearing housing with grease ports\nLine 3: Hardened 4-jaw chuck mounting flange with ground registers',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'PRD-STD-GBOX-02',
+        name: 'Industrial Reduction Gearbox 1:10 Standard',
+        sku: 'REX-STD-GBOX10',
+        type: 'finished_product',
+        category: 'Standard Parts',
+        uom: 'pcs',
+        quantity: 3,
+        unitPrice: 185000,
+        unitCost: 115000,
+        location: 'FG-B-04',
+        reorderLevel: 1,
+        isSparePart: 0,
+        parentProductId: null,
+        description: 'Standard Helical Industrial Gearbox 1:10 Reduction Ratio.\nLine 1: Ground alloy steel helical gear set 20MnCr5 case hardened\nLine 2: Rigid cast housing with synthetic oil bath lubrication\nLine 3: Keyed output shaft Ø45mm with double lip oil seals',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+
+    for (const p of standardProducts) {
+      const [ex] = await conn.query('SELECT id FROM inventory WHERE id = ?', [p.id]);
+      if (ex.length === 0) {
+        await conn.query('INSERT INTO inventory SET ?', p);
+      }
+    }
+  } catch (err) {
+    // Ignore
+  }
+
   console.log('✅ Database synchronized successfully! All tables, columns, and seed options are up to date.');
   await conn.end();
 }

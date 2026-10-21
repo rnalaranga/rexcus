@@ -129,6 +129,7 @@ interface FinishedProductModalProps {
   product?: any
   onSave: (productData: any) => Promise<void>
   isPage?: boolean
+  inventoryList?: any[]
 }
 
 export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
@@ -136,10 +137,19 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   onClose,
   product,
   onSave,
-  isPage = false
+  isPage = false,
+  inventoryList
 }) => {
   const { data: rawOperations } = useMachiningOperations()
-  const { data: inventory } = useInventory()
+  const { data: hookInventory, refetch: refetchInventory } = useInventory()
+  const inventory = (inventoryList && inventoryList.length > 0) ? inventoryList : (hookInventory || [])
+
+  // Automatically refresh inventory list when the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      refetchInventory()
+    }
+  }, [isOpen, refetchInventory])
   
   const [activeTab, setActiveTab] = useState<'info' | 'boms' | 'spare_parts' | 'pricing' | 'ledger'>('info')
   const [spareParts, setSpareParts] = useState<ProductSparePart[]>([])
@@ -252,6 +262,37 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
     }
     setActiveTab('info')
   }, [product, isOpen])
+
+  // Filter available ready-made products / machines that a spare part can belong to
+  const availableMachines = useMemo(() => {
+    return (inventory || []).filter((i: any) => {
+      // Exclude spare parts
+      const isSpare = Boolean(
+        i.isSparePart === 1 || 
+        i.isSparePart === '1' || 
+        i.isSparePart === true || 
+        i.isSparePart === 'true' || 
+        i.category === 'Spare Parts'
+      )
+      if (isSpare) return false
+
+      // Exclude self if editing
+      if (product?.id && i.id === product.id) return false
+
+      // Must be a finished good / ready-made machine / standard part
+      const isFinished = 
+        i.type === 'finished_product' || 
+        i.type === 'product' || 
+        i.category === 'Standard Parts' || 
+        (!i.type && i.category !== 'Raw Metals & Alloys') ||
+        (i.category && !['Spare Parts', 'Raw Metals & Alloys', 'Plates & Sheets', 'Round & Hex Bars', 'Pipes & Hollow Tubes'].includes(i.category))
+
+      // Also ensure not raw material or asset or service
+      const isOtherType = i.type === 'raw_material' || i.type === 'company_asset' || i.type === 'service'
+
+      return isFinished && !isOtherType
+    })
+  }, [inventory, product?.id])
 
   // Merge inventory items that are spare parts of this product
   const matchingInventorySpares = useMemo(() => {
@@ -810,21 +851,30 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                       />
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <label className="text-[11px] font-semibold text-secondary">Belongs to Machine:</label>
+                      <label className="text-[11px] font-semibold text-secondary whitespace-nowrap">Belongs to Machine:</label>
                       <select
                         value={parentProductId}
                         onChange={e => setParentProductId(e.target.value)}
-                        className="px-2.5 py-1 rounded-lg border border-theme-subtle bg-surface text-xs text-primary font-medium focus:outline-none focus:border-amber-500 max-w-[220px]"
+                        className="px-2.5 py-1.5 rounded-lg border border-theme-subtle bg-surface text-xs text-primary font-medium focus:outline-none focus:border-amber-500 min-w-[250px] max-w-[340px]"
                       >
-                        <option value="">-- Standalone Spare Part --</option>
-                        {(inventory || [])
-                          .filter((i: any) => !i.isSparePart && i.category !== 'Spare Parts' && (i.type === 'finished_product' || i.type === 'product') && i.id !== product?.id)
-                          .map((p: any) => (
+                        <option value="">-- Standalone Spare Part (No Parent Machine) --</option>
+                        {availableMachines.length === 0 ? (
+                          <option disabled value="__empty__">
+                            No Ready-Made Products found
+                          </option>
+                        ) : (
+                          availableMachines.map((p: any) => (
                             <option key={p.id} value={p.id}>
-                              {p.name} ({p.sku || p.id})
+                              {p.name} {p.sku ? `(${p.sku})` : `(${p.id})`} {p.category ? `• ${p.category}` : ''}
                             </option>
-                          ))}
+                          ))
+                        )}
                       </select>
+                      {availableMachines.length > 0 && (
+                        <span className="text-[10px] text-muted font-mono font-semibold whitespace-nowrap">
+                          ({availableMachines.length} available)
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
