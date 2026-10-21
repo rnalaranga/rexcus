@@ -27,6 +27,29 @@ function toWords(num: number): string {
   return result.trim() + ' Rupees Only';
 }
 
+// Helper to deduplicate title repetitions and format line-by-line descriptions
+const cleanDescLines = (rawDesc: string) => {
+  if (!rawDesc) return { titleLine: '', detailLines: '' };
+  const lines = rawDesc.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { titleLine: '', detailLines: '' };
+
+  const titleLine = lines[0];
+  const titleClean = titleLine.replace(/\s*\([^)]*\)/g, '').replace(/^[•\-*\s]+/, '').trim().toLowerCase();
+
+  const remaining: string[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const l = lines[i];
+    const lineClean = l.replace(/^[•\-*\s]+/, '').trim().toLowerCase();
+    // If this line repeats the title, skip it
+    if (lineClean === titleClean) {
+      continue;
+    }
+    remaining.push(l);
+  }
+
+  return { titleLine, detailLines: remaining.join('\n') };
+};
+
 export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, type: string, lead: any, settings: any }) => {
   const quotationType = type || 'main'
   
@@ -274,12 +297,10 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           <div className="min-h-[350px] text-[13px] bg-white flex flex-col justify-between">
             <div className="flex flex-col">
               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
-                const descLines = (item.desc || '').split('\n');
-                const titleLine = descLines[0] || '';
-                const detailLines = descLines.slice(1).join('\n');
+                const { titleLine, detailLines } = cleanDescLines(item.desc || '');
 
                 return (
-                  <div key={idx} className="flex border-b border-gray-200 last:border-b-0 min-h-[38px]">
+                  <div key={idx} className="flex border-b border-black/15 min-h-[38px] items-stretch">
                     <div className="w-[55%] p-2 border-r border-black whitespace-pre-wrap">
                       <div className="font-semibold text-gray-900 leading-tight">
                         {titleLine}
@@ -291,14 +312,14 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                       )}
                       {item.note && <div className="text-xs text-gray-500 italic mt-0.5">{item.note}</div>}
                     </div>
-                    <div className="w-[10%] p-2 border-r border-black text-center pt-2">
-                      {Number(item.qty).toFixed(2)}
+                    <div className="w-[10%] p-2 border-r border-black text-center pt-2 font-mono font-medium">
+                      {Number(item.qty || 0).toFixed(2)}
                     </div>
                     <div className="w-[15%] p-2 border-r border-black text-right pt-2 font-mono">
-                      {((item.unitPrice || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      {((Number(item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </div>
                     <div className="w-[20%] p-2 text-right pt-2 font-mono font-semibold">
-                      {(((item.qty * item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      {(((Number(item.qty) * Number(item.unitPrice)) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </div>
                   </div>
                 );

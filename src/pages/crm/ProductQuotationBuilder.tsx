@@ -59,7 +59,13 @@ export const buildQuotationLineDesc = (item: {
 
   if (item.description && item.description.trim()) {
     const rawLines = item.description.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    const titleClean = (item.name || '').trim().toLowerCase()
     rawLines.forEach(l => {
+      const lineClean = l.replace(/^[•\-*\s]+/, '').trim().toLowerCase()
+      // Skip if this line repeats the item name
+      if (lineClean === titleClean) {
+        return
+      }
       if (l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || l.toLowerCase().startsWith('line ')) {
         lines.push(l)
       } else {
