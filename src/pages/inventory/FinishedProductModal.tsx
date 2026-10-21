@@ -698,6 +698,24 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                 </span>
               )}
             </button>
+            {!isSparePart && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('spare_parts')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${
+                  activeTab === 'spare_parts' 
+                    ? 'bg-rex-600 text-white shadow-sm font-bold' 
+                    : 'text-muted hover:text-primary hover:bg-surface2'
+                }`}
+              >
+                <Wrench size={14} /> Spare Parts Breakdown ({allProductSpares.length})
+                {allProductSpares.length > 0 && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${activeTab === 'spare_parts' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-600 font-bold'}`}>
+                    {allProductSpares.length}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setActiveTab('pricing')}
@@ -743,6 +761,75 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
           {activeTab === 'info' && (
             <div className="space-y-5 animate-fade-in max-w-5xl mx-auto">
               
+              {/* Product Classification: Machine vs Spare Part */}
+              <div className="bg-surface border border-theme-subtle rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xs font-bold text-secondary">Item Type:</span>
+                  <div className="inline-flex rounded-xl border border-theme-subtle p-0.5 bg-surface2/60">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSparePart(false);
+                        if (category === 'Spare Parts') setCategory('Standard Parts');
+                      }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                        !isSparePart
+                          ? 'bg-rex-600 text-white shadow-xs'
+                          : 'text-muted hover:text-primary'
+                      }`}
+                    >
+                      <Package size={13} /> Complete Ready-Made Product
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSparePart(true);
+                        setCategory('Spare Parts');
+                      }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                        isSparePart
+                          ? 'bg-amber-600 text-white shadow-xs font-bold'
+                          : 'text-muted hover:text-primary'
+                      }`}
+                    >
+                      <Wrench size={13} /> Spare Part / Component
+                    </button>
+                  </div>
+                </div>
+
+                {isSparePart && (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-[11px] font-semibold text-secondary">Part No:</label>
+                      <input
+                        type="text"
+                        value={partNo}
+                        onChange={e => setPartNo(e.target.value)}
+                        placeholder="e.g. SP-01"
+                        className="w-24 px-2 py-1 rounded-lg border border-theme-subtle bg-surface text-xs font-mono font-bold text-amber-600 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-[11px] font-semibold text-secondary">Belongs to Machine:</label>
+                      <select
+                        value={parentProductId}
+                        onChange={e => setParentProductId(e.target.value)}
+                        className="px-2.5 py-1 rounded-lg border border-theme-subtle bg-surface text-xs text-primary font-medium focus:outline-none focus:border-amber-500 max-w-[220px]"
+                      >
+                        <option value="">-- Standalone Spare Part --</option>
+                        {(inventory || [])
+                          .filter((i: any) => !i.isSparePart && i.category !== 'Spare Parts' && (i.type === 'finished_product' || i.type === 'product') && i.id !== product?.id)
+                          .map((p: any) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.sku || p.id})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* 1. Core Identification & Photo Card */}
               <div className="bg-surface border border-theme-subtle rounded-2xl p-6 shadow-xs space-y-5">
                 <div className="flex items-center justify-between border-b border-theme-subtle/60 pb-3">
@@ -1689,11 +1776,11 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                     Exploded Parts List & Standalone Selling Rates
                   </span>
                   <span className="text-[11px] text-muted">
-                    Total Parts Value: <strong className="font-mono text-primary">{formatCurrency(spareParts.reduce((s, p) => s + (Number(p.unitPrice) || 0), 0))}</strong>
+                    Total Parts Value: <strong className="font-mono text-primary">{formatCurrency(allProductSpares.reduce((s, p) => s + (Number(p.unitPrice) || 0), 0))}</strong>
                   </span>
                 </div>
 
-                {spareParts.length === 0 ? (
+                {allProductSpares.length === 0 ? (
                   <div className="p-12 text-center">
                     <div className="w-12 h-12 rounded-2xl bg-surface2 text-muted flex items-center justify-center mx-auto mb-3">
                       <Wrench size={22} className="opacity-50" />
@@ -1731,6 +1818,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                       <thead>
                         <tr className="border-b border-theme-subtle bg-surface2/50 text-[10px] font-bold text-muted uppercase tracking-wider">
                           <th className="py-2.5 px-3 w-12 text-center">#</th>
+                          <th className="py-2.5 px-2 w-10 text-center">Photo</th>
                           <th className="py-2.5 px-3 w-28">Part No. / Ref</th>
                           <th className="py-2.5 px-3 min-w-[200px]">Spare Part Name & Specs</th>
                           <th className="py-2.5 px-3 w-28">SKU</th>
@@ -1752,6 +1840,15 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                             <tr key={sp.id} className="hover:bg-surface2/30 transition-colors">
                               <td className="py-2 px-3 text-center text-muted font-mono text-[10px]">
                                 {idx + 1}
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <div className="w-8 h-8 rounded-lg border border-theme-subtle overflow-hidden mx-auto bg-surface2 flex items-center justify-center shadow-2xs">
+                                  {sp.imageUrl ? (
+                                    <img src={sp.imageUrl} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Wrench size={12} className="text-amber-500/70" />
+                                  )}
+                                </div>
                               </td>
                               <td className="py-2 px-3">
                                 <input

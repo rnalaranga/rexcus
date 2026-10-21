@@ -134,7 +134,7 @@ export const Inventory: React.FC = () => {
   const [sampleSubTab, setSampleSubTab] = useState<'samples' | 'gate_passes'>('samples')
   const [sampleFilterStatus, setSampleFilterStatus] = useState<'all' | 'in_stock' | 'dispatched'>('all')
 
-  const [finishedSubTab, setFinishedSubTab] = useState<'products' | 'orders'>('products')
+  const [finishedSubTab, setFinishedSubTab] = useState<'products' | 'spare_parts' | 'orders'>('products')
   const [fgViewMode, setFgViewMode] = useState<'grid' | 'table'>('grid')
   const [finishedProductModalOpen, setFinishedProductModalOpen] = useState(false)
   const [selectedFinishedProduct, setSelectedFinishedProduct] = useState<any | null>(null)
@@ -335,7 +335,13 @@ export const Inventory: React.FC = () => {
     if (activeTab === 'raw_material') {
       matchesTab = item.type === 'raw_material' || (!isItemFinishedProduct(item.type) && item.type !== 'company_asset' && item.type !== 'service');
     } else if (activeTab === 'finished_product') {
-      matchesTab = isItemFinishedProduct(item.type);
+      if (finishedSubTab === 'spare_parts') {
+        matchesTab = Boolean(item.isSparePart || item.category === 'Spare Parts');
+      } else if (finishedSubTab === 'products') {
+        matchesTab = isItemFinishedProduct(item.type) && !item.isSparePart && item.category !== 'Spare Parts';
+      } else {
+        matchesTab = isItemFinishedProduct(item.type);
+      }
     } else if (activeTab === 'company_asset') {
       matchesTab = item.type === 'company_asset';
     } else if (activeTab === 'service') {
@@ -645,18 +651,29 @@ export const Inventory: React.FC = () => {
           </div>
           <div className="min-w-0">
             <div className="font-bold text-primary flex items-center gap-2 flex-wrap">
+              {item.isSparePart || item.category === 'Spare Parts' ? (
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                  SPARE PART {item.partNo ? '#' + item.partNo : ''}
+                </span>
+              ) : null}
               <span className="text-sm">{val}</span>
-              {item.category && (
+              {item.category && item.category !== 'Spare Parts' && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-secondary font-medium">
                   {item.category}
                 </span>
               )}
             </div>
-            {item.sku && (
-              <div className="mt-0.5">
-                <span className="text-[10px] text-muted font-mono">{item.sku}</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {item.sku && <span className="text-[10px] text-muted font-mono">{item.sku}</span>}
+              {item.parentProductId && (() => {
+                const parent = inventory.find(i => i.id === item.parentProductId);
+                return parent ? (
+                  <span className="text-[10px] text-muted">
+                    • Belongs to: <strong className="text-secondary">{parent.name}</strong>
+                  </span>
+                ) : null;
+              })()}
+            </div>
             <FinishedProductDescription description={item.description} />
           </div>
         </div>
@@ -1442,8 +1459,24 @@ export const Inventory: React.FC = () => {
                   setSelectedFinishedProduct(null)
                   setFinishedProductModalOpen(true)
                 }}
+                className="font-bold shadow-xs"
               >
                 Add Ready-Made Product
+              </Button>
+              <Button 
+                variant="outline" 
+                icon={Wrench} 
+                onClick={() => {
+                  setSelectedFinishedProduct({
+                    isSparePart: 1,
+                    category: 'Spare Parts'
+                  })
+                  setFinishedProductModalOpen(true)
+                }}
+                className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 font-bold"
+                title="Create a new spare part or replacement component with photo, specs & BOM"
+              >
+                Add Spare Part
               </Button>
             </div>
           ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : activeTab === 'linear_remnants' ? null : (
@@ -1561,14 +1594,21 @@ export const Inventory: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setFinishedSubTab('products')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'products' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'products' ? 'bg-rex-600 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
-                <Package size={14} /> Ready-Made Products ({inventory.filter(i => isItemFinishedProduct(i.type)).length})
+                <Package size={14} /> Complete Machines ({inventory.filter(i => isItemFinishedProduct(i.type) && !i.isSparePart && i.category !== 'Spare Parts').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFinishedSubTab('spare_parts')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'spare_parts' ? 'bg-amber-600 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+              >
+                <Wrench size={14} /> Spare Parts ({inventory.filter(i => i.isSparePart || i.category === 'Spare Parts').length})
               </button>
               <button
                 type="button"
                 onClick={() => setFinishedSubTab('orders')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'orders' ? 'bg-rex-600 text-white shadow-sm' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'orders' ? 'bg-rex-600 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
                 <ShoppingCart size={14} /> Customer Orders ({fgOrders.length})
               </button>
