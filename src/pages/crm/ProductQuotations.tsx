@@ -159,65 +159,18 @@ export const ProductQuotations: React.FC = () => {
     }
   };
 
-  // Advance Invoice Generation
-  const handleCreateInvoice = async (group: any, latest: any) => {
-    const percentStr = prompt('Enter payment percentage to invoice (e.g. 100 for full, 50 for 50% advance):', '100');
-    if (!percentStr) return;
-    const percent = parseFloat(percentStr);
-    if (isNaN(percent) || percent <= 0 || percent > 100) {
-      toast('Invalid percentage', 'error');
-      return;
-    }
-
-    const total = Number(latest.totalAmount || 0);
-    const invoiceAmount = (total * percent) / 100;
-
-    try {
-      const cust = customers.find((c: any) => c.id === group.leadId);
-      const lead = leads.find((l: any) => l.id === group.leadId);
-      const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
-
-      const payload = {
-        id: `INV-${Date.now().toString().slice(-6)}`,
-        quotationId: latest.id,
-        quotationNo: group.quoNo,
-        customerId: custId,
-        leadId: group.leadId || 'WALK-IN',
-        date: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' '),
-        items: JSON.stringify([{ 
-          desc: percent === 100 
-            ? `Finished Products supply as per Quotation ${group.quoNo}`
-            : `Advance Payment (${percent}%) for Product Quotation ${group.quoNo}`, 
-          qty: 1, 
-          unitPrice: invoiceAmount 
-        }]),
-        subtotal: invoiceAmount,
-        tax: 0,
-        total: invoiceAmount,
-        status: 'draft',
-        notes: `Generated from Product Quotation ${group.quoNo}`
-      };
-      await createInvoice(payload);
-      toast(`Invoice generated successfully! View in Invoices module.`, 'success');
-    } catch (e: any) {
-      toast(e?.message || 'Failed to create invoice', 'error');
-    }
+  // Invoice Generation - Direct navigation without browser prompt
+  const handleCreateInvoice = (group: any, latest: any) => {
+    navigate(`/finance/invoices/new?quoteId=${latest.id}`);
   };
 
   // Create Sales Order from Approved Product Quotation
   const handleCreateSalesOrder = async (group: any, latest: any) => {
-    const ok = await showConfirm(
-      'Create Sales Order',
-      `Generate official Sales Order for Quotation ${group.quoNo}?`
-    );
-    if (!ok) return;
-
     try {
       const parsed = latest.parsed || {};
       const rawItems = parsed.custItems || [];
       const itemsList = rawItems.map((ci: any) => ({
-        productId: ci.productId || ci.inventoryId || null,
+        productId: ci.productId || ci.inventoryId || 'CUSTOM-PRODUCT',
         productName: ci.name || ci.description || 'Finished Product',
         productSku: ci.sku || '',
         description: ci.description || ci.name || '',
@@ -226,6 +179,19 @@ export const ProductQuotations: React.FC = () => {
         amount: Number(ci.amount) || ((Number(ci.qty) || 1) * Number(ci.unitPrice || 0)),
         uom: ci.uom || 'Nos'
       }));
+
+      if (itemsList.length === 0) {
+        itemsList.push({
+          productId: 'CUSTOM-PRODUCT',
+          productName: latest.subject || `Product Quotation ${group.quoNo}`,
+          productSku: '',
+          description: latest.subject || `Product Quotation ${group.quoNo}`,
+          qty: 1,
+          unitPrice: Number(latest.totalAmount || 0),
+          amount: Number(latest.totalAmount || 0),
+          uom: 'Lot'
+        });
+      }
 
       const subtotal = Number(parsed.custTotals?.subtotal) || itemsList.reduce((acc: number, it: any) => acc + it.amount, 0);
       const total = Number(latest.totalAmount) || Number(parsed.custTotals?.total) || subtotal;

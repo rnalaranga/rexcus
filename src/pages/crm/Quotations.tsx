@@ -233,59 +233,16 @@ export const Quotations: React.FC = () => {
   }
 
   
-  const handlePaymentRequest = async (group: any, latestMain: any) => {
-    const percentStr = prompt('Enter advance payment percentage (e.g., 50 for 50%):', '50');
-    if (!percentStr) return;
-    const percent = parseFloat(percentStr);
-    if (isNaN(percent) || percent <= 0 || percent > 100) {
-      toast('Invalid percentage', 'error');
-      return;
-    }
-    
-    const total = Number(latestMain.totalAmount || 0);
-    const advanceAmount = (total * percent) / 100;
-    
-    try {
-      const cust = customers.find((c: any) => c.id === group.leadId);
-      const lead = leads.find((l: any) => l.id === group.leadId);
-      const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
-
-      const payload = {
-        id: `INV-${Date.now().toString().slice(-6)}`,
-        quotationId: latestMain.id,
-        quotationNo: group.quoNo,
-        customerId: custId,
-        leadId: group.leadId || 'WALK-IN',
-        date: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' '),
-        items: JSON.stringify([{ desc: `Advance Payment (${percent}%) for Quotation ${group.quoNo}`, qty: 1, unitPrice: advanceAmount }]),
-        subtotal: advanceAmount,
-        tax: 0,
-        total: advanceAmount,
-        status: 'draft',
-        notes: `Advance payment request based on approved quotation ${group.quoNo}`
-      };
-      await createInvoice(payload);
-      toast('Advance payment invoice generated successfully in Finance module!', 'success');
-      navigate('/finance/invoices');
-    } catch (e) {
-      toast('Failed to generate payment request.', 'error');
-      console.error(e);
-    }
+  const handlePaymentRequest = (group: any, latestMain: any) => {
+    navigate(`/finance/invoices/new?quoteId=${latestMain.id}`);
   };
 
   const handleCreateSalesOrder = async (group: any, latestMain: any) => {
-    const ok = await showConfirm(
-      'Create Sales Order',
-      `Generate official Sales Order for Quotation ${group.quoNo}?`
-    );
-    if (!ok) return;
-
     try {
       const quoteData = typeof latestMain.data === 'string' ? JSON.parse(latestMain.data) : (latestMain.data || {});
       const rawItems = quoteData.custItems || quoteData.items || [];
       const itemsList = rawItems.map((ci: any) => ({
-        productId: ci.productId || ci.inventoryId || null,
+        productId: ci.productId || ci.inventoryId || 'CUSTOM-JOB',
         productName: ci.desc || ci.description || ci.name || 'Quoted Item',
         productSku: ci.sku || '',
         description: ci.desc || ci.description || ci.name || '',
@@ -298,7 +255,7 @@ export const Quotations: React.FC = () => {
       // Fallback if no items extracted
       if (itemsList.length === 0) {
         itemsList.push({
-          productId: null,
+          productId: 'CUSTOM-JOB',
           productName: quoteData.subject || `Quotation ${group.quoNo} Job`,
           description: quoteData.subject || `Quotation ${group.quoNo} Machining / Production`,
           qty: 1,

@@ -1011,7 +1011,34 @@ async function runDatabaseSync() {
     "ALTER TABLE rework_logs ADD COLUMN machineId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN resolvedAt DATETIME DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN resolvedBy VARCHAR(100) DEFAULT NULL",
-    "ALTER TABLE rework_logs ADD COLUMN notes TEXT DEFAULT NULL"
+    "ALTER TABLE rework_logs ADD COLUMN notes TEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerEmail VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN stockStatus VARCHAR(50) DEFAULT 'In Stock'",
+    "ALTER TABLE finished_goods_orders ADD COLUMN items LONGTEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN quoteId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN invoiceId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN invoiceNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN gatePassId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN gatePassNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN carrier VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN driverName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN deliveryAddress TEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN paymentTerms VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE finished_goods_orders ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE finished_goods_orders ADD COLUMN taxRate DECIMAL(5,2) DEFAULT 0.00",
+    "ALTER TABLE finished_goods_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders MODIFY productId VARCHAR(50) NULL",
+    "ALTER TABLE finished_goods_orders MODIFY productName VARCHAR(255) NULL",
+    "ALTER TABLE gate_passes ADD COLUMN orderId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE gate_passes ADD COLUMN orderNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE gate_passes ADD COLUMN driverName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE gate_passes ADD COLUMN issuedDate DATETIME DEFAULT NULL",
+    "ALTER TABLE gate_passes ADD COLUMN status VARCHAR(50) DEFAULT 'Dispatched'",
+    "ALTER TABLE gate_passes ADD COLUMN items LONGTEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -2793,9 +2820,9 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     const taxAmount = Number(data.taxAmount) || 0;
     const totalPrice = Number(data.totalPrice) || (subtotal + taxAmount) || (Number(data.qty || 1) * Number(data.unitPrice || 0));
     
-    // Primary product name/id
-    const primaryName = data.productName || (itemsList.length > 0 ? (itemsList[0].description || itemsList[0].productName || 'Multiple Items') : 'Finished Goods Order');
-    const primaryId = data.productId || (itemsList.length > 0 ? (itemsList[0].productId || itemsList[0].inventoryId || null) : null);
+    // Primary product name/id (guaranteed non-null)
+    const primaryName = data.productName || (itemsList.length > 0 ? (itemsList[0].description || itemsList[0].productName || 'Order Item') : 'Finished Goods Order');
+    const primaryId = data.productId || (itemsList.length > 0 ? (itemsList[0].productId || itemsList[0].inventoryId || 'CUSTOM-ORDER') : 'CUSTOM-ORDER');
     const primarySku = data.productSku || (itemsList.length > 0 ? (itemsList[0].productSku || itemsList[0].sku || '') : '');
     const totalQty = itemsList.length > 0 ? itemsList.reduce((sum, i) => sum + (Number(i.qty) || 1), 0) : (Number(data.qty) || 1);
 
@@ -2806,7 +2833,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       productName: primaryName,
       productSku: primarySku,
       customerId: data.customerId || null,
-      customerName: data.customerName,
+      customerName: data.customerName || 'Customer',
       customerPhone: data.customerPhone || null,
       customerEmail: data.customerEmail || null,
       orderDate: data.orderDate || now.slice(0, 10),
@@ -2839,7 +2866,98 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       updatedAt: now
     };
 
-    await db.query('INSERT INTO finished_goods_orders SET ?', order);
+    // Resilient schema check: verify columns exist or auto-create before INSERT
+    let validCols = new Set<string>();
+    try {
+      const [colRows]: any = await db.query('SHOW COLUMNS FROM finished_goods_orders');
+      validCols = new Set(colRows.map((c: any) => c.Field));
+      
+      const alterQueries = [
+        { col: 'items', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN items LONGTEXT DEFAULT NULL' },
+        { col: 'quoteId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN quoteId VARCHAR(50) DEFAULT NULL' },
+        { col: 'quotationNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL' },
+        { col: 'invoiceId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN invoiceId VARCHAR(50) DEFAULT NULL' },
+        { col: 'invoiceNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN invoiceNo VARCHAR(100) DEFAULT NULL' },
+        { col: 'gatePassId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN gatePassId VARCHAR(50) DEFAULT NULL' },
+        { col: 'gatePassNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN gatePassNo VARCHAR(100) DEFAULT NULL' },
+        { col: 'carrier', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN carrier VARCHAR(255) DEFAULT NULL' },
+        { col: 'vehicleNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN vehicleNo VARCHAR(100) DEFAULT NULL' },
+        { col: 'driverName', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN driverName VARCHAR(255) DEFAULT NULL' },
+        { col: 'deliveryAddress', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN deliveryAddress TEXT DEFAULT NULL' },
+        { col: 'paymentTerms', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN paymentTerms VARCHAR(100) DEFAULT NULL' },
+        { col: 'subtotal', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00' },
+        { col: 'taxAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00' },
+        { col: 'taxRate', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN taxRate DECIMAL(5,2) DEFAULT 0.00' },
+        { col: 'taxProfileId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL' },
+      ];
+      for (const q of alterQueries) {
+        if (!validCols.has(q.col)) {
+          try {
+            await db.query(q.sql);
+            validCols.add(q.col);
+          } catch (e) {}
+        }
+      }
+      try {
+        await db.query('ALTER TABLE finished_goods_orders MODIFY productId VARCHAR(50) NULL');
+      } catch (e) {}
+    } catch (e) {
+      // Create table if completely missing
+      try {
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS finished_goods_orders (
+            id VARCHAR(50) PRIMARY KEY,
+            orderNo VARCHAR(50) NOT NULL,
+            productId VARCHAR(50) DEFAULT 'CUSTOM-ORDER',
+            productName VARCHAR(255) DEFAULT 'Order Item',
+            productSku VARCHAR(100) DEFAULT NULL,
+            customerId VARCHAR(50) DEFAULT NULL,
+            customerName VARCHAR(255) NOT NULL,
+            customerPhone VARCHAR(100) DEFAULT NULL,
+            customerEmail VARCHAR(150) DEFAULT NULL,
+            orderDate DATE NOT NULL,
+            targetDeliveryDate DATE DEFAULT NULL,
+            qty DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+            unitPrice DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            totalPrice DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            subtotal DECIMAL(15,2) DEFAULT 0.00,
+            taxAmount DECIMAL(15,2) DEFAULT 0.00,
+            taxRate DECIMAL(5,2) DEFAULT 0.00,
+            taxProfileId VARCHAR(50) DEFAULT NULL,
+            status VARCHAR(50) DEFAULT 'Pending',
+            stockStatus VARCHAR(50) DEFAULT 'In Stock',
+            isDispatched TINYINT(1) DEFAULT 0,
+            dispatchedAt DATETIME DEFAULT NULL,
+            items LONGTEXT DEFAULT NULL,
+            quoteId VARCHAR(50) DEFAULT NULL,
+            quotationNo VARCHAR(100) DEFAULT NULL,
+            invoiceId VARCHAR(50) DEFAULT NULL,
+            invoiceNo VARCHAR(100) DEFAULT NULL,
+            gatePassId VARCHAR(50) DEFAULT NULL,
+            gatePassNo VARCHAR(100) DEFAULT NULL,
+            carrier VARCHAR(255) DEFAULT NULL,
+            vehicleNo VARCHAR(100) DEFAULT NULL,
+            driverName VARCHAR(255) DEFAULT NULL,
+            deliveryAddress TEXT DEFAULT NULL,
+            paymentTerms VARCHAR(100) DEFAULT NULL,
+            notes TEXT DEFAULT NULL,
+            createdAt DATETIME DEFAULT NULL,
+            updatedAt DATETIME DEFAULT NULL
+          )
+        `);
+        const [colRows]: any = await db.query('SHOW COLUMNS FROM finished_goods_orders');
+        validCols = new Set(colRows.map((c: any) => c.Field));
+      } catch (err) {}
+    }
+
+    const safeOrder: any = {};
+    for (const [k, v] of Object.entries(order)) {
+      if (validCols.size === 0 || validCols.has(k)) {
+        safeOrder[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO finished_goods_orders SET ?', safeOrder);
     res.json({ success: true, order });
   } catch (error) {
     console.error(error);

@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   ShoppingCart, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, X,
-  Printer, Eye, FileText, Shield, Download, ExternalLink, Hash
+  Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -23,7 +23,9 @@ import {
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
   dispatchFinishedGoodsOrder, 
-  deleteFinishedGoodsOrder 
+  deleteFinishedGoodsOrder,
+  createWorkOrder,
+  fetchWorkOrders
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -239,6 +241,73 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
+  const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
+
+  const loadWorkOrders = useCallback(async () => {
+    try {
+      const wos = await fetchWorkOrders()
+      setWorkOrdersList(Array.isArray(wos) ? wos : [])
+    } catch (e) {}
+  }, [])
+
+  useEffect(() => {
+    loadWorkOrders()
+  }, [loadWorkOrders])
+
+  const handleCreateWorkOrder = async (order: any, orderItems: any[]) => {
+    try {
+      const jobQty = Math.max(1, Number(order.qty) || 1)
+      const woData = {
+        title: `WO: ${order.orderNo} - ${order.customerName}`,
+        customerId: order.customerId || null,
+        customer: order.customerName,
+        orderNo: order.orderNo,
+        sourceQuoteId: order.quoteId || null,
+        priority: 'Medium',
+        jobQty,
+        operations: [
+          {
+            operationName: 'Precision Fabrication & Machining',
+            plannedHours: 2,
+            hourlyLaborRate: 750,
+            hourlyMachineRate: 1200
+          }
+        ],
+        bom: (orderItems && orderItems.length > 0) ? orderItems.map((it: any) => ({
+          material: it.description || it.productName || order.productName,
+          qty: Number(it.qty) || 1,
+          unit: it.uom || 'pcs',
+          unitCost: Number(it.unitPrice) || 0,
+          notes: `Line item for ${order.orderNo}`
+        })) : [
+          {
+            material: order.productName || 'Order Material',
+            qty: jobQty,
+            unit: 'pcs',
+            unitCost: Number(order.unitPrice) || 0,
+            notes: `For Sales Order ${order.orderNo}`
+          }
+        ]
+      }
+
+      const res = await createWorkOrder(woData)
+      if (res && res.error === 'DUPLICATE') {
+        toast(`A Work Order already exists (${res.existingId || ''}) for ${order.orderNo}!`, 'warning')
+        return
+      }
+
+      try {
+        await updateFinishedGoodsOrder(order.id, { status: 'In Production' })
+      } catch (e) {}
+
+      toast(`Work Order successfully created for Sales Order ${order.orderNo}!`, 'success')
+      await loadWorkOrders()
+      refetch()
+    } catch (err: any) {
+      toast(err?.message || 'Failed to create Work Order', 'error')
+    }
+  }
+
   const handleDeleteOrder = async () => {
     if (!deleteTarget) return
     setSubmitting(true)
@@ -395,6 +464,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   }
                 }
 
+                // Match linked Work Order if created
+                const existingWO = workOrdersList.find((w: any) =>
+                  (w.orderNo && (w.orderNo === order.orderNo || w.orderNo.includes(order.orderNo))) ||
+                  (w.sourceQuoteId && order.quoteId && String(w.sourceQuoteId) === String(order.quoteId)) ||
+                  (w.title && w.title.includes(order.orderNo))
+                )
+
                 return (
                   <tr key={order.id} className="hover:bg-surface2/30 transition-colors">
                     {/* Order No, Reference Badges & Dates */}
@@ -405,6 +481,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           {order.quotationNo && (
                             <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Linked Quotation">
                               Ref: {order.quotationNo}
+                            </span>
+                          )}
+                          {existingWO && (
+                            <span 
+                              onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
+                              className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 cursor-pointer hover:bg-blue-500/25 flex items-center gap-0.5" 
+                              title="Click to view linked Work Order"
+                            >
+                              <Factory size={10} /> WO: {existingWO.orderNo || existingWO.id}
                             </span>
                           )}
                           {order.gatePassNo && (
@@ -536,6 +621,31 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         >
                           PDF
                         </Button>
+
+                        {/* Work Order Action */}
+                        {existingWO ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Factory}
+                            onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
+                            className="h-7 text-xs px-2 border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-mono font-bold"
+                            title={`View active Work Order ${existingWO.orderNo || existingWO.id}`}
+                          >
+                            WO
+                          </Button>
+                        ) : !order.isDispatched && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Factory}
+                            onClick={() => handleCreateWorkOrder(order, orderItems)}
+                            className="h-7 text-xs px-2 border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-medium"
+                            title="Create Work Order for Production"
+                          >
+                            Work Order
+                          </Button>
+                        )}
 
                         {/* Invoice Generation Action */}
                         <Button
