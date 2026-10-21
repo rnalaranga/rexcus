@@ -28,7 +28,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onOpenLedger,
   canEdit = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'suppliers' | 'bom'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'stock' | 'suppliers' | 'bom' | 'spare_parts'>('overview')
+
+  const sparePartsList = React.useMemo(() => {
+    if (!item?.spareParts) return []
+    try {
+      const parsed = typeof item.spareParts === 'string' ? JSON.parse(item.spareParts) : item.spareParts
+      return Array.isArray(parsed) ? parsed : []
+    } catch (e) {
+      return []
+    }
+  }, [item?.spareParts])
   const [copiedSku, setCopiedSku] = useState(false)
 
   if (!item) return null
@@ -308,6 +318,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               )}
             </button>
           )}
+          {(item.type === 'finished_product' || sparePartsList.length > 0) && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('spare_parts')}
+              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+                activeTab === 'spare_parts'
+                  ? 'border-rex-500 text-rex-500 bg-rex-500/5'
+                  : 'border-transparent text-muted hover:text-primary hover:border-theme'
+              }`}
+            >
+              <Wrench size={12} className="mr-0.5" />
+              Spare Parts
+              {sparePartsList.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-500 font-mono">
+                  {sparePartsList.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Tab Body */}
@@ -315,11 +344,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           {/* TAB 1: OVERVIEW & SPECS */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Description */}
+              {/* Description & Specifications */}
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Description & Notes</h3>
-                <div className="p-4 rounded-lg bg-surface/30 border border-theme-subtle text-sm text-secondary leading-relaxed">
-                  {item.description || <span className="italic text-muted">No description provided for this item.</span>}
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Description & Specifications</h3>
+                <div className="p-4 rounded-xl bg-surface/40 border border-theme-subtle text-sm text-secondary leading-relaxed">
+                  {item.description ? (
+                    <div className="space-y-1.5">
+                      {String(item.description)
+                        .split('\n')
+                        .map(l => l.trim())
+                        .filter(Boolean)
+                        .map((line, idx) => {
+                          const clean = line.startsWith('•') || line.startsWith('-') || line.startsWith('*')
+                            ? line.replace(/^[•\-\*]\s*/, '')
+                            : line
+                          return (
+                            <div key={idx} className="flex items-start gap-2">
+                              <span className="text-rex-500 font-bold text-xs mt-0.5 select-none">•</span>
+                              <span className="text-primary font-medium">{clean}</span>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  ) : (
+                    <span className="italic text-muted">No description provided for this item.</span>
+                  )}
                 </div>
               </div>
 
@@ -520,6 +569,88 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       <Badge variant="outline" size="sm">Active Source</Badge>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: SPARE PARTS BREAKDOWN */}
+          {activeTab === 'spare_parts' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
+                    <Wrench size={13} className="text-amber-500" />
+                    Spare Parts & Replacement Components ({sparePartsList.length})
+                  </h3>
+                  <p className="text-xs text-secondary mt-0.5">
+                    Individual sellable spare parts configured for this ready-made product.
+                  </p>
+                </div>
+              </div>
+
+              {sparePartsList.length === 0 ? (
+                <div className="p-8 text-center bg-surface/20 border border-theme-subtle rounded-lg text-muted text-sm">
+                  <Wrench size={24} className="mx-auto mb-2 opacity-40 text-amber-500" />
+                  No individual spare parts defined for this product yet.
+                </div>
+              ) : (
+                <div className="border border-theme-subtle rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-surface2/60 border-b border-theme-subtle">
+                      <tr>
+                        <th className="px-3 py-2.5 font-semibold text-muted uppercase text-center w-12">#</th>
+                        <th className="px-3 py-2.5 font-semibold text-muted uppercase">Part No.</th>
+                        <th className="px-4 py-2.5 font-semibold text-muted uppercase">Part Name & Specs</th>
+                        <th className="px-3 py-2.5 font-semibold text-muted uppercase">SKU</th>
+                        <th className="px-3 py-2.5 font-semibold text-muted uppercase text-center">Qty / Assy</th>
+                        <th className="px-3 py-2.5 font-semibold text-muted uppercase text-right">Cost</th>
+                        <th className="px-4 py-2.5 font-semibold text-muted uppercase text-right">Selling Price</th>
+                        <th className="px-3 py-2.5 font-semibold text-muted uppercase text-center">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-theme-subtle">
+                      {sparePartsList.map((sp: any, idx: number) => {
+                        const cost = Number(sp.unitCost || 0)
+                        const price = Number(sp.unitPrice || 0)
+                        const margin = price > 0 ? ((price - cost) / price) * 100 : 0
+
+                        return (
+                          <tr key={idx} className="hover:bg-surface/30 transition-colors">
+                            <td className="px-3 py-2.5 font-mono text-muted text-center text-[10px]">
+                              {idx + 1}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono font-bold text-amber-600">
+                              {sp.partNo || `SP-${idx + 1}`}
+                            </td>
+                            <td className="px-4 py-2.5 font-medium text-primary">
+                              <div>{sp.name}</div>
+                              {sp.description && <div className="text-[10px] text-muted">{sp.description}</div>}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-muted">
+                              {sp.sku || '—'}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-center text-secondary">
+                              {sp.qtyPerAssembly || 1} {sp.uom || 'pcs'}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-secondary text-right">
+                              {cost > 0 ? formatCurrency(cost) : '—'}
+                            </td>
+                            <td className="px-4 py-2.5 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-right">
+                              {price > 0 ? formatCurrency(price) : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-center text-[10px] font-bold">
+                              {price > 0 ? (
+                                <span className={margin >= 20 ? 'text-emerald-500' : margin > 0 ? 'text-amber-500' : 'text-red-500'}>
+                                  {margin.toFixed(0)}%
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>

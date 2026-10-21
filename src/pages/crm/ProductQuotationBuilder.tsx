@@ -6,7 +6,7 @@ import {
   ChevronUp, User, RotateCcw, X, FileText, TrendingUp, Mail, FileDown, 
   Printer, Wand2, LineChart, Building2, UserCheck, Eye, ChevronLeft, 
   ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, 
-  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink 
+  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink, Wrench 
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
@@ -34,6 +34,17 @@ import { useAuth } from '@/contexts/AuthContext'
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
 
+// Helper to parse spare parts from product
+export const getProductSpareParts = (prod: any): any[] => {
+  if (!prod || !prod.spareParts) return [];
+  try {
+    const parsed = typeof prod.spareParts === 'string' ? JSON.parse(prod.spareParts) : prod.spareParts;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+};
+
 // Finished Product Quick Search Autocomplete
 interface ProductSearchProps {
   value: string
@@ -50,11 +61,36 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
   const filtered = useMemo(() => {
     if (!value || value.trim().length === 0) return products.slice(0, 10);
     const q = value.toLowerCase();
-    return products.filter(p => 
-      (p.name || '').toLowerCase().includes(q) || 
-      (p.sku || '').toLowerCase().includes(q) ||
-      (p.description || '').toLowerCase().includes(q)
-    ).slice(0, 10);
+    const results: any[] = [];
+    products.forEach(p => {
+      if (
+        (p.name || '').toLowerCase().includes(q) || 
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q)
+      ) {
+        results.push(p);
+      }
+      const spares = getProductSpareParts(p);
+      spares.forEach(sp => {
+        if (
+          (sp.name || '').toLowerCase().includes(q) || 
+          (sp.partNo || '').toLowerCase().includes(q) || 
+          (sp.sku || '').toLowerCase().includes(q)
+        ) {
+          results.push({
+            ...sp,
+            isSparePart: true,
+            parentProduct: p,
+            name: `${sp.name} [Part #${sp.partNo || 'SP'}]`,
+            description: `Spare part for ${p.name}`,
+            unitPrice: sp.unitPrice,
+            unitCost: sp.unitCost,
+            quantity: sp.stock !== undefined ? sp.stock : 0
+          });
+        }
+      });
+    });
+    return results.slice(0, 14);
   }, [value, products]);
 
   useEffect(() => {
@@ -101,7 +137,16 @@ const ProductSearchInput: React.FC<ProductSearchProps> = ({ value, onChange, onS
               }}
             >
               <div className="flex flex-col min-w-0 pr-2">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {item.isSparePart ? (
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 shrink-0">
+                      SPARE PART
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20 shrink-0">
+                      FINISHED GOOD
+                    </span>
+                  )}
                   <span className="text-primary font-bold text-xs truncate">{item.name}</span>
                   {item.sku && (
                     <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle">
@@ -276,6 +321,91 @@ export const ProductQuotationBuilder: React.FC = () => {
   const [emailModalOpen, setEmailModalOpen] = useState(false)
   const [catalogModalOpen, setCatalogModalOpen] = useState(false)
   const [catalogSearch, setCatalogSearch] = useState('')
+  const [catalogFilter, setCatalogFilter] = useState<'all' | 'spares'>('all')
+  const [selectedProductForSpares, setSelectedProductForSpares] = useState<any>(null)
+  const [sparesSearch, setSparesSearch] = useState('')
+  const [selectedSpareMap, setSelectedSpareMap] = useState<Record<string | number, { selected: boolean; qty: number }>>({})
+
+  const openSparePartsModal = (prod: any) => {
+    setSelectedProductForSpares(prod)
+    setSparesSearch('')
+    const spares = getProductSpareParts(prod)
+    const initMap: Record<string | number, { selected: boolean; qty: number }> = {}
+    spares.forEach(s => {
+      initMap[s.id] = { selected: false, qty: 1 }
+    })
+    setSelectedSpareMap(initMap)
+  }
+
+  const toggleSpareSelection = (id: string | number) => {
+    setSelectedSpareMap(prev => ({
+      ...prev,
+      [id]: {
+        selected: !prev[id]?.selected,
+        qty: prev[id]?.qty || 1
+      }
+    }))
+  }
+
+  const updateSpareQty = (id: string | number, qty: number) => {
+    setSelectedSpareMap(prev => ({
+      ...prev,
+      [id]: {
+        selected: prev[id]?.selected ?? true,
+        qty: Math.max(1, qty)
+      }
+    }))
+  }
+
+  const toggleSelectAllSpares = () => {
+    if (!selectedProductForSpares) return
+    const spares = getProductSpareParts(selectedProductForSpares)
+    const allSelected = spares.length > 0 && spares.every(s => selectedSpareMap[s.id]?.selected)
+    const updated: Record<string | number, { selected: boolean; qty: number }> = {}
+    spares.forEach(s => {
+      updated[s.id] = {
+        selected: !allSelected,
+        qty: selectedSpareMap[s.id]?.qty || 1
+      }
+    })
+    setSelectedSpareMap(updated)
+  }
+
+  const addSelectedSparesToQuote = () => {
+    if (!selectedProductForSpares) return
+    const spares = getProductSpareParts(selectedProductForSpares)
+    const selectedSpares = spares.filter(s => selectedSpareMap[s.id]?.selected)
+    if (selectedSpares.length === 0) return
+
+    const newItems: ProductQuotationItem[] = selectedSpares.map(sp => {
+      const qty = selectedSpareMap[sp.id]?.qty || 1
+      const price = Number(sp.unitPrice || 0)
+      const cost = Number(sp.unitCost || 0)
+
+      return {
+        id: Date.now() + Math.floor(Math.random() * 10000),
+        productId: sp.inventoryId || selectedProductForSpares.id,
+        sku: sp.sku || (selectedProductForSpares.sku ? `${selectedProductForSpares.sku}-${sp.partNo || 'SP'}` : ''),
+        desc: `${sp.name}${sp.partNo ? ` [Part #${sp.partNo}]` : ''} - Spare part for ${selectedProductForSpares.name}${sp.description ? `\n• ${sp.description}` : ''}`,
+        qty,
+        unitPrice: price,
+        unitCost: cost,
+        uom: sp.uom || 'pcs',
+        stock: sp.stock || 0,
+        note: `Spare part for ${selectedProductForSpares.name}`
+      }
+    })
+
+    setCustItems(prev => {
+      if (prev.length === 1 && !prev[0].desc && prev[0].unitPrice === 0) {
+        return newItems
+      }
+      return [...prev, ...newItems]
+    })
+
+    showToast('success', `Added ${selectedSpares.length} spare part(s) to quotation lines`)
+    setSelectedProductForSpares(null)
+  }
   const [quickSearchText, setQuickSearchText] = useState('')
   const initialLoadedRef = useRef(false)
 
@@ -525,6 +655,30 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   // Add Product from Catalog or Quick Search
   const addProductToItems = (prod: any) => {
+    if (prod.isSparePart) {
+      const unitPrice = Number(prod.unitPrice || 0);
+      const unitCost = Number(prod.unitCost || 0);
+      const newItem: ProductQuotationItem = {
+        id: Date.now(),
+        productId: prod.inventoryId || prod.parentProduct?.id,
+        sku: prod.sku || '',
+        desc: `${prod.name || 'Spare Part'} - Spare part for ${prod.parentProduct?.name || 'Finished Product'}${prod.description ? `\n• ${prod.description}` : ''}`,
+        qty: 1,
+        unitPrice,
+        unitCost,
+        uom: prod.uom || 'pcs',
+        stock: Number(prod.quantity || prod.stock || 0),
+        note: `Spare part for ${prod.parentProduct?.name || ''}`
+      };
+      setCustItems(prev => {
+        if (prev.length === 1 && !prev[0].desc && prev[0].unitPrice === 0) {
+          return [newItem];
+        }
+        return [...prev, newItem];
+      });
+      showToast('success', `Added spare part "${prod.name}" to quotation lines`);
+      return;
+    }
     const unitPrice = Number(prod.unitPrice || prod.price || prod.sellingPrice || 0);
     const unitCost = Number(prod.unitCost || prod.cost || prod.costPrice || (unitPrice > 0 ? unitPrice * 0.7 : 0));
     const newItem: ProductQuotationItem = {
@@ -1615,10 +1769,26 @@ export const ProductQuotationBuilder: React.FC = () => {
                 variant="ghost" 
                 size="sm" 
                 icon={ShoppingBag} 
-                onClick={() => setCatalogModalOpen(true)} 
+                onClick={() => {
+                  setCatalogFilter('all');
+                  setCatalogModalOpen(true);
+                }} 
                 className="text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 font-bold border border-emerald-500/20 h-7 text-[11px]"
               >
                 Browse Catalog
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                icon={Wrench} 
+                onClick={() => {
+                  setCatalogFilter('spares');
+                  setCatalogModalOpen(true);
+                }} 
+                className="text-amber-600 bg-amber-500/10 hover:bg-amber-500/20 font-bold border border-amber-500/20 h-7 text-[11px]"
+                title="Browse products with spare parts breakdown"
+              >
+                Spare Parts Catalog
               </Button>
               <Button 
                 variant="primary" 
@@ -2215,7 +2385,33 @@ export const ProductQuotationBuilder: React.FC = () => {
         size="4xl"
       >
         <div className="p-5 space-y-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 p-1 bg-surface2 rounded-xl border border-theme-subtle shrink-0">
+              <button
+                type="button"
+                onClick={() => setCatalogFilter('all')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  catalogFilter === 'all'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-muted hover:text-primary'
+                }`}
+              >
+                All Products ({finishedProducts.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogFilter('spares')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                  catalogFilter === 'spares'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-muted hover:text-primary'
+                }`}
+              >
+                <Wrench size={12} />
+                With Spare Parts ({finishedProducts.filter(p => getProductSpareParts(p).length > 0).length})
+              </button>
+            </div>
+
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
               <input
@@ -2223,60 +2419,274 @@ export const ProductQuotationBuilder: React.FC = () => {
                 value={catalogSearch}
                 onChange={e => setCatalogSearch(e.target.value)}
                 placeholder="Search catalog by name, sku, category..."
-                className="w-full bg-surface2 border border-theme-subtle rounded-xl pl-9 pr-3 py-2 text-xs text-primary outline-none focus:border-emerald-500"
+                className="w-full bg-surface2 border border-theme-subtle rounded-xl pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500"
               />
             </div>
-            <span className="text-xs text-muted shrink-0">
-              {finishedProducts.length} finished goods available
-            </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
             {finishedProducts
               .filter(p => {
+                if (catalogFilter === 'spares' && getProductSpareParts(p).length === 0) return false;
                 if (!catalogSearch.trim()) return true;
                 const q = catalogSearch.toLowerCase();
                 return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q);
               })
-              .map(p => (
-                <div key={p.id} className="p-3.5 rounded-xl border border-theme-subtle bg-surface hover:border-emerald-500/50 hover:bg-surface2/40 transition-all flex justify-between items-center group">
-                  <div className="min-w-0 pr-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-primary truncate">{p.name}</span>
-                      {p.sku && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle">
-                          {p.sku}
-                        </span>
+              .map(p => {
+                const pSpares = getProductSpareParts(p);
+
+                return (
+                  <div key={p.id} className="p-3.5 rounded-xl border border-theme-subtle bg-surface hover:border-emerald-500/50 hover:bg-surface2/40 transition-all flex justify-between items-center group">
+                    <div className="min-w-0 pr-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-primary truncate">{p.name}</span>
+                        {p.sku && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle">
+                            {p.sku}
+                          </span>
+                        )}
+                        {pSpares.length > 0 && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center gap-0.5">
+                            <Wrench size={10} /> {pSpares.length} Spares
+                          </span>
+                        )}
+                      </div>
+                      {p.description && (
+                        <p className="text-[11px] text-muted truncate mt-0.5">{p.description}</p>
                       )}
+                      <div className="flex items-center gap-3 mt-1.5 text-[11px]">
+                        <span className="text-muted">Stock: <strong className={(p.quantity || 0) > 0 ? 'text-primary' : 'text-amber-500'}>{p.quantity || 0} {p.uom || 'pcs'}</strong></span>
+                        <span className="text-muted">Unit Cost: <strong className="font-mono text-muted">{formatCurrency(p.unitCost || p.cost || 0)}</strong></span>
+                      </div>
                     </div>
-                    {p.description && (
-                      <p className="text-[11px] text-muted truncate mt-0.5">{p.description}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px]">
-                      <span className="text-muted">Stock: <strong className={(p.quantity || 0) > 0 ? 'text-primary' : 'text-amber-500'}>{p.quantity || 0} {p.uom || 'pcs'}</strong></span>
-                      <span className="text-muted">Cost: <strong className="font-mono text-muted">{formatCurrency(p.unitCost || p.cost || 0)}</strong></span>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(p.unitPrice || p.price || 0)}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {pSpares.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={Wrench}
+                            onClick={() => openSparePartsModal(p)}
+                            className="h-7 text-[11px] px-2.5 font-bold border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+                            title="Select specific spare parts from this product to quote"
+                          >
+                            Spare Parts ({pSpares.length})
+                          </Button>
+                        )}
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={Plus}
+                          onClick={() => {
+                            addProductToItems(p);
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-[11px] px-3"
+                          title="Add complete whole product to quotation"
+                        >
+                          {pSpares.length > 0 ? 'Add Whole Unit' : 'Add to Quote'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(p.unitPrice || p.price || 0)}
-                    </span>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      icon={Plus}
-                      onClick={() => {
-                        addProductToItems(p);
-                      }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-[11px] px-3"
-                    >
-                      Add to Quote
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
           </div>
         </div>
+      </Modal>
+
+      {/* SPARE PARTS BREAKDOWN PICKER MODAL */}
+      <Modal
+        isOpen={Boolean(selectedProductForSpares)}
+        onClose={() => setSelectedProductForSpares(null)}
+        title={selectedProductForSpares ? `Spare Parts Breakdown: ${selectedProductForSpares.name}` : 'Spare Parts Breakdown'}
+        size="3xl"
+      >
+        {selectedProductForSpares && (() => {
+          const allSpares = getProductSpareParts(selectedProductForSpares);
+          const filteredSpares = allSpares.filter((sp: any) => {
+            if (!sparesSearch.trim()) return true;
+            const q = sparesSearch.toLowerCase();
+            return (sp.name || '').toLowerCase().includes(q) || (sp.partNo || '').toLowerCase().includes(q) || (sp.sku || '').toLowerCase().includes(q) || (sp.description || '').toLowerCase().includes(q);
+          });
+          const selectedSpares = allSpares.filter((sp: any) => selectedSpareMap[sp.id]?.selected);
+          const selectedCount = selectedSpares.length;
+          const selectedTotal = selectedSpares.reduce((sum: number, sp: any) => {
+            const qty = selectedSpareMap[sp.id]?.qty || 1;
+            return sum + (Number(sp.unitPrice || 0) * qty);
+          }, 0);
+          const allSelected = allSpares.length > 0 && allSpares.every((sp: any) => selectedSpareMap[sp.id]?.selected);
+
+          return (
+            <div className="p-5 space-y-4">
+              {/* Product Header Card */}
+              <div className="p-3.5 rounded-xl bg-surface2/40 border border-theme-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                    <Wrench size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-primary flex items-center gap-2">
+                      <span>{selectedProductForSpares.name}</span>
+                      {selectedProductForSpares.sku && (
+                        <span className="font-mono text-[10px] text-muted">({selectedProductForSpares.sku})</span>
+                      )}
+                    </h4>
+                    <p className="text-[11px] text-muted mt-0.5">
+                      Select specific replacement parts requested by the customer to quote individually.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={Package}
+                  onClick={() => {
+                    addProductToItems(selectedProductForSpares);
+                    setSelectedProductForSpares(null);
+                  }}
+                  className="text-[11px] shrink-0"
+                >
+                  Quote Whole Unit ({formatCurrency(selectedProductForSpares.unitPrice || selectedProductForSpares.price || 0)})
+                </Button>
+              </div>
+
+              {/* Filter and Bulk Selection */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    type="text"
+                    value={sparesSearch}
+                    onChange={e => setSparesSearch(e.target.value)}
+                    placeholder="Filter spare parts (name, part #, sku)..."
+                    className="w-full bg-surface2 border border-theme-subtle rounded-xl pl-8 pr-3 py-1.5 text-xs text-primary outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllSpares}
+                    className="text-[11px] font-semibold text-rex-600 dark:text-rex-400 hover:underline"
+                  >
+                    {allSelected ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Spare Parts List */}
+              <div className="max-h-[50vh] overflow-y-auto divide-y divide-theme-subtle/40 border border-theme-subtle rounded-xl bg-surface">
+                {filteredSpares.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-muted">
+                    No spare parts found matching "{sparesSearch}".
+                  </div>
+                ) : (
+                  filteredSpares.map((sp: any) => {
+                    const isChecked = Boolean(selectedSpareMap[sp.id]?.selected);
+                    const qty = selectedSpareMap[sp.id]?.qty || 1;
+                    const price = Number(sp.unitPrice || 0);
+
+                    return (
+                      <div
+                        key={sp.id}
+                        onClick={() => toggleSpareSelection(sp.id)}
+                        className={`p-3 flex items-center justify-between gap-3 hover:bg-surface2/40 cursor-pointer transition-colors ${
+                          isChecked ? 'bg-amber-500/5' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSpareSelection(sp.id)}
+                            onClick={e => e.stopPropagation()}
+                            className="rounded border-theme-subtle text-amber-600 focus:ring-amber-500/30 w-4 h-4 cursor-pointer"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                {sp.partNo || 'PART'}
+                              </span>
+                              <span className="text-xs font-bold text-primary">{sp.name}</span>
+                              {sp.sku && (
+                                <span className="text-[10px] text-muted font-mono">({sp.sku})</span>
+                              )}
+                            </div>
+                            {sp.description && (
+                              <p className="text-[10px] text-muted truncate mt-0.5">{sp.description}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-muted">
+                              <span>Req in unit: {sp.qtyPerAssembly || 1} {sp.uom || 'pcs'}</span>
+                              {sp.stock !== undefined && (
+                                <span className={sp.stock > 0 ? 'text-emerald-500 font-medium' : 'text-amber-500 font-medium'}>
+                                  • {sp.stock > 0 ? `${sp.stock} in stock` : 'Out of stock'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 shrink-0" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-muted">Qty:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={qty}
+                              onChange={e => updateSpareQty(sp.id, Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-14 text-center bg-surface2 border border-theme-subtle rounded font-mono font-bold text-xs py-1"
+                            />
+                          </div>
+
+                          <div className="text-right min-w-[90px]">
+                            <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 block">
+                              {formatCurrency(price * qty)}
+                            </span>
+                            <span className="text-[10px] text-muted font-mono block">
+                              @{formatCurrency(price)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer with Add Selected Action */}
+              <div className="pt-2 flex items-center justify-between border-t border-theme-subtle">
+                <span className="text-xs text-secondary font-medium">
+                  <strong>{selectedCount}</strong> {selectedCount === 1 ? 'part' : 'parts'} selected
+                  {selectedCount > 0 && ` (Total: ${formatCurrency(selectedTotal)})`}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedProductForSpares(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={Plus}
+                    disabled={selectedCount === 0}
+                    onClick={addSelectedSparesToQuote}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                  >
+                    Add Selected Spare Parts ({selectedCount})
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* SEND EMAIL MODAL */}

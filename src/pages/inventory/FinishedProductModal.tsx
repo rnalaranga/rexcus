@@ -4,7 +4,7 @@ import {
   Package, DollarSign, Layers, Plus, Trash2, ChevronDown, ChevronUp, 
   ExternalLink, Image as ImageIcon, Upload, X, Save, AlertCircle, 
   Clock, Wrench, FileText, CheckCircle2, TrendingUp, BarChart3, History, ArrowRight, ArrowLeft,
-  Camera, Barcode, Tag, Boxes, MapPin, Link2
+  Camera, Barcode, Tag, Boxes, MapPin, Link2, AlignLeft, Sparkles
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -95,6 +95,20 @@ const MatSearchInput: React.FC<MatSearchProps> = ({ value, onChange, onSelect, i
   )
 }
 
+export interface ProductSparePart {
+  id: string | number
+  partNo: string
+  name: string
+  sku?: string
+  inventoryId?: string
+  qtyPerAssembly: number
+  unitPrice: number
+  unitCost: number
+  uom: string
+  stock?: number
+  description?: string
+}
+
 export interface ProductBOM {
   id: number
   title: string
@@ -127,7 +141,8 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   const { data: rawOperations } = useMachiningOperations()
   const { data: inventory } = useInventory()
   
-  const [activeTab, setActiveTab] = useState<'info' | 'boms' | 'pricing' | 'ledger'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'boms' | 'spare_parts' | 'pricing' | 'ledger'>('info')
+  const [spareParts, setSpareParts] = useState<ProductSparePart[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   // Basic Product Info
@@ -190,6 +205,16 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
         }
       }
       setBoms(Array.isArray(loadedBoms) ? loadedBoms : [])
+
+      let loadedSpares: ProductSparePart[] = []
+      if (product.spareParts) {
+        try {
+          loadedSpares = typeof product.spareParts === 'string' ? JSON.parse(product.spareParts) : product.spareParts
+        } catch (e) {
+          loadedSpares = []
+        }
+      }
+      setSpareParts(Array.isArray(loadedSpares) ? loadedSpares : [])
     } else {
       setName('')
       setSku(`PRD-${Date.now().toString().slice(-4)}`)
@@ -220,6 +245,91 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
     }
     setActiveTab('info')
   }, [product, isOpen])
+
+  // Spare Parts Helpers
+  const populateFromBOM = () => {
+    const newSpares: ProductSparePart[] = []
+    let partIndex = spareParts.length + 1
+
+    boms.forEach((bom) => {
+      (bom.autoMats || []).forEach((m: any) => {
+        const matName = m.matName || m.name || `Component ${partIndex}`
+        if (!newSpares.some(s => s.name.toLowerCase() === matName.toLowerCase()) && 
+            !spareParts.some(s => s.name.toLowerCase() === matName.toLowerCase())) {
+          const cost = Number(m.unitPrice || m.cost || 0)
+          const sellingPrice = cost > 0 ? Math.round(cost * 1.4) : 0
+          newSpares.push({
+            id: Date.now() + Math.random(),
+            partNo: `SP-${String(partIndex).padStart(2, '0')}`,
+            name: matName,
+            sku: m.sku || `SPK-${String(partIndex).padStart(3, '0')}`,
+            inventoryId: m.inventoryId || m.id,
+            qtyPerAssembly: Number(m.reqQty || m.qty || 1),
+            unitCost: cost,
+            unitPrice: sellingPrice,
+            uom: m.uom || 'pcs',
+            stock: m.stock !== undefined ? Number(m.stock) : undefined,
+            description: `Used in: ${bom.title}`
+          })
+          partIndex++
+        }
+      });
+
+      (bom.manualMats || []).forEach((m: any) => {
+        const matName = m.matName || m.name || `Part ${partIndex}`
+        if (!newSpares.some(s => s.name.toLowerCase() === matName.toLowerCase()) && 
+            !spareParts.some(s => s.name.toLowerCase() === matName.toLowerCase())) {
+          const cost = Number(m.unitCost || m.cost || 0)
+          const sellingPrice = cost > 0 ? Math.round(cost * 1.4) : 0
+          newSpares.push({
+            id: Date.now() + Math.random(),
+            partNo: `SP-${String(partIndex).padStart(2, '0')}`,
+            name: matName,
+            sku: `SPK-${String(partIndex).padStart(3, '0')}`,
+            qtyPerAssembly: Number(m.qty || 1),
+            unitCost: cost,
+            unitPrice: sellingPrice,
+            uom: m.uom || 'pcs',
+            description: `Custom BOM part from ${bom.title}`
+          })
+          partIndex++
+        }
+      })
+    })
+
+    if (newSpares.length === 0) {
+      alert('No new materials found in BOMs to import.')
+      return
+    }
+
+    setSpareParts(prev => [...prev, ...newSpares])
+  }
+
+  const addSparePart = () => {
+    const nextNum = spareParts.length + 1
+    setSpareParts(prev => [
+      ...prev,
+      {
+        id: Date.now(),
+        partNo: `SP-${String(nextNum).padStart(2, '0')}`,
+        name: '',
+        sku: '',
+        qtyPerAssembly: 1,
+        unitPrice: 0,
+        unitCost: 0,
+        uom: 'pcs',
+        description: ''
+      }
+    ])
+  }
+
+  const updateSparePart = (id: string | number, field: keyof ProductSparePart, val: any) => {
+    setSpareParts(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p))
+  }
+
+  const removeSparePart = (id: string | number) => {
+    setSpareParts(prev => prev.filter(p => p.id !== id))
+  }
 
   // Prevent background page scrolling when modal is open
   useEffect(() => {
@@ -457,6 +567,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
       unitPrice: unitSellingPrice, // Final selling price
       unitCost: totalBOMCost,       // Cost rollup from all BOMs
       boms: JSON.stringify(boms),
+      spareParts: JSON.stringify(spareParts),
       status: 'active'
     }
 
@@ -670,6 +781,66 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                       />
                     </div>
 
+                    {/* Product Specifications & Line-by-Line Description */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-secondary flex items-center gap-1.5">
+                          <AlignLeft size={13} className="text-rex-500" />
+                          <span>Product Specifications & Description (Line by Line)</span>
+                          {description && (
+                            <span className="text-[10px] font-semibold text-muted bg-surface2 px-1.5 py-0.5 rounded border border-theme-subtle">
+                              {description.split('\n').filter(l => l.trim()).length} lines
+                            </span>
+                          )}
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDescription(prev => {
+                                if (!prev || prev.trim() === '') return '• '
+                                return prev.endsWith('\n') ? `${prev}• ` : `${prev}\n• `
+                              })
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-rex-600 dark:text-rex-400 bg-rex-500/10 hover:bg-rex-500/20 border border-rex-500/30 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Add a new bullet point line"
+                          >
+                            <Plus size={12} /> Add Bullet (•)
+                          </button>
+                        </div>
+                      </div>
+
+                      <textarea
+                        rows={4}
+                        value={description}
+                        onChange={e => setDescription(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const textarea = e.currentTarget
+                            const cursor = textarea.selectionStart
+                            const textBeforeCursor = textarea.value.substring(0, cursor)
+                            const currentLine = textBeforeCursor.split('\n').pop() || ''
+                            if (currentLine.trim().startsWith('•') || currentLine.trim().startsWith('-')) {
+                              e.preventDefault()
+                              const prefix = currentLine.trim().startsWith('•') ? '\n• ' : '\n- '
+                              const textAfterCursor = textarea.value.substring(cursor)
+                              const nextVal = textBeforeCursor + prefix + textAfterCursor
+                              setDescription(nextVal)
+                              setTimeout(() => {
+                                textarea.selectionStart = textarea.selectionEnd = cursor + prefix.length
+                              }, 0)
+                            }
+                          }
+                        }}
+                        placeholder={`Enter item specifications line-by-line (Press Enter for next line):\n• Bore: 50mm | Stroke: 300mm\n• Working Pressure: 210 Bar\n• Rod Material: Hard Chrome Plated EN8D\n• Finish: Zinc Phosphated & Painted Black`}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-theme-subtle bg-surface text-xs font-mono text-primary leading-relaxed focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all resize-y placeholder:text-muted/40 placeholder:font-sans"
+                      />
+                      <p className="text-[10px] text-muted mt-1 flex items-center justify-between">
+                        <span>Each line displays as an individual spec bullet on quotations, invoices & catalogue.</span>
+                        <span className="hidden sm:inline text-[9px] text-muted/70">Press <kbd className="px-1 py-0.2 rounded bg-surface2 font-mono border border-theme-subtle">Enter</kbd> to continue bullets</span>
+                      </p>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                       <div>
                         <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
@@ -771,18 +942,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
                     />
                   </div>
 
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
-                      <FileText size={13} className="text-muted" /> Technical Description & Material Notes
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={description}
-                      onChange={e => setDescription(e.target.value)}
-                      placeholder="Specify material grade (e.g. EN8, SS304, MS), heat treatment/hardening, surface finish (zinc plated, blackened), tolerances, or functional notes..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-theme-subtle bg-surface text-xs text-primary focus:outline-none focus:border-rex-500 focus:ring-2 focus:ring-rex-500/20 shadow-xs transition-all resize-none placeholder:text-muted/40"
-                    />
-                  </div>
+
                 </div>
               </div>
 
@@ -1436,7 +1596,226 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: FINAL PRICING & MARGIN */}
+          {/* TAB 3: SPARE PARTS BREAKDOWN CATALOG */}
+          {activeTab === 'spare_parts' && (
+            <div className="space-y-5 animate-fade-in max-w-6xl mx-auto">
+              {/* Header card with guidance and auto-populate action */}
+              <div className="bg-surface border border-theme-subtle rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                    <Wrench size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+                      <span>Spare Parts & Replacement Components Catalog</span>
+                      <span className="text-[10px] font-semibold bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full border border-amber-500/20">
+                        {spareParts.length} {spareParts.length === 1 ? 'Part' : 'Parts'} Defined
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted mt-0.5">
+                      Define individual spare parts for this product. Customers can order either the complete product or individual spare parts via Product Quotations.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    icon={Sparkles}
+                    onClick={populateFromBOM}
+                    className="text-xs border-rex-500/30 hover:border-rex-500 text-rex-600 cursor-pointer"
+                    title="Scan BOM materials and auto-create spare parts with part numbers"
+                  >
+                    Auto-Populate from BOM
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    icon={Plus}
+                    onClick={addSparePart}
+                    className="text-xs font-bold cursor-pointer"
+                  >
+                    Add Spare Part
+                  </Button>
+                </div>
+              </div>
+
+              {/* Spare Parts Table */}
+              <div className="bg-surface border border-theme-subtle rounded-2xl shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-theme-subtle/60 flex items-center justify-between bg-surface2/30">
+                  <span className="text-xs font-bold text-secondary uppercase tracking-wider">
+                    Exploded Parts List & Standalone Selling Rates
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    Total Parts Value: <strong className="font-mono text-primary">{formatCurrency(spareParts.reduce((s, p) => s + (Number(p.unitPrice) || 0), 0))}</strong>
+                  </span>
+                </div>
+
+                {spareParts.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-surface2 text-muted flex items-center justify-center mx-auto mb-3">
+                      <Wrench size={22} className="opacity-50" />
+                    </div>
+                    <h4 className="text-sm font-bold text-primary">No Spare Parts Defined Yet</h4>
+                    <p className="text-xs text-muted max-w-md mx-auto mt-1 mb-4">
+                      Add individual replacement parts or click "Auto-Populate from BOM" to quickly convert components from your Bill of Materials into sellable spare parts.
+                    </p>
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        icon={Sparkles}
+                        onClick={populateFromBOM}
+                        className="text-xs text-rex-600 cursor-pointer"
+                      >
+                        Auto-Populate from BOM
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        icon={Plus}
+                        onClick={addSparePart}
+                        className="text-xs font-bold cursor-pointer"
+                      >
+                        Add Manual Spare Part
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-theme-subtle bg-surface2/50 text-[10px] font-bold text-muted uppercase tracking-wider">
+                          <th className="py-2.5 px-3 w-12 text-center">#</th>
+                          <th className="py-2.5 px-3 w-28">Part No. / Ref</th>
+                          <th className="py-2.5 px-3 min-w-[200px]">Spare Part Name & Specs</th>
+                          <th className="py-2.5 px-3 w-28">SKU</th>
+                          <th className="py-2.5 px-3 w-20 text-center">Qty/Assy</th>
+                          <th className="py-2.5 px-3 w-20 text-center">UOM</th>
+                          <th className="py-2.5 px-3 w-28 text-right">Cost (Rs.)</th>
+                          <th className="py-2.5 px-3 w-32 text-right">Selling Price (Rs.)</th>
+                          <th className="py-2.5 px-3 w-20 text-center">Margin</th>
+                          <th className="py-2.5 px-3 w-12 text-center"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-theme-subtle/50">
+                        {spareParts.map((sp, idx) => {
+                          const cost = Number(sp.unitCost || 0)
+                          const price = Number(sp.unitPrice || 0)
+                          const margin = price > 0 ? ((price - cost) / price) * 100 : 0
+
+                          return (
+                            <tr key={sp.id} className="hover:bg-surface2/30 transition-colors">
+                              <td className="py-2 px-3 text-center text-muted font-mono text-[10px]">
+                                {idx + 1}
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={sp.partNo}
+                                  onChange={e => updateSparePart(sp.id, 'partNo', e.target.value)}
+                                  placeholder="e.g. SP-01"
+                                  className="w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-rex-500 font-mono font-bold text-primary outline-none text-xs px-1 py-0.5"
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={sp.name}
+                                  onChange={e => updateSparePart(sp.id, 'name', e.target.value)}
+                                  placeholder="Spare part title / description..."
+                                  className="w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-rex-500 font-semibold text-primary outline-none text-xs px-1 py-0.5"
+                                />
+                                <input
+                                  type="text"
+                                  value={sp.description || ''}
+                                  onChange={e => updateSparePart(sp.id, 'description', e.target.value)}
+                                  placeholder="Optional material specs, tolerances, notes..."
+                                  className="w-full bg-transparent text-[10px] text-muted outline-none px-1 py-0.2 placeholder:text-muted/30"
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={sp.sku || ''}
+                                  onChange={e => updateSparePart(sp.id, 'sku', e.target.value)}
+                                  placeholder="e.g. PRD-SP-01"
+                                  className="w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-rex-500 font-mono text-muted outline-none text-xs px-1 py-0.5"
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={sp.qtyPerAssembly}
+                                  onChange={e => updateSparePart(sp.id, 'qtyPerAssembly', Math.max(1, parseInt(e.target.value) || 1))}
+                                  className="w-14 text-center bg-transparent border border-theme-subtle rounded font-mono font-bold text-primary outline-none text-xs py-0.5"
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <input
+                                  type="text"
+                                  value={sp.uom || 'pcs'}
+                                  onChange={e => updateSparePart(sp.id, 'uom', e.target.value)}
+                                  className="w-14 text-center bg-transparent text-secondary outline-none text-xs py-0.5"
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={sp.unitCost || ''}
+                                  onChange={e => updateSparePart(sp.id, 'unitCost', parseFloat(e.target.value) || 0)}
+                                  placeholder="0"
+                                  className="w-full text-right bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-rex-500 font-mono text-muted outline-none text-xs px-1 py-0.5"
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={sp.unitPrice || ''}
+                                  onChange={e => updateSparePart(sp.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                  placeholder="0"
+                                  className="w-full text-right bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-rex-500 font-mono font-bold text-emerald-600 dark:text-emerald-400 outline-none text-xs px-1 py-0.5"
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-center font-mono text-[10px] font-bold">
+                                {price > 0 ? (
+                                  <span className={margin >= 20 ? 'text-emerald-500' : margin > 0 ? 'text-amber-500' : 'text-red-500'}>
+                                    {margin.toFixed(0)}%
+                                  </span>
+                                ) : (
+                                  <span className="text-muted">-</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => removeSparePart(sp.id)}
+                                  className="p-1 hover:bg-red-500/10 text-muted hover:text-red-500 rounded transition-colors"
+                                  title="Remove spare part"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: FINAL PRICING & MARGIN */}
           {activeTab === 'pricing' && (
             <div className="space-y-6 max-w-4xl mx-auto">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -2297,6 +2297,7 @@ app.post('/api/inventory', async (req, res) => {
     if (data.specifications && typeof data.specifications === 'object') data.specifications = JSON.stringify(data.specifications);
     if (data.boms && typeof data.boms === 'object') data.boms = JSON.stringify(data.boms);
     if (data.assetDetails && typeof data.assetDetails === 'object') data.assetDetails = JSON.stringify(data.assetDetails);
+    if (data.spareParts && typeof data.spareParts === 'object') data.spareParts = JSON.stringify(data.spareParts);
     const item = {
       ...data,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -2319,6 +2320,7 @@ app.put('/api/inventory/:id', async (req, res) => {
     if (data.specifications && typeof data.specifications === 'object') data.specifications = JSON.stringify(data.specifications);
     if (data.boms && typeof data.boms === 'object') data.boms = JSON.stringify(data.boms);
     if (data.assetDetails && typeof data.assetDetails === 'object') data.assetDetails = JSON.stringify(data.assetDetails);
+    if (data.spareParts && typeof data.spareParts === 'object') data.spareParts = JSON.stringify(data.spareParts);
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE inventory SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });

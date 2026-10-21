@@ -587,21 +587,64 @@ export const Inventory: React.FC = () => {
     }
   ]
 
+  const FinishedProductDescription: React.FC<{ description?: string }> = ({ description }) => {
+    const [expanded, setExpanded] = useState(false)
+    if (!description) return null
+
+    const lines = String(description)
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+
+    if (lines.length === 0) return null
+
+    const visibleLines = expanded ? lines : lines.slice(0, 3)
+    const hasMore = lines.length > 3
+
+    return (
+      <div className="mt-1.5 space-y-0.5 max-w-md">
+        {visibleLines.map((line, idx) => {
+          const clean = line.startsWith('•') || line.startsWith('-') || line.startsWith('*')
+            ? line.replace(/^[•\-\*]\s*/, '')
+            : line
+          return (
+            <div key={idx} className="flex items-start gap-1.5 text-xs text-secondary/90 leading-tight">
+              <span className="text-rex-500 font-bold select-none text-[11px] leading-none shrink-0 mt-0.5">•</span>
+              <span className="break-words font-medium">{clean}</span>
+            </div>
+          )
+        })}
+        {hasMore && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpanded(!expanded)
+            }}
+            className="text-[10px] font-semibold text-rex-600 dark:text-rex-400 hover:underline flex items-center gap-0.5 mt-0.5 cursor-pointer"
+          >
+            {expanded ? '▲ Show less' : `▼ +${lines.length - 3} more specs`}
+          </button>
+        )}
+      </div>
+    )
+  }
+
   const finishedProductColumns: Column<any>[] = [
     {
       header: 'Product Details',
       key: 'name',
       render: (val: any, item: any) => (
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+        <div className="flex items-start gap-3 py-1">
+          <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm mt-0.5">
             {item.imageUrl ? (
               <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
             ) : (
               <Package size={20} />
             )}
           </div>
-          <div>
-            <div className="font-bold text-primary flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="font-bold text-primary flex items-center gap-2 flex-wrap">
               <span className="text-sm">{val}</span>
               {item.category && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-secondary font-medium">
@@ -609,10 +652,12 @@ export const Inventory: React.FC = () => {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              {item.sku && <span className="text-[10px] text-muted font-mono">{item.sku}</span>}
-              {item.description && <span className="text-[10px] text-muted truncate max-w-xs">• {item.description}</span>}
-            </div>
+            {item.sku && (
+              <div className="mt-0.5">
+                <span className="text-[10px] text-muted font-mono">{item.sku}</span>
+              </div>
+            )}
+            <FinishedProductDescription description={item.description} />
           </div>
         </div>
       )
@@ -645,17 +690,28 @@ export const Inventory: React.FC = () => {
         } catch (e) {}
 
         const unitCost = Number(item.unitCost || 0)
+        let spareCount = 0
+        try {
+          const parsed = typeof item.spareParts === 'string' ? JSON.parse(item.spareParts) : item.spareParts
+          if (Array.isArray(parsed)) spareCount = parsed.length
+        } catch (e) {}
 
         return (
           <div className="flex flex-col">
             <span className="text-xs font-mono font-bold text-primary">
               {unitCost > 0 ? formatCurrency(unitCost) : '-'}
             </span>
-            <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex flex-wrap items-center gap-1 mt-0.5">
               <Badge variant={bomCount > 0 ? 'info' : 'default'} size="sm">
                 <Layers size={10} className="mr-1 inline" />
                 {bomCount} {bomCount === 1 ? 'BOM' : 'BOMs'}
               </Badge>
+              {spareCount > 0 && (
+                <Badge variant="warning" size="sm">
+                  <Wrench size={10} className="mr-1 inline" />
+                  {spareCount} {spareCount === 1 ? 'Spare' : 'Spares'}
+                </Badge>
+              )}
             </div>
           </div>
         )
