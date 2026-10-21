@@ -2739,10 +2739,47 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     const data = { ...req.body };
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const id = data.id || `FGO-${Date.now().toString().slice(-6)}`;
-    const orderNo = data.orderNo || `ORD-${Date.now().toString().slice(-5)}`;
+    const orderNo = data.orderNo || `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
     
+    // Parse items if provided
+    let itemsList: any[] = [];
+    if (data.items) {
+      if (typeof data.items === 'string') {
+        try {
+          itemsList = JSON.parse(data.items);
+        } catch (e) {
+          itemsList = [];
+        }
+      } else if (Array.isArray(data.items)) {
+        itemsList = data.items;
+      }
+    }
+
+    // Calculate subtotal and stock status
+    let subtotal = Number(data.subtotal) || 0;
     let stockStatus = 'In Stock';
-    if (data.productId) {
+
+    if (itemsList.length > 0) {
+      if (!subtotal) {
+        subtotal = itemsList.reduce((acc, it) => acc + (Number(it.qty || 1) * Number(it.unitPrice || 0)), 0);
+      }
+
+      // Check stock availability across items
+      for (const item of itemsList) {
+        const pId = item.productId || item.inventoryId;
+        if (pId) {
+          const [inv]: any = await db.query('SELECT quantity, name FROM inventory WHERE id = ?', [pId]);
+          if (inv.length > 0) {
+            const available = Number(inv[0].quantity || 0);
+            const ordered = Number(item.qty || 1);
+            if (available < ordered) {
+              stockStatus = `Shortage (${inv[0].name}: ${ordered - available} req)`;
+              break;
+            }
+          }
+        }
+      }
+    } else if (data.productId) {
       const [inv]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [data.productId]);
       if (inv.length > 0) {
         const available = Number(inv[0].quantity || 0);
@@ -2753,25 +2790,50 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       }
     }
 
+    const taxAmount = Number(data.taxAmount) || 0;
+    const totalPrice = Number(data.totalPrice) || (subtotal + taxAmount) || (Number(data.qty || 1) * Number(data.unitPrice || 0));
+    
+    // Primary product name/id
+    const primaryName = data.productName || (itemsList.length > 0 ? (itemsList[0].description || itemsList[0].productName || 'Multiple Items') : 'Finished Goods Order');
+    const primaryId = data.productId || (itemsList.length > 0 ? (itemsList[0].productId || itemsList[0].inventoryId || null) : null);
+    const primarySku = data.productSku || (itemsList.length > 0 ? (itemsList[0].productSku || itemsList[0].sku || '') : '');
+    const totalQty = itemsList.length > 0 ? itemsList.reduce((sum, i) => sum + (Number(i.qty) || 1), 0) : (Number(data.qty) || 1);
+
     const order = {
       id,
       orderNo,
-      productId: data.productId,
-      productName: data.productName,
-      productSku: data.productSku || '',
+      productId: primaryId,
+      productName: primaryName,
+      productSku: primarySku,
       customerId: data.customerId || null,
       customerName: data.customerName,
       customerPhone: data.customerPhone || null,
       customerEmail: data.customerEmail || null,
       orderDate: data.orderDate || now.slice(0, 10),
       targetDeliveryDate: data.targetDeliveryDate || null,
-      qty: Number(data.qty) || 1,
-      unitPrice: Number(data.unitPrice) || 0,
-      totalPrice: Number(data.totalPrice) || (Number(data.qty || 1) * Number(data.unitPrice || 0)),
+      qty: totalQty,
+      unitPrice: Number(data.unitPrice) || (totalQty > 0 ? (subtotal / totalQty) : 0),
+      subtotal,
+      taxAmount,
+      taxRate: Number(data.taxRate) || 0,
+      taxProfileId: data.taxProfileId || null,
+      totalPrice,
       status: data.status || 'Pending',
       stockStatus: data.stockStatus || stockStatus,
       isDispatched: data.isDispatched ? 1 : 0,
       dispatchedAt: data.dispatchedAt || null,
+      items: itemsList.length > 0 ? JSON.stringify(itemsList) : (data.items || null),
+      quoteId: data.quoteId || null,
+      quotationNo: data.quotationNo || null,
+      invoiceId: data.invoiceId || null,
+      invoiceNo: data.invoiceNo || null,
+      gatePassId: data.gatePassId || null,
+      gatePassNo: data.gatePassNo || null,
+      carrier: data.carrier || null,
+      vehicleNo: data.vehicleNo || null,
+      driverName: data.driverName || null,
+      deliveryAddress: data.deliveryAddress || null,
+      paymentTerms: data.paymentTerms || null,
       notes: data.notes || '',
       createdAt: now,
       updatedAt: now
@@ -2789,6 +2851,9 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
+    if (data.items && typeof data.items === 'object') {
+      data.items = JSON.stringify(data.items);
+    }
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('UPDATE finished_goods_orders SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
@@ -2801,6 +2866,7 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
 app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
   try {
     const { id } = req.params;
+    const dispatchDetails = req.body || {};
     const [orders]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ?', [id]);
     if (orders.length === 0) {
       return res.status(404).json({ error: 'Order not found' });
@@ -2811,34 +2877,133 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
     }
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const dispatchQty = Number(order.qty) || 1;
 
-    const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [order.productId]);
-    if (invRows.length > 0) {
-      const currentQty = Number(invRows[0].quantity || 0);
-      const newQty = currentQty - dispatchQty;
-      await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, order.productId]);
+    // 1. Auto-generate Gate Pass ID (GP-XXXX)
+    const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM gate_passes');
+    const nextNum = (countResult[0]?.c || 0) + 1;
+    const gpId = 'GP-' + nextNum.toString().padStart(4, '0');
 
-      const ledgerEntry = {
-        id: 'LGR-' + Date.now().toString().slice(-5),
-        inventoryId: order.productId,
-        date: now,
-        type: 'OUT',
-        qty: dispatchQty,
-        reference: order.orderNo,
-        notes: `Dispatched Order ${order.orderNo} for ${order.customerName}`
-      };
-      await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+    // Parse items to deduce dispatch stock and prepare gate pass items
+    let parsedItems: any[] = [];
+    if (order.items) {
+      try {
+        parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      } catch (e) {
+        parsedItems = [];
+      }
     }
 
-    await db.query('UPDATE finished_goods_orders SET status = ?, isDispatched = 1, dispatchedAt = ?, updatedAt = ? WHERE id = ?', [
-      'Dispatched',
-      now,
-      now,
-      id
-    ]);
+    const gatePassItemsList = parsedItems.length > 0
+      ? parsedItems.map(it => ({
+          description: it.description || it.productName || order.productName,
+          qty: Number(it.qty) || 1,
+          unit: it.uom || 'Nos',
+          remarks: it.remarks || `Order ${order.orderNo}`
+        }))
+      : [{
+          description: order.productName || 'Finished Goods',
+          qty: Number(order.qty) || 1,
+          unit: 'Nos',
+          remarks: `Order ${order.orderNo}`
+        }];
 
-    res.json({ success: true, message: 'Order dispatched and stock updated successfully' });
+    // 2. Insert Gate Pass
+    const gatePassData = {
+      id: gpId,
+      type: 'goods_delivery',
+      orderId: order.id,
+      orderNo: order.orderNo,
+      quoteId: order.quoteId || null,
+      quoNo: order.quotationNo || null,
+      customerId: order.customerId || null,
+      customerName: order.customerName,
+      customerCompany: order.customerName,
+      attention: dispatchDetails.attention || order.customerName,
+      address: dispatchDetails.destination || order.deliveryAddress || null,
+      phone: order.customerPhone || null,
+      email: order.customerEmail || null,
+      carrier: dispatchDetails.carrier || order.carrier || 'REX Transport',
+      vehicleNo: dispatchDetails.vehicleNo || order.vehicleNo || 'N/A',
+      driverName: dispatchDetails.driverName || order.driverName || null,
+      reason: dispatchDetails.reason || `Finished Goods Delivery for Order ${order.orderNo}`,
+      items: JSON.stringify(gatePassItemsList),
+      issuedBy: dispatchDetails.issuedBy || 'Store Keeper',
+      issuedDate: now,
+      status: 'Dispatched',
+      notes: dispatchDetails.notes || order.notes || '',
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await db.query('INSERT INTO gate_passes SET ?', gatePassData);
+
+    // 3. Deduct stock for all items
+    if (parsedItems.length > 0) {
+      for (const it of parsedItems) {
+        const prodId = it.productId || it.inventoryId;
+        const itQty = Number(it.qty) || 1;
+        if (prodId) {
+          const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [prodId]);
+          if (invRows.length > 0) {
+            const currentQty = Number(invRows[0].quantity || 0);
+            const newQty = currentQty - itQty;
+            await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, prodId]);
+
+            const ledgerEntry = {
+              id: 'LGR-' + Date.now().toString().slice(-5) + '-' + Math.floor(Math.random() * 1000),
+              inventoryId: prodId,
+              date: now,
+              type: 'OUT',
+              qty: itQty,
+              reference: `${order.orderNo} / ${gpId}`,
+              notes: `Dispatched Order ${order.orderNo} to ${order.customerName} via Gate Pass ${gpId}`
+            };
+            await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+          }
+        }
+      }
+    } else if (order.productId) {
+      const dispatchQty = Number(order.qty) || 1;
+      const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [order.productId]);
+      if (invRows.length > 0) {
+        const currentQty = Number(invRows[0].quantity || 0);
+        const newQty = currentQty - dispatchQty;
+        await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, order.productId]);
+
+        const ledgerEntry = {
+          id: 'LGR-' + Date.now().toString().slice(-5),
+          inventoryId: order.productId,
+          date: now,
+          type: 'OUT',
+          qty: dispatchQty,
+          reference: `${order.orderNo} / ${gpId}`,
+          notes: `Dispatched Order ${order.orderNo} for ${order.customerName} via Gate Pass ${gpId}`
+        };
+        await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+      }
+    }
+
+    // 4. Update Sales Order
+    const updateOrder = {
+      status: 'Dispatched',
+      isDispatched: 1,
+      dispatchedAt: now,
+      gatePassId: gpId,
+      gatePassNo: gpId,
+      carrier: dispatchDetails.carrier || order.carrier || 'REX Transport',
+      vehicleNo: dispatchDetails.vehicleNo || order.vehicleNo || 'N/A',
+      driverName: dispatchDetails.driverName || order.driverName || null,
+      updatedAt: now
+    };
+
+    await db.query('UPDATE finished_goods_orders SET ? WHERE id = ?', [updateOrder, id]);
+
+    res.json({
+      success: true,
+      message: `Order dispatched successfully with Gate Pass ${gpId}!`,
+      gatePassId: gpId,
+      gatePass: gatePassData
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });

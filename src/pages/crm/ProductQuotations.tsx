@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { deleteQuotation, updateQuotationStatus, createInvoice } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder } from '@/lib/api'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 
@@ -202,6 +202,66 @@ export const ProductQuotations: React.FC = () => {
       toast(`Invoice generated successfully! View in Invoices module.`, 'success');
     } catch (e: any) {
       toast(e?.message || 'Failed to create invoice', 'error');
+    }
+  };
+
+  // Create Sales Order from Approved Product Quotation
+  const handleCreateSalesOrder = async (group: any, latest: any) => {
+    const ok = await showConfirm(
+      'Create Sales Order',
+      `Generate official Sales Order for Quotation ${group.quoNo}?`
+    );
+    if (!ok) return;
+
+    try {
+      const parsed = latest.parsed || {};
+      const rawItems = parsed.custItems || [];
+      const itemsList = rawItems.map((ci: any) => ({
+        productId: ci.productId || ci.inventoryId || null,
+        productName: ci.name || ci.description || 'Finished Product',
+        productSku: ci.sku || '',
+        description: ci.description || ci.name || '',
+        qty: Number(ci.qty) || 1,
+        unitPrice: Number(ci.unitPrice) || 0,
+        amount: Number(ci.amount) || ((Number(ci.qty) || 1) * Number(ci.unitPrice || 0)),
+        uom: ci.uom || 'Nos'
+      }));
+
+      const subtotal = Number(parsed.custTotals?.subtotal) || itemsList.reduce((acc: number, it: any) => acc + it.amount, 0);
+      const total = Number(latest.totalAmount) || Number(parsed.custTotals?.total) || subtotal;
+      const taxAmount = total - subtotal > 0 ? (total - subtotal) : 0;
+
+      const cust = customers.find((c: any) => c.id === group.leadId);
+      const lead = leads.find((l: any) => l.id === group.leadId);
+      const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
+
+      const soPayload = {
+        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        quoteId: latest.id,
+        quotationNo: group.quoNo,
+        customerId: custId,
+        customerName: group.clientName || group.clientCompany || 'Customer',
+        customerPhone: group.clientPhone || '',
+        customerEmail: group.clientEmail || '',
+        deliveryAddress: group.clientAddress || parsed.deliveryAddress || '',
+        paymentTerms: parsed.custTerms || parsed.paymentTerms || 'Standard Terms',
+        orderDate: new Date().toISOString().slice(0, 10),
+        targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        items: itemsList,
+        subtotal,
+        taxAmount,
+        totalPrice: total,
+        status: 'Confirmed',
+        notes: `Commercial Sales Order generated from Approved Product Quotation ${group.quoNo}`
+      };
+
+      const res = await createFinishedGoodsOrder(soPayload);
+      if (res && res.error) throw new Error(res.error);
+
+      toast(`Sales Order ${soPayload.orderNo} created successfully!`, 'success');
+      navigate('/crm/sales-orders');
+    } catch (e: any) {
+      toast(e?.message || 'Failed to create sales order', 'error');
     }
   };
 
@@ -421,18 +481,30 @@ export const ProductQuotations: React.FC = () => {
                       Email
                     </Button>
 
-                    {/* Invoice */}
+                    {/* Sales Order & Invoice */}
                     {status === 'Approved' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={Banknote}
-                        onClick={() => handleCreateInvoice(group, latest)}
-                        className="h-8 text-xs border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 font-bold"
-                        title="Generate Invoice from Approved Quote"
-                      >
-                        Invoice
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={ShoppingBag}
+                          onClick={() => handleCreateSalesOrder(group, latest)}
+                          className="h-8 text-xs border border-blue-500/40 text-blue-600 hover:bg-blue-500/10 font-bold"
+                          title="Generate Sales Order from Approved Quote"
+                        >
+                          Sales Order
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Banknote}
+                          onClick={() => handleCreateInvoice(group, latest)}
+                          className="h-8 text-xs border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 font-bold"
+                          title="Generate Invoice from Approved Quote"
+                        >
+                          Invoice
+                        </Button>
+                      </>
                     )}
 
                     {/* Status Select for authorized */}

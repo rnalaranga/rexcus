@@ -7,6 +7,7 @@ import { CustomerDetail } from '@/pages/crm/CustomerDetail'
 import { Leads } from '@/pages/crm/Leads'
 import { Quotations } from '@/pages/crm/Quotations'
 import { ProductQuotations } from '@/pages/crm/ProductQuotations'
+import { SalesOrdersHub } from '@/pages/crm/SalesOrdersHub'
 import { Deals } from '@/pages/crm/Deals'
 import { Contacts } from '@/pages/crm/Contacts'
 import { QuotationBuilder } from '@/pages/crm/QuotationBuilder'
@@ -94,6 +95,7 @@ function AppRoutes() {
           <Route path="/crm/quotations/new/:leadId?" element={<QuotationBuilder />} />
           <Route path="/crm/product-quotations" element={<ProductQuotations />} />
           <Route path="/crm/product-quotations/new/:leadId?" element={<ProductQuotationBuilder />} />
+          <Route path="/crm/sales-orders" element={<SalesOrdersHub />} />
 
           {/* Direct Navigation & CRM Aliases */}
           <Route path="/customers" element={<Navigate to="/crm/customers" replace />} />
@@ -103,6 +105,7 @@ function AppRoutes() {
           <Route path="/deals" element={<Navigate to="/crm/deals" replace />} />
           <Route path="/quotations" element={<Navigate to="/crm/quotations" replace />} />
           <Route path="/product-quotations" element={<Navigate to="/crm/product-quotations" replace />} />
+          <Route path="/sales-orders" element={<Navigate to="/crm/sales-orders" replace />} />
 
           {/* Inventory & Purchasing */}
           <Route path="/inventory" element={<Inventory />} />

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -34,6 +34,7 @@ const navGroups: NavGroup[] = [
       { label: 'Leads',      path: '/crm/leads',      icon: TrendingUp,      permission: 'crm.leads.manage' },
       { label: 'Quotations', path: '/crm/quotations', icon: FileText,        permission: 'quotations.view' },
       { label: 'Product Quotations', path: '/crm/product-quotations', icon: PackageCheck, permission: 'quotations.view' },
+      { label: 'Sales Orders', path: '/crm/sales-orders', icon: ShoppingBag, permission: 'crm.customers.view' },
       { label: 'Deals',      path: '/crm/deals',      icon: Briefcase,       permission: 'crm.deals.manage' },
       { label: 'Contacts',   path: '/crm/contacts',   icon: Contact2,        permission: 'crm.customers.view' },
       { label: 'Follow-ups', path: '/crm/followups',  icon: Bell,            permission: 'crm.followups.manage' },

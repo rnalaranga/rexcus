@@ -302,9 +302,11 @@ export const updateFinishedGoodsOrder = async (id: string, data: any) => {
   return res.json();
 };
 
-export const dispatchFinishedGoodsOrder = async (id: string) => {
+export const dispatchFinishedGoodsOrder = async (id: string, dispatchDetails?: any) => {
   const res = await fetch(`${API_URL}/finished-goods-orders/${id}/dispatch`, {
-    method: 'POST'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dispatchDetails || {})
   });
   return res.json();
 };

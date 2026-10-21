@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
@@ -70,6 +70,85 @@ export const InvoiceBuilder: React.FC = () => {
   const [termsPresets, setTermsPresets] = useState<QuotationTermsPreset[]>(DEFAULT_TERMS_PRESETS);
   const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
   const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
+
+  const [searchParams] = useSearchParams();
+  const paramOrderId = searchParams.get('orderId');
+  const paramQuoteId = searchParams.get('quoteId');
+
+  useEffect(() => {
+    if (!paramOrderId && !paramQuoteId) return;
+
+    const loadSourceData = async () => {
+      try {
+        if (paramOrderId) {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders`);
+          const orders = await res.json();
+          const ord = orders.find((o: any) => String(o.id) === String(paramOrderId) || String(o.orderNo) === String(paramOrderId));
+          if (ord) {
+            if (ord.customerId) setCustomerId(ord.customerId);
+            if (ord.orderNo) setOrderNo(ord.orderNo);
+            if (ord.quotationNo) setQuotationNo(ord.quotationNo);
+            if (ord.gatePassNo) setDispatchNo(ord.gatePassNo);
+            if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
+            if (ord.paymentTerms) setNotes(ord.paymentTerms);
+
+            let parsedItems: any[] = [];
+            if (ord.items) {
+              try {
+                parsedItems = typeof ord.items === 'string' ? JSON.parse(ord.items) : ord.items;
+              } catch (e) {}
+            }
+            if (parsedItems.length > 0) {
+              setItems(parsedItems.map((it: any) => ({
+                id: crypto.randomUUID(),
+                inventoryId: it.productId || it.inventoryId || '',
+                description: it.description || it.productName || ord.productName || 'Order Item',
+                qty: Number(it.qty) || 1,
+                unitPrice: Number(it.unitPrice) || 0,
+                taxRateId: ''
+              })));
+            } else if (ord.productName) {
+              setItems([{
+                id: crypto.randomUUID(),
+                inventoryId: ord.productId || '',
+                description: ord.productName,
+                qty: Number(ord.qty) || 1,
+                unitPrice: Number(ord.unitPrice) || 0,
+                taxRateId: ''
+              }]);
+            }
+            toast(`Loaded items from Sales Order ${ord.orderNo}!`, 'success');
+          }
+        } else if (paramQuoteId) {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${paramQuoteId}`);
+          const q = await res.json();
+          if (q) {
+            const parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
+            if (q.leadId || parsed.leadId) setCustomerId(q.leadId || parsed.leadId);
+            if (q.quoNo || q.docNo || parsed.quotationNo) setQuotationNo(q.quoNo || q.docNo || parsed.quotationNo);
+            if (parsed.custTerms || parsed.paymentTerms) setNotes(parsed.custTerms || parsed.paymentTerms);
+
+            const qItems = parsed.custItems || parsed.items || [];
+            if (qItems.length > 0) {
+              setItems(qItems.map((it: any) => ({
+                id: crypto.randomUUID(),
+                inventoryId: it.productId || it.inventoryId || '',
+                description: it.description || it.name || 'Quotation Item',
+                qty: Number(it.qty) || 1,
+                unitPrice: Number(it.unitPrice) || 0,
+                taxRateId: ''
+              })));
+            }
+            toast(`Loaded items from Quotation ${q.quoNo || q.id}!`, 'success');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to pre-fill invoice:', e);
+      }
+    };
+
+    loadSourceData();
+  }, [paramOrderId, paramQuoteId]);
 
   const selectedCustomer = customers.find(c => c.id === customerId);
   const selectedBank = bankDetailId === 'none' ? null : (bankAccounts.find(b => b.id === bankDetailId) || null);
@@ -271,6 +350,20 @@ export const InvoiceBuilder: React.FC = () => {
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null)
       });
       if ((res as any).error) throw new Error((res as any).error);
+
+      // If created from a sales order, link invoice details back to the order
+      if (paramOrderId) {
+        try {
+          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${paramOrderId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invoiceId: cleanDocNo, invoiceNo: cleanDocNo })
+          });
+        } catch (linkErr) {
+          console.error('Failed to update sales order with invoice link:', linkErr);
+        }
+      }
+
       toast('Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
     } catch (e: any) { showError(e.message || 'Failed to post invoice.'); }

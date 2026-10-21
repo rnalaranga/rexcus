@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { 
   ShoppingCart, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
-  Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, X
+  Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, X,
+  Printer, Eye, FileText, Shield, Download, ExternalLink, Hash
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -11,6 +13,12 @@ import { Modal } from '@/components/ui/Modal'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads } from '@/hooks/useData'
+import { useSettings } from '@/contexts/SettingsContext'
+import { useDialog } from '@/components/ui/DialogProvider'
+import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView'
+import { GatePassPrintView } from '@/components/GatePassPrintView'
+// @ts-ignore
+import html2pdf from 'html2pdf.js'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -27,6 +35,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   onRefreshProducts,
   onOpenProductBOM
 }) => {
+  const navigate = useNavigate()
+  const { toast } = useDialog()
+  const { settings } = useSettings()
   const { data: orders, loading, refetch } = useFinishedGoodsOrders()
   const { data: inventory, refetch: refetchInventory } = useInventory()
   const { data: customers = [] } = useCustomers()
@@ -38,7 +49,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
-  const [dispatchConfirm, setDispatchConfirm] = useState<any | null>(null)
+  
+  // Modals for PDF / Print & Dispatch Gate Pass
+  const [printOrder, setPrintOrder] = useState<any | null>(null)
+  const [printGatePass, setPrintGatePass] = useState<any | null>(null)
+  const [dispatchModalOrder, setDispatchModalOrder] = useState<any | null>(null)
+  const [dispatchForm, setDispatchForm] = useState({
+    carrier: 'REX Transport',
+    vehicleNo: '',
+    driverName: '',
+    destination: '',
+    reason: '',
+    notes: ''
+  })
 
   // Filter only ready-made finished products from inventory
   const finishedProducts = useMemo(() => {
@@ -164,19 +187,55 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
-  const handleConfirmDispatch = async () => {
-    if (!dispatchConfirm) return
+  const handleOpenDispatchModal = (order: any) => {
+    setDispatchModalOrder(order)
+    setDispatchForm({
+      carrier: order.carrier || 'REX Transport',
+      vehicleNo: order.vehicleNo || '',
+      driverName: order.driverName || '',
+      destination: order.deliveryAddress || '',
+      reason: `Finished Goods Delivery for Order ${order.orderNo}`,
+      notes: order.notes || ''
+    })
+  }
+
+  const handleConfirmDispatch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!dispatchModalOrder) return
     setSubmitting(true)
     try {
-      await dispatchFinishedGoodsOrder(dispatchConfirm.id)
+      const res = await dispatchFinishedGoodsOrder(dispatchModalOrder.id, dispatchForm)
+      if (res && res.error) throw new Error(res.error)
+
+      toast(`Order ${dispatchModalOrder.orderNo} dispatched! Gate Pass ${res.gatePassId || ''} created.`, 'success')
       refetch()
       refetchInventory()
       if (onRefreshProducts) onRefreshProducts()
-      setDispatchConfirm(null)
-    } catch (err) {
-      console.error(err)
+
+      if (res.gatePass) {
+        setPrintGatePass(res.gatePass)
+      }
+      setDispatchModalOrder(null)
+    } catch (err: any) {
+      toast(err?.message || 'Failed to dispatch order', 'error')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleViewGatePass = async (order: any) => {
+    const gpId = order.gatePassId || order.gatePassNo
+    if (!gpId) {
+      toast('No Gate Pass record found for this order', 'warning')
+      return
+    }
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes/${gpId}`)
+      if (!res.ok) throw new Error('Gate Pass record not found')
+      const gp = await res.json()
+      setPrintGatePass(gp)
+    } catch (err: any) {
+      toast(err?.message || 'Failed to load Gate Pass', 'error')
     }
   }
 
@@ -326,23 +385,50 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 const inStockNow = Number(prod?.quantity || 0)
                 const isShort = inStockNow < Number(order.qty) && !order.isDispatched
 
+                // Parse items if available
+                let orderItems: any[] = []
+                if (order.items) {
+                  try {
+                    orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+                  } catch (e) {
+                    orderItems = []
+                  }
+                }
+
                 return (
                   <tr key={order.id} className="hover:bg-surface2/30 transition-colors">
-                    {/* Order No & Dates */}
+                    {/* Order No, Reference Badges & Dates */}
                     <td className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="font-mono font-bold text-primary">{order.orderNo}</span>
-                        <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono font-bold text-primary">{order.orderNo}</span>
+                          {order.quotationNo && (
+                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Linked Quotation">
+                              Ref: {order.quotationNo}
+                            </span>
+                          )}
+                          {order.gatePassNo && (
+                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20" title="Gate Pass Issued">
+                              GP: {order.gatePassNo}
+                            </span>
+                          )}
+                          {order.invoiceNo && (
+                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" title="Invoice Linked">
+                              Inv: {order.invoiceNo}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-muted flex items-center gap-1">
                           <Calendar size={10} />
                           {formatDate(order.orderDate)}
                           {order.targetDeliveryDate && (
-                            <span className="text-secondary">• Due {formatDate(order.targetDeliveryDate)}</span>
+                            <span className="text-secondary font-medium">• Due {formatDate(order.targetDeliveryDate)}</span>
                           )}
                         </div>
                       </div>
                     </td>
 
-                    {/* Product */}
+                    {/* Product & Line Items */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
@@ -352,8 +438,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             <Package size={14} />
                           )}
                         </div>
-                        <div>
-                          <span className="font-semibold text-primary">{order.productName}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-primary truncate max-w-[200px]" title={order.productName}>
+                              {order.productName || (orderItems.length > 0 ? orderItems[0].description : 'Finished Goods')}
+                            </span>
+                            {orderItems.length > 1 && (
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 border border-blue-500/30">
+                                +{orderItems.length - 1} more
+                              </span>
+                            )}
+                          </div>
                           {order.productSku && (
                             <div className="text-[10px] font-mono text-muted">{order.productSku}</div>
                           )}
@@ -388,7 +483,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     <td className="px-4 py-3 text-right">
                       <div className="flex flex-col font-mono">
                         <span className="font-bold text-primary">{formatCurrency(order.totalPrice)}</span>
-                        <span className="text-[10px] text-muted">@ {formatCurrency(order.unitPrice)}</span>
+                        {Number(order.unitPrice) > 0 && (
+                          <span className="text-[10px] text-muted">@ {formatCurrency(order.unitPrice)}</span>
+                        )}
                       </div>
                     </td>
 
@@ -427,19 +524,56 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                     {/* Actions */}
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {!order.isDispatched && order.status !== 'Dispatched' && (
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        {/* PDF / Print Action */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Printer}
+                          onClick={() => setPrintOrder(order)}
+                          className="h-7 text-xs px-2 border border-theme-subtle text-primary hover:bg-surface2"
+                          title="View / Print Sales Order PDF"
+                        >
+                          PDF
+                        </Button>
+
+                        {/* Invoice Generation Action */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={FileText}
+                          onClick={() => navigate(`/finance/invoices/new?orderId=${order.id}`)}
+                          className="h-7 text-xs px-2 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 font-medium"
+                          title="Generate Invoice from Sales Order"
+                        >
+                          Invoice
+                        </Button>
+
+                        {/* Dispatch with Gate Pass */}
+                        {!order.isDispatched && order.status !== 'Dispatched' ? (
                           <Button
                             variant="primary"
                             size="sm"
                             icon={Truck}
-                            onClick={() => setDispatchConfirm(order)}
-                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                            title="Dispatch and deduct from finished stock"
+                            onClick={() => handleOpenDispatchModal(order)}
+                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                            title="Dispatch order and issue Gate Pass"
                           >
                             Dispatch
                           </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Shield}
+                            onClick={() => handleViewGatePass(order)}
+                            className="h-7 text-xs px-2 border border-purple-500/40 text-purple-600 hover:bg-purple-500/10 font-bold"
+                            title="View / Print Gate Pass"
+                          >
+                            Gate Pass
+                          </Button>
                         )}
+
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(order)}
@@ -697,50 +831,232 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         </div>
       )}
 
-      {/* DISPATCH CONFIRMATION MODAL */}
-      {dispatchConfirm && (
+      {/* DISPATCH WITH GATE PASS MODAL */}
+      {dispatchModalOrder && (
         <Modal
           isOpen={true}
-          onClose={() => setDispatchConfirm(null)}
-          title="Confirm Finished Product Dispatch"
+          onClose={() => setDispatchModalOrder(null)}
+          title={`Dispatch Order #${dispatchModalOrder.orderNo} & Issue Gate Pass`}
         >
-          <div className="space-y-4">
-            <p className="text-sm text-secondary">
-              Are you sure you want to dispatch Order <strong className="text-primary">{dispatchConfirm.orderNo}</strong> for{' '}
-              <strong className="text-primary">{dispatchConfirm.customerName}</strong>?
-            </p>
-
-            <div className="p-4 rounded-xl bg-surface2/60 border border-theme-subtle space-y-2 text-xs">
+          <form onSubmit={handleConfirmDispatch} className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-surface2/60 border border-theme-subtle text-xs space-y-1.5">
               <div className="flex justify-between">
-                <span className="text-muted">Product:</span>
-                <span className="font-semibold text-primary">{dispatchConfirm.productName}</span>
+                <span className="text-muted">Customer:</span>
+                <span className="font-bold text-primary">{dispatchModalOrder.customerName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">Quantity to Deduct:</span>
-                <span className="font-mono font-bold text-red-500">-{dispatchConfirm.qty}</span>
+                <span className="text-muted">Product / Spec:</span>
+                <span className="font-semibold text-primary">{dispatchModalOrder.productName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Total Order Value:</span>
-                <span className="font-mono font-bold text-emerald-500">{formatCurrency(dispatchConfirm.totalPrice)}</span>
+                <span className="font-mono font-bold text-emerald-600">{formatCurrency(dispatchModalOrder.totalPrice)}</span>
+              </div>
+              {dispatchModalOrder.quotationNo && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Quotation Ref:</span>
+                  <span className="font-mono text-blue-600">{dispatchModalOrder.quotationNo}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">Carrier / Transporter</label>
+                  <select
+                    value={dispatchForm.carrier}
+                    onChange={e => setDispatchForm({ ...dispatchForm, carrier: e.target.value })}
+                    className="w-full input-base text-xs"
+                  >
+                    <option value="REX Transport">REX Transport (Internal)</option>
+                    <option value="Customer Pickup">Customer Pickup</option>
+                    <option value="Courier / Delivery Service">Courier / Delivery Service</option>
+                    <option value="Third-Party Lorry / Logistics">Third-Party Lorry / Logistics</option>
+                    <option value="Hand Delivery">Hand Delivery</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">
+                    Vehicle Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. WP CAD-4567 or Self"
+                    value={dispatchForm.vehicleNo}
+                    onChange={e => setDispatchForm({ ...dispatchForm, vehicleNo: e.target.value })}
+                    className="w-full input-base text-xs font-mono uppercase"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">Driver / Carrier Name</label>
+                  <input
+                    type="text"
+                    placeholder="Driver name / Contact"
+                    value={dispatchForm.driverName}
+                    onChange={e => setDispatchForm({ ...dispatchForm, driverName: e.target.value })}
+                    className="w-full input-base text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">Destination / Delivery Address</label>
+                  <input
+                    type="text"
+                    placeholder="Factory / site address"
+                    value={dispatchForm.destination}
+                    onChange={e => setDispatchForm({ ...dispatchForm, destination: e.target.value })}
+                    className="w-full input-base text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">Dispatch Remarks / Gate Pass Notes</label>
+                <input
+                  type="text"
+                  placeholder="Gate Pass delivery notes, batch number, or receiver instructions"
+                  value={dispatchForm.notes}
+                  onChange={e => setDispatchForm({ ...dispatchForm, notes: e.target.value })}
+                  className="w-full input-base text-xs"
+                />
               </div>
             </div>
 
-            <p className="text-xs text-muted">
-              Dispatching will immediately reduce finished stock by <strong>{dispatchConfirm.qty}</strong> and automatically log an OUT entry in the Stock Ledger.
-            </p>
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-400">
+              💡 Confirming dispatch will auto-generate an official <strong>Gate Pass (GP-XXXX)</strong>, mark order as <strong>Dispatched</strong>, and deduct stock with an OUT entry in the Stock Ledger.
+            </div>
 
-            <div className="flex justify-end gap-3 pt-3">
-              <Button variant="ghost" onClick={() => setDispatchConfirm(null)}>
+            <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
+              <Button variant="ghost" type="button" onClick={() => setDispatchModalOrder(null)}>
                 Cancel
               </Button>
               <Button
                 variant="primary"
-                onClick={handleConfirmDispatch}
+                type="submit"
                 disabled={submitting}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
               >
-                {submitting ? 'Dispatching...' : 'Confirm Dispatch & Deduct Stock'}
+                {submitting ? 'Processing Dispatch...' : 'Confirm Dispatch & Generate Gate Pass'}
               </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* SALES ORDER PRINT & PDF VIEW MODAL */}
+      {printOrder && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPrintOrder(null)}
+          title={`Sales Order Document #${printOrder.orderNo}`}
+          size="4xl"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-theme-subtle">
+              <div className="text-xs text-muted">
+                Official commercial order confirmation for <strong className="text-primary">{printOrder.customerName}</strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={Download}
+                  onClick={() => {
+                    const el = document.getElementById('sales-order-print-section');
+                    if (!el) return;
+                    const opt: any = {
+                      margin: 0,
+                      filename: `Sales_Order_${printOrder.orderNo}.pdf`,
+                      image: { type: 'jpeg', quality: 0.98 },
+                      html2canvas: { scale: 2, useCORS: true },
+                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+                    html2pdf().set(opt).from(el).save();
+                  }}
+                  className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => window.print()}
+                  className="text-xs"
+                >
+                  Print Order
+                </Button>
+              </div>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 rounded-xl flex justify-center">
+              <SalesOrderPrintView 
+                order={printOrder} 
+                customer={customers.find(c => c.id === printOrder.customerId) || leads.find(l => l.id === printOrder.customerId)}
+                settings={settings} 
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* GATE PASS PRINT & VIEW MODAL */}
+      {printGatePass && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPrintGatePass(null)}
+          title={`Gate Pass Document #${printGatePass.id}`}
+          size="4xl"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-theme-subtle">
+              <div className="text-xs text-muted">
+                Official Security & Dispatch Gate Pass for <strong className="text-primary">{printGatePass.customerName || printGatePass.customerCompany}</strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={Download}
+                  onClick={() => {
+                    const el = document.getElementById('gatepass-print-section');
+                    if (!el) return;
+                    const opt: any = {
+                      margin: 0,
+                      filename: `Gate_Pass_${printGatePass.id}.pdf`,
+                      image: { type: 'jpeg', quality: 0.98 },
+                      html2canvas: { scale: 2, useCORS: true },
+                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+                    html2pdf().set(opt).from(el).save();
+                  }}
+                  className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => window.print()}
+                  className="text-xs"
+                >
+                  Print Gate Pass
+                </Button>
+              </div>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 rounded-xl flex justify-center">
+              <GatePassPrintView 
+                gatePass={printGatePass} 
+                settings={settings} 
+              />
             </div>
           </div>
         </Modal>

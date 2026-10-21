@@ -80,7 +80,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
 
         {/* Title Bar */}
         <div className="bg-gray-100 border-b border-black text-center py-2.5 font-bold text-[16px] uppercase tracking-wider">
-          SAMPLE GATE PASS (OUTWARD)
+          {gatePass.type === 'goods_delivery' || gatePass.type === 'sales_delivery' ? 'GATE PASS (GOODS DISPATCH & DELIVERY)' : 'SAMPLE GATE PASS (OUTWARD)'}
         </div>
 
         {/* Details Section */}
@@ -111,21 +111,37 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   <td className="font-bold pb-1.5">Dated</td>
                   <td className="pb-1.5">: {formatDate(gatePass.issuedDate || gatePass.createdAt)}</td>
                 </tr>
-                <tr>
-                  <td className="font-bold pb-1.5">Quotation Ref</td>
-                  <td className="pb-1.5 font-semibold text-blue-900">: {gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo || 'N/A'}</td>
-                </tr>
-                <tr>
-                  <td className="font-bold pb-1.5">Sample GRN Ref</td>
-                  <td className="pb-1.5 font-mono">: {gatePass.grnId || 'N/A'}</td>
-                </tr>
+                {gatePass.orderNo && (
+                  <tr>
+                    <td className="font-bold pb-1.5">Sales Order Ref</td>
+                    <td className="pb-1.5 font-mono font-bold text-blue-900">: {gatePass.orderNo}</td>
+                  </tr>
+                )}
+                {(gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo) && (
+                  <tr>
+                    <td className="font-bold pb-1.5">Quotation Ref</td>
+                    <td className="pb-1.5 font-semibold text-blue-900">: {gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo}</td>
+                  </tr>
+                )}
+                {gatePass.grnId && (
+                  <tr>
+                    <td className="font-bold pb-1.5">Sample GRN Ref</td>
+                    <td className="pb-1.5 font-mono">: {gatePass.grnId}</td>
+                  </tr>
+                )}
                 <tr>
                   <td className="font-bold pb-1.5">Carrier / Vehicle</td>
                   <td className="pb-1.5">: {gatePass.carrier || 'Hand Delivery'} {gatePass.vehicleNo ? `(${gatePass.vehicleNo})` : ''}</td>
                 </tr>
+                {gatePass.driverName && (
+                  <tr>
+                    <td className="font-bold pb-1.5">Driver / Contact</td>
+                    <td className="pb-1.5">: {gatePass.driverName}</td>
+                  </tr>
+                )}
                 <tr>
                   <td className="font-bold">Purpose / Reason</td>
-                  <td>: {gatePass.reason || 'Customer Sample Return'}</td>
+                  <td>: {gatePass.reason || 'Goods Delivery / Dispatch'}</td>
                 </tr>
               </tbody>
             </table>

@@ -17,8 +17,8 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
-import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders } from '@/lib/api'
-import { Banknote, Mail } from 'lucide-react'
+import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder } from '@/lib/api'
+import { Banknote, Mail, ShoppingBag } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 
 
@@ -271,6 +271,78 @@ export const Quotations: React.FC = () => {
     } catch (e) {
       toast('Failed to generate payment request.', 'error');
       console.error(e);
+    }
+  };
+
+  const handleCreateSalesOrder = async (group: any, latestMain: any) => {
+    const ok = await showConfirm(
+      'Create Sales Order',
+      `Generate official Sales Order for Quotation ${group.quoNo}?`
+    );
+    if (!ok) return;
+
+    try {
+      const quoteData = typeof latestMain.data === 'string' ? JSON.parse(latestMain.data) : (latestMain.data || {});
+      const rawItems = quoteData.custItems || quoteData.items || [];
+      const itemsList = rawItems.map((ci: any) => ({
+        productId: ci.productId || ci.inventoryId || null,
+        productName: ci.desc || ci.description || ci.name || 'Quoted Item',
+        productSku: ci.sku || '',
+        description: ci.desc || ci.description || ci.name || '',
+        qty: Number(ci.qty) || 1,
+        unitPrice: Number(ci.unitPrice) || 0,
+        amount: Number(ci.amount) || ((Number(ci.qty) || 1) * Number(ci.unitPrice || 0)),
+        uom: ci.uom || ci.unit || 'Nos'
+      }));
+
+      // Fallback if no items extracted
+      if (itemsList.length === 0) {
+        itemsList.push({
+          productId: null,
+          productName: quoteData.subject || `Quotation ${group.quoNo} Job`,
+          description: quoteData.subject || `Quotation ${group.quoNo} Machining / Production`,
+          qty: 1,
+          unitPrice: Number(latestMain.totalAmount || 0),
+          amount: Number(latestMain.totalAmount || 0),
+          uom: 'Lot'
+        });
+      }
+
+      const subtotal = Number(quoteData.custTotals?.subtotal) || itemsList.reduce((acc: number, it: any) => acc + it.amount, 0);
+      const total = Number(latestMain.totalAmount) || Number(quoteData.custTotals?.total) || subtotal;
+      const taxAmount = total - subtotal > 0 ? (total - subtotal) : 0;
+
+      const cust = customers.find((c: any) => c.id === group.leadId);
+      const lead = leads.find((l: any) => l.id === group.leadId);
+      const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
+
+      const soPayload = {
+        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        quoteId: latestMain.id,
+        quotationNo: group.quoNo,
+        customerId: custId,
+        customerName: group.leadCompany || group.leadName || 'Customer',
+        customerPhone: group.leadPhone || '',
+        customerEmail: group.leadEmail || '',
+        deliveryAddress: group.leadAddress || quoteData.customerAddress || '',
+        paymentTerms: quoteData.custTerms || quoteData.terms || 'Standard Terms',
+        orderDate: new Date().toISOString().slice(0, 10),
+        targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        items: itemsList,
+        subtotal,
+        taxAmount,
+        totalPrice: total,
+        status: 'Confirmed',
+        notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
+      };
+
+      const res = await createFinishedGoodsOrder(soPayload);
+      if (res && res.error) throw new Error(res.error);
+
+      toast(`Sales Order ${soPayload.orderNo} created successfully!`, 'success');
+      navigate('/crm/sales-orders');
+    } catch (e: any) {
+      toast(e?.message || 'Failed to create sales order', 'error');
     }
   };
 
@@ -781,14 +853,24 @@ export const Quotations: React.FC = () => {
                                    </Button>
                                 )}
                                 <Button 
-                                variant="primary" 
-                                size="sm" 
-                                icon={Banknote} 
-                                className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-500 text-white border-none font-bold"
-                                onClick={() => handlePaymentRequest(group, latestMain)}
-                              >
-                                Request Advance
-                              </Button>
+                                  variant="primary" 
+                                  size="sm" 
+                                  icon={ShoppingBag} 
+                                  className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-500 text-white border-none font-bold"
+                                  onClick={() => handleCreateSalesOrder(group, latestMain)}
+                                  title="Create Official Sales Order"
+                                >
+                                  Sales Order
+                                </Button>
+                                <Button 
+                                  variant="primary" 
+                                  size="sm" 
+                                  icon={Banknote} 
+                                  className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold"
+                                  onClick={() => handlePaymentRequest(group, latestMain)}
+                                >
+                                  Request Advance
+                                </Button>
                               {(() => {
                                 const existingWO = getExistingWO(group, latestMain);
                                 if (existingWO || latestMain.status === 'In Production') {
