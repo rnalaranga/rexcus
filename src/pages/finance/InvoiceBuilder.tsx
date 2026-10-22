@@ -1440,7 +1440,8 @@ export const InvoiceBuilder: React.FC = () => {
         settings={company}
         onSuccess={(receipt) => {
           refreshAdvanceReceipts();
-          toast(`Official Advance Payment Receipt ${receipt.receiptNo || ''} created & credited!`, 'success');
+          const unboxed = receipt?.receipt || receipt;
+          toast(`Official Advance Payment Receipt ${unboxed?.receiptNo || ''} created & credited!`, 'success');
         }}
       />
     </div>

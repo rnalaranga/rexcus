@@ -61,11 +61,17 @@ export const ProductQuotations: React.FC = () => {
 
   const getQuoteReceipts = (group: any, latest: any) => {
     if (!latest) return [];
-    const qNo = group.quoNo || latest.quotationNo || latest.docNo;
-    return paymentReceiptsList.filter((r: any) => 
-      (r.quotationId && String(r.quotationId) === String(latest.id)) ||
-      (qNo && r.quotationNo && r.quotationNo.trim() === qNo.trim())
-    );
+    const qNo = String(group.quoNo || latest.quotationNo || latest.docNo || '').trim().toLowerCase();
+    const qId = String(latest.id || '').trim();
+
+    return paymentReceiptsList.filter((r: any) => {
+      const rQuoteId = String(r.quoteId || r.quotationId || '').trim();
+      const rQuoNo = String(r.quotationNo || '').trim().toLowerCase();
+      return (
+        (qId && rQuoteId && rQuoteId === qId) ||
+        (qNo && rQuoNo && rQuoNo === qNo)
+      );
+    });
   };
 
   const handleOpenReceiptModal = (group: any, latest: any) => {
@@ -670,9 +676,11 @@ export const ProductQuotations: React.FC = () => {
         settings={settings}
         onSuccess={(receipt) => {
           loadPaymentReceipts();
+          const unboxed = receipt?.receipt || receipt;
           setActivePrintReceipt({
-            ...receipt,
-            totalQuoted: Number(selectedQuoteForReceipt?.totalAmount || selectedQuoteForReceipt?.customAmount || 0)
+            ...unboxed,
+            quotationNo: selectedQuoteForReceipt?.quotationNo || unboxed?.quotationNo,
+            totalQuoted: Number(selectedQuoteForReceipt?.totalAmount || selectedQuoteForReceipt?.customAmount || unboxed?.totalQuoted || 0)
           });
           setPrintReceiptModalOpen(true);
         }}

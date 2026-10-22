@@ -1067,7 +1067,27 @@ async function runDatabaseSync() {
     "ALTER TABLE gate_passes ADD COLUMN issuedDate DATETIME DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN status VARCHAR(50) DEFAULT 'Dispatched'",
     "ALTER TABLE gate_passes ADD COLUMN items LONGTEXT DEFAULT NULL",
-    "ALTER TABLE gate_passes ADD COLUMN updatedAt DATETIME DEFAULT NULL"
+    "ALTER TABLE gate_passes ADD COLUMN updatedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN quoteId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN orderId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN orderNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN totalQuotedAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE payment_receipts ADD COLUMN amount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE payment_receipts ADD COLUMN balanceDue DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE payment_receipts ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Cash'",
+    "ALTER TABLE payment_receipts ADD COLUMN accountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN accountName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN reference VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN receivedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN notes TEXT DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN status VARCHAR(50) DEFAULT 'Received'",
+    "ALTER TABLE payment_receipts ADD COLUMN journalEntryId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN createdAt DATETIME DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN updatedAt DATETIME DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -5447,22 +5467,31 @@ app.get('/api/finance/payment-receipts', async (req, res) => {
     let query = 'SELECT * FROM payment_receipts WHERE 1=1';
     const params: any[] = [];
 
+    const idFilters: string[] = [];
+    const idParams: any[] = [];
+
     if (quoteId) {
-      query += ' AND (quoteId = ? OR quotationNo = ?)';
-      params.push(quoteId, quoteId);
+      idFilters.push('(quoteId = ? OR quotationNo = ?)');
+      idParams.push(quoteId, quoteId);
     }
-    if (quotationNo) {
-      query += ' AND (quotationNo = ? OR quoteId = ?)';
-      params.push(quotationNo, quotationNo);
+    if (quotationNo && quotationNo !== quoteId) {
+      idFilters.push('(quotationNo = ? OR quoteId = ?)');
+      idParams.push(quotationNo, quotationNo);
     }
     if (orderId) {
-      query += ' AND (orderId = ? OR orderNo = ?)';
-      params.push(orderId, orderId);
+      idFilters.push('(orderId = ? OR orderNo = ?)');
+      idParams.push(orderId, orderId);
     }
-    if (orderNo) {
-      query += ' AND (orderNo = ? OR orderId = ?)';
-      params.push(orderNo, orderNo);
+    if (orderNo && orderNo !== orderId) {
+      idFilters.push('(orderNo = ? OR orderId = ?)');
+      idParams.push(orderNo, orderNo);
     }
+
+    if (idFilters.length > 0) {
+      query += ` AND (${idFilters.join(' OR ')})`;
+      params.push(...idParams);
+    }
+
     if (customerId) {
       query += ' AND customerId = ?';
       params.push(customerId);
@@ -5512,94 +5541,104 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       : nowIso;
 
     // Resolve Deposit Account (Cash / Bank)
-    let depositAccountId = data.accountId || null;
-    let depositAccountName = data.accountName || '';
+    let depositAccountId = data.accountId || data.depositAccountId || null;
+    let depositAccountName = data.accountName || data.depositAccountName || '';
     if (depositAccountId) {
-      const [acc]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [depositAccountId]);
-      if (acc && acc.length > 0) {
-        depositAccountId = acc[0].id;
-        depositAccountName = acc[0].name;
-      }
+      try {
+        const [acc]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [depositAccountId]);
+        if (acc && acc.length > 0) {
+          depositAccountId = acc[0].id;
+          depositAccountName = acc[0].name;
+        }
+      } catch (e) {}
     }
     if (!depositAccountId) {
       const isBank = (data.paymentMethod || '').toLowerCase().includes('bank') || (data.paymentMethod || '').toLowerCase().includes('cheque') || (data.paymentMethod || '').toLowerCase().includes('card');
       const searchSubtype = isBank ? 'Bank' : 'Cash';
-      const [found]: any = await conn.query(
-        'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" ORDER BY CASE WHEN subtype = ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END LIMIT 1',
-        [searchSubtype, `%${searchSubtype}%`, searchSubtype, `%${searchSubtype}%`]
-      );
-      if (found && found.length > 0) {
-        depositAccountId = found[0].id;
-        depositAccountName = found[0].name;
-      } else {
-        depositAccountId = isBank ? 'acc_1050' : 'acc_1000';
-        depositAccountName = isBank ? 'Bank Account' : 'Cash and Equivalents';
-        await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, ?, ?, "Asset", ?, 0, NOW())', [
-          depositAccountId, isBank ? '1050' : '1000', depositAccountName, searchSubtype
-        ]);
-      }
+      try {
+        const [found]: any = await conn.query(
+          'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" ORDER BY CASE WHEN subtype = ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END LIMIT 1',
+          [searchSubtype, `%${searchSubtype}%`, searchSubtype, `%${searchSubtype}%`]
+        );
+        if (found && found.length > 0) {
+          depositAccountId = found[0].id;
+          depositAccountName = found[0].name;
+        } else {
+          depositAccountId = isBank ? 'acc_1050' : 'acc_1000';
+          depositAccountName = isBank ? 'Bank Account' : 'Cash and Equivalents';
+          await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, ?, ?, "Asset", ?, 0, NOW())', [
+            depositAccountId, isBank ? '1050' : '1000', depositAccountName, searchSubtype
+          ]);
+        }
+      } catch (e) {}
     }
 
-    // Resolve Customer Advance / Accounts Receivable Account
-    let [arAcc]: any = await conn.query(
-      'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Deposit%" OR name LIKE "%Receivable%") AND (type = "Liability" OR type = "Asset") LIMIT 1'
-    );
-    let creditAccountId = 'acc_1500';
-    if (arAcc && arAcc.length > 0) {
-      creditAccountId = arAcc[0].id;
-    } else {
-      await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', ['acc_1500']);
-    }
-
-    // Auto Journal Entry for General Ledger
+    // Auto Journal Entry for General Ledger (wrapped safely)
     const jeId = `JE-${docId.replace(/[^A-Za-z0-9_-]/g, '')}`;
-    const jeData = {
-      id: jeId,
-      date: receiptDate,
-      reference: receiptNum,
-      description: `Customer Receipt: ${receiptNum} (${data.orderNo ? `Order: ${data.orderNo}` : (data.quotationNo ? `Quote: ${data.quotationNo}` : 'Direct')}) - ${data.customerName || 'Customer'}`,
-      totalAmount: amountVal,
-      createdBy: data.receivedBy || 'Accounts',
-      status: 'posted',
-      createdAt: nowIso
-    };
-    await conn.query('INSERT INTO journal_entries SET ?', jeData);
+    try {
+      // Resolve Customer Advance / Accounts Receivable Account
+      let [arAcc]: any = await conn.query(
+        'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Deposit%" OR name LIKE "%Receivable%") AND (type = "Liability" OR type = "Asset") LIMIT 1'
+      );
+      let creditAccountId = 'acc_1500';
+      if (arAcc && arAcc.length > 0) {
+        creditAccountId = arAcc[0].id;
+      } else {
+        await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', ['acc_1500']);
+      }
 
-    // JL 1: Debit Bank/Cash
-    const lineId1 = `JL-${jeId}-1`;
-    await conn.query('INSERT INTO journal_lines SET ?', {
-      id: lineId1,
-      entryId: jeId,
-      accountId: depositAccountId,
-      partyType: 'Customer',
-      partyId: data.customerId || null,
-      description: `Payment Receipt ${receiptNum} received via ${data.paymentMethod || 'Cash'}`,
-      debit: amountVal,
-      credit: 0
-    });
-    // Update Bank/Cash balance (Debit increases Asset)
-    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, depositAccountId]);
+      const jeData = {
+        id: jeId,
+        date: receiptDate,
+        reference: receiptNum,
+        description: `Customer Receipt: ${receiptNum} (${data.orderNo ? `Order: ${data.orderNo}` : (data.quotationNo ? `Quote: ${data.quotationNo}` : 'Direct')}) - ${data.customerName || 'Customer'}`,
+        totalAmount: amountVal,
+        createdBy: data.receivedBy || 'Accounts',
+        status: 'posted',
+        createdAt: nowIso
+      };
+      await conn.query('INSERT INTO journal_entries SET ?', jeData);
 
-    // JL 2: Credit Customer Advance / AR
-    const lineId2 = `JL-${jeId}-2`;
-    await conn.query('INSERT INTO journal_lines SET ?', {
-      id: lineId2,
-      entryId: jeId,
-      accountId: creditAccountId,
-      partyType: 'Customer',
-      partyId: data.customerId || null,
-      description: `Advance receipt on ${data.orderNo ? `Sales Order ${data.orderNo}` : `Quotation ${data.quotationNo || data.quoteId || ''}`}`,
-      debit: 0,
-      credit: amountVal
-    });
-    // Update AR/Advance balance
-    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, creditAccountId]);
+      // JL 1: Debit Bank/Cash
+      const lineId1 = `JL-${jeId}-1`;
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: lineId1,
+        entryId: jeId,
+        accountId: depositAccountId,
+        partyType: 'Customer',
+        partyId: data.customerId || null,
+        description: `Payment Receipt ${receiptNum} received via ${data.paymentMethod || 'Cash'}`,
+        debit: amountVal,
+        credit: 0
+      });
+      // Update Bank/Cash balance (Debit increases Asset)
+      if (depositAccountId) {
+        await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, depositAccountId]);
+      }
+
+      // JL 2: Credit Customer Advance / AR
+      const lineId2 = `JL-${jeId}-2`;
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: lineId2,
+        entryId: jeId,
+        accountId: creditAccountId,
+        partyType: 'Customer',
+        partyId: data.customerId || null,
+        description: `Advance receipt on ${data.orderNo ? `Sales Order ${data.orderNo}` : `Quotation ${data.quotationNo || data.quoteId || data.quotationId || ''}`}`,
+        debit: 0,
+        credit: amountVal
+      });
+      // Update AR/Advance balance
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, creditAccountId]);
+    } catch (jeErr) {
+      console.warn('Auto journal entry for payment receipt partially skipped:', jeErr);
+    }
 
     const receiptPayload = {
       id: docId,
       receiptNo: receiptNum,
       date: receiptDate,
-      quoteId: data.quoteId || null,
+      quoteId: data.quoteId || data.quotationId || null,
       quotationNo: data.quotationNo || null,
       orderId: data.orderId || null,
       orderNo: data.orderNo || null,
@@ -5621,10 +5660,36 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       updatedAt: nowIso
     };
 
-    await conn.query('INSERT INTO payment_receipts SET ?', receiptPayload);
+    // Safe column check for payment_receipts table to avoid 'Unknown column' error
+    let cleanPayload: any = receiptPayload;
+    try {
+      const [cols]: any = await conn.query('SHOW COLUMNS FROM payment_receipts');
+      if (Array.isArray(cols) && cols.length > 0) {
+        const validCols = new Set(cols.map((c: any) => c.Field));
+        cleanPayload = {};
+        for (const [k, v] of Object.entries(receiptPayload)) {
+          if (validCols.has(k)) {
+            cleanPayload[k] = v;
+          }
+        }
+      }
+    } catch (colErr) {
+      console.warn('Could not check columns for payment_receipts, using full payload:', colErr);
+    }
+
+    await conn.query('INSERT INTO payment_receipts SET ?', cleanPayload);
 
     await conn.commit();
-    res.json({ success: true, id: docId, receipt: receiptPayload });
+    res.json({
+      success: true,
+      id: docId,
+      receipt: {
+        ...receiptPayload,
+        totalQuoted: Number(data.totalQuotedAmount || data.totalQuoted || 0)
+      },
+      ...receiptPayload,
+      totalQuoted: Number(data.totalQuotedAmount || data.totalQuoted || 0)
+    });
   } catch (err: any) {
     await conn.rollback();
     console.error('Failed to create payment receipt:', err);

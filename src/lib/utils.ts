@@ -15,7 +15,15 @@ export function formatCurrency(amount: number, short = false, currencyCode = 'LK
 
 export function formatDate(dateStr: string): string {
   if (!dateStr || dateStr === '—') return '—'
-  const d = new Date(dateStr)
+  const normalized = String(dateStr).includes(' ') ? String(dateStr).replace(' ', 'T') : String(dateStr)
+  const d = new Date(normalized)
+  if (isNaN(d.getTime())) {
+    const d2 = new Date(String(dateStr).replace(/-/g, '/'))
+    if (!isNaN(d2.getTime())) {
+      return d2.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    }
+    return String(dateStr).slice(0, 10)
+  }
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 

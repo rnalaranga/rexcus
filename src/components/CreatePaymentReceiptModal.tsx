@@ -125,6 +125,20 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
       })
       .catch((err) => {
         console.error("Failed to fetch existing receipts:", err);
+        if (isMounted) {
+          if (quotedTotal > 0) {
+            setAmount((prev) => (prev ? prev : Math.round(quotedTotal * 0.5)));
+          }
+          setNotes((prev) =>
+            prev
+              ? prev
+              : oNo
+              ? `Advance payment against Sales Order ${oNo}`
+              : qNo
+              ? `Advance payment against Quotation ${qNo}`
+              : "Customer Advance Payment Receipt"
+          );
+        }
       })
       .finally(() => {
         if (isMounted) setLoadingExisting(false);
@@ -165,13 +179,16 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
         customerAddress,
         customerPhone,
         attention: customerAttention || null,
+        quoteId: quotationId || null,
         quotationId: quotationId || null,
         quotationNo: quotationNo || null,
         orderId: orderId || null,
         orderNo: orderNo || null,
         amount: numAmount,
         paymentMethod,
+        accountId: depositAccountId || null,
         depositAccountId: depositAccountId || null,
+        accountName: selectedAccount ? selectedAccount.name : depositAccountId,
         depositAccountName: selectedAccount ? selectedAccount.name : depositAccountId,
         reference: reference.trim() || null,
         notes: notes.trim() || (orderNo ? `Advance payment against Sales Order ${orderNo}` : `Advance payment against Quotation ${quotationNo}`),
@@ -183,8 +200,9 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
       const res = await createPaymentReceipt(payload);
       if (res.error) throw new Error(res.error);
 
-      toast("Official Advance Payment Receipt " + (res.receiptNo || "") + " generated successfully!", "success");
-      onSuccess(res);
+      const createdReceipt = res.receipt || res;
+      toast("Official Advance Payment Receipt " + (createdReceipt.receiptNo || "") + " generated successfully!", "success");
+      onSuccess(createdReceipt);
       onClose();
     } catch (err: any) {
       toast(err?.message || "Failed to create payment receipt.", "error");

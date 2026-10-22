@@ -44,7 +44,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
   const company = receipt.customerCompany || receipt.customerName || "Valued Customer";
   const person = receipt.attention || (receipt.customerName && receipt.customerCompany && receipt.customerName !== receipt.customerCompany ? receipt.customerName : "");
   const amount = Number(receipt.amount) || 0;
-  const totalQuoted = Number(receipt.totalQuoted) || 0;
+  const totalQuoted = Number(receipt.totalQuoted || (receipt as any).totalQuotedAmount) || 0;
   const balanceRemaining = totalQuoted > 0 ? Math.max(0, totalQuoted - amount) : null;
   const words = numberToWords(amount);
 
@@ -222,7 +222,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
                     <td className="p-2.5 text-center font-bold border-r border-black align-top">01</td>
                     <td className="p-2.5 border-r border-black">
                       <div className="font-bold text-black">
-                        {receipt.notes || (receipt.quotationNo ? ("Advance payment against Quotation " + receipt.quotationNo) : "Payment on Account")}
+                        {receipt.notes || (receipt.orderNo ? ("Advance payment against Sales Order " + receipt.orderNo) : receipt.quotationNo ? ("Advance payment against Quotation " + receipt.quotationNo) : "Payment on Account")}
                       </div>
                       <div className="text-[11px] text-neutral-600 mt-1">
                         Official advance acknowledgement towards confirmed quotation/production order.

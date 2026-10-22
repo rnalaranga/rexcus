@@ -98,12 +98,24 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const getOrderReceipts = useCallback((order: any) => {
     if (!order) return []
-    return paymentReceiptsList.filter((r: any) => 
-      (r.orderId && String(r.orderId) === String(order.id)) ||
-      (order.orderNo && r.orderNo && String(r.orderNo).trim() === String(order.orderNo).trim()) ||
-      (order.quotationNo && r.quotationNo && String(r.quotationNo).trim() === String(order.quotationNo).trim()) ||
-      (order.quoteId && r.quoteId && String(r.quoteId) === String(order.quoteId))
-    )
+    const oNo = String(order.orderNo || '').trim().toLowerCase()
+    const qNo = String(order.quotationNo || '').trim().toLowerCase()
+    const oId = String(order.id || '').trim()
+    const qId = String(order.quoteId || order.quotationId || '').trim()
+
+    return paymentReceiptsList.filter((r: any) => {
+      const rOrderNo = String(r.orderNo || '').trim().toLowerCase()
+      const rQuoNo = String(r.quotationNo || '').trim().toLowerCase()
+      const rOrderId = String(r.orderId || '').trim()
+      const rQuoteId = String(r.quoteId || r.quotationId || '').trim()
+
+      return (
+        (oId && rOrderId && rOrderId === oId) ||
+        (oNo && rOrderNo && rOrderNo === oNo) ||
+        (qNo && rQuoNo && rQuoNo === qNo) ||
+        (qId && rQuoteId && rQuoteId === qId)
+      )
+    })
   }, [paymentReceiptsList])
 
   const handleOpenReceiptModal = (order: any) => {
@@ -1737,10 +1749,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         settings={settings}
         onSuccess={(receipt) => {
           loadPaymentReceipts()
+          const unboxed = receipt?.receipt || receipt
           setActivePrintReceipt({
-            ...receipt,
-            orderNo: selectedOrderForReceipt?.orderNo,
-            totalQuoted: Number(selectedOrderForReceipt?.totalPrice || 0)
+            ...unboxed,
+            orderNo: selectedOrderForReceipt?.orderNo || unboxed?.orderNo,
+            totalQuoted: Number(selectedOrderForReceipt?.totalPrice || unboxed?.totalQuoted || 0)
           })
           setPrintReceiptModalOpen(true)
         }}
