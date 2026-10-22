@@ -65,10 +65,10 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
   const amount = Number(receipt.amount) || 0;
   const totalQuoted = Number(receipt.totalQuoted || (receipt as any).totalQuotedAmount) || 0;
   const balanceRemaining =
-    totalQuoted > 0
-      ? Math.max(0, totalQuoted - amount)
-      : receipt.balanceDue !== undefined && receipt.balanceDue !== null
+    receipt.balanceDue !== undefined && receipt.balanceDue !== null
       ? Number(receipt.balanceDue)
+      : totalQuoted > 0
+      ? Math.max(0, totalQuoted - amount)
       : null;
   const advancePercent = totalQuoted > 0 ? ((amount / totalQuoted) * 100).toFixed(1) : null;
   const words = numberToWords(amount);

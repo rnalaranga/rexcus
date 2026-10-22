@@ -269,75 +269,55 @@ export const RexAIAssistant: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="rex-ai-trigger-btn rounded-l-full fixed right-0 bottom-24 z-50 flex items-center h-[54px] cursor-pointer
-            w-[52px] hover:w-[255px]
-            bg-zinc-950/90 dark:bg-zinc-900/90 
-            backdrop-blur-xl 
-            border-y border-l border-rose-500/50 hover:border-rose-500 
-            shadow-[-4px_0_22px_0_rgba(225,29,72,0.4)] hover:shadow-[-8px_0_35px_0_rgba(225,29,72,0.65)]
+          className="rex-ai-trigger-btn rounded-l-full fixed right-0 bottom-24 z-50 flex items-center h-[46px] cursor-pointer
+            w-[48px] hover:w-[210px]
+            bg-zinc-900/95 dark:bg-zinc-900/95 text-zinc-100
+            backdrop-blur-md 
+            border-y border-l border-zinc-700/80 hover:border-zinc-500 
+            shadow-lg
             transition-all duration-300 ease-out group overflow-hidden select-none"
-          title="Rex AI Agent - Real-Time ERP Intelligence"
+          title="Rex AI Assistant - Real-Time ERP Intelligence"
         >
-          {/* Ambient Glowing Gradient Background */}
-          <div 
-            className="rex-ai-trigger-btn rounded-l-full absolute inset-0 bg-gradient-to-r from-rose-600/40 via-zinc-900/70 to-red-600/30 -z-10 group-hover:opacity-100 transition-opacity" 
-          />
-
-          {/* Top-half Glass Sheen / Reflection */}
-          <div 
-            style={{
-              borderTopLeftRadius: '9999px',
-              borderBottomLeftRadius: '0px',
-              borderTopRightRadius: '0px',
-              borderBottomRightRadius: '0px'
-            }}
-            className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" 
-          />
-
           {/* Left Rex AI Logo Emblem (Always visible in half-circle) */}
-          <div className="relative flex items-center justify-center w-[52px] h-[54px] shrink-0">
+          <div className="relative flex items-center justify-center w-[48px] h-[46px] shrink-0">
             <div 
-              className="rounded-full w-9 h-9 relative flex items-center justify-center p-1 bg-black/60 backdrop-blur-md border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-12 transition-all duration-300"
+              className="rounded-full w-8 h-8 relative flex items-center justify-center p-1 bg-zinc-800 border border-zinc-700 transition-all duration-200"
             >
-              <RexAILogo variant="icon" size={26} />
-              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+              <RexAILogo variant="icon" size={20} />
+              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
                 <span 
-                  className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
-                ></span>
-                <span 
-                  className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-black"
+                  className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 border border-zinc-900"
                 ></span>
               </span>
             </div>
           </div>
 
-          {/* Expandable Content Container (Reveals smoothly on hover via pure CSS group-hover) */}
+          {/* Expandable Content Container */}
           <div 
-            className="flex items-center gap-2.5 overflow-hidden whitespace-nowrap 
+            className="flex items-center gap-2 overflow-hidden whitespace-nowrap 
               max-w-0 opacity-0 pr-0 
-              group-hover:max-w-[195px] group-hover:opacity-100 group-hover:pr-3.5 
+              group-hover:max-w-[155px] group-hover:opacity-100 group-hover:pr-3 
               transition-all duration-300 ease-out"
           >
             {/* Brand Text and Subtitle */}
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-1.5 leading-tight">
-                <span className="text-[13px] font-black tracking-wider text-white drop-shadow-xs">
-                  REX <span className="text-rose-500">AI</span>
+                <span className="text-xs font-bold tracking-wider text-white">
+                  REX <span className="text-rex-400">AI</span>
                 </span>
                 <span 
-                  style={{ borderRadius: '9999px' }}
-                  className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-rose-600 text-white tracking-wider shadow-2xs"
+                  className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 tracking-wider"
                 >
-                  AGENT
+                  ERP
                 </span>
               </div>
-              <span className="text-[9px] text-zinc-300 font-medium leading-tight">
-                Ask Anything &bull; Live ERP
+              <span className="text-[9px] text-zinc-400 font-medium leading-tight">
+                ERP Intelligence
               </span>
             </div>
 
-            {/* Shimmering Sparkles */}
-            <Sparkles size={14} className="text-amber-300 animate-pulse ml-auto shrink-0 group-hover:scale-125 transition-transform" />
+            {/* Sparkles */}
+            <Sparkles size={13} className="text-zinc-400 ml-auto shrink-0" />
           </div>
         </button>
       )}
@@ -462,7 +442,7 @@ export const RexAIAssistant: React.FC = () => {
                   }}
                   className={`max-w-[88%] px-4 py-3 text-xs leading-relaxed shadow-sm relative group ${
                     m.role === 'user'
-                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white font-medium'
+                      ? 'bg-rex-700 text-white font-medium'
                       : 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700'
                   }`}
                 >
@@ -550,7 +530,7 @@ export const RexAIAssistant: React.FC = () => {
                 type="submit"
                 disabled={loading || !input.trim()}
                 style={{ borderRadius: '9999px' }}
-                className="h-10 px-4 rounded-full font-bold text-xs shrink-0 shadow-md shadow-rose-500/25 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 cursor-pointer"
+                className="h-10 px-4 rounded-full font-bold text-xs shrink-0 bg-rex-700 hover:bg-rex-600 text-white cursor-pointer transition-colors"
               >
                 <Send size={14} />
               </Button>

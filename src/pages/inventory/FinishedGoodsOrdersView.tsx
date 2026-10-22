@@ -679,7 +679,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Total Orders</span>
             <div className="text-2xl font-mono font-bold text-primary mt-1">{metrics.total}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <ShoppingCart size={18} />
           </div>
         </GlassCard>
@@ -689,7 +689,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Pending / Confirmed</span>
             <div className="text-2xl font-mono font-bold text-amber-500 mt-1">{metrics.pending}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <Clock size={18} />
           </div>
         </GlassCard>
@@ -699,7 +699,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Dispatched & Delivered</span>
             <div className="text-2xl font-mono font-bold text-emerald-500 mt-1">{metrics.readyOrDispatched}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <CheckCircle size={18} />
           </div>
         </GlassCard>
@@ -709,7 +709,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Total Orders Value</span>
             <div className="text-xl font-mono font-bold text-rex-600 mt-1">{formatCurrency(metrics.totalRev)}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-rex-600/10 text-rex-600 border border-rex-600/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <DollarSign size={18} />
           </div>
         </GlassCard>
@@ -799,26 +799,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono font-bold text-primary">{order.orderNo}</span>
                           {order.quotationNo && (
-                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Linked Quotation">
+                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-surface2 text-secondary border border-theme-subtle" title="Linked Quotation">
                               Ref: {order.quotationNo}
                             </span>
                           )}
                           {existingWO && (
                             <span 
                               onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                              className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 cursor-pointer hover:bg-blue-500/25 flex items-center gap-0.5" 
+                              className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-0.5" 
                               title="Click to view linked Work Order"
                             >
                               <Factory size={10} /> WO: {existingWO.orderNo || existingWO.id}
                             </span>
                           )}
                           {order.gatePassNo && (
-                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20" title="Gate Pass Issued">
+                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-surface2 text-secondary border border-theme-subtle" title="Gate Pass Issued">
                               GP: {order.gatePassNo}
                             </span>
                           )}
                           {order.invoiceNo && (
-                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" title="Invoice Linked">
+                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-surface2 text-secondary border border-theme-subtle" title="Invoice Linked">
                               Inv: {order.invoiceNo}
                             </span>
                           )}
@@ -837,7 +837,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                   });
                                   setPrintReceiptModalOpen(true);
                                 }}
-                                className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 cursor-pointer hover:bg-emerald-500/25 flex items-center gap-0.5"
+                                className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-0.5"
                                 title={`Advance Paid: ${formatCurrency(totalAdv)} (${recs.length} receipt${recs.length > 1 ? 's' : ''}). Click to view/print`}
                               >
                                 <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}

@@ -5527,7 +5527,7 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
     const data = { ...req.body };
     const amountVal = Number(data.amount) || 0;
     if (amountVal <= 0) {
-      conn.release();
+      await conn.rollback();
       return res.status(400).json({ error: 'Please enter a valid receipt amount greater than zero' });
     }
 

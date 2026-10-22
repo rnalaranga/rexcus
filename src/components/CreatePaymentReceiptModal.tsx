@@ -340,7 +340,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-4 space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-bold text-primary">
                   <span className="flex items-center gap-1.5 text-muted uppercase text-[11px] tracking-wider">
-                    <Building2 size={13} className="text-blue-500" /> Customer Information
+                    <Building2 size={13} className="text-muted" /> Customer Information
                   </span>
                   <span className="font-mono text-[10px] text-muted">{customerId}</span>
                 </div>
@@ -391,7 +391,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-4 space-y-2.5">
                 <div className="flex items-center justify-between text-[11px] font-bold text-muted uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
-                    <Package size={13} className="text-purple-500" /> Scope Items ({itemsList.length})
+                    <Package size={13} className="text-muted" /> Scope Items ({itemsList.length})
                   </span>
                   <span className="text-primary font-mono">{formatCurrency(quotedTotal)}</span>
                 </div>
@@ -423,7 +423,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock size={13} className="text-amber-500" /> Advance Receipts History
+                    <Clock size={13} className="text-muted" /> Advance Receipts History
                   </span>
                   <span className="text-xs font-bold text-emerald-600">
                     {paidPercentNow}% Covered
@@ -467,7 +467,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                   </div>
                 ) : (
                   <div className="text-[11px] text-muted italic bg-surface p-2 rounded-lg border border-theme-subtle flex items-center gap-1.5">
-                    <AlertCircle size={13} className="text-blue-500 shrink-0" />
+                    <AlertCircle size={13} className="text-muted shrink-0" />
                     <span>No prior advance vouchers recorded for this order/quote yet.</span>
                   </div>
                 )}

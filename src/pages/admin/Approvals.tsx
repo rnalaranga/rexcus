@@ -151,15 +151,13 @@ export default function Approvals() {
           <button
             onClick={() => setActiveTab('quotations')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'quotations'
-                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-sm'
-                : 'text-secondary hover:text-primary hover:bg-theme-hover border border-transparent'
+              activeTab === 'quotations' ? 'bg-surface text-primary border border-theme shadow-xs font-bold' : 'text-secondary hover:text-primary hover:bg-surface2/50 border border-transparent font-medium'
             }`}
           >
             <FileText size={16} />
             Quotation Approvals
             {pendingQuotations.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-surface2 text-primary border border-theme-subtle font-bold">
                 {pendingQuotations.length}
               </span>
             )}
@@ -168,15 +166,13 @@ export default function Approvals() {
           <button
             onClick={() => setActiveTab('credit')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'credit'
-                ? 'bg-blue-500/10 text-blue-500 border border-blue-500/30 shadow-sm'
-                : 'text-secondary hover:text-primary hover:bg-theme-hover border border-transparent'
+              activeTab === 'credit' ? 'bg-surface text-primary border border-theme shadow-xs font-bold' : 'text-secondary hover:text-primary hover:bg-surface2/50 border border-transparent font-medium'
             }`}
           >
             <CheckSquare size={16} />
             Credit Limit Requests
             {pendingCredits.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-blue-500 text-white font-black">
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-surface2 text-primary border border-theme-subtle font-bold">
                 {pendingCredits.length}
               </span>
             )}

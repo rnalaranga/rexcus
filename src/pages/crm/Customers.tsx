@@ -73,9 +73,8 @@ export const Customers: React.FC = () => {
               <span className="text-[10px] font-bold text-white">{row.avatar}</span>
             </div>
             {row.isForeign ? (
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500 border border-surface"></span>
+              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="inline-flex rounded-full h-2.5 w-2.5 bg-blue-500 border border-surface"></span>
               </span>
             ) : null}
           </div>

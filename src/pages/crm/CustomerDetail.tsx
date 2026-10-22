@@ -336,16 +336,15 @@ export const CustomerDetail: React.FC = () => {
       )}
 
       {/* Profile card */}
-      <GlassCard variant="red" className="p-6">
+      <GlassCard className="p-6">
         <div className="flex items-start gap-5">
           <div className="relative">
-            <div className="w-16 h-16 flex-shrink-0 bg-rex-700 border border-rex-600/60 flex items-center justify-center shadow-glow-red-sm">
+            <div className="w-16 h-16 flex-shrink-0 bg-rex-700 border border-rex-600/60 flex items-center justify-center shadow-xs">
               <span className="text-xl font-bold text-white">{customer.avatar}</span>
             </div>
             {customer.isForeign ? (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 border-2 border-surface"></span>
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="inline-flex rounded-full h-3 w-3 bg-blue-500 border-2 border-surface"></span>
               </span>
             ) : null}
           </div>

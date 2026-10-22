@@ -1368,7 +1368,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
 
                 {/* Segment 1: Cut Piece (Vibrant Emerald / Green) */}
                 <div
-                  className="relative h-full rounded-none bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 text-white flex flex-col justify-center items-center px-2 shadow-md transition-all duration-300"
+                  className="relative h-full rounded-none bg-emerald-600 dark:bg-emerald-700 text-white flex flex-col justify-center items-center px-2 shadow-sm transition-all duration-300"
                   style={{ width: `${Math.min(100, (totalCutNeeded / activeSourceLength) * 100)}%` }}
                 >
                   <div className="flex items-center gap-1 font-bold text-xs sm:text-sm drop-shadow-sm truncate">
@@ -1388,14 +1388,14 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                     className="relative h-full w-1.5 bg-amber-400 shadow-sm flex items-center justify-center shrink-0"
                     title={`Kerf Loss: ${sawKerf} ${unit}`}
                   >
-                    <div className="w-full h-full bg-amber-500/80 animate-pulse" />
+                    <div className="w-full h-full bg-amber-400" />
                   </div>
                 )}
 
                 {/* Segment 2: Leftover Remnant (Cyan / Sky Blue) */}
                 {leftoverRemnantLength > 0 ? (
                   <div
-                    className="relative h-full flex-1 rounded-none bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-700 text-white flex flex-col justify-center items-center px-2 shadow-inner transition-all duration-300"
+                    className="relative h-full flex-1 rounded-none bg-slate-700 dark:bg-slate-800 text-slate-100 flex flex-col justify-center items-center px-2 border-l border-slate-600 transition-all duration-300"
                   >
                     <div className="flex items-center gap-1 font-bold text-xs sm:text-sm drop-shadow-sm truncate">
                       <Warehouse size={14} className="shrink-0" />
@@ -1417,17 +1417,17 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 mt-4 text-xs">
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3.5 h-3.5 rounded-none bg-emerald-500 inline-block shadow-xs" />
+                    <span className="w-3.5 h-3.5 rounded-none bg-emerald-600 inline-block" />
                     <span className="text-secondary font-medium">Issued Cut ({formatLinearDisplay(requiredLength, unit)})</span>
                   </div>
                   {sawKerf > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <span className="w-3.5 h-3.5 rounded-none bg-amber-400 inline-block shadow-xs" />
+                      <span className="w-3.5 h-3.5 rounded-none bg-amber-400 inline-block" />
                       <span className="text-secondary font-medium">Blade Kerf ({sawKerf} {unit})</span>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3.5 h-3.5 rounded-none bg-cyan-600 inline-block shadow-xs" />
+                    <span className="w-3.5 h-3.5 rounded-none bg-slate-600 inline-block" />
                     <span className="text-secondary font-medium">Re-usable Remnant ({formatLinearDisplay(leftoverRemnantLength, unit)})</span>
                   </div>
                 </div>

@@ -145,8 +145,8 @@ export const PurchasingHub: React.FC = () => {
           key: 'supplier', header: 'Vendor / PO', sortable: true,
           render: (_, row) => (
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 flex-shrink-0 bg-rex-700 border border-rex-600/40 flex items-center justify-center">
-                <FileText size={14} className="text-white" />
+              <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center">
+                <FileText size={14} className="text-secondary" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{getSupplierName(row.supplierId)}</p>
@@ -162,7 +162,7 @@ export const PurchasingHub: React.FC = () => {
                       <span 
                         key={mrNum}
                         onClick={(e) => { e.stopPropagation(); navigate('/purchasing/mr-builder/' + mrNum); }}
-                        className="text-[9px] bg-blue-500/10 text-blue-500 hover:text-blue-400 px-1.5 py-0.2 rounded font-mono border border-blue-500/20 cursor-pointer font-bold"
+                        className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
                         title="View Originating Material Request"
                       >
                         MR: {mrNum}
@@ -180,7 +180,7 @@ export const PurchasingHub: React.FC = () => {
                       <span 
                         key={invNum}
                         onClick={(e) => { e.stopPropagation(); setActiveTab('bill'); setSearch(invNum); }}
-                        className="text-[9px] bg-amber-500/10 text-amber-500 hover:text-amber-400 px-1.5 py-0.2 rounded font-mono border border-amber-500/20 cursor-pointer font-bold"
+                        className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
                         title={`Vendor Invoice ${invNum}`}
                       >
                         INV: {invNum}
@@ -249,8 +249,8 @@ export const PurchasingHub: React.FC = () => {
           key: 'mr', header: 'Material Request', sortable: true,
           render: (_, row) => (
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 flex-shrink-0 bg-blue-600 border border-blue-500/40 flex items-center justify-center">
-                <GitPullRequest size={14} className="text-white" />
+              <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center">
+                <GitPullRequest size={14} className="text-secondary" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
@@ -285,7 +285,7 @@ export const PurchasingHub: React.FC = () => {
                           <span 
                             key={poNum}
                             onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${poNum}`); }}
-                            className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                            className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
                             title={`View Purchase Order ${poNum}`}
                           >
                             PO: {poNum}
@@ -347,8 +347,8 @@ export const PurchasingHub: React.FC = () => {
           key: 'grn', header: 'Goods Receipt (GRN)', sortable: true,
           render: (_, row) => (
             <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 flex-shrink-0 border flex items-center justify-center ${row.isCustomerSample ? 'bg-blue-600 border-blue-500/40' : 'bg-emerald-600 border-emerald-500/40'}`}>
-                {row.isCustomerSample ? <Package size={14} className="text-white" /> : <Truck size={14} className="text-white" />}
+              <div className={`w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center`}>
+                {row.isCustomerSample ? <Package size={14} className="text-secondary" /> : <Truck size={14} className="text-secondary" />}
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
@@ -368,11 +368,11 @@ export const PurchasingHub: React.FC = () => {
                           <span 
                             key={pNum}
                             onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${pNum}`); }}
-                            className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                            className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
                           >
                             {pNum}
                           </span>
-                        )) : <span className="text-[9px] bg-purple-500/10 text-purple-400 px-1.5 py-0.2 rounded font-mono border border-purple-500/20 font-bold">Direct Receipt</span>}
+                        )) : <span className="text-[9px] bg-surface2 text-secondary px-1.5 py-0.5 rounded font-mono border border-theme-subtle font-bold">Direct Receipt</span>}
                       </div>
                     );
                   })()}
@@ -407,8 +407,8 @@ export const PurchasingHub: React.FC = () => {
         key: 'bill', header: 'Supplier Bill', sortable: true,
         render: (_, row) => (
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 flex-shrink-0 bg-amber-600 border border-amber-500/40 flex items-center justify-center">
-              <CreditCard size={14} className="text-white" />
+            <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center">
+              <CreditCard size={14} className="text-secondary" />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
@@ -417,7 +417,7 @@ export const PurchasingHub: React.FC = () => {
                 {row.poId && (
                   <span 
                     onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
-                    className="text-[9px] bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20 cursor-pointer font-bold"
+                    className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
                     title={`View Linked Purchase Order ${row.poId}`}
                   >
                     PO: {row.poId}
