@@ -151,7 +151,7 @@ export const PurchasingHub: React.FC = () => {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{getSupplierName(row.supplierId)}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[10px] text-muted font-mono">{row.id}</span>
+                  <span className="text-xs text-muted font-mono">{row.id}</span>
                   {(() => {
                     const linkedMrList: string[] = Array.isArray(row.mrIds)
                       ? row.mrIds
@@ -162,7 +162,7 @@ export const PurchasingHub: React.FC = () => {
                       <span 
                         key={mrNum}
                         onClick={(e) => { e.stopPropagation(); navigate('/purchasing/mr-builder/' + mrNum); }}
-                        className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
+                        className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
                         title="View Originating Material Request"
                       >
                         MR: {mrNum}
@@ -180,7 +180,7 @@ export const PurchasingHub: React.FC = () => {
                       <span 
                         key={invNum}
                         onClick={(e) => { e.stopPropagation(); setActiveTab('bill'); setSearch(invNum); }}
-                        className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
+                        className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
                         title={`Vendor Invoice ${invNum}`}
                       >
                         INV: {invNum}
@@ -207,7 +207,7 @@ export const PurchasingHub: React.FC = () => {
                   size="sm" 
                 />
                 {billed > 0 && (
-                  <div className="text-[10px] text-muted font-mono mt-0.5">
+                  <div className="text-xs text-muted font-mono mt-0.5">
                     {formatCurrency(billed, true)} / {formatCurrency(total, true)}
                   </div>
                 )}
@@ -219,13 +219,13 @@ export const PurchasingHub: React.FC = () => {
         { key: 'date', header: 'Order Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
           <div className="flex items-center justify-end gap-1.5">
-            <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-[10px] uppercase h-6">View</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none">View</Button>
             {row.status?.toLowerCase() !== 'draft' && row.status?.toLowerCase() !== 'received' && (
               <Button 
                 variant="ghost" 
                 size="sm" 
                 onClick={() => navigate(`/purchasing/grn-builder?po=${row.id}`)} 
-                className={`text-[10px] uppercase h-6 ${row.status?.toLowerCase() === 'partially_received' ? 'text-amber-500 font-bold hover:text-amber-400' : 'text-emerald-500'}`}
+                className={`text-xs uppercase h-7 px-2.5 rounded-none ${row.status?.toLowerCase() === 'partially_received' ? 'text-amber-500 font-bold hover:text-amber-400' : 'text-emerald-500'}`}
               >
                 {row.status?.toLowerCase() === 'partially_received' ? 'Receive Balance' : 'GRN'}
               </Button>
@@ -234,7 +234,7 @@ export const PurchasingHub: React.FC = () => {
               variant="ghost" 
               size="sm" 
               onClick={() => navigate(`/purchasing/bill-builder?po=${row.id}`)} 
-              className="text-[10px] uppercase h-6 text-amber-500 hover:text-amber-400 font-semibold border border-amber-500/20"
+              className="text-xs uppercase h-7 px-2.5 rounded-none text-amber-500 hover:text-amber-400 font-semibold border border-amber-500/20"
               title="Record Vendor Invoice for this PO"
             >
               + Bill
@@ -255,7 +255,7 @@ export const PurchasingHub: React.FC = () => {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[10px] text-muted">{row.department} Dept</span>
+                  <span className="text-xs text-muted">{row.department} Dept</span>
                   {(() => {
                     const linkedWoList: string[] = Array.isArray(row.workOrderNos)
                       ? row.workOrderNos
@@ -266,7 +266,7 @@ export const PurchasingHub: React.FC = () => {
                       <span 
                         key={woNum}
                         onClick={(e) => { e.stopPropagation(); navigate('/production/work-orders'); }}
-                        className="text-[9px] bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:text-purple-400 px-1.5 py-0.2 rounded font-mono border border-purple-500/30 cursor-pointer font-bold"
+                        className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:text-purple-400 px-2 py-0.5 rounded-none font-mono border border-purple-500/30 cursor-pointer font-medium"
                         title={`Linked Work Order ${woNum}`}
                       >
                         WO: {woNum}
@@ -285,7 +285,7 @@ export const PurchasingHub: React.FC = () => {
                           <span 
                             key={poNum}
                             onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${poNum}`); }}
-                            className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
+                            className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
                             title={`View Purchase Order ${poNum}`}
                           >
                             PO: {poNum}
@@ -301,7 +301,7 @@ export const PurchasingHub: React.FC = () => {
         },
         { key: 'requestedBy', header: 'Requester', width: '150px', render: v => <span className="text-xs text-secondary">{String(v)}</span> },
         { key: 'status', header: 'Status', width: '120px', render: v => <Badge value={String(v)} size="sm" /> },
-        { key: 'priority', header: 'Priority', width: '90px', render: v => <span className={`text-[10px] font-bold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
+        { key: 'priority', header: 'Priority', width: '90px', render: v => <span className={`text-xs font-semibold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
         { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => {
           const linkedPoList: string[] = Array.isArray(row.poIds) 
@@ -312,7 +312,7 @@ export const PurchasingHub: React.FC = () => {
 
           return (
             <div className="flex items-center justify-end gap-1.5">
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/mr-builder/${row.id}`)} className="text-[10px] uppercase h-6">
+              <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/mr-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none">
                 View MR
               </Button>
               {row.status?.toLowerCase() !== 'ordered' ? (
@@ -320,7 +320,7 @@ export const PurchasingHub: React.FC = () => {
                   variant="primary" 
                   size="sm" 
                   onClick={() => navigate(`/purchasing/po-builder?mr=${row.id}`)} 
-                  className={`text-[10px] uppercase h-6 ${row.status === 'partially_ordered' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+                  className={`text-xs uppercase h-7 px-2.5 rounded-none ${row.status === 'partially_ordered' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}
                 >
                   {row.status === 'partially_ordered' ? 'Order Balance' : 'Create PO'}
                 </Button>
@@ -330,7 +330,7 @@ export const PurchasingHub: React.FC = () => {
                     variant="ghost" 
                     size="sm" 
                     onClick={() => navigate(`/purchasing/po-builder/${linkedPoList[linkedPoList.length - 1]}`)} 
-                    className="text-[10px] uppercase h-6 text-emerald-500 hover:text-emerald-400 font-semibold"
+                    className="text-xs uppercase h-7 px-2.5 rounded-none text-emerald-500 hover:text-emerald-400 font-semibold"
                   >
                     {linkedPoList.length > 1 ? `View POs (${linkedPoList.length})` : 'View PO'}
                   </Button>
@@ -354,7 +354,7 @@ export const PurchasingHub: React.FC = () => {
                 <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
                 {(() => {
                     if (row.isCustomerSample) {
-                      return <p className="text-[10px] text-muted truncate mt-0.5 font-mono">Ref: {row.quoNo || row.leadId || 'Customer Sample'}</p>;
+                      return <p className="text-xs text-muted truncate mt-0.5 font-mono">Ref: {row.quoNo || row.leadId || 'Customer Sample'}</p>;
                     }
                     const linkedPoList: string[] = Array.isArray(row.poIds)
                       ? row.poIds
@@ -363,16 +363,16 @@ export const PurchasingHub: React.FC = () => {
                           : (row.poId ? [row.poId] : []));
                     return (
                       <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                        <span className="text-[10px] text-muted font-mono">PO:</span>
+                        <span className="text-xs text-muted font-mono">PO:</span>
                         {linkedPoList.length > 0 ? linkedPoList.map((pNum: string) => (
                           <span 
                             key={pNum}
                             onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${pNum}`); }}
-                            className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
+                            className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
                           >
                             {pNum}
                           </span>
-                        )) : <span className="text-[9px] bg-surface2 text-secondary px-1.5 py-0.5 rounded font-mono border border-theme-subtle font-bold">Direct Receipt</span>}
+                        )) : <span className="text-xs bg-surface2 text-secondary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle font-bold">Direct Receipt</span>}
                       </div>
                     );
                   })()}
@@ -382,20 +382,20 @@ export const PurchasingHub: React.FC = () => {
         },
         { key: 'supplier', header: 'Source', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}</span> },
         { key: 'status', header: 'Status', width: '90px', render: (_, row) => row.isCustomerSample ? <Badge value="Sample" size="sm" /> : <Badge value={String(row.status)} size="sm" /> },
-        { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-[10px] text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
+        { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-xs text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
         { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{(row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '')).split('T')[0]}</span> },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
           <div className="flex justify-end gap-1.5 items-center">
                {row.isCustomerSample ? (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-[10px] uppercase h-6 text-blue-500">Print Sample GRN</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomerGRN(row.id)} className="text-[10px] uppercase h-6 text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-xs uppercase h-7 px-2.5 rounded-none text-blue-500">Print Sample GRN</Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomerGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
                   </>
                ) : (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder/${row.id}`)} className="text-[10px] uppercase h-6 text-primary">View</Button>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-[10px] uppercase h-6 text-emerald-500">Create Bill</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplierGRN(row.id)} className="text-[10px] uppercase h-6 text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none text-primary">View</Button>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none text-emerald-500">Create Bill</Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplierGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
                   </>
                )}
             </div>
@@ -413,11 +413,11 @@ export const PurchasingHub: React.FC = () => {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <span className="text-[10px] text-muted font-mono font-bold">INV: {row.invoiceNo || '-'}</span>
+                <span className="text-xs text-muted font-mono font-bold">INV: {row.invoiceNo || '-'}</span>
                 {row.poId && (
                   <span 
                     onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
-                    className="text-[9px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 rounded font-mono border border-theme-subtle cursor-pointer font-bold"
+                    className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
                     title={`View Linked Purchase Order ${row.poId}`}
                   >
                     PO: {row.poId}
@@ -440,7 +440,7 @@ export const PurchasingHub: React.FC = () => {
               variant="ghost" 
               size="sm" 
               onClick={() => navigate(`/inventory/suppliers/${row.supplierId}`)} 
-              className="text-[10px] uppercase h-6 text-amber-500 font-semibold hover:text-amber-400"
+              className="text-xs uppercase h-7 px-2.5 rounded-none text-amber-500 font-semibold hover:text-amber-400"
             >
               Pay / Ledger
             </Button>
@@ -448,7 +448,7 @@ export const PurchasingHub: React.FC = () => {
               variant="ghost" 
               size="sm" 
               onClick={() => handleDeleteBill(row.id)} 
-              className="text-[10px] uppercase h-6 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+              className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10"
               title="Delete this bill and revert supplier ledger"
             >
               Delete
@@ -530,7 +530,7 @@ export const PurchasingHub: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-theme-subtle text-xs">
           {/* Status Pills */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-            <span className="text-[11px] font-bold text-muted uppercase tracking-wider mr-1">Status:</span>
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider mr-1">Status:</span>
             {getStatusOptions().map(s => (
               <button 
                 key={s} 
@@ -551,7 +551,7 @@ export const PurchasingHub: React.FC = () => {
             <>
               <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
               <div className="flex items-center gap-1">
-                <span className="text-[11px] font-bold text-muted uppercase tracking-wider mr-1">Source:</span>
+                <span className="text-xs font-semibold text-muted uppercase tracking-wider mr-1">Source:</span>
                 {[
                   { id: 'all', label: 'All GRN' },
                   { id: 'vendor', label: 'Vendor Delivery' },
@@ -578,7 +578,7 @@ export const PurchasingHub: React.FC = () => {
             <>
               <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Vendor:</span>
+                <span className="text-xs font-semibold text-muted uppercase tracking-wider">Vendor:</span>
                 <select
                   value={supplierFilter}
                   onChange={e => setSupplierFilter(e.target.value)}
@@ -598,14 +598,14 @@ export const PurchasingHub: React.FC = () => {
           {/* Date Range */}
           <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">From:</span>
+            <span className="text-muted font-semibold uppercase tracking-wider text-xs">From:</span>
             <input
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
             />
-            <span className="text-muted font-bold uppercase tracking-wider text-[11px]">To:</span>
+            <span className="text-muted font-semibold uppercase tracking-wider text-xs">To:</span>
             <input
               type="date"
               value={endDate}
@@ -624,7 +624,7 @@ export const PurchasingHub: React.FC = () => {
                 setStartDate(`${y}-${m}-01`);
                 setEndDate(now.toISOString().slice(0, 10));
               }}
-              className="px-2.5 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-md whitespace-nowrap shrink-0 text-[11px] text-secondary hover:text-primary transition-colors"
+              className="px-2.5 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-none whitespace-nowrap shrink-0 text-xs font-medium text-secondary hover:text-primary transition-colors"
             >
               This Month
             </button>
@@ -635,7 +635,7 @@ export const PurchasingHub: React.FC = () => {
                 setStartDate(past.toISOString().slice(0, 10));
                 setEndDate(now.toISOString().slice(0, 10));
               }}
-              className="px-2.5 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-md whitespace-nowrap shrink-0 text-[11px] text-secondary hover:text-primary transition-colors"
+              className="px-2.5 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-none whitespace-nowrap shrink-0 text-xs font-medium text-secondary hover:text-primary transition-colors"
             >
               Last 30 Days
             </button>
@@ -649,7 +649,7 @@ export const PurchasingHub: React.FC = () => {
                   setEndDate('');
                   setSearch('');
                 }}
-                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-md whitespace-nowrap shrink-0 font-semibold text-[11px] transition-colors ml-1"
+                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-none whitespace-nowrap shrink-0 font-semibold text-xs transition-colors ml-1"
               >
                 Clear Filters
               </button>

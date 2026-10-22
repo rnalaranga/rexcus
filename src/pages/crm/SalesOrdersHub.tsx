@@ -9,13 +9,13 @@ export const SalesOrdersHub: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-theme-subtle">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+          <div className="p-2.5 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
             <ShoppingBag size={24} />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-bold text-primary tracking-tight">Sales Orders & Commercial Dispatch</h1>
-              <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 text-[10px] font-bold uppercase tracking-wider">
+              <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 text-xs font-semibold uppercase tracking-wider rounded-none">
                 CRM Orders
               </Badge>
             </div>

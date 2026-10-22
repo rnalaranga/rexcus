@@ -40,6 +40,8 @@ export const ProductQuotations: React.FC = () => {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [previewData, setPreviewData] = useState<{ quotation: any, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
 
@@ -167,14 +169,41 @@ export const ProductQuotations: React.FC = () => {
     return Object.values(map).sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
   }, [productQuotes, customers, leads]);
 
-  // Filter search & status
+  // Status counts for filter pills
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: groupedQuotes.length,
+      draft: 0,
+      'pending approval': 0,
+      approved: 0,
+      sent: 0,
+      rejected: 0
+    };
+    groupedQuotes.forEach((g: any) => {
+      const s = (g.versions[0]?.status || 'Draft').toLowerCase();
+      if (counts[s] !== undefined) counts[s]++;
+    });
+    return counts;
+  }, [groupedQuotes]);
+
+  // Total Quoted Value
+  const totalQuotedValue = useMemo(() => {
+    return groupedQuotes.reduce((sum: number, g: any) => sum + Number(g.versions[0]?.totalAmount || 0), 0);
+  }, [groupedQuotes]);
+
+  // Filter search, status, customer & date range
   const filteredGroups = useMemo(() => {
     return groupedQuotes.filter((g: any) => {
       const latest = g.versions[0];
       const status = latest?.status || 'Draft';
 
-      if (statusFilter !== 'all' && status !== statusFilter) return false;
+      if (statusFilter !== 'all' && status.toLowerCase() !== statusFilter.toLowerCase()) return false;
       if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
+
+      // Date range filter
+      const qDate = (g.latestDate || latest?.date || '').slice(0, 10);
+      if (startDate && qDate && qDate < startDate) return false;
+      if (endDate && qDate && qDate > endDate) return false;
 
       if (search.trim()) {
         const q = search.toLowerCase();
@@ -187,7 +216,7 @@ export const ProductQuotations: React.FC = () => {
 
       return true;
     });
-  }, [groupedQuotes, search, statusFilter, customerFilter]);
+  }, [groupedQuotes, search, statusFilter, customerFilter, startDate, endDate]);
 
   // Status Change
   const handleStatusChange = async (id: string, newStatus: string, currentStatus?: string) => {
@@ -293,105 +322,165 @@ export const ProductQuotations: React.FC = () => {
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-theme-subtle">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-            <PackageCheck size={24} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-lg font-bold text-primary">Product Quotations</h1>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
+              Finished Goods Catalog
+            </span>
           </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold text-primary tracking-tight">Product Quotations</h1>
-              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider">
-                Finished Goods
-              </Badge>
-            </div>
-            <p className="text-xs text-muted mt-0.5">
-              Commercial quotations for ready-made finished products without requiring BOM configurations
-            </p>
-          </div>
+          <p className="text-xs text-muted mt-0.5">
+            {filteredGroups.length} product {filteredGroups.length === 1 ? 'quotation' : 'quotations'}
+            {(search || statusFilter !== 'all' || customerFilter !== 'all' || startDate || endDate) && ' (filtered)'} &middot; Total Quoted Value:{' '}
+            <span className="font-mono font-bold text-primary">{formatCurrency(totalQuotedValue)}</span>
+          </p>
         </div>
 
-        {/* Action Button */}
         <div className="flex items-center gap-2">
           <Button
+            variant="ghost"
+            size="sm"
+            icon={Download}
+            onClick={() => window.print()}
+            className="border border-theme-subtle rounded-none hover:bg-surface2 text-xs h-8"
+          >
+            Export
+          </Button>
+          <Button
             variant="primary"
+            size="sm"
             icon={Plus}
             onClick={() => navigate('/crm/product-quotations/new')}
-            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 rounded-none"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-none h-8 shadow-xs"
           >
-            New Product Quotation
+            New Product Quote
           </Button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        <GlassCard className="p-4 border-emerald-500/20 bg-emerald-500/5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">Total Quotes</span>
-          <span className="text-2xl font-black font-mono text-primary">{productQuotes.length}</span>
-        </GlassCard>
-        <GlassCard className="p-4 border-emerald-500/20 bg-emerald-500/5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">Approved</span>
-          <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
-            {productQuotes.filter((q: any) => q.status === 'Approved').length}
-          </span>
-        </GlassCard>
-        <GlassCard className="p-4 border-amber-500/20 bg-amber-500/5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">Pending Approval</span>
-          <span className="text-2xl font-black font-mono text-amber-600">
-            {productQuotes.filter((q: any) => q.status === 'Pending Approval').length}
-          </span>
-        </GlassCard>
-        <GlassCard className="p-4 border-theme-subtle">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">Total Pipeline Value</span>
-          <span className="text-xl font-black font-mono text-primary">
-            {formatCurrency(productQuotes.reduce((sum: number, q: any) => sum + Number(q.totalAmount || 0), 0))}
-          </span>
-        </GlassCard>
-      </div>
+      {/* Comprehensive Filter Toolbar (Unified & Professional) */}
+      <GlassCard className="p-3 space-y-3 rounded-none">
+        {/* Row 1: Status Filter Tabs & Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            {[
+              { id: 'all', label: 'All', count: statusCounts.all },
+              { id: 'draft', label: 'Draft', count: statusCounts.draft },
+              { id: 'pending approval', label: 'Pending Approval', count: statusCounts['pending approval'] },
+              { id: 'approved', label: 'Approved', count: statusCounts.approved },
+              { id: 'sent', label: 'Sent', count: statusCounts.sent },
+              { id: 'rejected', label: 'Rejected', count: statusCounts.rejected },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-none transition-all uppercase tracking-wider shrink-0 flex items-center gap-1.5 ${
+                  statusFilter.toLowerCase() === tab.id
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`text-xs font-mono font-medium px-1.5 py-0.5 rounded-none ${
+                  statusFilter.toLowerCase() === tab.id ? 'bg-black/20 text-white' : 'bg-surface2 text-muted'
+                }`}>
+                  {tab.count || 0}
+                </span>
+              </button>
+            ))}
+          </div>
 
-      {/* Filters Bar */}
-      <div className="p-3.5 rounded-none bg-surface border border-theme-subtle flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full md:w-80">
-          <Search size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by quote #, client, subject..."
-            className="w-full bg-surface2 border border-theme-subtle rounded-none pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 transition-all placeholder:text-muted"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-          {/* Status filter */}
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="bg-surface2 border border-theme-subtle rounded-none px-2.5 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 font-medium"
-          >
-            <option value="all">All Statuses</option>
-            <option value="Draft">Draft</option>
-            <option value="Pending Approval">Pending Approval</option>
-            <option value="Approved">Approved</option>
-            <option value="Sent">Sent</option>
-            <option value="Rejected">Rejected</option>
-          </select>
-
-          {/* Customer filter */}
-          <div className="w-52">
-            <CustomerAutocomplete
-              value={customerFilter}
-              onChange={(cId) => setCustomerFilter(cId || 'all')}
-              customers={customers}
-              placeholder="Filter by customer..."
-              allOptionLabel="All Customers"
-              className="py-1 text-xs rounded-none"
+          <div className="relative w-full sm:w-80 shrink-0">
+            <Search size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by quote #, client, subject..."
+              className="w-full bg-surface border border-theme-subtle rounded-none pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 transition-all placeholder:text-muted"
             />
           </div>
         </div>
-      </div>
 
+        {/* Row 2: Customer Filter, Date Range & Clear Filters */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-theme-subtle text-xs">
+          <div className="flex items-center gap-1.5">
+            <Filter size={13} className="text-muted shrink-0" />
+            <span className="text-muted font-semibold uppercase tracking-wider text-xs">Customer:</span>
+            <div className="w-52">
+              <CustomerAutocomplete
+                value={customerFilter}
+                onChange={(cId) => setCustomerFilter(cId || 'all')}
+                customers={customers}
+                leads={leads}
+                placeholder="Filter customer..."
+                allOptionLabel={`All Customers (${customers.length + leads.length})`}
+                className="py-1 text-xs rounded-none"
+              />
+            </div>
+          </div>
+
+          <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-muted font-semibold uppercase tracking-wider text-xs">From:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs focus:border-emerald-500 outline-none"
+            />
+            <span className="text-muted font-semibold uppercase tracking-wider text-xs">To:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs focus:border-emerald-500 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = String(now.getMonth() + 1).padStart(2, '0');
+                setStartDate(`${y}-${m}-01`);
+                setEndDate(now.toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-none text-xs font-medium text-secondary hover:text-primary transition-colors"
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                setStartDate(past.toISOString().slice(0, 10));
+                setEndDate(now.toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-none text-xs font-medium text-secondary hover:text-primary transition-colors"
+            >
+              Last 30 Days
+            </button>
+            {(statusFilter !== 'all' || customerFilter !== 'all' || startDate || endDate || search) && (
+              <button
+                onClick={() => {
+                  setStatusFilter('all');
+                  setCustomerFilter('all');
+                  setStartDate('');
+                  setEndDate('');
+                  setSearch('');
+                }}
+                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-none font-semibold text-xs transition-colors ml-1"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
+      </GlassCard>
       {/* Quotations List */}
       <div className="space-y-3">
         {filteredGroups.map((group: any, idx: number) => {
@@ -416,17 +505,17 @@ export const ProductQuotations: React.FC = () => {
                     <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                       {group.quoNo}
                     </span>
-                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
+                    <span className={`text-xs uppercase font-semibold px-2.5 py-1 rounded-none border ${getStatusColor(status)}`}>
                       {status}
                     </span>
-                    <span className="text-[10px] font-mono text-muted">
+                    <span className="text-xs font-mono text-muted">
                       v{latest.version || 1} • {formatDate(group.latestDate)}
                     </span>
                     {group.versions.length > 1 && (
                       <button
                         type="button"
                         onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
-                        className="text-[9px] font-mono px-1.5 py-0.5 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-1"
+                        className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-1.5"
                       >
                         {group.versions.length} revisions
                         <ChevronDown size={10} className={`transition-transform duration-150 ${isRevisionsExpanded ? 'rotate-180' : ''}`} />
@@ -442,7 +531,7 @@ export const ProductQuotations: React.FC = () => {
                           });
                           setPrintReceiptModalOpen(true);
                         }}
-                        className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
+                        className="inline-flex items-center gap-1.5 text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
                         title={`View / Print Payment Receipt (Advance: ${formatCurrency(totalAdv)})`}
                       >
                         <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
@@ -450,8 +539,8 @@ export const ProductQuotations: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-bold text-primary truncate">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-semibold text-primary truncate">
                       {group.clientCompany || group.clientName}
                     </span>
                     {group.clientCompany && group.clientName && (
@@ -460,12 +549,12 @@ export const ProductQuotations: React.FC = () => {
                   </div>
 
                   {parsed.subject && (
-                    <p className="text-[11px] text-muted truncate max-w-xl">
+                    <p className="text-xs text-secondary truncate max-w-xl">
                       {parsed.subject}
                     </p>
                   )}
 
-                  <div className="flex items-center gap-3 text-[11px] text-muted">
+                  <div className="flex items-center gap-3 text-xs text-muted">
                     <span className="flex items-center gap-1 font-medium">
                       <Boxes size={12} className="text-emerald-500" />
                       {itemsCount} {itemsCount === 1 ? 'Product Line' : 'Product Lines'}
@@ -479,10 +568,10 @@ export const ProductQuotations: React.FC = () => {
                 {/* Right Financials & Actions */}
                 <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-theme-subtle">
                   <div className="text-right">
-                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
+                    <span className="text-xs font-semibold text-muted uppercase tracking-wider block">
                       Total Value
                     </span>
-                    <span className="text-base lg:text-lg font-black font-mono text-primary">
+                    <span className="text-base lg:text-lg font-bold font-mono text-primary">
                       {formatCurrency(Number(latest.totalAmount || 0))}
                     </span>
                   </div>
@@ -522,16 +611,21 @@ export const ProductQuotations: React.FC = () => {
                         <div
                           onClick={(e) => e.stopPropagation()}
                           className={`absolute right-0 ${
-                            idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
-                          } w-56 bg-surface border border-theme shadow-2xl z-[60] py-1 text-left rounded-none animate-fade-in`}
+                            idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+                          } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[100] py-1.5 text-left rounded-none`}
+                          style={{ minWidth: '256px', boxShadow: '0 12px 32px rgba(0,0,0,0.22), 0 0 1px rgba(0,0,0,0.1)' }}
                         >
+                          <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                            Product Quote Actions
+                          </div>
+
                           {/* 1. Preview Document */}
                           <button
                             type="button"
                             onClick={() => { setPreviewData({ quotation: latest, lead: group }); setOpenActionId(null); }}
-                            className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                            className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
                           >
-                            <Eye size={13} className="text-muted shrink-0" />
+                            <Eye size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
                             <span>Preview Document</span>
                           </button>
 
@@ -539,10 +633,10 @@ export const ProductQuotations: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => { navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`); setOpenActionId(null); }}
-                            className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                            className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
                           >
-                            <Edit3 size={13} className="text-muted shrink-0" />
-                            <span>Edit in Builder</span>
+                            <Edit3 size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
+                            <span>Edit in Quotation Builder</span>
                           </button>
 
                           {/* 3. Send Email */}
@@ -560,127 +654,133 @@ export const ProductQuotations: React.FC = () => {
                               });
                               setOpenActionId(null);
                             }}
-                            className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
                           >
-                            <Mail size={13} className="shrink-0" />
+                            <Mail size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                             <span>Send via Email</span>
                           </button>
 
-                          {/* 4. Sales Order (if Approved/Sent/Accepted) */}
+                          {/* Commercial Actions (If Approved / Sent / Accepted) */}
                           {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
-                            <button
-                              type="button"
-                              onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); }}
-                              className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
-                            >
-                              <ShoppingBag size={13} className="shrink-0" />
-                              <span>Create Sales Order</span>
-                            </button>
+                            <>
+                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                                Commercial Operations
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); }}
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
+                              >
+                                <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                                <span>Create Sales Order</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); }}
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                              >
+                                <Receipt size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                <span>Issue Advance Receipt</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); }}
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+                              >
+                                <FileText size={14} className="shrink-0 text-emerald-500" />
+                                <span>Generate Tax Invoice</span>
+                              </button>
+                            </>
                           )}
 
-                          {/* 5. Advance Payment Receipt */}
-                          {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
-                            <button
-                              type="button"
-                              onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); }}
-                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
-                            >
-                              <Receipt size={13} className="shrink-0" />
-                              <span>Issue Advance Receipt</span>
-                            </button>
+                          {/* Approval Actions */}
+                          {((status === 'Draft' || !status || status === 'Rejected') || (canApprove && (status === 'Pending Approval' || status === 'Draft'))) && (
+                            <>
+                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                                Workflow & Approvals
+                              </div>
+
+                              {(status === 'Draft' || !status || status === 'Rejected') && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setOpenActionId(null);
+                                    try {
+                                      await submitQuotationForApproval(latest.id);
+                                      toast('Submitted for approval', 'success');
+                                      refetch();
+                                    } catch(err: any) {
+                                      toast(err?.message || 'Failed to submit', 'error');
+                                    }
+                                  }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <Send size={14} className="shrink-0 text-amber-500" />
+                                  <span>Submit for Approval</span>
+                                </button>
+                              )}
+
+                              {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setOpenActionId(null);
+                                    try {
+                                      await approveQuotation(latest.id, user?.name || 'Manager');
+                                      toast('Quotation approved successfully!', 'success');
+                                      refetch();
+                                    } catch(err: any) {
+                                      toast(err?.message || 'Failed to approve', 'error');
+                                    }
+                                  }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
+                                  <span>Approve Quotation</span>
+                                </button>
+                              )}
+
+                              {canApprove && status === 'Pending Approval' && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setOpenActionId(null);
+                                    const reason = prompt('Enter rejection reason:');
+                                    if (!reason) return;
+                                    try {
+                                      await rejectQuotation(latest.id, reason);
+                                      toast('Quotation rejected', 'error');
+                                      refetch();
+                                    } catch(err: any) {
+                                      toast(err?.message || 'Failed to reject', 'error');
+                                    }
+                                  }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <XCircle size={14} className="shrink-0 text-rose-600" />
+                                  <span>Reject Quotation</span>
+                                </button>
+                              )}
+                            </>
                           )}
 
-                          {/* 6. Invoice */}
-                          {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
-                            <button
-                              type="button"
-                              onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); }}
-                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
-                            >
-                              <FileText size={13} className="shrink-0" />
-                              <span>Generate Tax Invoice</span>
-                            </button>
-                          )}
-
-                          <div className="my-1 border-t border-theme-subtle" />
-
-                          {/* Workflow Approval actions */}
-                          {(status === 'Draft' || !status || status === 'Rejected') && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setOpenActionId(null);
-                                try {
-                                  await submitQuotationForApproval(latest.id);
-                                  toast('Submitted for approval', 'success');
-                                  refetch();
-                                } catch(err: any) {
-                                  toast(err?.message || 'Failed to submit', 'error');
-                                }
-                              }}
-                              className="w-full px-3 py-2 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 transition-colors rounded-none"
-                            >
-                              <Send size={13} className="shrink-0" />
-                              <span>Submit for Approval</span>
-                            </button>
-                          )}
-
-                          {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setOpenActionId(null);
-                                try {
-                                  await approveQuotation(latest.id, user?.name || 'Manager');
-                                  toast('Quotation approved successfully!', 'success');
-                                  refetch();
-                                } catch(err: any) {
-                                  toast(err?.message || 'Failed to approve', 'error');
-                                }
-                              }}
-                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
-                            >
-                              <CheckCircle2 size={13} className="shrink-0" />
-                              <span>Approve Quotation</span>
-                            </button>
-                          )}
-
-                          {canApprove && status === 'Pending Approval' && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setOpenActionId(null);
-                                const reason = prompt('Enter rejection reason:');
-                                if (!reason) return;
-                                try {
-                                  await rejectQuotation(latest.id, reason);
-                                  toast('Quotation rejected', 'error');
-                                  refetch();
-                                } catch(err: any) {
-                                  toast(err?.message || 'Failed to reject', 'error');
-                                }
-                              }}
-                              className="w-full px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 transition-colors rounded-none"
-                            >
-                              <XCircle size={13} className="shrink-0" />
-                              <span>Reject Quotation</span>
-                            </button>
-                          )}
-
-                          <div className="my-1 border-t border-theme-subtle" />
-
-                          {/* Delete */}
+                          {/* Delete Action */}
+                          <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                           <button
                             type="button"
                             onClick={() => { handleDelete(latest.id); setOpenActionId(null); }}
-                            className="w-full px-3 py-2 text-xs text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors font-medium rounded-none"
+                            className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
                           >
-                            <Trash2 size={13} className="shrink-0" />
+                            <Trash2 size={14} className="shrink-0 text-rose-500" />
                             <span>Delete Quotation</span>
                           </button>
                         </div>
-                      )}
-                    </div>
+                      )}                    </div>
                   </div>
                 </div>
               </div>
@@ -688,7 +788,7 @@ export const ProductQuotations: React.FC = () => {
               {/* Expandable Revisions Panel */}
               {isRevisionsExpanded && group.versions.length > 1 && (
                 <div className="mt-3 pt-3 border-t border-theme-subtle/50 space-y-1.5 animate-fade-in">
-                  <div className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
                     <History size={11} className="text-emerald-500" />
                     Quotation Versions ({group.versions.length})
                   </div>
@@ -707,14 +807,14 @@ export const ProductQuotations: React.FC = () => {
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="font-bold font-mono text-primary shrink-0">v{v.version}</span>
                             {isLatest && (
-                              <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1 py-0.2 rounded-none uppercase">
+                              <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-none uppercase">
                                 Active
                               </span>
                             )}
-                            <span className="font-mono text-muted text-[11px] truncate">
+                            <span className="font-mono text-secondary text-xs truncate">
                               {formatCurrency(Number(v.totalAmount || 0))}
                             </span>
-                            <span className="text-[10px] text-muted truncate">{formatDate(v.date)}</span>
+                            <span className="text-xs text-muted truncate">{formatDate(v.date)}</span>
                           </div>
                           <div className="flex items-center gap-1 shrink-0 ml-1">
                             <button

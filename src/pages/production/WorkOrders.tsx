@@ -162,27 +162,27 @@ export const WorkOrders: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono font-bold text-xs text-primary">{row.orderNo || row.id}</span>
-                <span className="text-[10px] text-muted font-mono bg-surface2 px-1.5 py-0.2 rounded-none border border-theme-subtle">
+                <span className="font-mono font-bold text-sm text-primary">{row.orderNo || row.id}</span>
+                <span className="text-xs text-muted font-mono bg-surface2 px-2 py-0.5 rounded-none border border-theme-subtle">
                   {row.id}
                 </span>
                 {row.customerName && (
-                  <span className="text-[11px] font-medium text-secondary truncate flex items-center gap-1">
+                  <span className="text-xs font-medium text-secondary truncate flex items-center gap-1.5">
                     <Building size={11} className="text-secondary"/> {row.customerName}
                   </span>
                 )}
               </div>
 
-              <h4 className="text-xs font-bold text-primary truncate hover:text-secondary transition-colors mt-0.5">
+              <h4 className="text-sm font-semibold text-primary truncate hover:text-secondary transition-colors mt-0.5">
                 {row.title}
               </h4>
 
               {currentOp && (
-                <div className="text-[11px] text-muted mt-0.5 flex items-center gap-1.5">
+                <div className="text-xs text-muted mt-0.5 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-none bg-blue-500 animate-pulse"/>
                   <span>Current: <strong>{currentOp.operationName}</strong></span>
                   {currentOp.machineName && (
-                    <span className="text-[10px] text-secondary">({currentOp.machineName})</span>
+                    <span className="text-xs text-secondary font-mono">({currentOp.machineName})</span>
                   )}
                 </div>
               )}
@@ -199,9 +199,9 @@ export const WorkOrders: React.FC = () => {
         <div className="space-y-0.5">
           <div className="flex items-center gap-1.5 font-mono">
             <Package size={13} className="text-amber-500 shrink-0"/>
-            <span className="font-bold text-xs text-primary">{row.jobQty || 1} pcs</span>
+            <span className="font-bold font-mono text-sm text-primary">{row.jobQty || 1} pcs</span>
           </div>
-          <div className="text-[10px] text-muted flex items-center gap-1.5 font-mono">
+          <div className="text-xs text-muted flex items-center gap-1.5 font-mono">
             <span className="text-emerald-600 font-bold">{row.completedQty || 0} done</span>
             {Number(row.scrapQty || 0) > 0 && <span className="text-rose-500 font-bold">• {row.scrapQty} scrap</span>}
           </div>
@@ -225,7 +225,7 @@ export const WorkOrders: React.FC = () => {
               variant={isUrgent ? 'error' : isHigh ? 'warning' : 'default'} 
             />
             {deadlineDate && (
-              <span className={`text-[11px] block font-mono ${
+              <span className={`text-xs block font-mono ${
                 isOverdue ? 'text-rose-500 font-bold' : 'text-muted'
               }`}>
                 {deadlineDate.toLocaleDateString()} {isOverdue ? '⚠️ Overdue' : ''}
@@ -246,7 +246,7 @@ export const WorkOrders: React.FC = () => {
 
         return (
           <div className="w-36 space-y-1">
-            <div className="flex justify-between text-[11px]">
+            <div className="flex justify-between text-xs">
               <span className="text-muted font-mono">{completed}/{total} Steps</span>
               <span className="font-mono font-bold text-primary">{pct}%</span>
             </div>
@@ -269,10 +269,10 @@ export const WorkOrders: React.FC = () => {
 
         return (
           <div className="space-y-1">
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
               <Package size={12} className="text-emerald-500"/> {issued.length} Material{issued.length !== 1 ? 's' : ''}
             </span>
-            <span className="text-[11px] font-mono text-muted block">
+            <span className="text-xs font-mono text-muted block">
               {formatCurrency(matCost)}
             </span>
           </div>
@@ -293,7 +293,7 @@ export const WorkOrders: React.FC = () => {
               {formatCurrency(actual)}
             </span>
             {budget > 0 && (
-              <span className="text-[10px] font-mono text-muted block">
+              <span className="text-xs font-mono text-muted block">
                 Target: {formatCurrency(budget)}
               </span>
             )}
@@ -309,18 +309,18 @@ export const WorkOrders: React.FC = () => {
         switch (v) {
           case 'Completed':
           case 'Closed':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Completed</span>
+            return <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-none uppercase tracking-wider bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Completed</span>
           case 'In Progress':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> In Production</span>
+            return <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-none uppercase tracking-wider bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> In Production</span>
           case 'QC Pending':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Pending</span>
+            return <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-none uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Pending</span>
           case 'Rework':
           case 'Rework Required':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
+            return <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-none uppercase tracking-wider bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
           case 'Released':
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
+            return <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-none uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
           default:
-            return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-none bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
+            return <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-none uppercase tracking-wider bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
         }
       }
     },
@@ -396,33 +396,33 @@ export const WorkOrders: React.FC = () => {
       {/* ── TOP 5 KPI METRICS (STANDARD THEME CARDS) ───────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <GlassCard className="p-3.5 border-theme-subtle rounded-none">
-          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Active Jobs</span>
+          <span className="text-xs text-muted uppercase tracking-wider block font-semibold mb-1">Active Jobs</span>
           <p className="text-xl font-mono font-bold text-primary">{metrics.active}</p>
-          <span className="text-[10px] text-muted">{metrics.total} total recorded</span>
+          <span className="text-xs text-muted">{metrics.total} total recorded</span>
         </GlassCard>
 
         <GlassCard className="p-3.5 border-theme-subtle rounded-none">
-          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">In Production</span>
+          <span className="text-xs text-muted uppercase tracking-wider block font-semibold mb-1">In Production</span>
           <p className="text-xl font-mono font-bold text-blue-600 dark:text-blue-400">{metrics.inMachining}</p>
-          <span className="text-[10px] text-muted">Floor machining now</span>
+          <span className="text-xs text-muted">Floor machining now</span>
         </GlassCard>
 
         <GlassCard className="p-3.5 border-theme-subtle rounded-none">
-          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">QC & Rework</span>
+          <span className="text-xs text-muted uppercase tracking-wider block font-semibold mb-1">QC & Rework</span>
           <p className="text-xl font-mono font-bold text-amber-600 dark:text-amber-400">{metrics.qcRework}</p>
-          <span className="text-[10px] text-muted">Attention required</span>
+          <span className="text-xs text-muted">Attention required</span>
         </GlassCard>
 
         <GlassCard className="p-3.5 border-theme-subtle rounded-none">
-          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Completed</span>
+          <span className="text-xs text-muted uppercase tracking-wider block font-semibold mb-1">Completed</span>
           <p className="text-xl font-mono font-bold text-green-600 dark:text-green-400">{metrics.completed}</p>
-          <span className="text-[10px] text-muted">Signed off & closed</span>
+          <span className="text-xs text-muted">Signed off & closed</span>
         </GlassCard>
 
         <GlassCard className="p-3.5 border-theme-subtle rounded-none">
-          <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Active WIP Value</span>
+          <span className="text-xs text-muted uppercase tracking-wider block font-semibold mb-1">Active WIP Value</span>
           <p className="text-base font-mono font-bold text-primary">{formatCurrency(metrics.totalWipCost)}</p>
-          <span className="text-[10px] text-muted">Material + labor + machine</span>
+          <span className="text-xs text-muted">Material + labor + machine</span>
         </GlassCard>
       </div>
 
@@ -448,7 +448,7 @@ export const WorkOrders: React.FC = () => {
                 }`}
               >
                 <span>{tab.label}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-none font-mono ${
+                <span className={`text-xs px-2 py-0.5 rounded-none font-mono font-medium ${
                   statusFilter === tab.id ? 'bg-rex-600 text-white font-bold' : 'text-muted'
                 }`}>
                   {tab.count}
@@ -569,11 +569,11 @@ export const WorkOrders: React.FC = () => {
                             <h4 className="text-xs font-bold text-primary line-clamp-2">{wo.title}</h4>
                             <div className="flex items-center justify-between gap-2 mt-1.5">
                               {wo.customerName ? (
-                                <p className="text-[11px] text-muted truncate flex items-center gap-1">
+                                <p className="text-xs text-muted truncate flex items-center gap-1.5">
                                   <Building size={10}/> {wo.customerName}
                                 </p>
                               ) : <span />}
-                              <span className="font-mono text-[10px] font-bold text-primary flex items-center gap-1 shrink-0 bg-surface2 px-1.5 py-0.5 border border-theme-subtle">
+                              <span className="font-mono text-xs font-semibold text-primary flex items-center gap-1.5 shrink-0 bg-surface2 px-2 py-0.5 rounded-none border border-theme-subtle">
                                 <Package size={11} className="text-amber-500"/> {wo.jobQty || 1} pcs
                               </span>
                             </div>
@@ -581,7 +581,7 @@ export const WorkOrders: React.FC = () => {
 
                           {/* Progress */}
                           <div className="space-y-1">
-                            <div className="flex justify-between text-[10px]">
+                            <div className="flex justify-between text-xs">
                               <span className="text-muted">{completedOps}/{ops.length} Steps</span>
                               <span className="font-mono font-bold text-primary">{wo.progress || 0}%</span>
                             </div>
@@ -593,7 +593,7 @@ export const WorkOrders: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="pt-2 border-t border-theme-subtle flex items-center justify-between text-[11px]">
+                          <div className="pt-2 border-t border-theme-subtle flex items-center justify-between text-xs font-medium">
                             <span className="text-muted font-mono">
                               {formatCurrency(cost.actualTotalCost || 0)}
                             </span>

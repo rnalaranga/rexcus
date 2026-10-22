@@ -769,7 +769,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       <GlassCard className="p-0 overflow-hidden border border-theme-subtle">
         <div className="overflow-x-auto min-h-[380px]">
           <table className="w-full text-left min-w-[900px]">
-            <thead className="bg-surface2/50 border-b border-theme-subtle text-[10px] font-bold text-muted uppercase tracking-wider">
+            <thead className="bg-surface2/50 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
               <tr>
                 <th className="px-4 py-3">Order #</th>
                 <th className="px-4 py-3">Product Ordered</th>
@@ -812,26 +812,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono font-bold text-primary">{order.orderNo}</span>
                           {order.quotationNo && (
-                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-surface2 text-secondary border border-theme-subtle" title="Linked Quotation">
+                            <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Linked Quotation">
                               Ref: {order.quotationNo}
                             </span>
                           )}
                           {existingWO && (
                             <span 
                               onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                              className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-0.5" 
+                              className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-1.5" 
                               title="Click to view linked Work Order"
                             >
                               <Factory size={10} /> WO: {existingWO.orderNo || existingWO.id}
                             </span>
                           )}
                           {order.gatePassNo && (
-                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-surface2 text-secondary border border-theme-subtle" title="Gate Pass Issued">
+                            <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Gate Pass Issued">
                               GP: {order.gatePassNo}
                             </span>
                           )}
                           {order.invoiceNo && (
-                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-surface2 text-secondary border border-theme-subtle" title="Invoice Linked">
+                            <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Invoice Linked">
                               Inv: {order.invoiceNo}
                             </span>
                           )}
@@ -850,7 +850,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                   });
                                   setPrintReceiptModalOpen(true);
                                 }}
-                                className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-0.5"
+                                className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-1.5"
                                 title={`Advance Paid: ${formatCurrency(totalAdv)} (${recs.length} receipt${recs.length > 1 ? 's' : ''}). Click to view/print`}
                               >
                                 <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
@@ -858,7 +858,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             );
                           })()}
                         </div>
-                        <div className="text-[10px] text-muted flex items-center gap-1">
+                        <div className="text-xs text-muted flex items-center gap-1.5 font-mono">
                           <Calendar size={10} />
                           {formatDate(order.orderDate)}
                           {order.targetDeliveryDate && (
@@ -871,9 +871,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {/* Product & Line Items */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-none bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
                           {prod?.imageUrl ? (
-                            <img src={prod.imageUrl} alt="" className="w-full h-full object-cover rounded" />
+                            <img src={prod.imageUrl} alt="" className="w-full h-full object-cover rounded-none" />
                           ) : (
                             <Package size={14} />
                           )}
@@ -884,13 +884,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               {order.productName || (orderItems.length > 0 ? orderItems[0].description : 'Finished Goods')}
                             </span>
                             {orderItems.length > 1 && (
-                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 border border-blue-500/30">
+                              <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
                                 +{orderItems.length - 1} more
                               </span>
                             )}
                           </div>
                           {order.productSku && (
-                            <div className="text-[10px] font-mono text-muted">{order.productSku}</div>
+                            <div className="text-xs font-mono text-muted">{order.productSku}</div>
                           )}
                         </div>
                       </div>
@@ -899,18 +899,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {/* Customer */}
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
-                        <span className="font-bold text-primary flex items-center gap-1">
+                        <span className="font-semibold text-sm text-primary flex items-center gap-1.5">
                           <User size={12} className="text-muted" />
                           {order.customerName}
                         </span>
                         {order.attention && (
-                          <span className="text-[11px] font-semibold text-secondary flex items-center gap-1 mt-0.5">
-                            <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle font-mono">Attn</span>
+                          <span className="text-xs font-medium text-secondary flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs uppercase px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle font-mono font-medium">Attn</span>
                             {order.attention}
                           </span>
                         )}
                         {order.customerPhone && (
-                          <span className="text-[10px] text-muted font-mono flex items-center gap-1 mt-0.5">
+                          <span className="text-xs text-muted font-mono flex items-center gap-1.5 mt-0.5">
                             <Phone size={10} />
                             {order.customerPhone}
                           </span>
@@ -930,7 +930,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       <div className="flex flex-col font-mono">
                         <span className="font-bold text-primary">{formatCurrency(order.totalPrice)}</span>
                         {Number(order.unitPrice) > 0 && (
-                          <span className="text-[10px] text-muted">@ {formatCurrency(order.unitPrice)}</span>
+                          <span className="text-xs text-muted font-mono">@ {formatCurrency(order.unitPrice)}</span>
                         )}
                       </div>
                     </td>
@@ -1006,89 +1006,101 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               onClick={(e) => e.stopPropagation()}
                               className={`absolute right-0 ${
                                 idx >= filteredOrders.length - 2 && filteredOrders.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
-                              } w-56 bg-surface border border-theme shadow-2xl z-[60] py-1 text-left rounded-none animate-fade-in`}
+                              } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[100] py-1.5 text-left rounded-none animate-fade-in`}
                             >
+                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+                                Order Documents
+                              </div>
+
                               {/* 1. View / Print PDF */}
                               <button
                                 type="button"
                                 onClick={() => { setPrintOrder(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
                               >
-                                <Printer size={13} className="text-muted shrink-0" />
+                                <Printer size={14} className="text-zinc-500 shrink-0" />
                                 <span>Print Sales Order PDF</span>
                               </button>
 
-                              {/* 2. Work Order */}
+                              {/* 2. Invoice */}
+                              <button
+                                type="button"
+                                onClick={() => { handleInvoiceClick(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                              >
+                                <FileText size={14} className="shrink-0 text-emerald-600" />
+                                <span>Generate / View Invoice</span>
+                              </button>
+
+                              {/* 3. Advance Payment Receipt */}
+                              <button
+                                type="button"
+                                onClick={() => { handleOpenReceiptModal(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                              >
+                                <Receipt size={14} className="shrink-0 text-emerald-600" />
+                                <span>Issue Advance Receipt</span>
+                              </button>
+
+                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+                                Operations & Dispatch
+                              </div>
+
+                              {/* 4. Work Order */}
                               {existingWO ? (
                                 <button
                                   type="button"
                                   onClick={() => { navigate(`/production/work-orders/${existingWO.id}`); setOpenActionOrderId(null); }}
-                                  className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
                                 >
-                                  <Factory size={13} className="shrink-0" />
+                                  <Factory size={14} className="shrink-0 text-blue-600" />
                                   <span className="truncate">View Work Order ({existingWO.orderNo || existingWO.id})</span>
                                 </button>
                               ) : !order.isDispatched ? (
                                 <button
                                   type="button"
                                   onClick={() => { handleCreateWorkOrder(order, orderItems); setOpenActionOrderId(null); }}
-                                  className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
                                 >
-                                  <Factory size={13} className="shrink-0" />
+                                  <Factory size={14} className="shrink-0 text-blue-600" />
                                   <span>Create Work Order</span>
                                 </button>
                               ) : null}
-
-                              {/* 3. Advance Payment Receipt */}
-                              <button
-                                type="button"
-                                onClick={() => { handleOpenReceiptModal(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
-                              >
-                                <Receipt size={13} className="shrink-0" />
-                                <span>Issue Advance Receipt</span>
-                              </button>
-
-                              {/* 4. Invoice */}
-                              <button
-                                type="button"
-                                onClick={() => { handleInvoiceClick(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
-                              >
-                                <FileText size={13} className="shrink-0" />
-                                <span>Generate / View Invoice</span>
-                              </button>
 
                               {/* 5. Dispatch / Gate Pass */}
                               {!order.isDispatched && order.status !== 'Dispatched' ? (
                                 <button
                                   type="button"
                                   onClick={() => { handleOpenDispatchModal(order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3 py-2 text-xs text-primary hover:bg-surface2 flex items-center gap-2 transition-colors font-semibold rounded-none"
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
                                 >
-                                  <Truck size={13} className="text-emerald-500 shrink-0" />
+                                  <Truck size={14} className="text-emerald-500 shrink-0" />
                                   <span>Dispatch & Gate Pass</span>
                                 </button>
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => { handleViewGatePass(order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3 py-2 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 flex items-center gap-2 transition-colors rounded-none"
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2.5 transition-colors text-left"
                                 >
-                                  <Shield size={13} className="shrink-0" />
+                                  <Shield size={14} className="shrink-0 text-purple-600" />
                                   <span>View Gate Pass ({order.gatePassNo || 'Issued'})</span>
                                 </button>
                               )}
 
-                              <div className="my-1 border-t border-theme-subtle" />
+                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+                                Order Management
+                              </div>
 
                               {/* 6. Edit Order */}
                               <button
                                 type="button"
                                 onClick={() => { handleOpenEditModal(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
                               >
-                                <Edit size={13} className="text-muted shrink-0" />
+                                <Edit size={14} className="text-zinc-500 shrink-0" />
                                 <span>Edit Order</span>
                               </button>
 
@@ -1096,9 +1108,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               <button
                                 type="button"
                                 onClick={() => { setDeleteTarget(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3 py-2 text-xs text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors font-medium rounded-none"
+                                className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
                               >
-                                <Trash2 size={13} className="shrink-0" />
+                                <Trash2 size={14} className="shrink-0 text-rose-500" />
                                 <span>Delete Order</span>
                               </button>
                             </div>
@@ -1243,7 +1255,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       <div className="p-3 rounded-none bg-blue-500/5 border border-blue-500/20 text-xs space-y-2">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            <span className={`px-2.5 py-0.5 rounded-none text-xs font-semibold uppercase tracking-wider ${
                               selectedQuotation.isProd 
                                 ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30' 
                                 : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30'
@@ -1260,12 +1272,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                         {formData.items && formData.items.length > 0 && (
                           <div className="mt-1 border-t border-theme-subtle/50 pt-2">
-                            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+                            <span className="text-xs font-semibold text-muted uppercase tracking-wider block mb-1">
                               Quoted Items ({formData.items.length})
                             </span>
                             <div className="max-h-24 overflow-y-auto space-y-1">
                               {formData.items.map((it: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between py-0.5 text-[11px]">
+                                <div key={idx} className="flex items-center justify-between py-0.5 text-xs">
                                   <span className="truncate max-w-[320px] text-secondary font-medium">
                                     • {it.description || it.productName}
                                   </span>
@@ -1317,11 +1329,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           <span>In Stock: <strong className="font-mono text-primary">{availableStock} {selectedProduct.uom || 'pcs'}</strong></span>
                         </div>
                         {hasShortage ? (
-                          <span className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
+                          <span className="text-xs font-semibold text-amber-500 flex items-center gap-1.5">
                             <AlertTriangle size={13} /> Shortage: {requestedQty - availableStock} needed
                           </span>
                         ) : (
-                          <span className="text-[11px] font-bold text-emerald-500 flex items-center gap-1">
+                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1.5">
                             <CheckCircle2 size={13} /> Sufficient Stock Available
                           </span>
                         )}
@@ -1485,7 +1497,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">Calculated Total</label>
-                  <div className="w-full input-base font-mono font-black text-base text-rex-600 bg-surface2/30">
+                  <div className="w-full input-base font-mono font-bold text-base text-rex-600 bg-surface2/30">
                     {formatCurrency(
                       formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
                         ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
@@ -1573,7 +1585,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                 <div>
                   <label className="block text-xs font-semibold text-secondary mb-1">
-                    Vehicle Number <span className="text-muted text-[10px] font-normal">(Optional)</span>
+                    Vehicle Number <span className="text-muted text-xs font-normal">(Optional)</span>
                   </label>
                   <input
                     type="text"
@@ -1621,7 +1633,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </div>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-none text-[11px] text-amber-700 dark:text-amber-400">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-none text-xs text-amber-700 dark:text-amber-400">
               💡 Confirming dispatch will auto-generate an official <strong>Gate Pass (GP-XXXX)</strong>, mark order as <strong>Dispatched</strong>, and deduct stock with an OUT entry in the Stock Ledger.
             </div>
 
@@ -1838,15 +1850,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
             <div className="bg-surface2/40 border border-theme-subtle rounded-none p-3 text-xs flex justify-between items-center">
               <div>
-                <div className="text-muted text-[11px]">Sales Order</div>
+                <div className="text-muted text-xs font-medium">Sales Order</div>
                 <div className="font-mono font-bold text-primary">{preInvoicePromptOrder.orderNo}</div>
               </div>
               <div>
-                <div className="text-muted text-[11px]">Customer</div>
+                <div className="text-muted text-xs font-medium">Customer</div>
                 <div className="font-semibold text-primary">{preInvoicePromptOrder.customerName}</div>
               </div>
               <div className="text-right">
-                <div className="text-muted text-[11px]">Total Consideration</div>
+                <div className="text-muted text-xs font-medium">Total Consideration</div>
                 <div className="font-mono font-bold text-emerald-600">{formatCurrency(preInvoicePromptOrder.totalPrice || 0)}</div>
               </div>
             </div>

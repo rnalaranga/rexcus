@@ -238,11 +238,11 @@ export default function Approvals() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 w-full">
           <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted">Pending Quotations</span>
+              <span className="text-xs text-muted font-medium">Pending Quotations</span>
               <div className="text-lg font-mono font-medium text-amber-500 mt-0.5">
                 {metrics.pendingQuotesCount}
               </div>
-              <span className="text-[10px] text-muted font-mono">
+              <span className="text-xs text-muted font-mono">
                 Val: {formatCurrency(metrics.pendingQuotesTotal)}
               </span>
             </div>
@@ -253,11 +253,11 @@ export default function Approvals() {
 
           <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted">Pending Credit Requests</span>
+              <span className="text-xs text-muted font-medium">Pending Credit Requests</span>
               <div className="text-lg font-mono font-medium text-blue-500 mt-0.5">
                 {metrics.pendingCreditsCount}
               </div>
-              <span className="text-[10px] text-muted font-mono">
+              <span className="text-xs text-muted font-mono">
                 Req: {formatCurrency(metrics.pendingCreditsTotal)}
               </span>
             </div>
@@ -268,11 +268,11 @@ export default function Approvals() {
 
           <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted">Total Approved</span>
+              <span className="text-xs text-muted font-medium">Total Approved</span>
               <div className="text-lg font-mono font-medium text-emerald-500 mt-0.5">
                 {metrics.approvedCount}
               </div>
-              <span className="text-[10px] text-muted">Decisions Authorized</span>
+              <span className="text-xs text-muted">Decisions Authorized</span>
             </div>
             <div className="w-8 h-8 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
               <CheckCircle2 size={15} />
@@ -281,11 +281,11 @@ export default function Approvals() {
 
           <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted">Total Rejected / Returned</span>
+              <span className="text-xs text-muted font-medium">Total Rejected / Returned</span>
               <div className="text-lg font-mono font-medium text-rose-500 mt-0.5">
                 {metrics.rejectedCount}
               </div>
-              <span className="text-[10px] text-muted">Returned with Notes</span>
+              <span className="text-xs text-muted">Returned with Notes</span>
             </div>
             <div className="w-8 h-8 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
               <XCircle size={15} />
@@ -306,7 +306,7 @@ export default function Approvals() {
             <FileText size={14} />
             Quotation Approvals
             {pendingQuotations.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-medium">
+              <span className="px-2 py-0.5 rounded-none text-xs font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-medium">
                 {pendingQuotations.length}
               </span>
             )}
@@ -323,7 +323,7 @@ export default function Approvals() {
             <CheckSquare size={14} />
             Credit Limit Requests
             {pendingCredits.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-medium">
+              <span className="px-2 py-0.5 rounded-none text-xs font-mono font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-medium">
                 {pendingCredits.length}
               </span>
             )}
@@ -339,7 +339,7 @@ export default function Approvals() {
           >
             <History size={14} />
             Approval History Log
-            <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-surface2 text-secondary border border-theme-subtle font-medium">
+            <span className="px-2 py-0.5 rounded-none text-xs font-mono font-medium bg-surface2 text-secondary border border-theme-subtle font-medium">
               {metrics.totalHistoryCount}
             </span>
           </button>
@@ -357,7 +357,7 @@ export default function Approvals() {
                   <FileText className="w-4 h-4 text-amber-500" />
                   Commercial Quotations Awaiting Approval
                 </h2>
-                <p className="text-[11px] text-muted mt-0.5">
+                <p className="text-xs text-muted font-medium mt-0.5">
                   Quotations must be authorized before sales executives can dispatch them to clients.
                 </p>
               </div>
@@ -387,10 +387,10 @@ export default function Approvals() {
                       <div className="space-y-1 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-mono font-semibold text-primary">{quoNo}</span>
-                          <span className="text-[10px] bg-surface2 text-secondary px-1.5 py-0.2 rounded-none border border-theme-subtle font-mono font-medium">
+                          <span className="text-xs bg-surface2 text-secondary px-2 py-0.5 rounded-none border border-theme-subtle font-mono font-medium">
                             v{q.version || 1}
                           </span>
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
                             {q.status || 'Pending Approval'}
                           </span>
                           <span className="text-xs text-muted flex items-center gap-1 font-mono">
@@ -409,14 +409,14 @@ export default function Approvals() {
                           </p>
                         )}
 
-                        <p className="text-[11px] text-muted">
+                        <p className="text-xs text-muted font-medium">
                           {items.length} line item(s) · Terms: {parsed.terms ? 'Specified' : 'Standard'}
                         </p>
                       </div>
 
                       <div className="flex items-center gap-5">
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Total Quote Value</p>
+                          <p className="text-xs uppercase tracking-wider text-muted font-medium">Total Quote Value</p>
                           <p className="text-sm font-semibold font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(total)}</p>
                         </div>
 
@@ -454,7 +454,7 @@ export default function Approvals() {
                               </Button>
                             </>
                           ) : (
-                            <span className="text-[11px] text-muted italic">Approval requires Manager role</span>
+                            <span className="text-xs text-muted font-medium italic">Approval requires Manager role</span>
                           )}
                         </div>
                       </div>
@@ -475,7 +475,7 @@ export default function Approvals() {
                   <CheckSquare className="w-4 h-4 text-blue-500" />
                   Customer Credit Limit & Terms Requests
                 </h2>
-                <p className="text-[11px] text-muted mt-0.5">
+                <p className="text-xs text-muted font-medium mt-0.5">
                   Approve or reject customer requests for credit extensions, payment periods, and advance waivers.
                 </p>
               </div>
@@ -507,21 +507,21 @@ export default function Approvals() {
                     <div className="flex items-center gap-6">
                       {Number(customer.pendingCreditLimit) > 0 && Number(customer.pendingCreditLimit) !== Number(customer.creditLimit) && (
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Requested Limit</p>
+                          <p className="text-xs uppercase tracking-wider text-muted font-medium">Requested Limit</p>
                           <p className="text-sm font-semibold text-amber-500 font-mono">{formatCurrency(customer.pendingCreditLimit || 0)}</p>
                         </div>
                       )}
 
                       {customer.pendingRequiresAdvance !== null && Boolean(customer.pendingRequiresAdvance) !== Boolean(customer.requiresAdvance) && (
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Advance Policy</p>
+                          <p className="text-xs uppercase tracking-wider text-muted font-medium">Advance Policy</p>
                           <p className="text-xs font-semibold text-amber-500">{customer.pendingRequiresAdvance ? 'Advance Req.' : 'Waiver'}</p>
                         </div>
                       )}
 
                       {customer.pendingCreditDays !== null && customer.pendingCreditDays !== customer.creditDays && (
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Requested Period</p>
+                          <p className="text-xs uppercase tracking-wider text-muted font-medium">Requested Period</p>
                           <p className="text-xs font-semibold text-amber-500 font-mono">{customer.pendingCreditDays} Days</p>
                         </div>
                       )}
@@ -549,7 +549,7 @@ export default function Approvals() {
                           </Button>
                         </div>
                       ) : (
-                        <span className="text-[11px] text-muted italic">Approval requires Finance / Manager role</span>
+                        <span className="text-xs text-muted font-medium italic">Approval requires Finance / Manager role</span>
                       )}
                     </div>
                   </div>
@@ -569,7 +569,7 @@ export default function Approvals() {
                   <History className="w-4 h-4 text-emerald-500" />
                   Authorizations & Decision Audit Log
                 </h2>
-                <p className="text-[11px] text-muted mt-0.5">
+                <p className="text-xs text-muted font-medium mt-0.5">
                   Chronological trail of commercial quotation authorizations, credit limit grants, and rejected requests.
                 </p>
               </div>
@@ -614,7 +614,7 @@ export default function Approvals() {
             {/* History Table - Full Width */}
             <div className="overflow-x-auto min-h-[300px] w-full">
               <table className="w-full text-left text-xs">
-                <thead className="bg-surface2/50 border-b border-theme-subtle text-[10px] font-medium text-muted uppercase tracking-wider">
+                <thead className="bg-surface2/50 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">Date & Time</th>
                     <th className="px-3 py-3">Module</th>
@@ -633,7 +633,7 @@ export default function Approvals() {
                     return (
                       <tr key={log.id} className="hover:bg-theme-hover/20 transition-colors">
                         {/* Timestamp */}
-                        <td className="px-4 py-3 whitespace-nowrap text-muted font-mono text-[11px]">
+                        <td className="px-4 py-3 whitespace-nowrap text-muted font-mono text-xs">
                           <div className="flex items-center gap-1.5">
                             <Clock size={11} className="text-muted shrink-0" />
                             <span>{formatDate(log.actionDate || log.createdAt)}</span>
@@ -642,7 +642,7 @@ export default function Approvals() {
 
                         {/* Module */}
                         <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-surface2 text-secondary border-theme-subtle">
+                          <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none border bg-surface2 text-secondary border-theme-subtle">
                             {log.module}
                           </span>
                         </td>
@@ -665,11 +665,11 @@ export default function Approvals() {
                         {/* Decision */}
                         <td className="px-3 py-3 text-center whitespace-nowrap">
                           {isApproved ? (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 inline-flex items-center gap-1">
+                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 inline-flex items-center gap-1.5">
                               <CheckCircle2 size={11} /> Approved
                             </span>
                           ) : (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 inline-flex items-center gap-1">
+                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 inline-flex items-center gap-1.5">
                               <XCircle size={11} /> Rejected
                             </span>
                           )}
@@ -684,7 +684,7 @@ export default function Approvals() {
                         </td>
 
                         {/* Notes / Remarks */}
-                        <td className="px-4 py-3 max-w-[280px] truncate text-muted text-[11px]" title={log.notes}>
+                        <td className="px-4 py-3 max-w-[280px] truncate text-muted text-xs" title={log.notes}>
                           {log.notes || '-'}
                         </td>
 
@@ -695,7 +695,7 @@ export default function Approvals() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleOpenQuotationPreviewFromLog(log)}
-                              className="h-6 text-[10px] px-2 rounded-none border border-theme-subtle text-primary hover:bg-surface2 font-medium"
+                              className="h-7 text-xs px-2.5 rounded-none border border-theme-subtle text-primary hover:bg-surface2 font-medium"
                               title="Preview Quotation"
                             >
                               <Eye size={11} className="mr-1" /> View
@@ -705,7 +705,7 @@ export default function Approvals() {
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedLogDetail(log)}
-                              className="h-6 text-[10px] px-2 rounded-none border border-theme-subtle text-secondary hover:text-primary hover:bg-surface2 font-medium"
+                              className="h-7 text-xs px-2.5 rounded-none border border-theme-subtle text-secondary hover:text-primary hover:bg-surface2 font-medium"
                               title="View Log Details"
                             >
                               Details
@@ -847,7 +847,7 @@ export default function Approvals() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted">Decision:</span>
-                <span className={`font-medium px-2 py-0.5 rounded-none border text-[11px] ${
+                <span className={`font-semibold px-2.5 py-0.5 rounded-none border text-xs ${
                   selectedLogDetail.action === 'Approved'
                     ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
                     : 'bg-rose-500/10 text-rose-600 border-rose-500/30'
@@ -875,7 +875,7 @@ export default function Approvals() {
 
             {selectedLogDetail.notes && (
               <div className="p-3 bg-surface border border-theme-subtle rounded-none">
-                <label className="block text-[11px] font-medium text-muted uppercase tracking-wider mb-1">
+                <label className="block text-xs font-medium text-muted uppercase tracking-wider mb-1">
                   Managerial Remarks / Justification
                 </label>
                 <p className="text-xs text-primary leading-relaxed whitespace-pre-wrap">
