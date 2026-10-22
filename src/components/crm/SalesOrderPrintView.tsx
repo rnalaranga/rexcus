@@ -62,6 +62,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
   }
 
   const customerName = order.customerName || customer?.company || customer?.name || 'Valued Customer';
+  const attention = order.attention || customer?.attention || customer?.contactPerson || '';
   const customerAddress = order.deliveryAddress || customer?.address || '';
   const customerPhone = order.customerPhone || customer?.phone || '';
   const customerEmail = order.customerEmail || customer?.email || '';
@@ -145,6 +146,11 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
             <span className="font-bold italic underline mb-2 block text-[13px]">Customer / Bill To :</span>
             <div className="leading-snug space-y-1">
               <div className="font-bold text-[15px] text-black">{customerName}</div>
+              {attention && (
+                <div className="text-[13px] font-semibold text-black">
+                  <span className="font-bold text-gray-800">Attn:</span> {attention}
+                </div>
+              )}
               {customerAddress && (
                 <div className="text-gray-800 whitespace-pre-line text-[12px]">
                   {customerAddress}

@@ -11,6 +11,7 @@ export interface PaymentReceiptData {
   customerCompany?: string;
   customerAddress?: string;
   customerPhone?: string;
+  attention?: string;
   quotationId?: string;
   quotationNo?: string;
   orderId?: string;
@@ -41,7 +42,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
   };
 
   const company = receipt.customerCompany || receipt.customerName || "Valued Customer";
-  const person = receipt.customerName && receipt.customerCompany && receipt.customerName !== receipt.customerCompany ? receipt.customerName : "";
+  const person = receipt.attention || (receipt.customerName && receipt.customerCompany && receipt.customerName !== receipt.customerCompany ? receipt.customerName : "");
   const amount = Number(receipt.amount) || 0;
   const totalQuoted = Number(receipt.totalQuoted) || 0;
   const balanceRemaining = totalQuoted > 0 ? Math.max(0, totalQuoted - amount) : null;

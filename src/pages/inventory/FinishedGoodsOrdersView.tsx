@@ -5,7 +5,7 @@ import {
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
-  ShoppingBag
+  ShoppingBag, Receipt
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +21,8 @@ import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 import { QuotationAutocomplete } from '@/components/ui/QuotationAutocomplete'
 import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView'
 import { GatePassPrintView } from '@/components/GatePassPrintView'
+import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
+import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { 
@@ -29,7 +31,8 @@ import {
   dispatchFinishedGoodsOrder, 
   deleteFinishedGoodsOrder,
   createWorkOrder,
-  fetchWorkOrders
+  fetchWorkOrders,
+  fetchPaymentReceipts
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -69,6 +72,53 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     reason: '',
     notes: ''
   })
+
+  // Payment Receipts state
+  const [paymentReceiptsList, setPaymentReceiptsList] = useState<any[]>([])
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<any | null>(null)
+  const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
+  const [activePrintReceipt, setActivePrintReceipt] = useState<any | null>(null)
+  const [preInvoicePromptOrder, setPreInvoicePromptOrder] = useState<any | null>(null)
+
+  const loadPaymentReceipts = useCallback(async () => {
+    try {
+      const recs = await fetchPaymentReceipts()
+      if (Array.isArray(recs)) {
+        setPaymentReceiptsList(recs)
+      }
+    } catch (err) {
+      console.error('Failed to load payment receipts in Sales Orders:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadPaymentReceipts()
+  }, [loadPaymentReceipts])
+
+  const getOrderReceipts = useCallback((order: any) => {
+    if (!order) return []
+    return paymentReceiptsList.filter((r: any) => 
+      (r.orderId && String(r.orderId) === String(order.id)) ||
+      (order.orderNo && r.orderNo && String(r.orderNo).trim() === String(order.orderNo).trim()) ||
+      (order.quotationNo && r.quotationNo && String(r.quotationNo).trim() === String(order.quotationNo).trim()) ||
+      (order.quoteId && r.quoteId && String(r.quoteId) === String(order.quoteId))
+    )
+  }, [paymentReceiptsList])
+
+  const handleOpenReceiptModal = (order: any) => {
+    setSelectedOrderForReceipt(order)
+    setReceiptModalOpen(true)
+  }
+
+  const handleInvoiceClick = (order: any) => {
+    const recs = getOrderReceipts(order)
+    if (recs.length === 0) {
+      setPreInvoicePromptOrder(order)
+    } else {
+      navigate(`/finance/invoices/new?orderId=${order.id}`)
+    }
+  }
 
   // Filter only ready-made finished products from inventory
   const finishedProducts = useMemo(() => {
@@ -117,6 +167,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     uom: 'Nos',
     customerId: '',
     customerName: '',
+    attention: '',
     customerPhone: '',
     customerEmail: '',
     deliveryAddress: '',
@@ -181,6 +232,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       uom: order.uom || 'Nos',
       customerId: order.customerId || '',
       customerName: order.customerName || '',
+      attention: order.attention || '',
       customerPhone: order.customerPhone || '',
       customerEmail: order.customerEmail || '',
       deliveryAddress: order.deliveryAddress || '',
@@ -250,6 +302,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const parsed = quote.parsed || {};
     const custId = quote.matchedCustomerId || quote.leadId || parsed.leadId || '';
     const custName = quote.leadCompany || quote.leadName || parsed.customerCompany || parsed.customerName || '';
+    const attn = parsed.attention || quote.attention || quote.leadContact || (parsed.customerName && parsed.customerName !== custName ? parsed.customerName : '') || '';
     const custPhone = quote.leadPhone || '';
     const custEmail = quote.leadEmail || '';
     const deliveryAddr = quote.leadAddress || parsed.customerAddress || parsed.deliveryAddress || '';
@@ -313,6 +366,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       quotationNo: quote.displayNo,
       customerId: custId || prev.customerId,
       customerName: custName || prev.customerName,
+      attention: attn || prev.attention,
       customerPhone: custPhone || prev.customerPhone,
       customerEmail: custEmail || prev.customerEmail,
       deliveryAddress: deliveryAddr || prev.deliveryAddress,
@@ -341,13 +395,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
-  const handleCustomerSelect = (cId: string) => {
-    const cust = customers.find(c => c.id === cId) || leads.find(l => l.id === cId)
+  const handleCustomerSelect = (cId: string, custObj?: any) => {
+    const cust = custObj || customers.find(c => c.id === cId) || leads.find(l => l.id === cId)
     if (cust) {
       setFormData(prev => ({
         ...prev,
         customerId: cust.id,
         customerName: cust.company || cust.name || '',
+        attention: cust.attention || cust.contactPerson || (cust.company && cust.name && cust.company !== cust.name ? cust.name : prev.attention),
         customerPhone: cust.phone || prev.customerPhone,
         customerEmail: cust.email || prev.customerEmail,
         deliveryAddress: cust.address || prev.deliveryAddress
@@ -418,6 +473,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       subtotal: calculatedTotal,
       totalPrice: calculatedTotal,
       stockStatus,
+      attention: formData.attention || null,
       quoteId: formData.quoteId || null,
       quotationNo: formData.quotationNo || null,
       deliveryAddress: formData.deliveryAddress || null
@@ -582,6 +638,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         (ord.productName && ord.productName.toLowerCase().includes(q)) ||
         (ord.productSku && ord.productSku.toLowerCase().includes(q)) ||
         (ord.customerName && ord.customerName.toLowerCase().includes(q)) ||
+        (ord.attention && ord.attention.toLowerCase().includes(q)) ||
         (ord.customerPhone && ord.customerPhone.toLowerCase().includes(q))
       )
 
@@ -753,6 +810,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               Inv: {order.invoiceNo}
                             </span>
                           )}
+                          {(() => {
+                            const recs = getOrderReceipts(order);
+                            if (recs.length === 0) return null;
+                            const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                            return (
+                              <span
+                                onClick={() => {
+                                  const latestRec = recs[0] || recs[recs.length - 1];
+                                  setActivePrintReceipt({
+                                    ...latestRec,
+                                    orderNo: order.orderNo,
+                                    totalQuoted: Number(order.totalPrice || 0)
+                                  });
+                                  setPrintReceiptModalOpen(true);
+                                }}
+                                className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 cursor-pointer hover:bg-emerald-500/25 flex items-center gap-0.5"
+                                title={`Advance Paid: ${formatCurrency(totalAdv)} (${recs.length} receipt${recs.length > 1 ? 's' : ''}). Click to view/print`}
+                              >
+                                <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="text-[10px] text-muted flex items-center gap-1">
                           <Calendar size={10} />
@@ -799,6 +878,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           <User size={12} className="text-muted" />
                           {order.customerName}
                         </span>
+                        {order.attention && (
+                          <span className="text-[11px] font-semibold text-secondary flex items-center gap-1 mt-0.5">
+                            <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-surface2 text-muted border border-theme-subtle font-mono">Attn</span>
+                            {order.attention}
+                          </span>
+                        )}
                         {order.customerPhone && (
                           <span className="text-[10px] text-muted font-mono flex items-center gap-1 mt-0.5">
                             <Phone size={10} />
@@ -898,14 +983,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           </Button>
                         )}
 
+                        {/* Advance Payment Receipt Action */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Receipt}
+                          onClick={() => handleOpenReceiptModal(order)}
+                          className="h-7 text-xs px-2 border border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 font-bold shadow-sm"
+                          title="Issue Official Advance Payment Receipt before Final Invoice"
+                        >
+                          Receipt
+                        </Button>
+
                         {/* Invoice Generation Action */}
                         <Button
                           variant="ghost"
                           size="sm"
                           icon={FileText}
-                          onClick={() => navigate(`/finance/invoices/new?orderId=${order.id}`)}
+                          onClick={() => handleInvoiceClick(order)}
                           className="h-7 text-xs px-2 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 font-medium"
-                          title="Generate Invoice from Sales Order"
+                          title="Generate Final Invoice from Sales Order"
                         >
                           Invoice
                         </Button>
@@ -1232,7 +1329,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     value={formData.customerId || formData.customerName}
                     onChange={(cId, cust) => {
                       if (cust) {
-                        handleCustomerSelect(cust.id);
+                        handleCustomerSelect(cust.id, cust);
                       } else {
                         setFormData(prev => ({ ...prev, customerId: cId, customerName: cId }));
                       }
@@ -1240,6 +1337,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     customers={customers}
                     leads={leads}
                     placeholder="Type customer company name, contact, phone to autocomplete..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">
+                    Attention / Contact Person (Attn)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.attention}
+                    onChange={e => setFormData({ ...formData, attention: e.target.value })}
+                    placeholder="e.g. Mr. Nimal Perera (Procurement Manager)"
+                    className="w-full input-base text-xs font-medium"
                   />
                 </div>
 
@@ -1366,6 +1476,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 <span className="text-muted">Customer:</span>
                 <span className="font-bold text-primary">{dispatchModalOrder.customerName}</span>
               </div>
+              {dispatchModalOrder.attention && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Attention (Attn):</span>
+                  <span className="font-semibold text-primary">{dispatchModalOrder.attention}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted">Product / Spec:</span>
                 <span className="font-semibold text-primary">{dispatchModalOrder.productName}</span>
@@ -1401,12 +1517,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                 <div>
                   <label className="block text-xs font-semibold text-secondary mb-1">
-                    Vehicle Number <span className="text-red-500">*</span>
+                    Vehicle Number <span className="text-muted text-[10px] font-normal">(Optional)</span>
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. WP CAD-4567 or Self"
+                    placeholder="e.g. WP CAD-4567 or Hand Delivery (Optional)"
                     value={dispatchForm.vehicleNo}
                     onChange={e => setDispatchForm({ ...dispatchForm, vehicleNo: e.target.value })}
                     className="w-full input-base text-xs font-mono uppercase"
@@ -1605,6 +1720,105 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 disabled={submitting}
               >
                 {submitting ? 'Deleting...' : 'Delete Order'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Advance Payment Receipt Creation Modal */}
+      <CreatePaymentReceiptModal
+        isOpen={receiptModalOpen}
+        onClose={() => {
+          setReceiptModalOpen(false)
+          setSelectedOrderForReceipt(null)
+        }}
+        order={selectedOrderForReceipt}
+        settings={settings}
+        onSuccess={(receipt) => {
+          loadPaymentReceipts()
+          setActivePrintReceipt({
+            ...receipt,
+            orderNo: selectedOrderForReceipt?.orderNo,
+            totalQuoted: Number(selectedOrderForReceipt?.totalPrice || 0)
+          })
+          setPrintReceiptModalOpen(true)
+        }}
+      />
+
+      {/* Advance Payment Receipt Print Modal */}
+      <PaymentReceiptPrintModal
+        isOpen={printReceiptModalOpen}
+        onClose={() => {
+          setPrintReceiptModalOpen(false)
+          setActivePrintReceipt(null)
+        }}
+        receipt={activePrintReceipt}
+        settings={settings}
+      />
+
+      {/* Pre-Invoice Advance Payment Recommendation Modal */}
+      {preInvoicePromptOrder && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPreInvoicePromptOrder(null)}
+          title="Advance Payment Receipt Recommendation"
+        >
+          <div className="space-y-4">
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Receipt size={18} />
+              </div>
+              <div className="text-xs space-y-1">
+                <div className="font-bold text-amber-900 dark:text-amber-200">
+                  No Advance Payment Receipt Found for {preInvoicePromptOrder.orderNo}
+                </div>
+                <p className="text-muted leading-relaxed">
+                  In Rex ERP and Sri Lanka tax accounting, customer advance payments received prior to final dispatch should be acknowledged via an official <strong>Advance Payment Receipt</strong> before issuing the final tax invoice. The advance will then be automatically credited and deducted on the final invoice.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-surface2/40 border border-theme-subtle rounded-xl p-3 text-xs flex justify-between items-center">
+              <div>
+                <div className="text-muted text-[11px]">Sales Order</div>
+                <div className="font-mono font-bold text-primary">{preInvoicePromptOrder.orderNo}</div>
+              </div>
+              <div>
+                <div className="text-muted text-[11px]">Customer</div>
+                <div className="font-semibold text-primary">{preInvoicePromptOrder.customerName}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-muted text-[11px]">Total Consideration</div>
+                <div className="font-mono font-bold text-emerald-600">{formatCurrency(preInvoicePromptOrder.totalPrice || 0)}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const target = preInvoicePromptOrder
+                  setPreInvoicePromptOrder(null)
+                  navigate(`/finance/invoices/new?orderId=${target.id}`)
+                }}
+                className="text-xs text-muted hover:text-primary w-full sm:w-auto"
+              >
+                Skip & Proceed to Final Invoice
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Receipt}
+                onClick={() => {
+                  const target = preInvoicePromptOrder
+                  setPreInvoicePromptOrder(null)
+                  handleOpenReceiptModal(target)
+                }}
+                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold w-full sm:w-auto"
+              >
+                Issue Advance Payment Receipt
               </Button>
             </div>
           </div>

@@ -245,6 +245,7 @@ export const ProductQuotations: React.FC = () => {
         quotationNo: group.quoNo,
         customerId: custId,
         customerName: group.clientName || group.clientCompany || 'Customer',
+        attention: parsed.attention || latest.attention || group.clientContact || (cust as any)?.name || '',
         customerPhone: group.clientPhone || '',
         customerEmail: group.clientEmail || '',
         deliveryAddress: group.clientAddress || parsed.deliveryAddress || '',

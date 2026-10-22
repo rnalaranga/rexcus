@@ -528,6 +528,7 @@ async function run() {
     "ALTER TABLE gate_passes ADD COLUMN issuedDate DATETIME DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN status VARCHAR(50) DEFAULT 'Dispatched'",
     "ALTER TABLE gate_passes ADD COLUMN items LONGTEXT DEFAULT NULL",
+    "ALTER TABLE gate_passes ADD COLUMN updatedAt DATETIME DEFAULT NULL",
     "ALTER TABLE employee_machines ADD COLUMN createdAt DATETIME DEFAULT CURRENT_TIMESTAMP",
     "ALTER TABLE skills ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE qc_inspections ADD COLUMN inspectedBy VARCHAR(100) DEFAULT NULL",

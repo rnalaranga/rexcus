@@ -317,6 +317,7 @@ export const Quotations: React.FC = () => {
         quotationNo: group.quoNo,
         customerId: custId,
         customerName: group.leadCompany || group.leadName || 'Customer',
+        attention: quoteData.attention || latestMain.attention || group.leadContact || (cust as any)?.name || group.leadName || '',
         customerPhone: group.leadPhone || '',
         customerEmail: group.leadEmail || '',
         deliveryAddress: group.leadAddress || quoteData.customerAddress || '',

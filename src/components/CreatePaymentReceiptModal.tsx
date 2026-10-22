@@ -26,26 +26,30 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
   const { toast } = useDialog();
   const { data: accounts = [] } = useAccounts();
 
-  // Quotation resolution
+  // Quotation & Order resolution
   const quoteData = quotation?.parsed || (typeof quotation?.data === "string" ? JSON.parse(quotation.data || "{}") : (quotation?.data || {}));
-  const quotationId = quotation?.id || "";
-  const quotationNo = quotation?.quotationNo || quotation?.docNo || quotation?.id || "";
+  const quotationId = quotation?.id || order?.quoteId || "";
+  const quotationNo = quotation?.quotationNo || quotation?.docNo || quotation?.id || order?.quotationNo || "";
+  const orderId = order?.id || quotation?.orderId || "";
+  const orderNo = order?.orderNo || quotation?.orderNo || "";
 
   const customerId = quotation?.leadId || quotation?.customerId || quotation?.matchedCustomerId || order?.customerId || "CUST-DIRECT";
   const customerName = quotation?.leadCompany || quotation?.leadName || quotation?.customerCompany || quotation?.customerName || order?.customerName || "Customer";
   const customerCompany = quotation?.leadCompany || quotation?.customerCompany || order?.customerCompany || "";
   const customerAddress = quotation?.leadAddress || quotation?.customerAddress || order?.deliveryAddress || "";
   const customerPhone = quotation?.leadPhone || quotation?.customerPhone || order?.customerPhone || "";
+  const customerAttention = quotation?.attention || order?.attention || "";
 
-  // Quoted total computation
+  // Quoted total computation (prioritize order totalPrice if order is provided)
   const quotedTotal = Number(
+    order?.totalPrice ||
+    order?.totalAmount ||
+    order?.total ||
     quotation?.totalAmount ||
     quotation?.customAmount ||
     quoteData?.custTotals?.total ||
     quoteData?.jobTotals?.totalCost ||
     quotation?.total ||
-    order?.totalAmount ||
-    order?.total ||
     0
   );
 
@@ -84,8 +88,15 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
 
     const qNo = quotationNo;
     const qId = quotationId;
+    const oNo = orderNo;
+    const oId = orderId;
 
-    fetchPaymentReceipts({ quotationNo: qNo, quoteId: qId })
+    fetchPaymentReceipts({
+      quotationNo: qNo || undefined,
+      quoteId: qId || undefined,
+      orderNo: oNo || undefined,
+      orderId: oId || undefined
+    })
       .then((res: any[]) => {
         if (!isMounted) return;
         const list = Array.isArray(res) ? res : [];
@@ -105,8 +116,10 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
         }
 
         setNotes(
-          qNo
-            ? ("Advance payment against Quotation " + qNo)
+          oNo
+            ? `Advance payment against Sales Order ${oNo}`
+            : qNo
+            ? `Advance payment against Quotation ${qNo}`
             : "Customer Advance Payment Receipt"
         );
       })
@@ -120,7 +133,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, quotationId, quotationNo, quotedTotal]);
+  }, [isOpen, quotationId, quotationNo, orderId, orderNo, quotedTotal]);
 
   if (!isOpen) return null;
 
@@ -151,18 +164,20 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
         customerCompany,
         customerAddress,
         customerPhone,
+        attention: customerAttention || null,
         quotationId: quotationId || null,
         quotationNo: quotationNo || null,
-        orderId: order?.id || null,
-        orderNo: order?.orderNo || null,
+        orderId: orderId || null,
+        orderNo: orderNo || null,
         amount: numAmount,
         paymentMethod,
         depositAccountId: depositAccountId || null,
         depositAccountName: selectedAccount ? selectedAccount.name : depositAccountId,
         reference: reference.trim() || null,
-        notes: notes.trim() || ("Advance payment against Quotation " + quotationNo),
+        notes: notes.trim() || (orderNo ? `Advance payment against Sales Order ${orderNo}` : `Advance payment against Quotation ${quotationNo}`),
         receivedBy: receivedBy.trim() || "Accounts Dept",
-        totalQuoted: quotedTotal
+        totalQuoted: quotedTotal,
+        totalQuotedAmount: quotedTotal
       };
 
       const res = await createPaymentReceipt(payload);
@@ -188,11 +203,16 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               <Receipt size={22} />
             </div>
             <div>
-              <h2 className="text-base font-black text-primary flex items-center gap-2">
+              <h2 className="text-base font-black text-primary flex items-center gap-2 flex-wrap">
                 Issue Advance Payment Receipt
+                {orderNo && (
+                  <span className="text-xs font-mono font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    Order: {orderNo}
+                  </span>
+                )}
                 {quotationNo && (
                   <span className="text-xs font-mono font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                    {quotationNo}
+                    Quote: {quotationNo}
                   </span>
                 )}
               </h2>
@@ -214,12 +234,16 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
             <div>
               <div className="text-[11px] font-bold text-muted uppercase">Customer</div>
               <div className="text-xs font-bold text-primary truncate mt-0.5">{customerCompany || customerName}</div>
-              {customerCompany && customerName !== customerCompany && (
+              {customerAttention ? (
+                <div className="text-[10px] text-muted truncate">Attn: {customerAttention}</div>
+              ) : customerCompany && customerName !== customerCompany ? (
                 <div className="text-[10px] text-muted truncate">Attn: {customerName}</div>
-              )}
+              ) : null}
             </div>
             <div>
-              <div className="text-[11px] font-bold text-muted uppercase">Quotation Total</div>
+              <div className="text-[11px] font-bold text-muted uppercase">
+                {orderNo ? "Sales Order Total" : "Quotation Total"}
+              </div>
               <div className="text-sm font-black text-primary mt-0.5">{formatCurrency(quotedTotal)}</div>
               {totalPaidSoFar > 0 && (
                 <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">

@@ -353,7 +353,8 @@ async function runDatabaseSync() {
       issuedDate DATETIME NULL,
       status VARCHAR(50) DEFAULT 'Dispatched',
       notes TEXT NULL,
-      createdAt DATETIME NULL
+      createdAt DATETIME NULL,
+      updatedAt DATETIME NULL
     )`,
     `CREATE TABLE IF NOT EXISTS supplier_ledger (
       id VARCHAR(50) PRIMARY KEY,
@@ -1065,7 +1066,8 @@ async function runDatabaseSync() {
     "ALTER TABLE gate_passes ADD COLUMN driverName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN issuedDate DATETIME DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN status VARCHAR(50) DEFAULT 'Dispatched'",
-    "ALTER TABLE gate_passes ADD COLUMN items LONGTEXT DEFAULT NULL"
+    "ALTER TABLE gate_passes ADD COLUMN items LONGTEXT DEFAULT NULL",
+    "ALTER TABLE gate_passes ADD COLUMN updatedAt DATETIME DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -2343,7 +2345,20 @@ app.post('/api/gate-passes', async (req, res) => {
       createdAt: now
     };
 
-    await db.query('INSERT INTO gate_passes SET ?', item);
+    let validGpCols = new Set<string>();
+    try {
+      const [gpCols]: any = await db.query('SHOW COLUMNS FROM gate_passes');
+      validGpCols = new Set(gpCols.map((c: any) => c.Field));
+    } catch (e) {}
+
+    const safeItem: any = {};
+    for (const [k, v] of Object.entries(item)) {
+      if (validGpCols.size === 0 || validGpCols.has(k)) {
+        safeItem[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO gate_passes SET ?', safeItem);
 
     // If linked to a customer GRN, update GRN status to Dispatched and store gatePassId
     if (item.grnId) {
@@ -2368,7 +2383,21 @@ app.put('/api/gate-passes/:id', async (req, res) => {
     if (data.items && typeof data.items === 'object') {
       data.items = JSON.stringify(data.items);
     }
-    await db.query('UPDATE gate_passes SET ? WHERE id = ?', [data, id]);
+
+    let validGpCols = new Set<string>();
+    try {
+      const [gpCols]: any = await db.query('SHOW COLUMNS FROM gate_passes');
+      validGpCols = new Set(gpCols.map((c: any) => c.Field));
+    } catch (e) {}
+
+    const safeData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validGpCols.size === 0 || validGpCols.has(k)) {
+        safeData[k] = v;
+      }
+    }
+
+    await db.query('UPDATE gate_passes SET ? WHERE id = ?', [safeData, id]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
@@ -2931,6 +2960,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       productSku: primarySku,
       customerId: data.customerId || null,
       customerName: data.customerName || 'Customer',
+      attention: data.attention || null,
       customerPhone: data.customerPhone || null,
       customerEmail: data.customerEmail || null,
       orderDate: data.orderDate || now.slice(0, 10),
@@ -2970,6 +3000,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       validCols = new Set(colRows.map((c: any) => c.Field));
       
       const alterQueries = [
+        { col: 'attention', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN attention VARCHAR(255) DEFAULT NULL' },
         { col: 'items', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN items LONGTEXT DEFAULT NULL' },
         { col: 'quoteId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN quoteId VARCHAR(50) DEFAULT NULL' },
         { col: 'quotationNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN quotationNo VARCHAR(100) DEFAULT NULL' },
@@ -3010,6 +3041,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
             productSku VARCHAR(100) DEFAULT NULL,
             customerId VARCHAR(50) DEFAULT NULL,
             customerName VARCHAR(255) NOT NULL,
+            attention VARCHAR(255) DEFAULT NULL,
             customerPhone VARCHAR(100) DEFAULT NULL,
             customerEmail VARCHAR(150) DEFAULT NULL,
             orderDate DATE NOT NULL,
@@ -3123,7 +3155,11 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
         }];
 
     // 2. Insert Gate Pass
-    const gatePassData = {
+    const resolvedVehicleNo = (dispatchDetails.vehicleNo && typeof dispatchDetails.vehicleNo === 'string' && dispatchDetails.vehicleNo.trim())
+      ? dispatchDetails.vehicleNo.trim()
+      : (order.vehicleNo || null);
+
+    const gatePassData: any = {
       id: gpId,
       type: 'goods_delivery',
       orderId: order.id,
@@ -3133,12 +3169,12 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       customerId: order.customerId || null,
       customerName: order.customerName,
       customerCompany: order.customerName,
-      attention: dispatchDetails.attention || order.customerName,
+      attention: dispatchDetails.attention || order.attention || order.customerName,
       address: dispatchDetails.destination || order.deliveryAddress || null,
       phone: order.customerPhone || null,
       email: order.customerEmail || null,
       carrier: dispatchDetails.carrier || order.carrier || 'REX Transport',
-      vehicleNo: dispatchDetails.vehicleNo || order.vehicleNo || 'N/A',
+      vehicleNo: resolvedVehicleNo,
       driverName: dispatchDetails.driverName || order.driverName || null,
       reason: dispatchDetails.reason || `Finished Goods Delivery for Order ${order.orderNo}`,
       items: JSON.stringify(gatePassItemsList),
@@ -3146,11 +3182,23 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       issuedDate: now,
       status: 'Dispatched',
       notes: dispatchDetails.notes || order.notes || '',
-      createdAt: now,
-      updatedAt: now
+      createdAt: now
     };
 
-    await db.query('INSERT INTO gate_passes SET ?', gatePassData);
+    let validGpCols = new Set<string>();
+    try {
+      const [gpCols]: any = await db.query('SHOW COLUMNS FROM gate_passes');
+      validGpCols = new Set(gpCols.map((c: any) => c.Field));
+    } catch (e) {}
+
+    const safeGatePassData: any = {};
+    for (const [k, v] of Object.entries(gatePassData)) {
+      if (validGpCols.size === 0 || validGpCols.has(k)) {
+        safeGatePassData[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO gate_passes SET ?', safeGatePassData);
 
     // 3. Deduct stock for all items
     if (parsedItems.length > 0) {
@@ -3199,19 +3247,32 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
     }
 
     // 4. Update Sales Order
-    const updateOrder = {
+    const updateOrder: any = {
       status: 'Dispatched',
       isDispatched: 1,
       dispatchedAt: now,
       gatePassId: gpId,
       gatePassNo: gpId,
       carrier: dispatchDetails.carrier || order.carrier || 'REX Transport',
-      vehicleNo: dispatchDetails.vehicleNo || order.vehicleNo || 'N/A',
+      vehicleNo: resolvedVehicleNo,
       driverName: dispatchDetails.driverName || order.driverName || null,
       updatedAt: now
     };
 
-    await db.query('UPDATE finished_goods_orders SET ? WHERE id = ?', [updateOrder, id]);
+    let validFgoCols = new Set<string>();
+    try {
+      const [fgoCols]: any = await db.query('SHOW COLUMNS FROM finished_goods_orders');
+      validFgoCols = new Set(fgoCols.map((c: any) => c.Field));
+    } catch (e) {}
+
+    const safeUpdateOrder: any = {};
+    for (const [k, v] of Object.entries(updateOrder)) {
+      if (validFgoCols.size === 0 || validFgoCols.has(k)) {
+        safeUpdateOrder[k] = v;
+      }
+    }
+
+    await db.query('UPDATE finished_goods_orders SET ? WHERE id = ?', [safeUpdateOrder, id]);
 
     res.json({
       success: true,
@@ -5382,7 +5443,7 @@ app.post('/api/finance/journals', async (req, res) => {
 // ==========================================
 app.get('/api/finance/payment-receipts', async (req, res) => {
   try {
-    const { quoteId, quotationNo, orderId, customerId } = req.query;
+    const { quoteId, quotationNo, orderId, orderNo, customerId } = req.query;
     let query = 'SELECT * FROM payment_receipts WHERE 1=1';
     const params: any[] = [];
 
@@ -5397,6 +5458,10 @@ app.get('/api/finance/payment-receipts', async (req, res) => {
     if (orderId) {
       query += ' AND (orderId = ? OR orderNo = ?)';
       params.push(orderId, orderId);
+    }
+    if (orderNo) {
+      query += ' AND (orderNo = ? OR orderId = ?)';
+      params.push(orderNo, orderNo);
     }
     if (customerId) {
       query += ' AND customerId = ?';
@@ -5492,7 +5557,7 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       id: jeId,
       date: receiptDate,
       reference: receiptNum,
-      description: `Customer Receipt: ${receiptNum} (Quote: ${data.quotationNo || data.quoteId || 'Direct'}) - ${data.customerName || 'Customer'}`,
+      description: `Customer Receipt: ${receiptNum} (${data.orderNo ? `Order: ${data.orderNo}` : (data.quotationNo ? `Quote: ${data.quotationNo}` : 'Direct')}) - ${data.customerName || 'Customer'}`,
       totalAmount: amountVal,
       createdBy: data.receivedBy || 'Accounts',
       status: 'posted',
@@ -5523,7 +5588,7 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       accountId: creditAccountId,
       partyType: 'Customer',
       partyId: data.customerId || null,
-      description: `Advance receipt on Quotation ${data.quotationNo || data.quoteId || ''}`,
+      description: `Advance receipt on ${data.orderNo ? `Sales Order ${data.orderNo}` : `Quotation ${data.quotationNo || data.quoteId || ''}`}`,
       debit: 0,
       credit: amountVal
     });
@@ -5541,7 +5606,7 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       customerId: data.customerId || null,
       customerName: data.customerName || null,
       customerCompany: data.customerCompany || null,
-      totalQuotedAmount: Number(data.totalQuotedAmount || 0),
+      totalQuotedAmount: Number(data.totalQuotedAmount || data.totalQuoted || 0),
       amount: amountVal,
       balanceDue: Number(data.balanceDue || 0),
       paymentMethod: data.paymentMethod || 'Cash',

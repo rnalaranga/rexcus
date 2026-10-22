@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
@@ -16,6 +16,7 @@ import { createInvoice, fetchPaymentReceipts } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager';
+import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 
 export { toWords, formatGazetteDate, TEMPLATES, InvoicePreview } from '@/components/finance/InvoicePreview';
 import { InvoicePreview, toWords, formatGazetteDate, TEMPLATES } from '@/components/finance/InvoicePreview';
@@ -75,6 +76,9 @@ export const InvoiceBuilder: React.FC = () => {
   const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
   const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
   const [advanceReceipts, setAdvanceReceipts] = useState<any[]>([]);
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [loadedSourceOrder, setLoadedSourceOrder] = useState<any | null>(null);
+  const [loadedSourceQuote, setLoadedSourceQuote] = useState<any | null>(null);
 
   const [searchParams] = useSearchParams();
   const paramOrderId = searchParams.get('orderId');
@@ -109,6 +113,7 @@ export const InvoiceBuilder: React.FC = () => {
           }
 
           if (ord && isMounted) {
+            setLoadedSourceOrder(ord);
             // Customer Matching
             const ordCustId = ord.customerId || '';
             const ordCustName = ord.customerName || '';
@@ -140,6 +145,7 @@ export const InvoiceBuilder: React.FC = () => {
 
             if (ord.orderNo) setOrderNo(ord.orderNo);
             if (ord.quotationNo) setQuotationNo(ord.quotationNo);
+            if (ord.attention) setAttention(ord.attention);
             const dpNo = ord.gatePassNo || ord.gatePassId || ord.dispatchNo || '';
             if (dpNo) {
               setDispatchNo(dpNo);
@@ -233,6 +239,7 @@ export const InvoiceBuilder: React.FC = () => {
           }
 
           if (q && isMounted) {
+            setLoadedSourceQuote(q);
             const parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
 
             // Customer Resolution
@@ -407,8 +414,7 @@ export const InvoiceBuilder: React.FC = () => {
   }, [quotationNo, orderNo]);
 
   // Fetch advance payment receipts linked to quotation or order
-  useEffect(() => {
-    let isMounted = true;
+  const refreshAdvanceReceipts = useCallback(() => {
     const qNo = quotationNo?.trim();
     const oNo = orderNo?.trim();
     if (!qNo && !oNo && !paramQuoteId && !paramOrderId) {
@@ -422,14 +428,15 @@ export const InvoiceBuilder: React.FC = () => {
       orderNo: oNo || undefined,
       orderId: paramOrderId || undefined
     }).then(res => {
-      if (!isMounted) return;
       setAdvanceReceipts(Array.isArray(res) ? res : []);
     }).catch(err => {
       console.warn('Failed to fetch linked advance payment receipts:', err);
     });
-
-    return () => { isMounted = false; };
   }, [quotationNo, orderNo, paramQuoteId, paramOrderId]);
+
+  useEffect(() => {
+    refreshAdvanceReceipts();
+  }, [refreshAdvanceReceipts]);
 
   const advanceDeducted = useMemo(() => {
     return advanceReceipts.reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -875,7 +882,7 @@ export const InvoiceBuilder: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
           {/* Advance Receipt Banner */}
-          {advanceDeducted > 0 && (
+          {advanceDeducted > 0 ? (
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold shrink-0">
@@ -897,7 +904,28 @@ export const InvoiceBuilder: React.FC = () => {
                 -{formatCurrency(advanceDeducted)}
               </span>
             </div>
-          )}
+          ) : (orderNo || quotationNo) ? (
+            <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-bold text-amber-900 dark:text-amber-200">
+                    No Advance Payment Receipt Linked:
+                  </span>{' '}
+                  <span className="text-muted">
+                    No advance payment receipt is recorded for {orderNo ? `Sales Order ${orderNo}` : `Quotation ${quotationNo}`}.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReceiptModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shrink-0 shadow-sm"
+              >
+                <Receipt size={14} /> Create Payment Receipt First
+              </button>
+            </div>
+          ) : null}
 
           {/* Row 1 — Bill To + Invoice Details (side by side, full width) */}
           <div className="grid grid-cols-3 gap-5">
@@ -1402,6 +1430,19 @@ export const InvoiceBuilder: React.FC = () => {
 
         </div>
       )}
+
+      {/* Advance Payment Receipt Modal */}
+      <CreatePaymentReceiptModal
+        isOpen={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        order={loadedSourceOrder || (orderNo ? { id: paramOrderId, orderNo, customerId, customerName: customCustomer?.name || attention, totalPrice: total } : undefined)}
+        quotation={loadedSourceQuote || (quotationNo ? { id: paramQuoteId, quotationNo, customerId, customerName: customCustomer?.name || attention, totalAmount: total } : undefined)}
+        settings={company}
+        onSuccess={(receipt) => {
+          refreshAdvanceReceipts();
+          toast(`Official Advance Payment Receipt ${receipt.receiptNo || ''} created & credited!`, 'success');
+        }}
+      />
     </div>
   );
 };
