@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { 
   FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
-  PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3
+  PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -17,7 +17,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
+import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
+import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 
@@ -38,6 +41,41 @@ export const ProductQuotations: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState('all')
   const [previewData, setPreviewData] = useState<{ quotation: any, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
+
+  const [paymentReceiptsList, setPaymentReceiptsList] = useState<any[]>([])
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [selectedQuoteForReceipt, setSelectedQuoteForReceipt] = useState<any>(null)
+  const [activePrintReceipt, setActivePrintReceipt] = useState<any>(null)
+  const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
+
+  const loadPaymentReceipts = async () => {
+    try {
+      const recs = await fetchPaymentReceipts();
+      setPaymentReceiptsList(Array.isArray(recs) ? recs : []);
+    } catch (e) {}
+  };
+
+  React.useEffect(() => {
+    loadPaymentReceipts();
+  }, []);
+
+  const getQuoteReceipts = (group: any, latest: any) => {
+    if (!latest) return [];
+    const qNo = group.quoNo || latest.quotationNo || latest.docNo;
+    return paymentReceiptsList.filter((r: any) => 
+      (r.quotationId && String(r.quotationId) === String(latest.id)) ||
+      (qNo && r.quotationNo && r.quotationNo.trim() === qNo.trim())
+    );
+  };
+
+  const handleOpenReceiptModal = (group: any, latest: any) => {
+    setSelectedQuoteForReceipt({
+      ...latest,
+      quotationNo: group.quoNo || latest.quotationNo || latest.docNo,
+      group
+    });
+    setReceiptModalOpen(true);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -320,16 +358,16 @@ export const ProductQuotations: React.FC = () => {
           </select>
 
           {/* Customer filter */}
-          <select
-            value={customerFilter}
-            onChange={e => setCustomerFilter(e.target.value)}
-            className="bg-surface2 border border-theme-subtle rounded-xl px-2.5 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 font-medium max-w-[200px]"
-          >
-            <option value="all">All Customers</option>
-            {customers.map((c: any) => (
-              <option key={c.id} value={c.id}>{c.company || c.name}</option>
-            ))}
-          </select>
+          <div className="w-52">
+            <CustomerAutocomplete
+              value={customerFilter}
+              onChange={(cId) => setCustomerFilter(cId || 'all')}
+              customers={customers}
+              placeholder="Filter by customer..."
+              allOptionLabel="All Customers"
+              className="py-1 text-xs rounded-xl"
+            />
+          </div>
         </div>
       </div>
 
@@ -448,7 +486,7 @@ export const ProductQuotations: React.FC = () => {
                     </Button>
 
                     {/* Sales Order & Invoice */}
-                    {status === 'Approved' && (
+                    {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
                       <>
                         <Button
                           variant="ghost"
@@ -463,13 +501,36 @@ export const ProductQuotations: React.FC = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          icon={Banknote}
-                          onClick={() => handleCreateInvoice(group, latest)}
-                          className="h-8 text-xs border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 font-bold"
-                          title="Generate Invoice from Approved Quote"
+                          icon={Receipt}
+                          onClick={() => handleOpenReceiptModal(group, latest)}
+                          className="h-8 text-xs border border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/15 font-bold shadow-sm"
+                          title="Issue Official Advance Payment Receipt"
                         >
-                          Invoice
+                          Payment Receipt
                         </Button>
+                        {(() => {
+                          const recs = getQuoteReceipts(group, latest);
+                          if (recs.length === 0) return null;
+                          const totalAdv = recs.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const latestRec = recs[recs.length - 1];
+                                setActivePrintReceipt({
+                                  ...latestRec,
+                                  totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
+                                });
+                                setPrintReceiptModalOpen(true);
+                              }}
+                              className="h-8 px-2 inline-flex items-center gap-1 text-[11px] font-bold rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
+                              title={"Click to view/print receipt (" + recs.length + " receipt" + (recs.length > 1 ? "s" : "") + ")"}
+                            >
+                              <Receipt size={12} /> Advance: {formatCurrency(totalAdv)}
+                            </button>
+                          );
+                        })()}
                       </>
                     )}
 
@@ -597,6 +658,34 @@ export const ProductQuotations: React.FC = () => {
           />
         </>
       )}
+
+      <CreatePaymentReceiptModal
+        isOpen={receiptModalOpen}
+        onClose={() => {
+          setReceiptModalOpen(false);
+          setSelectedQuoteForReceipt(null);
+        }}
+        quotation={selectedQuoteForReceipt}
+        settings={settings}
+        onSuccess={(receipt) => {
+          loadPaymentReceipts();
+          setActivePrintReceipt({
+            ...receipt,
+            totalQuoted: Number(selectedQuoteForReceipt?.totalAmount || selectedQuoteForReceipt?.customAmount || 0)
+          });
+          setPrintReceiptModalOpen(true);
+        }}
+      />
+
+      <PaymentReceiptPrintModal
+        isOpen={printReceiptModalOpen}
+        onClose={() => {
+          setPrintReceiptModalOpen(false);
+          setActivePrintReceipt(null);
+        }}
+        receipt={activePrintReceipt}
+        settings={settings}
+      />
     </div>
   )
 }

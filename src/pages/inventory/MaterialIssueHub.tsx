@@ -21,6 +21,7 @@ import {
   fetchFullStockLedger, 
   issueMaterialToWorkOrder 
 } from '@/lib/api'
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 
 type TabType = 'requisitions' | 'direct_issue' | 'history'
 
@@ -1142,27 +1143,21 @@ export const MaterialIssueHub: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-secondary mb-1">Select from Inventory Catalog</label>
-                <select
+                <ProductAutocomplete
                   value={directForm.inventoryId}
-                  onChange={(e) => {
-                    const inv = inventory.find(i => i.id === e.target.value)
+                  onChange={(val, inv) => {
                     setDirectForm({
                       ...directForm,
-                      inventoryId: e.target.value,
+                      inventoryId: val,
                       materialName: inv ? inv.name : directForm.materialName,
                       unit: inv?.uom || directForm.unit,
                       unitCost: Number(inv?.unitCost || directForm.unitCost)
                     })
                   }}
-                  className="w-full input-base text-xs rounded-none"
-                >
-                  <option value="">-- Choose Stock Item (or type below) --</option>
-                  {inventory.map(inv => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.name} ({inv.sku}) - Avail: {inv.quantity} {inv.uom} (Rs. {inv.unitCost})
-                    </option>
-                  ))}
-                </select>
+                  products={inventory}
+                  placeholder="Search stock item..."
+                  className="rounded-none text-xs"
+                />
               </div>
             </div>
 
@@ -1419,27 +1414,21 @@ export const MaterialIssueHub: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-secondary mb-1">Select from Inventory Catalog</label>
-              <select
+              <ProductAutocomplete
                 value={issueForm.inventoryId}
-                onChange={(e) => {
-                  const inv = inventory.find(i => i.id === e.target.value)
+                onChange={(val, inv) => {
                   setIssueForm({
                     ...issueForm,
-                    inventoryId: e.target.value,
+                    inventoryId: val,
                     materialName: inv ? inv.name : issueForm.materialName,
                     unit: inv?.uom || issueForm.unit,
                     unitCost: Number(inv?.unitCost || issueForm.unitCost)
                   })
                 }}
-                className="w-full input-base text-xs rounded-none"
-              >
-                <option value="">-- Choose Stock Item (or custom below) --</option>
-                {inventory.map((inv: any) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.name} ({inv.sku}) - Avail: {inv.quantity} {inv.uom}
-                  </option>
-                ))}
-              </select>
+                products={inventory}
+                placeholder="Search stock item..."
+                className="rounded-none text-xs"
+              />
             </div>
 
             <div>

@@ -13,6 +13,7 @@ import { useTaxProfiles } from '@/hooks/useFinance';
 import { useMaterialRequests, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { createPO, updatePO, fetchPOs } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -686,10 +687,13 @@ export const POBuilder: React.FC = () => {
                       <tr key={item.id} className="hover:bg-surface/30 transition-colors">
                         <td className="p-2 pl-5">
                           <div className="flex flex-col gap-1.5 w-64">
-                            <select value={item.inventoryId} onChange={e => updateItem(item.id, 'inventoryId', e.target.value)} className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs font-medium focus:border-primary">
-                              <option value="">-- Material --</option>
-                              {inventory.map(i => <option key={i.id} value={i.id}>{i.sku ? `[${i.sku}] ` : ''}{i.name}</option>)}
-                            </select>
+                            <ProductAutocomplete 
+                              value={item.inventoryId} 
+                              onChange={(val) => updateItem(item.id, 'inventoryId', val)} 
+                              products={inventory}
+                              placeholder="Search material / SKU..."
+                              className="text-xs py-1"
+                            />
                             <input type="text" value={item.desc} onChange={e => updateItem(item.id, 'desc', e.target.value)} placeholder="Description..." className="w-full bg-transparent border border-transparent hover:border-theme-subtle focus:border-theme-subtle px-2 py-1 rounded text-[11px]" />
                             {item.mrId && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 w-fit">

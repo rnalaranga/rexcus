@@ -4,7 +4,8 @@ import {
   ShoppingCart, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, X,
-  Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory
+  Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
+  ShoppingBag
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -12,9 +13,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads } from '@/hooks/useData'
+import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useDialog } from '@/components/ui/DialogProvider'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
+import { QuotationAutocomplete } from '@/components/ui/QuotationAutocomplete'
 import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView'
 import { GatePassPrintView } from '@/components/GatePassPrintView'
 // @ts-ignore
@@ -44,6 +48,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: inventory, refetch: refetchInventory } = useInventory()
   const { data: customers = [] } = useCustomers()
   const { data: leads = [] } = useLeads()
+  const { data: rawQuotations = [] } = useQuotations()
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -70,60 +75,256 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     return inventory.filter(item => item.type === 'finished_product' || item.type === 'product')
   }, [inventory])
 
+  // Normalized list of all quotations (Engineering + Product) for order conversion
+  const availableQuotations = useMemo(() => {
+    return (rawQuotations || []).map((q: any) => {
+      let parsed: any = {};
+      try {
+        parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
+      } catch (e) {}
+
+      const isProd = q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product';
+      const quoteTypeLabel = isProd ? 'Product Quotation' : 'Engineering Quotation';
+      const qNo = q.quotationNo || q.docNo || parsed.quotationNo || q.quoNo || q.id;
+      const custName = q.leadCompany || q.leadName || parsed.customerCompany || parsed.customerName || 'Customer';
+      const totalAmt = Number(q.totalAmount || q.customAmount || parsed.custTotals?.total || 0);
+
+      const rawItems = parsed.custItems || parsed.items || parsed.jobItems || [];
+      const itemsCount = Array.isArray(rawItems) ? rawItems.length : 1;
+
+      return {
+        ...q,
+        parsed,
+        isProd,
+        quoteTypeLabel,
+        displayNo: qNo,
+        customerDisplayName: custName,
+        totalAmt,
+        itemsCount
+      };
+    });
+  }, [rawQuotations]);
+
   // Form State for New / Edit Order
   const initialForm = {
     orderNo: '',
+    orderSource: 'from_quote' as 'from_quote' | 'ready_made' | 'custom_job',
+    quoteId: '',
+    quotationNo: '',
     productId: '',
     productName: '',
     productSku: '',
+    uom: 'Nos',
     customerId: '',
     customerName: '',
     customerPhone: '',
     customerEmail: '',
+    deliveryAddress: '',
     orderDate: new Date().toISOString().slice(0, 10),
     targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     qty: '1',
     unitPrice: '',
-    status: 'Pending',
-    notes: ''
+    status: 'Confirmed',
+    notes: '',
+    items: [] as any[]
   }
 
   const [formData, setFormData] = useState(initialForm)
 
   const handleOpenCreateModal = (preselectedProduct?: any) => {
     setEditingOrder(null)
-    const initialProduct = preselectedProduct || finishedProducts[0]
-    setFormData({
-      ...initialForm,
-      orderNo: `ORD-${Date.now().toString().slice(-5)}`,
-      productId: initialProduct?.id || '',
-      productName: initialProduct?.name || '',
-      productSku: initialProduct?.sku || '',
-      unitPrice: initialProduct?.unitPrice ? String(initialProduct.unitPrice) : '0'
-    })
+    const initialProduct = preselectedProduct
+    if (initialProduct) {
+      setFormData({
+        ...initialForm,
+        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        orderSource: 'ready_made',
+        productId: initialProduct?.id || '',
+        productName: initialProduct?.name || '',
+        productSku: initialProduct?.sku || '',
+        unitPrice: initialProduct?.unitPrice ? String(initialProduct.unitPrice) : '0'
+      })
+    } else {
+      setFormData({
+        ...initialForm,
+        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        orderSource: 'from_quote'
+      })
+    }
     setShowOrderModal(true)
   }
 
   const handleOpenEditModal = (order: any) => {
     setEditingOrder(order)
+    let parsedItems: any[] = [];
+    if (order.items) {
+      try {
+        parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      } catch (e) {}
+    }
+
+    let source: 'from_quote' | 'ready_made' | 'custom_job' = 'ready_made';
+    if (order.quoteId || order.quotationNo) {
+      source = 'from_quote';
+    } else if (order.productId === 'CUSTOM-JOB' || order.productId === 'CUSTOM-ORDER' || (!order.productId && order.productName)) {
+      source = 'custom_job';
+    }
+
     setFormData({
       orderNo: order.orderNo || '',
+      orderSource: source,
+      quoteId: order.quoteId || '',
+      quotationNo: order.quotationNo || '',
       productId: order.productId || '',
       productName: order.productName || '',
       productSku: order.productSku || '',
+      uom: order.uom || 'Nos',
       customerId: order.customerId || '',
       customerName: order.customerName || '',
       customerPhone: order.customerPhone || '',
       customerEmail: order.customerEmail || '',
+      deliveryAddress: order.deliveryAddress || '',
       orderDate: order.orderDate ? String(order.orderDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
       targetDeliveryDate: order.targetDeliveryDate ? String(order.targetDeliveryDate).slice(0, 10) : '',
       qty: String(order.qty || '1'),
       unitPrice: String(order.unitPrice || '0'),
-      status: order.status || 'Pending',
-      notes: order.notes || ''
+      status: order.status || 'Confirmed',
+      notes: order.notes || '',
+      items: parsedItems
     })
     setShowOrderModal(true)
   }
+
+  const handleSourceChange = (src: 'from_quote' | 'ready_made' | 'custom_job') => {
+    setFormData(prev => {
+      if (src === 'from_quote') {
+        return {
+          ...prev,
+          orderSource: src,
+          productId: 'QUOTED-ITEM',
+          productSku: '',
+          items: []
+        };
+      } else if (src === 'ready_made') {
+        const firstProd = finishedProducts[0];
+        return {
+          ...prev,
+          orderSource: src,
+          quoteId: '',
+          quotationNo: '',
+          productId: firstProd?.id || '',
+          productName: firstProd?.name || '',
+          productSku: firstProd?.sku || '',
+          unitPrice: firstProd?.unitPrice ? String(firstProd.unitPrice) : prev.unitPrice,
+          items: []
+        };
+      } else {
+        return {
+          ...prev,
+          orderSource: src,
+          quoteId: '',
+          quotationNo: '',
+          productId: 'CUSTOM-JOB',
+          productName: '',
+          productSku: '',
+          unitPrice: '',
+          uom: 'Nos',
+          items: []
+        };
+      }
+    });
+  };
+
+  const handleQuoteSelect = (qId: string) => {
+    const quote = availableQuotations.find(q => String(q.id) === String(qId));
+    if (!quote) {
+      setFormData(prev => ({
+        ...prev,
+        quoteId: '',
+        quotationNo: '',
+        items: []
+      }));
+      return;
+    }
+
+    const parsed = quote.parsed || {};
+    const custId = quote.matchedCustomerId || quote.leadId || parsed.leadId || '';
+    const custName = quote.leadCompany || quote.leadName || parsed.customerCompany || parsed.customerName || '';
+    const custPhone = quote.leadPhone || '';
+    const custEmail = quote.leadEmail || '';
+    const deliveryAddr = quote.leadAddress || parsed.customerAddress || parsed.deliveryAddress || '';
+    const terms = parsed.custTerms || parsed.paymentTerms || parsed.terms || 'Standard Terms';
+
+    // Extract Line items
+    const rawItems = parsed.custItems || parsed.items || [];
+    const extractedItems: any[] = [];
+
+    if (Array.isArray(rawItems) && rawItems.length > 0) {
+      rawItems.forEach((it: any) => {
+        const desc = it.desc || it.description || it.name || it.text || '';
+        if (!desc && !it.unitPrice && !it.amount) return;
+        extractedItems.push({
+          productId: it.productId || it.inventoryId || (quote.isProd ? 'PRODUCT-ITEM' : 'CUSTOM-JOB'),
+          productName: it.name || desc,
+          productSku: it.sku || '',
+          description: desc,
+          qty: Number(it.qty) || 1,
+          unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+          amount: Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice ?? it.price ?? 0)),
+          uom: it.uom || it.unit || 'Nos'
+        });
+      });
+    }
+
+    if (extractedItems.length === 0) {
+      if (Array.isArray(parsed.jobItems) && parsed.jobItems.length > 0) {
+        const jiText = parsed.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join(', ');
+        extractedItems.push({
+          productId: 'CUSTOM-JOB',
+          productName: parsed.subject || `Quotation ${quote.displayNo}`,
+          productSku: '',
+          description: (parsed.subject ? `${parsed.subject} - ` : '') + (jiText || 'Custom Machining Job'),
+          qty: Number(parsed.jobQty) || 1,
+          unitPrice: Number(quote.totalAmt || 0),
+          amount: Number(quote.totalAmt || 0),
+          uom: 'Lot'
+        });
+      } else {
+        extractedItems.push({
+          productId: quote.isProd ? 'PRODUCT-ITEM' : 'CUSTOM-JOB',
+          productName: parsed.subject || `Quotation ${quote.displayNo}`,
+          productSku: '',
+          description: parsed.subject || `Quotation ${quote.displayNo}`,
+          qty: 1,
+          unitPrice: Number(quote.totalAmt || 0),
+          amount: Number(quote.totalAmt || 0),
+          uom: 'Lot'
+        });
+      }
+    }
+
+    const primaryDesc = extractedItems[0]?.description || extractedItems[0]?.productName || parsed.subject || `Quotation ${quote.displayNo}`;
+    const primaryPrice = extractedItems.length === 1 ? extractedItems[0].unitPrice : quote.totalAmt;
+    const primaryQty = extractedItems.length === 1 ? extractedItems[0].qty : 1;
+
+    setFormData(prev => ({
+      ...prev,
+      quoteId: quote.id,
+      quotationNo: quote.displayNo,
+      customerId: custId || prev.customerId,
+      customerName: custName || prev.customerName,
+      customerPhone: custPhone || prev.customerPhone,
+      customerEmail: custEmail || prev.customerEmail,
+      deliveryAddress: deliveryAddr || prev.deliveryAddress,
+      notes: `Sales Order created from ${quote.quoteTypeLabel} ${quote.displayNo}. Terms: ${terms}`,
+      productName: primaryDesc,
+      productSku: extractedItems[0]?.productSku || '',
+      productId: extractedItems[0]?.productId || (quote.isProd ? 'PRODUCT-ITEM' : 'CUSTOM-JOB'),
+      qty: String(primaryQty),
+      unitPrice: String(primaryPrice),
+      items: extractedItems
+    }));
+  };
 
   const handleProductSelect = (pId: string) => {
     const selected = finishedProducts.find(p => p.id === pId)
@@ -148,7 +349,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         customerId: cust.id,
         customerName: cust.company || cust.name || '',
         customerPhone: cust.phone || prev.customerPhone,
-        customerEmail: cust.email || prev.customerEmail
+        customerEmail: cust.email || prev.customerEmail,
+        deliveryAddress: cust.address || prev.deliveryAddress
       }))
     }
   }
@@ -157,22 +359,69 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     return finishedProducts.find(p => p.id === formData.productId)
   }, [finishedProducts, formData.productId])
 
+  const selectedQuotation = useMemo(() => {
+    return availableQuotations.find(q => String(q.id) === String(formData.quoteId));
+  }, [availableQuotations, formData.quoteId]);
+
   const availableStock = Number(selectedProduct?.quantity || 0)
   const requestedQty = Number(formData.qty) || 1
-  const hasShortage = requestedQty > availableStock
+  const hasShortage = formData.orderSource === 'ready_made' && requestedQty > availableStock
 
   const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.productName || !formData.customerName) return
     setSubmitting(true)
 
+    // Build items list
+    let itemsList: any[] = [];
+    if (formData.orderSource === 'from_quote' && formData.items && formData.items.length > 0) {
+      itemsList = formData.items;
+    } else if (formData.orderSource === 'ready_made') {
+      itemsList = [{
+        productId: formData.productId,
+        productName: formData.productName,
+        productSku: formData.productSku,
+        description: formData.productName,
+        qty: Number(formData.qty) || 1,
+        unitPrice: Number(formData.unitPrice) || 0,
+        amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
+        uom: selectedProduct?.uom || 'Nos'
+      }];
+    } else {
+      itemsList = [{
+        productId: 'CUSTOM-JOB',
+        productName: formData.productName,
+        productSku: formData.productSku,
+        description: formData.productName,
+        qty: Number(formData.qty) || 1,
+        unitPrice: Number(formData.unitPrice) || 0,
+        amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
+        uom: formData.uom || 'Nos'
+      }];
+    }
+
+    const calculatedTotal = itemsList.length > 1 && formData.orderSource === 'from_quote'
+      ? itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
+      : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0);
+
+    const stockStatus = formData.orderSource === 'ready_made'
+      ? (hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock')
+      : (formData.orderSource === 'from_quote' ? 'Quoted Spec' : 'Custom Production');
+
     const payload = {
       ...formData,
-      qty: Number(formData.qty) || 1,
+      items: itemsList,
+      qty: itemsList.length > 1 && formData.orderSource === 'from_quote'
+        ? itemsList.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)
+        : (Number(formData.qty) || 1),
       unitPrice: Number(formData.unitPrice) || 0,
-      totalPrice: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
-      stockStatus: hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock'
-    }
+      subtotal: calculatedTotal,
+      totalPrice: calculatedTotal,
+      stockStatus,
+      quoteId: formData.quoteId || null,
+      quotationNo: formData.quotationNo || null,
+      deliveryAddress: formData.deliveryAddress || null
+    };
 
     try {
       if (editingOrder) {
@@ -182,8 +431,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }
       refetch()
       setShowOrderModal(false)
-    } catch (err) {
+      toast(editingOrder ? 'Sales order updated successfully!' : 'Sales order created successfully!', 'success')
+    } catch (err: any) {
       console.error(err)
+      toast(err?.message || 'Failed to save sales order', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -427,7 +678,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             onClick={() => handleOpenCreateModal()}
             className="whitespace-nowrap"
           >
-            New Product Order
+            New Sales Order
           </Button>
         </div>
       </div>
@@ -736,11 +987,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       {/* CREATE / EDIT ORDER MODAL */}
       {showOrderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-2xl bg-surface border border-theme-subtle rounded-2xl shadow-2xl p-6 overflow-hidden">
+          <div className="relative w-full max-w-2xl bg-surface border border-theme-subtle rounded-2xl shadow-2xl p-6 overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-theme-subtle">
               <h3 className="text-base font-bold text-primary flex items-center gap-2">
-                <ShoppingCart size={18} className="text-rex-600" />
-                {editingOrder ? `Edit Order #${formData.orderNo}` : 'New Finished Product Order'}
+                <ShoppingBag size={18} className="text-blue-600" />
+                {editingOrder ? `Edit Sales Order #${formData.orderNo}` : 'New Sales Order'}
               </h3>
               <button
                 type="button"
@@ -752,9 +1003,54 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </div>
 
             <form onSubmit={handleSaveOrder} className="space-y-4">
+              {/* Order Source / Category Switcher */}
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1.5">
+                  Order Source / Classification
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSourceChange('from_quote')}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      formData.orderSource === 'from_quote'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
+                        : 'bg-surface2/50 text-secondary border-theme-subtle hover:bg-surface2 hover:text-primary'
+                    }`}
+                  >
+                    <FileText size={14} />
+                    <span>From Quotation</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSourceChange('ready_made')}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      formData.orderSource === 'ready_made'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
+                        : 'bg-surface2/50 text-secondary border-theme-subtle hover:bg-surface2 hover:text-primary'
+                    }`}
+                  >
+                    <Package size={14} />
+                    <span>Ready-Made Product</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSourceChange('custom_job')}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      formData.orderSource === 'custom_job'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
+                        : 'bg-surface2/50 text-secondary border-theme-subtle hover:bg-surface2 hover:text-primary'
+                    }`}
+                  >
+                    <Factory size={14} />
+                    <span>Custom Machining / Job</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">Order #</label>
+                  <label className="block text-xs font-medium text-secondary mb-1">Sales Order #</label>
                   <input
                     type="text"
                     required
@@ -775,74 +1071,175 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   />
                 </div>
 
-                {/* Product Selection */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-secondary mb-1">
-                    Select Finished Product <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.productId}
-                    onChange={e => handleProductSelect(e.target.value)}
-                    className="w-full input-base text-xs font-medium"
-                  >
-                    <option value="">-- Choose Ready-Made Product --</option>
-                    {finishedProducts.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.sku || 'No SKU'}) • Stock: {p.quantity || 0} {p.uom || 'pcs'} • Rs. {p.unitPrice || 0}
-                      </option>
-                    ))}
-                  </select>
-
-                  {selectedProduct && (
-                    <div className="mt-2 p-2.5 rounded-lg bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <Package size={14} className="text-rex-600" />
-                        <span>In Stock: <strong className="font-mono text-primary">{availableStock} {selectedProduct.uom || 'pcs'}</strong></span>
-                      </div>
-                      {hasShortage ? (
-                        <span className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
-                          <AlertTriangle size={13} /> Shortage: {requestedQty - availableStock} needed
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-bold text-emerald-500 flex items-center gap-1">
-                          <CheckCircle2 size={13} /> Sufficient Stock Available
-                        </span>
-                      )}
+                {/* 1. FROM QUOTATION PICKER */}
+                {formData.orderSource === 'from_quote' && (
+                  <div className="sm:col-span-2 space-y-2.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary mb-1">
+                        Select Approved / Sent Quotation (Autocomplete) <span className="text-red-500">*</span>
+                      </label>
+                      <QuotationAutocomplete
+                        value={formData.quoteId}
+                        onChange={(qId) => handleQuoteSelect(qId)}
+                        quotations={availableQuotations}
+                        placeholder="Type quotation # (AHSQ, PROD) or customer name to autocomplete..."
+                      />
                     </div>
-                  )}
-                </div>
+
+                    {selectedQuotation && (
+                      <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 text-xs space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              selectedQuotation.isProd 
+                                ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30' 
+                                : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30'
+                            }`}>
+                              {selectedQuotation.quoteTypeLabel}
+                            </span>
+                            <span className="font-mono font-bold text-primary">{selectedQuotation.displayNo}</span>
+                            <span className="text-muted">• {selectedQuotation.customerDisplayName}</span>
+                          </div>
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                            Total: {formatCurrency(selectedQuotation.totalAmt)}
+                          </span>
+                        </div>
+
+                        {formData.items && formData.items.length > 0 && (
+                          <div className="mt-1 border-t border-theme-subtle/50 pt-2">
+                            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
+                              Quoted Items ({formData.items.length})
+                            </span>
+                            <div className="max-h-24 overflow-y-auto space-y-1">
+                              {formData.items.map((it: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between py-0.5 text-[11px]">
+                                  <span className="truncate max-w-[320px] text-secondary font-medium">
+                                    • {it.description || it.productName}
+                                  </span>
+                                  <span className="font-mono text-muted shrink-0">
+                                    {it.qty} {it.uom || 'Nos'} × Rs. {Number(it.unitPrice || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">
+                        Order Title / Job Summary <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.productName}
+                        onChange={e => setFormData({ ...formData, productName: e.target.value })}
+                        placeholder="Quoted order description"
+                        className="w-full input-base text-xs font-medium"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. READY-MADE PRODUCT PICKER */}
+                {formData.orderSource === 'ready_made' && (
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <label className="block text-xs font-semibold text-secondary mb-1">
+                      Search Finished Product (Autocomplete) <span className="text-red-500">*</span>
+                    </label>
+                    <ProductAutocomplete
+                      value={formData.productId}
+                      onChange={(pId) => handleProductSelect(pId)}
+                      products={finishedProducts}
+                      filterType="finished_product"
+                      placeholder="Type product name, SKU, or specs to autocomplete..."
+                    />
+
+                    {selectedProduct && (
+                      <div className="mt-2 p-2.5 rounded-lg bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <Package size={14} className="text-rex-600" />
+                          <span>In Stock: <strong className="font-mono text-primary">{availableStock} {selectedProduct.uom || 'pcs'}</strong></span>
+                        </div>
+                        {hasShortage ? (
+                          <span className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
+                            <AlertTriangle size={13} /> Shortage: {requestedQty - availableStock} needed
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-bold text-emerald-500 flex items-center gap-1">
+                            <CheckCircle2 size={13} /> Sufficient Stock Available
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. CUSTOM MACHINING / JOB ENTRY */}
+                {formData.orderSource === 'custom_job' && (
+                  <>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-secondary mb-1">
+                        Custom Machining / Job Title <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.productName}
+                        onChange={e => setFormData({ ...formData, productName: e.target.value })}
+                        placeholder="e.g. Stainless Steel Shaft Machining & Keyway (Drawing #DR-401)"
+                        className="w-full input-base text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">Drawing / Job Code (SKU)</label>
+                      <input
+                        type="text"
+                        value={formData.productSku}
+                        onChange={e => setFormData({ ...formData, productSku: e.target.value })}
+                        placeholder="e.g. JOB-DR-401"
+                        className="w-full input-base font-mono text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">Unit of Measure (UOM)</label>
+                      <select
+                        value={formData.uom}
+                        onChange={e => setFormData({ ...formData, uom: e.target.value })}
+                        className="w-full input-base text-xs font-medium"
+                      >
+                        <option value="Nos">Nos</option>
+                        <option value="Sets">Sets</option>
+                        <option value="Lots">Lots</option>
+                        <option value="Meters">Meters</option>
+                        <option value="Kg">Kg</option>
+                        <option value="Pcs">Pcs</option>
+                      </select>
+                    </div>
+                  </>
+                )}
 
                 {/* Customer Details */}
-                <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">
-                    Select Customer / Company
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-secondary mb-1">
+                    Search Customer / Company (Autocomplete) <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={formData.customerId}
-                    onChange={e => handleCustomerSelect(e.target.value)}
-                    className="w-full input-base text-xs"
-                  >
-                    <option value="">-- Choose Registered Customer --</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.company || c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">
-                    Customer Name / Contact <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.customerName}
-                    onChange={e => setFormData({ ...formData, customerName: e.target.value })}
-                    placeholder="Company or Contact Person"
-                    className="w-full input-base text-xs"
+                  <CustomerAutocomplete
+                    value={formData.customerId || formData.customerName}
+                    onChange={(cId, cust) => {
+                      if (cust) {
+                        handleCustomerSelect(cust.id);
+                      } else {
+                        setFormData(prev => ({ ...prev, customerId: cId, customerName: cId }));
+                      }
+                    }}
+                    customers={customers}
+                    leads={leads}
+                    placeholder="Type customer company name, contact, phone to autocomplete..."
                   />
                 </div>
 
@@ -863,6 +1260,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     type="date"
                     value={formData.targetDeliveryDate}
                     onChange={e => setFormData({ ...formData, targetDeliveryDate: e.target.value })}
+                    className="w-full input-base text-xs"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-secondary mb-1">Delivery Address / Destination</label>
+                  <input
+                    type="text"
+                    value={formData.deliveryAddress}
+                    onChange={e => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                    placeholder="Site delivery address or client warehouse location"
                     className="w-full input-base text-xs"
                   />
                 </div>
@@ -900,8 +1308,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     onChange={e => setFormData({ ...formData, status: e.target.value })}
                     className="w-full input-base text-xs"
                   >
-                    <option value="Pending">Pending</option>
                     <option value="Confirmed">Confirmed</option>
+                    <option value="Pending">Pending</option>
                     <option value="In Production">In Production</option>
                     <option value="Ready to Dispatch">Ready to Dispatch</option>
                     <option value="Dispatched">Dispatched</option>
@@ -912,7 +1320,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">Calculated Total</label>
                   <div className="w-full input-base font-mono font-black text-base text-rex-600 bg-surface2/30">
-                    {formatCurrency((Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0))}
+                    {formatCurrency(
+                      formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
+                        ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
+                        : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
+                    )}
                   </div>
                 </div>
 
@@ -933,7 +1345,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   Cancel
                 </Button>
                 <Button variant="primary" type="submit" disabled={submitting}>
-                  {submitting ? 'Saving...' : editingOrder ? 'Update Order' : 'Create Order'}
+                  {submitting ? 'Saving...' : editingOrder ? 'Update Sales Order' : 'Create Sales Order'}
                 </Button>
               </div>
             </form>

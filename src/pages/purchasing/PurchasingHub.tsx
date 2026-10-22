@@ -372,7 +372,7 @@ export const PurchasingHub: React.FC = () => {
                           >
                             {pNum}
                           </span>
-                        )) : <span className="text-[10px] text-muted font-mono">N/A</span>}
+                        )) : <span className="text-[9px] bg-purple-500/10 text-purple-400 px-1.5 py-0.2 rounded font-mono border border-purple-500/20 font-bold">Direct Receipt</span>}
                       </div>
                     );
                   })()}

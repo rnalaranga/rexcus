@@ -17,9 +17,12 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
-import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag } from 'lucide-react'
+import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
+import { Banknote, Mail, ShoppingBag, Receipt } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
+import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
+import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 
 
 export const Quotations: React.FC = () => {
@@ -39,6 +42,41 @@ export const Quotations: React.FC = () => {
   useEffect(() => {
     loadWorkOrders()
   }, [loadWorkOrders])
+
+  const [paymentReceiptsList, setPaymentReceiptsList] = useState<any[]>([])
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [selectedQuoteForReceipt, setSelectedQuoteForReceipt] = useState<any>(null)
+  const [activePrintReceipt, setActivePrintReceipt] = useState<any>(null)
+  const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
+
+  const loadPaymentReceipts = useCallback(async () => {
+    try {
+      const recs = await fetchPaymentReceipts()
+      setPaymentReceiptsList(Array.isArray(recs) ? recs : [])
+    } catch(e) {}
+  }, [])
+
+  useEffect(() => {
+    loadPaymentReceipts()
+  }, [loadPaymentReceipts])
+
+  const getQuoteReceipts = (group: any, latestMain: any) => {
+    if (!latestMain) return []
+    const qNo = group.quoNo || latestMain.quotationNo || latestMain.docNo
+    return paymentReceiptsList.filter((r: any) => 
+      (r.quotationId && String(r.quotationId) === String(latestMain.id)) ||
+      (qNo && r.quotationNo && r.quotationNo.trim() === qNo.trim())
+    )
+  }
+
+  const handleOpenReceiptModal = (group: any, latestMain: any) => {
+    setSelectedQuoteForReceipt({
+      ...latestMain,
+      quotationNo: group.quoNo || latestMain.quotationNo || latestMain.docNo,
+      group
+    })
+    setReceiptModalOpen(true)
+  }
 
   const getExistingWO = (group: any, latestMain: any) => {
     if (!latestMain) return null
@@ -496,18 +534,17 @@ export const Quotations: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <Filter size={13} className="text-muted shrink-0" />
             <span className="text-muted font-bold uppercase tracking-wider text-[11px]">Customer:</span>
-            <select
-              value={customerFilter}
-              onChange={e => setCustomerFilter(e.target.value)}
-              className="bg-surface border border-theme-subtle rounded px-2.5 py-1 text-primary text-xs focus:border-rex-500 outline-none max-w-[200px]"
-            >
-              <option value="all">All Customers ({customers.length + leads.length})</option>
-              {customers.map((c: any) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} {c.company ? `(${c.company})` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="w-52">
+              <CustomerAutocomplete
+                value={customerFilter}
+                onChange={(cId) => setCustomerFilter(cId || 'all')}
+                customers={customers}
+                leads={leads}
+                placeholder="Filter customer..."
+                allOptionLabel={`All Customers (${customers.length + leads.length})`}
+                className="py-1 text-xs"
+              />
+            </div>
           </div>
 
           <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
@@ -798,7 +835,7 @@ export const Quotations: React.FC = () => {
                           </div>
                         )}
                           
-                            {latestMain && (latestMain.status === 'Approved' || latestMain.status === 'In Production') && (
+                            {latestMain && (latestMain.status === 'Approved' || latestMain.status === 'In Production' || latestMain.status === 'Sent' || latestMain.status === 'Accepted') && (
                               <>
                               {quoteGrns[latestMain.id] && quoteGrns[latestMain.id].length > 0 ? (
                                    <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none font-bold" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
@@ -822,13 +859,36 @@ export const Quotations: React.FC = () => {
                                 <Button 
                                   variant="primary" 
                                   size="sm" 
-                                  icon={Banknote} 
-                                  className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold"
-                                  onClick={() => handlePaymentRequest(group, latestMain)}
-                                  title="Generate Invoice from Approved Quotation"
+                                  icon={Receipt} 
+                                  className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold shadow-sm"
+                                  onClick={() => handleOpenReceiptModal(group, latestMain)}
+                                  title="Issue Official Advance Payment Receipt"
                                 >
-                                  Invoice
+                                  Payment Receipt
                                 </Button>
+                                {(() => {
+                                  const recs = getQuoteReceipts(group, latestMain);
+                                  if (recs.length === 0) return null;
+                                  const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const latestRec = recs[recs.length - 1];
+                                        setActivePrintReceipt({
+                                          ...latestRec,
+                                          totalQuoted: Number(latestMain.totalAmount || latestMain.customAmount || 0)
+                                        });
+                                        setPrintReceiptModalOpen(true);
+                                      }}
+                                      className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
+                                      title={"Click to view/print receipt (" + recs.length + " receipt" + (recs.length > 1 ? "s" : "") + ")"}
+                                    >
+                                      <Receipt size={10} /> Advance: {formatCurrency(totalAdv)}
+                                    </button>
+                                  );
+                                })()}
                               {(() => {
                                 const existingWO = getExistingWO(group, latestMain);
                                 if (existingWO || latestMain.status === 'In Production') {
@@ -1373,6 +1433,34 @@ export const Quotations: React.FC = () => {
         }}
       />
 
+
+      <CreatePaymentReceiptModal
+        isOpen={receiptModalOpen}
+        onClose={() => {
+          setReceiptModalOpen(false);
+          setSelectedQuoteForReceipt(null);
+        }}
+        quotation={selectedQuoteForReceipt}
+        settings={settings}
+        onSuccess={(receipt) => {
+          loadPaymentReceipts();
+          setActivePrintReceipt({
+            ...receipt,
+            totalQuoted: Number(selectedQuoteForReceipt?.totalAmount || selectedQuoteForReceipt?.customAmount || 0)
+          });
+          setPrintReceiptModalOpen(true);
+        }}
+      />
+
+      <PaymentReceiptPrintModal
+        isOpen={printReceiptModalOpen}
+        onClose={() => {
+          setPrintReceiptModalOpen(false);
+          setActivePrintReceipt(null);
+        }}
+        receipt={activePrintReceipt}
+        settings={settings}
+      />
     </div>
   )
 }

@@ -22,6 +22,7 @@ import {
   completeWorkOrder, 
   updateWorkOrder
 } from '@/lib/api'
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 
 interface WorkOrderStudioModalProps {
   isOpen: boolean
@@ -1768,27 +1769,21 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
             <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
               Select Warehouse Inventory Stock (Optional)
             </label>
-            <select
+            <ProductAutocomplete
               value={issueForm.inventoryId}
-              onChange={(e) => {
-                const picked = inventory.find(i => i.id === e.target.value)
+              onChange={(val, picked) => {
                 setIssueForm({
                   ...issueForm,
-                  inventoryId: e.target.value,
+                  inventoryId: val,
                   materialName: picked ? picked.name : issueForm.materialName,
                   unit: picked?.uom || issueForm.unit,
                   unitCost: Number(picked?.unitCost || issueForm.unitCost)
                 })
               }}
-              className="w-full input-base text-xs py-2"
-            >
-              <option value="">-- Or enter custom material below --</option>
-              {inventory.map(inv => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.name} (Stock: {inv.quantity} {inv.uom}) - {formatCurrency(inv.unitCost || 0)}
-                </option>
-              ))}
-            </select>
+              products={inventory}
+              placeholder="Search warehouse stock item..."
+              className="text-xs py-2"
+            />
           </div>
 
           <div>
@@ -2302,9 +2297,9 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
             <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
               Select Warehouse Stock Catalog (Quick-fill)
             </label>
-            <select
-              onChange={(e) => {
-                const picked = inventory.find(i => i.id === e.target.value)
+            <ProductAutocomplete
+              value=""
+              onChange={(_val, picked) => {
                 if (picked) {
                   setAddBomForm({
                     ...addBomForm,
@@ -2314,15 +2309,10 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                   })
                 }
               }}
-              className="w-full input-base text-xs py-2 bg-surface2 font-medium rounded-none"
-            >
-              <option value="">-- Choose from Inventory Stock (Optional) --</option>
-              {inventory.map(inv => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.name} ({inv.sku || 'SKU'} - Stock: {inv.quantity} {inv.uom})
-                </option>
-              ))}
-            </select>
+              products={inventory}
+              placeholder="Search inventory stock (quick-fill)..."
+              className="text-xs py-2 rounded-none bg-surface2"
+            />
           </div>
 
           <div>

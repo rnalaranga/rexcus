@@ -10,10 +10,10 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { usePurchaseOrders, useGRNs } from '@/hooks/usePurchasing';
-import { useSuppliers } from '@/hooks/useData';
+import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
 import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCurrency } from '@/lib/utils';
 
 export const GRNBuilder: React.FC = () => {
   const navigate = useNavigate();
@@ -28,6 +28,7 @@ export const GRNBuilder: React.FC = () => {
   const { data: pos, loading: loadingPOs } = usePurchaseOrders();
   const { data: allGRNs } = useGRNs();
   const { data: suppliers } = useSuppliers();
+  const { data: inventory = [] } = useInventory();
   const { settings } = useSettings();
 
   const [loading, setLoading] = useState<boolean>(isViewMode);
@@ -37,6 +38,9 @@ export const GRNBuilder: React.FC = () => {
   const [vehicleNo, setVehicleNo] = useState<string>('');
   const [storageLocation, setStorageLocation] = useState<string>('Main Warehouse - Receiving Bay');
   
+  // Receipt mode: 'po' for PO Fulfillment, 'direct' for Direct Receipt (No PO)
+  const [receiptMode, setReceiptMode] = useState<'po' | 'direct'>(poParam ? 'po' : 'po');
+
   // Multi-PO selection
   const [selectedPoIds, setSelectedPoIds] = useState<string[]>(poParam ? [poParam] : []);
   const [supplierId, setSupplierId] = useState<string>('');
@@ -45,6 +49,15 @@ export const GRNBuilder: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [notes, setNotes] = useState<string>('All items inspected and received in good condition.');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+
+  // Direct Item Add Modal State
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState<boolean>(false);
+  const [selectedInvId, setSelectedInvId] = useState<string>('');
+  const [customItemDesc, setCustomItemDesc] = useState<string>('');
+  const [addQty, setAddQty] = useState<number>(1);
+  const [addUnit, setAddUnit] = useState<string>('Nos');
+  const [addUnitCost, setAddUnitCost] = useState<number>(0);
+  const [addCondition, setAddCondition] = useState<string>('Good');
 
   // Helper to get supplier name
   const supplierName = useMemo(() => {
@@ -95,6 +108,7 @@ export const GRNBuilder: React.FC = () => {
             parsedPoIds.push(grn.poId);
           }
           setSelectedPoIds(parsedPoIds);
+          setReceiptMode(parsedPoIds.length === 0 ? 'direct' : 'po');
 
           setSupplierId(grn.supplierId || '');
           setDate(grn.date ? grn.date.split('T')[0] : (grn.createdAt ? grn.createdAt.split('T')[0] : ''));
@@ -245,10 +259,73 @@ export const GRNBuilder: React.FC = () => {
   // Initial load in Create Mode
   useEffect(() => {
     if (isViewMode) return;
-    if (selectedPoIds.length > 0 && pos?.length > 0) {
+    if (receiptMode === 'po' && selectedPoIds.length > 0 && pos?.length > 0) {
       syncItemsFromSelectedPOs(selectedPoIds);
     }
-  }, [selectedPoIds.join(','), pos, previousReceivedMap, isViewMode]);
+  }, [selectedPoIds.join(','), pos, previousReceivedMap, isViewMode, receiptMode]);
+
+  const handleModeChange = (mode: 'po' | 'direct') => {
+    if (mode === receiptMode) return;
+    setReceiptMode(mode);
+    if (mode === 'direct') {
+      setSelectedPoIds([]);
+      setItems([]);
+    } else {
+      setItems([]);
+    }
+  };
+
+  const handleOpenAddItemModal = () => {
+    setSelectedInvId('');
+    setCustomItemDesc('');
+    setAddQty(1);
+    setAddUnit('Nos');
+    setAddUnitCost(0);
+    setAddCondition('Good');
+    setIsAddItemModalOpen(true);
+  };
+
+  const handleSelectInventoryItem = (invId: string) => {
+    setSelectedInvId(invId);
+    if (!invId) return;
+    const inv = inventory.find((i: any) => String(i.id) === String(invId));
+    if (inv) {
+      setCustomItemDesc(inv.name || inv.desc || inv.item_name || '');
+      setAddUnit(inv.unit || 'Nos');
+      setAddUnitCost(Number(inv.costPrice || inv.unitCost || inv.price || 0));
+    }
+  };
+
+  const handleAddDirectItem = () => {
+    const desc = customItemDesc.trim();
+    if (!desc) {
+      alert('Please enter or select a material description.');
+      return;
+    }
+    if (addQty <= 0) {
+      alert('Please enter a quantity greater than 0.');
+      return;
+    }
+
+    const newItem = {
+      id: selectedInvId || `DIRECT-${Date.now().toString().slice(-4)}-${items.length + 1}`,
+      inventoryId: selectedInvId || '',
+      desc: desc,
+      poId: '',
+      qty: Number(addQty),
+      qtyReceived: Number(addQty),
+      unit: addUnit || 'Nos',
+      unitCost: Number(addUnitCost || 0),
+      condition: addCondition || 'Good'
+    };
+
+    setItems(prev => [...prev, newItem]);
+    setIsAddItemModalOpen(false);
+  };
+
+  const handleRemoveDirectItem = (idxToRemove: number) => {
+    setItems(prev => prev.filter((_, idx) => idx !== idxToRemove));
+  };
 
   const handleAddPo = (newPoId: string) => {
     if (!newPoId || selectedPoIds.includes(newPoId)) return;
@@ -276,13 +353,20 @@ export const GRNBuilder: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (selectedPoIds.length === 0) {
+    if (receiptMode === 'po' && selectedPoIds.length === 0) {
       alert('Please select at least one Purchase Order first.');
       return;
     }
 
+    if (receiptMode === 'direct' && !supplierId) {
+      alert('Please select a Supplier / Vendor for this Direct GRN.');
+      return;
+    }
+
     if (items.length === 0) {
-      alert('No items found to receive. Please add or verify items.');
+      alert(receiptMode === 'direct' 
+        ? 'Please add at least one material item using "+ Add Material".' 
+        : 'No items found to receive. Please add or verify items.');
       return;
     }
 
@@ -294,9 +378,9 @@ export const GRNBuilder: React.FC = () => {
 
     const payload = {
       id: docNo,
-      poId: selectedPoIds[0],
+      poId: selectedPoIds[0] || null,
       poIds: JSON.stringify(selectedPoIds),
-      supplierId: supplierId,
+      supplierId: supplierId || null,
       date,
       receivedBy,
       vehicleNo,
@@ -350,14 +434,23 @@ export const GRNBuilder: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-black text-primary tracking-tight">
-                {isViewMode ? `Goods Receipt Note (${docNo})` : 'Create Goods Receipt Note'}
+                {isViewMode 
+                  ? `Goods Receipt Note (${docNo})` 
+                  : (receiptMode === 'direct' ? 'Create Direct Goods Receipt (No PO)' : 'Create Goods Receipt Note')}
               </h1>
               {isViewMode && (
-                <Badge value={status === 'received' ? 'Received' : status} size="sm" />
+                <>
+                  <Badge value={status === 'received' ? 'Received' : status} size="sm" />
+                  {selectedPoIds.length === 0 && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      Direct Receipt
+                    </span>
+                  )}
+                </>
               )}
             </div>
             <p className="text-[11px] text-muted mt-0.5">
-              PO(s): <span className="font-mono text-primary font-bold">{selectedPoIds.join(', ') || 'N/A'}</span> • Supplier: <span className="text-secondary font-semibold">{supplierName}</span> • Doc: <span className="font-mono">{docNo}</span>
+              PO(s): <span className="font-mono text-primary font-bold">{selectedPoIds.join(', ') || (receiptMode === 'direct' ? 'Direct (No PO)' : 'None')}</span> • Supplier: <span className="text-secondary font-semibold">{supplierName}</span> • Doc: <span className="font-mono">{docNo}</span>
             </p>
           </div>
         </div>
@@ -416,8 +509,41 @@ export const GRNBuilder: React.FC = () => {
               </h2>
 
               <div className="space-y-4">
-                {/* Linked PO Badges & Selector in Create Mode */}
+                {/* Mode Selector in Create Mode */}
                 {!isViewMode && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted uppercase mb-1.5">
+                      Receipt Mode
+                    </label>
+                    <div className="grid grid-cols-2 gap-1 bg-surface2 p-1 rounded-lg border border-theme-subtle">
+                      <button
+                        type="button"
+                        onClick={() => handleModeChange('po')}
+                        className={`py-1.5 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                          receiptMode === 'po' 
+                            ? 'bg-primary text-black shadow-sm' 
+                            : 'text-muted hover:text-primary'
+                        }`}
+                      >
+                        <FileText size={12} /> PO Fulfillment
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleModeChange('direct')}
+                        className={`py-1.5 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                          receiptMode === 'direct' 
+                            ? 'bg-purple-600 text-white shadow-sm' 
+                            : 'text-muted hover:text-primary'
+                        }`}
+                      >
+                        <Package size={12} /> Direct Receipt
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Linked PO Badges & Selector in Create Mode */}
+                {!isViewMode && receiptMode === 'po' && (
                   <div className="space-y-2">
                     <label className="block text-[11px] font-bold text-muted uppercase">
                       Linked Purchase Order(s) ({selectedPoIds.length})
@@ -469,19 +595,25 @@ export const GRNBuilder: React.FC = () => {
                     <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                       <Package size={12} className="text-muted" /> Reference PO(s)
                     </label>
-                    <div className="space-y-1">
-                      {selectedPoIds.map(pid => (
-                        <div key={pid} className="flex items-center justify-between p-2 bg-surface border border-theme-subtle rounded-lg text-xs font-mono font-bold text-primary">
-                          <span>{pid}</span>
-                          <button 
-                            onClick={() => navigate(`/purchasing/po-builder/${pid}`)}
-                            className="text-[10px] uppercase font-sans text-rex-500 hover:underline"
-                          >
-                            View PO
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    {selectedPoIds.length > 0 ? (
+                      <div className="space-y-1">
+                        {selectedPoIds.map(pid => (
+                          <div key={pid} className="flex items-center justify-between p-2 bg-surface border border-theme-subtle rounded-lg text-xs font-mono font-bold text-primary">
+                            <span>{pid}</span>
+                            <button 
+                              onClick={() => navigate(`/purchasing/po-builder/${pid}`)}
+                              className="text-[10px] uppercase font-sans text-rex-500 hover:underline"
+                            >
+                              View PO
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-2.5 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs font-bold text-purple-400">
+                        Direct Receipt (No PO Linked)
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -490,9 +622,24 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                     <Building2 size={12} className="text-muted" /> Supplier
                   </label>
-                  <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-semibold text-secondary truncate">
-                    {supplierName}
-                  </div>
+                  {isViewMode || (receiptMode === 'po' && selectedPoIds.length > 0) ? (
+                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-semibold text-secondary truncate">
+                      {supplierName}
+                    </div>
+                  ) : (
+                    <select
+                      value={supplierId}
+                      onChange={e => setSupplierId(e.target.value)}
+                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-semibold text-secondary focus:border-primary"
+                    >
+                      <option value="">-- Select Supplier / Vendor --</option>
+                      {suppliers?.map((s: any) => (
+                        <option key={s.id} value={s.id}>
+                          {s.company ? `${s.company} (${s.name})` : s.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Receipt Date */}
@@ -581,10 +728,16 @@ export const GRNBuilder: React.FC = () => {
                  className="absolute top-0 left-0 h-1 bg-emerald-500 transition-all duration-500" 
                  style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} 
                />
-               <h3 className="font-bold text-[10px] uppercase tracking-widest text-muted">Receiving Fulfillment</h3>
-               <div className="text-4xl font-black text-emerald-500">{Math.round(progress)}%</div>
+               <h3 className="font-bold text-[10px] uppercase tracking-widest text-muted">
+                 {receiptMode === 'direct' ? 'Materials Received' : 'Receiving Fulfillment'}
+               </h3>
+               <div className="text-4xl font-black text-emerald-500">
+                 {receiptMode === 'direct' ? totalReceived : `${Math.round(progress)}%`}
+               </div>
                <p className="text-[10px] text-muted font-medium">
-                 {totalReceived} of {totalOrdered} units received
+                 {receiptMode === 'direct' 
+                   ? `${items.length} material line(s)` 
+                   : `${totalReceived} of ${totalOrdered} units received`}
                </p>
             </GlassCard>
           </div>
@@ -596,88 +749,98 @@ export const GRNBuilder: React.FC = () => {
                 <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                   <PackageCheck size={16} /> Incoming Freight Breakdown ({items.length} items)
                 </h2>
-                {!isViewMode && items.length > 0 && (
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  {!isViewMode && receiptMode === 'direct' && (
                     <Button 
-                      variant="ghost" 
+                      variant="primary" 
                       size="sm" 
-                      onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.remainingQty !== undefined ? it.remainingQty : it.qty })))}
-                      className="text-[10px] uppercase h-6 text-blue-500 hover:text-blue-400 font-bold"
+                      icon={Plus} 
+                      onClick={handleOpenAddItemModal}
+                      className="text-xs h-7"
                     >
-                      Receive Remaining Balance
+                      Add Material
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.qty })))}
-                      className="text-[10px] uppercase h-6 text-emerald-500 font-medium"
-                    >
-                      Receive Full PO(s)
-                    </Button>
-                  </div>
-                )}
+                  )}
+                  {!isViewMode && receiptMode === 'po' && items.length > 0 && (
+                    <>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.remainingQty !== undefined ? it.remainingQty : it.qty })))}
+                        className="text-[10px] uppercase h-6 text-blue-500 hover:text-blue-400 font-bold"
+                      >
+                        Receive Remaining Balance
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setItems(items.map(it => ({ ...it, qtyReceived: it.qty })))}
+                        className="text-[10px] uppercase h-6 text-emerald-500 font-medium"
+                      >
+                        Receive Full PO(s)
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
               
               <div className="overflow-x-auto">
                 <table className="w-full text-left whitespace-nowrap">
                   <thead className="bg-surface/50 border-b border-theme-subtle">
-                    <tr className="text-[10px] uppercase tracking-widest text-muted">
-                      {selectedPoIds.length > 1 && <th className="px-3 py-3 text-center">PO #</th>}
-                      <th className="px-5 py-3 w-1/3">Material Description</th>
-                      <th className="px-3 py-3 text-center">Ordered Qty</th>
-                      {!isViewMode && <th className="px-3 py-3 text-center">Prev. Received</th>}
-                      {!isViewMode && <th className="px-3 py-3 text-center text-amber-500">Remaining Balance</th>}
-                      <th className="px-3 py-3 text-center text-primary">
-                        {isViewMode ? 'Received in this GRN' : 'Receiving This GRN'}
-                      </th>
-                      <th className="px-5 py-3 text-right">Condition</th>
-                    </tr>
+                    {receiptMode === 'direct' ? (
+                      <tr className="text-[10px] uppercase tracking-widest text-muted">
+                        <th className="px-5 py-3 w-1/3">Material Description</th>
+                        <th className="px-3 py-3 text-right">Unit Cost (LKR)</th>
+                        <th className="px-3 py-3 text-center text-primary">Qty Received</th>
+                        <th className="px-3 py-3 text-right">Total Value</th>
+                        <th className="px-5 py-3 text-center">Condition</th>
+                        {!isViewMode && <th className="px-3 py-3 text-right w-16">Action</th>}
+                      </tr>
+                    ) : (
+                      <tr className="text-[10px] uppercase tracking-widest text-muted">
+                        {selectedPoIds.length > 1 && <th className="px-3 py-3 text-center">PO #</th>}
+                        <th className="px-5 py-3 w-1/3">Material Description</th>
+                        <th className="px-3 py-3 text-center">Ordered Qty</th>
+                        {!isViewMode && <th className="px-3 py-3 text-center">Prev. Received</th>}
+                        {!isViewMode && <th className="px-3 py-3 text-center text-amber-500">Remaining Balance</th>}
+                        <th className="px-3 py-3 text-center text-primary">
+                          {isViewMode ? 'Received in this GRN' : 'Receiving This GRN'}
+                        </th>
+                        <th className="px-5 py-3 text-right">Condition</th>
+                      </tr>
+                    )}
                   </thead>
                   <tbody className="divide-y divide-theme-subtle/50">
-                    {items.map((item, idx) => {
-                      const ordered = Number(item.qty || 0);
-                      const prevRecv = Number(item.prevReceived || 0);
-                      const remaining = item.remainingQty !== undefined ? Number(item.remainingQty) : Math.max(0, ordered - prevRecv);
-                      return (
+                    {receiptMode === 'direct' ? (
+                      items.map((item, idx) => (
                         <tr key={idx} className="hover:bg-surface/30 transition-colors">
-                          {selectedPoIds.length > 1 && (
-                            <td className="p-3 text-center">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                                {item.poId || '-'}
-                              </span>
-                            </td>
-                          )}
-
                           <td className="p-3 pl-5">
                             <p className="font-bold text-xs text-primary">{item.desc || item.name || 'Material Item'}</p>
                             <p className="text-[10px] text-muted font-mono mt-0.5">
                               ID: {item.inventoryId || item.id || `ITEM-${idx + 1}`} {item.unit ? `• Unit: ${item.unit}` : ''}
                             </p>
                           </td>
-                          
-                          <td className="p-3 text-center font-medium text-xs text-muted font-mono">
-                            {ordered} {item.unit || ''}
+
+                          <td className="p-3 text-right">
+                            {isViewMode ? (
+                              <span className="font-mono text-xs font-semibold text-secondary">
+                                {formatCurrency(Number(item.unitCost || 0), true)}
+                              </span>
+                            ) : (
+                              <input 
+                                type="number" 
+                                min="0" 
+                                step="any"
+                                value={item.unitCost || 0} 
+                                onChange={e => {
+                                  const newItems = [...items];
+                                  newItems[idx].unitCost = Number(e.target.value);
+                                  setItems(newItems);
+                                }} 
+                                className="w-24 bg-surface border border-theme-subtle px-2 py-1 rounded text-xs text-right font-mono font-bold text-primary focus:border-primary outline-none" 
+                              />
+                            )}
                           </td>
-
-                          {!isViewMode && (
-                            <td className="p-3 text-center font-medium text-xs font-mono">
-                              <span className={prevRecv > 0 ? "text-blue-500 font-bold" : "text-muted"}>
-                                {prevRecv} {item.unit || ''}
-                              </span>
-                            </td>
-                          )}
-
-                          {!isViewMode && (
-                            <td className="p-3 text-center font-medium text-xs font-mono">
-                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                                remaining === 0 
-                                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                                  : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                              }`}>
-                                {remaining} {item.unit || ''}
-                              </span>
-                            </td>
-                          )}
 
                           <td className="p-3 text-center">
                             {isViewMode ? (
@@ -685,35 +848,37 @@ export const GRNBuilder: React.FC = () => {
                                 {item.qtyReceived} {item.unit || ''}
                               </span>
                             ) : (
-                              <div className="inline-block relative">
+                              <div className="flex items-center justify-center gap-1">
                                 <input 
                                   type="number" 
-                                  min="0"
+                                  min="0.01" 
                                   step="any"
                                   value={item.qtyReceived} 
                                   onChange={e => {
                                     const newItems = [...items];
-                                    newItems[idx].qtyReceived = Number(e.target.value);
+                                    const val = Number(e.target.value);
+                                    newItems[idx].qtyReceived = val;
+                                    newItems[idx].qty = val;
                                     setItems(newItems);
                                   }} 
-                                  className="w-24 bg-surface border-2 border-primary/50 px-2 py-1.5 rounded text-xs text-center font-bold text-primary focus:border-primary outline-none font-mono" 
+                                  className="w-20 bg-surface border-2 border-primary/50 px-2 py-1 rounded text-xs text-center font-bold text-primary focus:border-primary outline-none font-mono" 
                                 />
-                                {Number(item.qtyReceived) > remaining && remaining > 0 && (
-                                  <span className="block text-[9px] text-amber-500 font-bold mt-0.5" title="Quantity exceeds open PO balance">
-                                    Exceeds balance!
-                                  </span>
-                                )}
+                                <span className="text-[11px] text-muted font-medium">{item.unit || ''}</span>
                               </div>
                             )}
                           </td>
 
-                          <td className="p-3 pr-5 text-right">
+                          <td className="p-3 text-right font-mono text-xs font-bold text-rex-600 dark:text-rex-300">
+                            {formatCurrency(Number(item.qtyReceived || 0) * Number(item.unitCost || 0), true)}
+                          </td>
+
+                          <td className="p-3 text-center">
                             {isViewMode ? (
                               <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold ${
                                 item.condition === 'Good' || !item.condition
                                   ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
                                   : item.condition === 'Damaged' 
-                                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
                                   : 'bg-red-500/10 text-red-500 border border-red-500/20'
                               }`}>
                                 {item.condition || 'Good'}
@@ -734,13 +899,132 @@ export const GRNBuilder: React.FC = () => {
                               </select>
                             )}
                           </td>
+
+                          {!isViewMode && (
+                            <td className="p-3 text-right">
+                              <button 
+                                type="button" 
+                                onClick={() => handleRemoveDirectItem(idx)}
+                                className="p-1 hover:bg-red-500/10 text-muted hover:text-red-500 rounded transition-colors"
+                                title="Remove item"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          )}
                         </tr>
-                      );
-                    })}
+                      ))
+                    ) : (
+                      items.map((item, idx) => {
+                        const ordered = Number(item.qty || 0);
+                        const prevRecv = Number(item.prevReceived || 0);
+                        const remaining = item.remainingQty !== undefined ? Number(item.remainingQty) : Math.max(0, ordered - prevRecv);
+                        return (
+                          <tr key={idx} className="hover:bg-surface/30 transition-colors">
+                            {selectedPoIds.length > 1 && (
+                              <td className="p-3 text-center">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                  {item.poId || '-'}
+                                </span>
+                              </td>
+                            )}
+
+                            <td className="p-3 pl-5">
+                              <p className="font-bold text-xs text-primary">{item.desc || item.name || 'Material Item'}</p>
+                              <p className="text-[10px] text-muted font-mono mt-0.5">
+                                ID: {item.inventoryId || item.id || `ITEM-${idx + 1}`} {item.unit ? `• Unit: ${item.unit}` : ''}
+                              </p>
+                            </td>
+                            
+                            <td className="p-3 text-center font-medium text-xs text-muted font-mono">
+                              {ordered} {item.unit || ''}
+                            </td>
+
+                            {!isViewMode && (
+                              <td className="p-3 text-center font-medium text-xs font-mono">
+                                <span className={prevRecv > 0 ? "text-blue-500 font-bold" : "text-muted"}>
+                                  {prevRecv} {item.unit || ''}
+                                </span>
+                              </td>
+                            )}
+
+                            {!isViewMode && (
+                              <td className="p-3 text-center font-medium text-xs font-mono">
+                                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                  remaining === 0 
+                                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                                    : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                }`}>
+                                  {remaining} {item.unit || ''}
+                                </span>
+                              </td>
+                            )}
+
+                            <td className="p-3 text-center">
+                              {isViewMode ? (
+                                <span className="font-bold text-xs text-primary font-mono">
+                                  {item.qtyReceived} {item.unit || ''}
+                                </span>
+                              ) : (
+                                <div className="inline-block relative">
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    step="any"
+                                    value={item.qtyReceived} 
+                                    onChange={e => {
+                                      const newItems = [...items];
+                                      newItems[idx].qtyReceived = Number(e.target.value);
+                                      setItems(newItems);
+                                    }} 
+                                    className="w-24 bg-surface border-2 border-primary/50 px-2 py-1.5 rounded text-xs text-center font-bold text-primary focus:border-primary outline-none font-mono" 
+                                  />
+                                  {Number(item.qtyReceived) > remaining && remaining > 0 && (
+                                    <span className="block text-[9px] text-amber-500 font-bold mt-0.5" title="Quantity exceeds open PO balance">
+                                      Exceeds balance!
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3 pr-5 text-right">
+                              {isViewMode ? (
+                                <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold ${
+                                  item.condition === 'Good' || !item.condition
+                                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                                    : item.condition === 'Damaged' 
+                                    ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                                    : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                                }`}>
+                                  {item.condition || 'Good'}
+                                </span>
+                              ) : (
+                                <select 
+                                  value={item.condition} 
+                                  onChange={e => {
+                                    const newItems = [...items];
+                                    newItems[idx].condition = e.target.value;
+                                    setItems(newItems);
+                                  }} 
+                                  className="bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-medium focus:border-primary"
+                                >
+                                  <option value="Good">Good / Inspected</option>
+                                  <option value="Damaged">Damaged / Rejected</option>
+                                  <option value="Partial Pass">Partial Pass</option>
+                                </select>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={selectedPoIds.length > 1 ? 7 : 6} className="p-8 text-center text-muted text-xs">
-                          No items loaded. Select one or more Purchase Orders on the left to receive inventory.
+                        <td colSpan={receiptMode === 'direct' ? (isViewMode ? 5 : 6) : (selectedPoIds.length > 1 ? 7 : 6)} className="p-8 text-center text-muted text-xs">
+                          {receiptMode === 'direct' 
+                            ? 'No materials added yet. Click "+ Add Material" above to record incoming items directly without a Purchase Order.'
+                            : 'No items loaded. Select one or more Purchase Orders on the left to receive inventory.'}
                         </td>
                       </tr>
                     )}
@@ -821,7 +1105,7 @@ export const GRNBuilder: React.FC = () => {
                 <p className="font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Supplier Details:</p>
                 <p className="font-bold text-sm text-black">{supplierName}</p>
                 <p className="text-neutral-700">Supplier ID: {supplierId || 'N/A'}</p>
-                <p className="text-neutral-700">Ref PO Number(s): <span className="font-mono font-bold">{selectedPoIds.join(', ') || 'N/A'}</span></p>
+                <p className="text-neutral-700">Ref PO Number(s): <span className="font-mono font-bold">{selectedPoIds.length > 0 ? selectedPoIds.join(', ') : 'N/A (Direct Receipt)'}</span></p>
               </div>
               <div className="space-y-1 pl-2">
                 <p className="font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Delivery Logistics:</p>
@@ -848,7 +1132,9 @@ export const GRNBuilder: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-black/30">
                   {items.map((it, idx) => {
-                    const variance = (Number(it.qtyReceived) || 0) - (Number(it.qty) || 0);
+                    const variance = selectedPoIds.length > 0 
+                      ? (Number(it.qtyReceived) || 0) - (Number(it.qty) || 0) 
+                      : 0;
                     return (
                       <tr key={idx}>
                         <td className="p-2.5 border-r border-black text-center font-mono">{idx + 1}</td>
@@ -861,10 +1147,14 @@ export const GRNBuilder: React.FC = () => {
                           <p className="font-bold text-black">{it.desc || it.name}</p>
                           <p className="text-[10px] font-mono text-neutral-600">ID: {it.inventoryId || it.id || '-'}</p>
                         </td>
-                        <td className="p-2.5 border-r border-black text-center font-mono">{it.qty} {it.unit || ''}</td>
+                        <td className="p-2.5 border-r border-black text-center font-mono">
+                          {selectedPoIds.length > 0 ? `${it.qty} ${it.unit || ''}` : '-'}
+                        </td>
                         <td className="p-2.5 border-r border-black text-center font-mono font-bold">{it.qtyReceived} {it.unit || ''}</td>
                         <td className="p-2.5 border-r border-black text-center font-mono">
-                          {variance === 0 ? '0' : (variance > 0 ? `+${variance}` : String(variance))}
+                          {selectedPoIds.length > 0 
+                            ? (variance === 0 ? '0' : (variance > 0 ? `+${variance}` : String(variance))) 
+                            : 'Direct'}
                         </td>
                         <td className="p-2.5 text-center font-semibold text-[11px]">
                           {it.condition || 'Good'}
@@ -898,6 +1188,115 @@ export const GRNBuilder: React.FC = () => {
           <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-theme-subtle">
             <Button variant="ghost" onClick={() => setIsPrintModalOpen(false)}>Close</Button>
             <Button variant="primary" icon={Printer} onClick={() => window.print()}>Print / Save PDF</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add Direct Material Modal */}
+      <Modal
+        isOpen={isAddItemModalOpen}
+        onClose={() => setIsAddItemModalOpen(false)}
+        title="Add Material to Direct GRN"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-muted uppercase mb-1">
+              Select From Inventory (Optional)
+            </label>
+            <select
+              value={selectedInvId}
+              onChange={e => handleSelectInventoryItem(e.target.value)}
+              className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium focus:border-primary"
+            >
+              <option value="">-- Choose Existing Item or Type Custom Below --</option>
+              {inventory?.map((inv: any) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.name || inv.desc || inv.item_name} ({inv.sku ? `SKU: ${inv.sku}` : `ID: ${inv.id}`}) - Stock: {inv.quantity || 0} {inv.unit || 'Nos'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-muted uppercase mb-1">
+              Material Description *
+            </label>
+            <input
+              type="text"
+              value={customItemDesc}
+              onChange={e => setCustomItemDesc(e.target.value)}
+              placeholder="e.g. Mild Steel Sheet 2mm 4x8, Castor Wheels, etc."
+              className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-semibold focus:border-primary"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">
+                Qty Received *
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="any"
+                value={addQty}
+                onChange={e => setAddQty(Number(e.target.value))}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono font-bold focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">
+                Unit of Measure
+              </label>
+              <input
+                type="text"
+                value={addUnit}
+                onChange={e => setAddUnit(e.target.value)}
+                placeholder="Nos, Kg, Meters, Pcs..."
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs focus:border-primary"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">
+                Unit Cost (LKR)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={addUnitCost}
+                onChange={e => setAddUnitCost(Number(e.target.value))}
+                placeholder="0.00"
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase mb-1">
+                Inspection Condition
+              </label>
+              <select
+                value={addCondition}
+                onChange={e => setAddCondition(e.target.value)}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium focus:border-primary"
+              >
+                <option value="Good">Good / Inspected</option>
+                <option value="Damaged">Damaged / Rejected</option>
+                <option value="Partial Pass">Partial Pass</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button variant="ghost" size="sm" onClick={() => setIsAddItemModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" icon={Plus} onClick={handleAddDirectItem}>
+              Add Material
+            </Button>
           </div>
         </div>
       </Modal>

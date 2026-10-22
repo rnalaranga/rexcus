@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
-  CheckCircle2, Phone, Mail, Hash, X, Landmark
+  CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { useCustomers, useLeads, useInventory } from '@/hooks/useData';
 import { useTaxes, useTaxProfiles } from '@/hooks/useFinance';
-import { createInvoice } from '@/lib/api';
+import { createInvoice, fetchPaymentReceipts } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager';
@@ -72,6 +74,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [termsPresets, setTermsPresets] = useState<QuotationTermsPreset[]>(DEFAULT_TERMS_PRESETS);
   const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
   const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
+  const [advanceReceipts, setAdvanceReceipts] = useState<any[]>([]);
 
   const [searchParams] = useSearchParams();
   const paramOrderId = searchParams.get('orderId');
@@ -137,7 +140,24 @@ export const InvoiceBuilder: React.FC = () => {
 
             if (ord.orderNo) setOrderNo(ord.orderNo);
             if (ord.quotationNo) setQuotationNo(ord.quotationNo);
-            if (ord.gatePassNo) setDispatchNo(ord.gatePassNo);
+            const dpNo = ord.gatePassNo || ord.gatePassId || ord.dispatchNo || '';
+            if (dpNo) {
+              setDispatchNo(dpNo);
+            } else {
+              try {
+                const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
+                if (gpRes.ok) {
+                  const allGps = await gpRes.json();
+                  const matchedGp = (allGps || []).find((g: any) =>
+                    (g.orderId && String(g.orderId) === String(ord.id)) ||
+                    (ord.orderNo && g.orderNo && String(g.orderNo).trim().toLowerCase() === String(ord.orderNo).trim().toLowerCase())
+                  );
+                  if (matchedGp && isMounted) {
+                    setDispatchNo(matchedGp.id);
+                  }
+                }
+              } catch (e) {}
+            }
             if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
             if (ord.deliveryAddress) setPlaceOfSupply(ord.deliveryAddress);
             if (ord.paymentTerms) setNotes(ord.paymentTerms);
@@ -303,6 +323,47 @@ export const InvoiceBuilder: React.FC = () => {
               setItems(lineItems);
             }
 
+            // Auto-detect linked Sales Order & Gate Pass / Dispatch No for this quotation
+            try {
+              let matchedSo: any = null;
+              // 1. Look for linked Finished Goods / Sales Order
+              const soRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders`);
+              if (soRes.ok) {
+                const allSos = await soRes.json();
+                matchedSo = (allSos || []).find((s: any) =>
+                  (s.quoteId && String(s.quoteId) === String(q.id)) ||
+                  (qNo && s.quotationNo && String(s.quotationNo).trim().toLowerCase() === String(qNo).trim().toLowerCase())
+                );
+                if (matchedSo && isMounted) {
+                  if (matchedSo.orderNo) setOrderNo(matchedSo.orderNo);
+                  if (matchedSo.deliveryAddress) setPlaceOfSupply(matchedSo.deliveryAddress);
+                  if (matchedSo.targetDeliveryDate) setDeliveryDate(matchedSo.targetDeliveryDate.slice(0, 10));
+                  const soDispatch = matchedSo.gatePassNo || matchedSo.gatePassId || matchedSo.dispatchNo;
+                  if (soDispatch) {
+                    setDispatchNo(soDispatch);
+                  }
+                }
+              }
+
+              // 2. Look for linked Gate Pass (Goods Delivery / Dispatch Note)
+              const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
+              if (gpRes.ok) {
+                const allGps = await gpRes.json();
+                const matchedGp = (allGps || []).find((g: any) =>
+                  (g.quoteId && String(g.quoteId) === String(q.id)) ||
+                  (qNo && g.quoNo && String(g.quoNo).trim().toLowerCase() === String(qNo).trim().toLowerCase()) ||
+                  (matchedSo && g.orderId && String(g.orderId) === String(matchedSo.id)) ||
+                  (matchedSo && matchedSo.orderNo && g.orderNo && String(g.orderNo).trim().toLowerCase() === String(matchedSo.orderNo).trim().toLowerCase())
+                );
+                if (matchedGp && isMounted) {
+                  setDispatchNo(matchedGp.id);
+                  if (matchedGp.address) setPlaceOfSupply(matchedGp.address);
+                }
+              }
+            } catch (soGpErr) {
+              console.warn('Could not auto-link sales order or gate pass for quote:', soGpErr);
+            }
+
             toast(`Loaded details and ${lineItems.length} item(s) from Quotation ${qNo || q.id}!`, 'success');
           }
         }
@@ -314,6 +375,69 @@ export const InvoiceBuilder: React.FC = () => {
     loadSourceData();
     return () => { isMounted = false; };
   }, [paramOrderId, paramQuoteId, customers.length, leads.length]);
+
+  // Auto-fill dispatch / gate pass number if quotationNo or orderNo is entered and dispatchNo is empty
+  useEffect(() => {
+    let isMounted = true;
+    const qTrim = quotationNo?.trim().toLowerCase();
+    const oTrim = orderNo?.trim().toLowerCase();
+    if (!qTrim && !oTrim) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
+        if (!gpRes.ok) return;
+        const allGps = await gpRes.json();
+        const matched = (allGps || []).find((g: any) => {
+          const gQuo = String(g.quoNo || '').trim().toLowerCase();
+          const gOrd = String(g.orderNo || '').trim().toLowerCase();
+          return (qTrim && gQuo === qTrim) || (oTrim && gOrd === oTrim);
+        });
+        if (matched && isMounted) {
+          setDispatchNo(prev => prev || matched.id);
+          if (matched.address) setPlaceOfSupply(prev => prev || matched.address);
+        }
+      } catch (e) {}
+    }, 400);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [quotationNo, orderNo]);
+
+  // Fetch advance payment receipts linked to quotation or order
+  useEffect(() => {
+    let isMounted = true;
+    const qNo = quotationNo?.trim();
+    const oNo = orderNo?.trim();
+    if (!qNo && !oNo && !paramQuoteId && !paramOrderId) {
+      setAdvanceReceipts([]);
+      return;
+    }
+
+    fetchPaymentReceipts({
+      quotationNo: qNo || undefined,
+      quoteId: paramQuoteId || undefined,
+      orderNo: oNo || undefined,
+      orderId: paramOrderId || undefined
+    }).then(res => {
+      if (!isMounted) return;
+      setAdvanceReceipts(Array.isArray(res) ? res : []);
+    }).catch(err => {
+      console.warn('Failed to fetch linked advance payment receipts:', err);
+    });
+
+    return () => { isMounted = false; };
+  }, [quotationNo, orderNo, paramQuoteId, paramOrderId]);
+
+  const advanceDeducted = useMemo(() => {
+    return advanceReceipts.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  }, [advanceReceipts]);
+
+  const receiptNos = useMemo(() => {
+    return advanceReceipts.map(r => r.receiptNo).filter(Boolean).join(', ');
+  }, [advanceReceipts]);
 
   const selectedCustomer = 
     customers.find(c => c.id === customerId) ||
@@ -550,7 +674,17 @@ export const InvoiceBuilder: React.FC = () => {
         total, 
         amount: total, 
         notes, 
-        status: 'Unpaid', 
+        status: advanceDeducted >= total ? 'paid' : (advanceDeducted > 0 ? 'partially_paid' : 'Unpaid'), 
+        paidAmount: advanceDeducted,
+        advanceDeducted,
+        receiptIds: advanceReceipts.length > 0 ? JSON.stringify(advanceReceipts.map(r => r.id)) : null,
+        payments: advanceReceipts.length > 0 ? JSON.stringify(advanceReceipts.map(r => ({
+          id: `REC-${r.receiptNo || r.id}`,
+          date: r.date,
+          amount: Number(r.amount),
+          method: r.paymentMethod || 'Advance',
+          reference: `Advance Receipt ${r.receiptNo || ''}`
+        }))) : null,
         deliveryDate: deliveryDate || null, 
         placeOfSupply, 
         modeOfPayment,
@@ -678,7 +812,9 @@ export const InvoiceBuilder: React.FC = () => {
     taxProfile: selectedTaxProfile, 
     taxBreakdown, 
     attention,
-    bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+    bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+    advanceDeducted,
+    receiptNos
   };
 
   return (
@@ -738,6 +874,31 @@ export const InvoiceBuilder: React.FC = () => {
         /* Builder Mode — Full-width like QuotationBuilder */
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
+          {/* Advance Receipt Banner */}
+          {advanceDeducted > 0 && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+                  <Receipt size={20} />
+                </div>
+                <div>
+                  <div className="text-sm font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                    Advance Payment Credited: {formatCurrency(advanceDeducted)}
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30">
+                      {receiptNos}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-muted mt-0.5">
+                    Found {advanceReceipts.length} advance payment receipt(s). This advance will be credited against the total consideration on the official final tax invoice. Net balance due: <strong className="text-primary">{formatCurrency(Math.max(0, total - advanceDeducted))}</strong>.
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded-lg bg-emerald-600 text-white shadow-sm shrink-0">
+                -{formatCurrency(advanceDeducted)}
+              </span>
+            </div>
+          )}
+
           {/* Row 1 — Bill To + Invoice Details (side by side, full width) */}
           <div className="grid grid-cols-3 gap-5">
             {/* Bill To */}
@@ -753,8 +914,17 @@ export const InvoiceBuilder: React.FC = () => {
 
               {/* Search row */}
               <div className="mb-3">
-                <label className="block text-[10px] font-bold text-muted uppercase mb-1.5">Select Customer</label>
-                <SearchableSelect value={customerId} onChange={setCustomerId} options={customerOptions} placeholder="Search customer…" />
+                <label className="block text-[10px] font-bold text-muted uppercase mb-1.5">Search Customer (Autocomplete)</label>
+                <CustomerAutocomplete
+                  value={customerId}
+                  onChange={(val, cust) => {
+                    setCustomerId(val);
+                    if (cust && cust.vat) setCustomerVat(cust.vat);
+                  }}
+                  customers={customers}
+                  leads={leads}
+                  placeholder="Type customer name, company, phone to autocomplete..."
+                />
               </div>
 
               {/* Customer detail card — only shown when selected */}
@@ -959,8 +1129,8 @@ export const InvoiceBuilder: React.FC = () => {
                     <input type="text" value={quotationNo} onChange={e => setQuotationNo(e.target.value)} placeholder="AHSQ-..." className={docInputClass} />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Dispatch No</label>
-                    <input type="text" value={dispatchNo} onChange={e => setDispatchNo(e.target.value)} placeholder="DN-..." className={docInputClass} />
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Dispatch No / Gate Pass</label>
+                    <input type="text" value={dispatchNo} onChange={e => setDispatchNo(e.target.value)} placeholder="GP-XXXX / DN-..." className={docInputClass} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Order No (SO)</label>
@@ -1049,8 +1219,23 @@ export const InvoiceBuilder: React.FC = () => {
                     return (
                       <tr key={item.id} className={`border-b border-theme-subtle last:border-0 group hover:bg-surface2/20 transition-colors ${idx % 2 === 0 ? '' : 'bg-surface2/10'}`}>
                         <td className="px-5 py-2 text-[10px] text-muted font-mono">{idx + 1}</td>
-                        <td className="px-2 py-2">
-                          <SearchableSelect value={item.inventoryId} onChange={val => handleChangeItem(item.id, 'inventoryId', val)} options={itemOptions} placeholder="Select or skip..." className="text-xs" />
+                        <td className="px-2 py-2 min-w-[200px]">
+                          <ProductAutocomplete
+                            value={item.inventoryId}
+                            onChange={(val, prod) => {
+                              handleChangeItem(item.id, 'inventoryId', val);
+                              if (prod) {
+                                if (!item.description || item.description === 'Item Description') {
+                                  handleChangeItem(item.id, 'description', prod.name + (prod.sku ? ` (${prod.sku})` : ''));
+                                }
+                                if (prod.unitPrice && !item.unitPrice) {
+                                  handleChangeItem(item.id, 'unitPrice', Number(prod.unitPrice));
+                                }
+                              }
+                            }}
+                            placeholder="Search product / SKU..."
+                            className="text-xs"
+                          />
                         </td>
                         <td className="px-2 py-2">
                           <textarea value={item.description} onChange={e => handleChangeItem(item.id, 'description', e.target.value)} onInput={(e: any) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} placeholder="Description…\n(Multiple lines allowed)" className={`${tableInputClass} resize-none overflow-hidden min-h-[40px] leading-relaxed`} rows={2} />
@@ -1196,6 +1381,21 @@ export const InvoiceBuilder: React.FC = () => {
                   <span className="text-base font-black text-primary uppercase tracking-wide">Grand Total</span>
                   <span className="text-3xl font-black text-blue-600 font-mono">{formatCurrency(total)}</span>
                 </div>
+
+                {advanceDeducted > 0 && (
+                  <div className="pt-3 border-t border-theme-subtle space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400">Less Advance Paid ({receiptNos})</span>
+                      <span className="font-mono font-bold text-emerald-600">-{formatCurrency(advanceDeducted)}</span>
+                    </div>
+                    <div className="pt-2 border-t border-emerald-500/20 flex justify-between items-center">
+                      <span className="text-sm font-black text-primary uppercase tracking-wide">Net Balance Due</span>
+                      <span className="text-2xl font-black text-emerald-600 font-mono">
+                        {formatCurrency(Math.max(0, total - advanceDeducted))}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </GlassCard>
           </div>

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, TrendingUp, DollarSign, Target, Briefcase, Users, Bell } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDeals, useCustomers, useFollowups } from '@/hooks/useData'
 import { createDeal, updateDeal, deleteDeal } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime, toMySQLDate } from '@/lib/utils'
@@ -266,12 +267,12 @@ export const Deals: React.FC = () => {
                 
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Associated Customer <span className="text-rex-500">*</span></label>
-                  <select required value={formData.customerId} onChange={e => setFormData({...formData, customerId: e.target.value})} className="w-full input-base">
-                    <option value="" disabled>Select Customer</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.company})</option>
-                    ))}
-                  </select>
+                  <CustomerAutocomplete
+                    value={formData.customerId}
+                    onChange={(cId) => setFormData({ ...formData, customerId: cId })}
+                    customers={customers}
+                    placeholder="Search customer (name, company)..."
+                  />
                 </div>
 
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">

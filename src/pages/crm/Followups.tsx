@@ -12,6 +12,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { useFollowups, useLeads, useDeals, useCustomers } from '@/hooks/useData'
 import { createFollowup, updateFollowup, deleteFollowup } from '@/lib/api'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 
 const ACTIVITY_TYPES = [
   { value: 'call',       label: 'Phone Call',   icon: Phone,        color: 'text-blue-500',   bg: 'bg-blue-500/10' },
@@ -269,14 +270,31 @@ export const Followups: React.FC = () => {
                     <option value="deal">Deal</option>
                     <option value="customer">Customer</option>
                   </select>
-                  <select className="w-full input-base" value={formData.relatedId}
-                    onChange={e => {
-                      const opt = relatedOptions.find((o: any) => o.id === e.target.value)
-                      setFormData({...formData, relatedId: e.target.value, relatedName: opt?.name || ''})
-                    }}>
-                    <option value="">— Select —</option>
-                    {relatedOptions.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                  </select>
+                  {formData.relatedType === 'customer' || formData.relatedType === 'lead' ? (
+                    <CustomerAutocomplete
+                      value={formData.relatedId}
+                      onChange={(cId, c) => {
+                        setFormData({
+                          ...formData,
+                          relatedId: cId,
+                          relatedName: c ? (c.company || c.name || '') : ''
+                        })
+                      }}
+                      customers={formData.relatedType === 'customer' ? customers : []}
+                      leads={formData.relatedType === 'lead' ? leads : []}
+                      placeholder={formData.relatedType === 'customer' ? 'Search customer...' : 'Search lead...'}
+                      className="text-xs"
+                    />
+                  ) : (
+                    <select className="w-full input-base" value={formData.relatedId}
+                      onChange={e => {
+                        const opt = relatedOptions.find((o: any) => o.id === e.target.value)
+                        setFormData({...formData, relatedId: e.target.value, relatedName: opt?.name || ''})
+                      }}>
+                      <option value="">— Select Deal —</option>
+                      {relatedOptions.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">Assigned To</label>

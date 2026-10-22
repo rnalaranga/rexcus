@@ -14,6 +14,7 @@ import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -431,6 +432,16 @@ export const Invoices: React.FC = () => {
                 Quote: {item.quotationNo || item.quotationId}
               </div>
             )}
+            {item.dispatchNo && (
+              <div className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                Dispatch: {item.dispatchNo}
+              </div>
+            )}
+            {item.orderNo && (
+              <div className="text-[9px] text-muted font-mono">
+                SO: {item.orderNo}
+              </div>
+            )}
             {item.poNo && (
               <div className="text-[9px] text-muted">
                 PO: {item.poNo}
@@ -638,18 +649,16 @@ export const Invoices: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <Filter size={13} className="text-muted shrink-0" />
             <span className="text-muted font-bold uppercase tracking-wider text-[11px]">Customer:</span>
-            <select
-              value={customerFilter}
-              onChange={e => setCustomerFilter(e.target.value)}
-              className="bg-surface border border-theme-subtle rounded px-2.5 py-1 text-primary text-xs focus:border-rex-500 outline-none max-w-[200px]"
-            >
-              <option value="all">All Customers ({customers.length})</option>
-              {customers.map((c: any) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} {c.company ? `(${c.company})` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="w-52">
+              <CustomerAutocomplete
+                value={customerFilter}
+                onChange={(cId) => setCustomerFilter(cId || 'all')}
+                customers={customers}
+                placeholder="Filter customer..."
+                allOptionLabel={`All Customers (${customers.length})`}
+                className="py-1 text-xs"
+              />
+            </div>
           </div>
 
           <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
@@ -768,6 +777,8 @@ export const Invoices: React.FC = () => {
                   if (viewInvoice.bankDetailId === 'none') return 'none';
                   return viewInvoice.bankDetailId || null;
                 })()}
+                advanceDeducted={Number(viewInvoice.advanceDeducted || 0)}
+                receiptNos={viewInvoice.receiptNos || ''}
               />
               </div>
             </div>

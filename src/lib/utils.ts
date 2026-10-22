@@ -33,3 +33,27 @@ export function relativeTime(dateStr: string): string {
 export function initials(name: string): string {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
+
+export function numberToWords(amount: number): string {
+  if (isNaN(amount) || amount === 0) return 'Zero Rupees Only';
+  const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  
+  const num2words = (n: number): string => {
+    if (n === 0) return '';
+    if (n < 20) return units[n] + ' ';
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + units[n % 10] : '') + ' ';
+    if (n < 1000) return units[Math.floor(n / 100)] + ' Hundred ' + num2words(n % 100);
+    if (n < 100000) return num2words(Math.floor(n / 1000)) + 'Thousand ' + num2words(n % 1000);
+    if (n < 10000000) return num2words(Math.floor(n / 100000)) + 'Lakh ' + num2words(n % 100000);
+    return num2words(Math.floor(n / 10000000)) + 'Crore ' + num2words(n % 10000000);
+  };
+
+  const whole = Math.floor(Math.abs(amount));
+  const cents = Math.round((Math.abs(amount) - whole) * 100);
+  let words = num2words(whole).trim() + ' Rupees';
+  if (cents > 0) {
+    words += ' and ' + num2words(cents).trim() + ' Cents';
+  }
+  return words + ' Only';
+}

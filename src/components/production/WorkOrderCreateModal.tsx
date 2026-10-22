@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { formatCurrency } from '@/lib/utils'
 import { createWorkOrder, updateQuotationStatus } from '@/lib/api'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { QuotationAutocomplete } from '@/components/ui/QuotationAutocomplete'
 
 interface WorkOrderCreateModalProps {
   isOpen: boolean
@@ -354,22 +356,14 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
             </div>
           </div>
 
-          <div className="w-full sm:w-64">
-            <select
+          <div className="w-full sm:w-72">
+            <QuotationAutocomplete
               value={formData.sourceQuoteId}
-              onChange={(e) => handleSelectQuote(e.target.value)}
-              className="w-full input-base text-xs py-1.5 font-medium"
-            >
-              <option value="">-- Select Quotation --</option>
-              {quotations.map(q => {
-                const isProd = q.status === 'In Production'
-                return (
-                  <option key={q.id} value={q.id} disabled={isProd}>
-                    {q.quotationNo || q.id} - {q.customerName || q.leadName || 'Customer'} {isProd ? '(WO Already Created)' : ''}
-                  </option>
-                )
-              })}
-            </select>
+              onChange={(quoteId) => handleSelectQuote(quoteId)}
+              quotations={quotations}
+              placeholder="Search quotation # to import BOM..."
+              className="text-xs"
+            />
           </div>
         </div>
 
@@ -412,25 +406,19 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
               <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">
                 Customer / Client
               </label>
-              <select 
-                value={formData.customerId} 
-                onChange={e => {
-                  const cust = customers.find(c => c.id === e.target.value)
+              <CustomerAutocomplete
+                value={formData.customerId}
+                onChange={(cId, cust) => {
                   setFormData({
                     ...formData,
-                    customerId: e.target.value,
-                    customer: cust ? cust.name : formData.customer
+                    customerId: cId,
+                    customer: cust ? (cust.company ? `${cust.name} (${cust.company})` : cust.name) : formData.customer
                   })
-                }} 
-                className="w-full input-base text-xs py-2"
-              >
-                <option value="">-- Direct / In-House Job --</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.company ? `${c.name} (${c.company})` : c.name}
-                  </option>
-                ))}
-              </select>
+                }}
+                customers={customers}
+                placeholder="Direct / In-House or search customer..."
+                className="text-xs"
+              />
             </div>
 
             <div>

@@ -558,6 +558,31 @@ async function runDatabaseSync() {
       notes TEXT NULL,
       createdAt DATETIME NULL,
       updatedAt DATETIME NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS payment_receipts (
+      id VARCHAR(50) PRIMARY KEY,
+      receiptNo VARCHAR(100) NOT NULL,
+      date DATETIME NOT NULL,
+      quoteId VARCHAR(50) NULL,
+      quotationNo VARCHAR(100) NULL,
+      orderId VARCHAR(50) NULL,
+      orderNo VARCHAR(100) NULL,
+      customerId VARCHAR(50) NULL,
+      customerName VARCHAR(255) NULL,
+      customerCompany VARCHAR(255) NULL,
+      totalQuotedAmount DECIMAL(15,2) DEFAULT 0.00,
+      amount DECIMAL(15,2) NOT NULL,
+      balanceDue DECIMAL(15,2) DEFAULT 0.00,
+      paymentMethod VARCHAR(50) DEFAULT 'Cash',
+      accountId VARCHAR(50) NULL,
+      accountName VARCHAR(255) NULL,
+      reference VARCHAR(100) NULL,
+      receivedBy VARCHAR(100) NULL,
+      notes TEXT NULL,
+      status VARCHAR(50) DEFAULT 'Received',
+      journalEntryId VARCHAR(50) NULL,
+      createdAt DATETIME NULL,
+      updatedAt DATETIME NULL
     )`
   ];
 
@@ -873,6 +898,8 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN additionalInfo TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN bankDetailId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN bankDetails TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN advanceDeducted DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN receiptIds TEXT DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
@@ -4426,8 +4453,23 @@ app.post('/api/invoices', async (req, res) => {
           }
         }
 
+        // Account for advance receipts previously issued
+        const advDeducted = Number(data.advanceDeducted) || 0;
+        let netReceivable = invTotal;
+        if (advDeducted > 0) {
+          let [advAcc]: any = await db.query(
+            'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Customer Advance%" OR code = "2150") AND type = "Liability" LIMIT 1'
+          );
+          if (advAcc && advAcc.length > 0) {
+            lines.push(['JL-' + Date.now().toString().slice(-5) + '5', jeId, advAcc[0].id, advDeducted, 0, data.customerId, 'Customer']);
+            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [advDeducted, advAcc[0].id]);
+            netReceivable = Math.max(0, invTotal - advDeducted);
+            lines[0][3] = netReceivable;
+          }
+        }
+
         await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
-        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, arAcc[0].id]);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [netReceivable, arAcc[0].id]);
         await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invSub, salesAcc[0].id]);
       }
     } catch(e) { console.error('Auto GL Invoice Error:', e); }
@@ -5336,6 +5378,237 @@ app.post('/api/finance/journals', async (req, res) => {
 
 
 // ==========================================
+// PAYMENT RECEIPTS (Customer Advance / Quotation Receipts)
+// ==========================================
+app.get('/api/finance/payment-receipts', async (req, res) => {
+  try {
+    const { quoteId, quotationNo, orderId, customerId } = req.query;
+    let query = 'SELECT * FROM payment_receipts WHERE 1=1';
+    const params: any[] = [];
+
+    if (quoteId) {
+      query += ' AND (quoteId = ? OR quotationNo = ?)';
+      params.push(quoteId, quoteId);
+    }
+    if (quotationNo) {
+      query += ' AND (quotationNo = ? OR quoteId = ?)';
+      params.push(quotationNo, quotationNo);
+    }
+    if (orderId) {
+      query += ' AND (orderId = ? OR orderNo = ?)';
+      params.push(orderId, orderId);
+    }
+    if (customerId) {
+      query += ' AND customerId = ?';
+      params.push(customerId);
+    }
+
+    query += ' ORDER BY date DESC, createdAt DESC';
+    const [rows]: any = await db.query(query, params);
+    res.json(rows);
+  } catch (err: any) {
+    console.error('Error fetching payment receipts:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/finance/payment-receipts/:id', async (req, res) => {
+  try {
+    const [rows]: any = await db.query(
+      'SELECT * FROM payment_receipts WHERE id = ? OR receiptNo = ? LIMIT 1', 
+      [req.params.id, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payment receipt not found' });
+    res.json(rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/finance/payment-receipts', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const data = { ...req.body };
+    const amountVal = Number(data.amount) || 0;
+    if (amountVal <= 0) {
+      conn.release();
+      return res.status(400).json({ error: 'Please enter a valid receipt amount greater than zero' });
+    }
+
+    const docId = data.id || `REC-${Date.now().toString().slice(-6)}`;
+    const receiptNum = data.receiptNo || docId;
+    const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const receiptDate = data.date 
+      ? (String(data.date).includes(' ') || String(data.date).includes('T')
+          ? String(data.date).replace('T', ' ').slice(0, 19)
+          : `${String(data.date).trim()} 00:00:00`)
+      : nowIso;
+
+    // Resolve Deposit Account (Cash / Bank)
+    let depositAccountId = data.accountId || null;
+    let depositAccountName = data.accountName || '';
+    if (depositAccountId) {
+      const [acc]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [depositAccountId]);
+      if (acc && acc.length > 0) {
+        depositAccountId = acc[0].id;
+        depositAccountName = acc[0].name;
+      }
+    }
+    if (!depositAccountId) {
+      const isBank = (data.paymentMethod || '').toLowerCase().includes('bank') || (data.paymentMethod || '').toLowerCase().includes('cheque') || (data.paymentMethod || '').toLowerCase().includes('card');
+      const searchSubtype = isBank ? 'Bank' : 'Cash';
+      const [found]: any = await conn.query(
+        'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" ORDER BY CASE WHEN subtype = ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END LIMIT 1',
+        [searchSubtype, `%${searchSubtype}%`, searchSubtype, `%${searchSubtype}%`]
+      );
+      if (found && found.length > 0) {
+        depositAccountId = found[0].id;
+        depositAccountName = found[0].name;
+      } else {
+        depositAccountId = isBank ? 'acc_1050' : 'acc_1000';
+        depositAccountName = isBank ? 'Bank Account' : 'Cash and Equivalents';
+        await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, ?, ?, "Asset", ?, 0, NOW())', [
+          depositAccountId, isBank ? '1050' : '1000', depositAccountName, searchSubtype
+        ]);
+      }
+    }
+
+    // Resolve Customer Advance / Accounts Receivable Account
+    let [arAcc]: any = await conn.query(
+      'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Deposit%" OR name LIKE "%Receivable%") AND (type = "Liability" OR type = "Asset") LIMIT 1'
+    );
+    let creditAccountId = 'acc_1500';
+    if (arAcc && arAcc.length > 0) {
+      creditAccountId = arAcc[0].id;
+    } else {
+      await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', ['acc_1500']);
+    }
+
+    // Auto Journal Entry for General Ledger
+    const jeId = `JE-${docId.replace(/[^A-Za-z0-9_-]/g, '')}`;
+    const jeData = {
+      id: jeId,
+      date: receiptDate,
+      reference: receiptNum,
+      description: `Customer Receipt: ${receiptNum} (Quote: ${data.quotationNo || data.quoteId || 'Direct'}) - ${data.customerName || 'Customer'}`,
+      totalAmount: amountVal,
+      createdBy: data.receivedBy || 'Accounts',
+      status: 'posted',
+      createdAt: nowIso
+    };
+    await conn.query('INSERT INTO journal_entries SET ?', jeData);
+
+    // JL 1: Debit Bank/Cash
+    const lineId1 = `JL-${jeId}-1`;
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: lineId1,
+      entryId: jeId,
+      accountId: depositAccountId,
+      partyType: 'Customer',
+      partyId: data.customerId || null,
+      description: `Payment Receipt ${receiptNum} received via ${data.paymentMethod || 'Cash'}`,
+      debit: amountVal,
+      credit: 0
+    });
+    // Update Bank/Cash balance (Debit increases Asset)
+    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, depositAccountId]);
+
+    // JL 2: Credit Customer Advance / AR
+    const lineId2 = `JL-${jeId}-2`;
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: lineId2,
+      entryId: jeId,
+      accountId: creditAccountId,
+      partyType: 'Customer',
+      partyId: data.customerId || null,
+      description: `Advance receipt on Quotation ${data.quotationNo || data.quoteId || ''}`,
+      debit: 0,
+      credit: amountVal
+    });
+    // Update AR/Advance balance
+    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, creditAccountId]);
+
+    const receiptPayload = {
+      id: docId,
+      receiptNo: receiptNum,
+      date: receiptDate,
+      quoteId: data.quoteId || null,
+      quotationNo: data.quotationNo || null,
+      orderId: data.orderId || null,
+      orderNo: data.orderNo || null,
+      customerId: data.customerId || null,
+      customerName: data.customerName || null,
+      customerCompany: data.customerCompany || null,
+      totalQuotedAmount: Number(data.totalQuotedAmount || 0),
+      amount: amountVal,
+      balanceDue: Number(data.balanceDue || 0),
+      paymentMethod: data.paymentMethod || 'Cash',
+      accountId: depositAccountId,
+      accountName: depositAccountName,
+      reference: data.reference || null,
+      receivedBy: data.receivedBy || 'Accounts Officer',
+      notes: data.notes || null,
+      status: 'Received',
+      journalEntryId: jeId,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    await conn.query('INSERT INTO payment_receipts SET ?', receiptPayload);
+
+    await conn.commit();
+    res.json({ success: true, id: docId, receipt: receiptPayload });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error('Failed to create payment receipt:', err);
+    res.status(500).json({ error: err.message || 'Failed to create payment receipt' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete('/api/finance/payment-receipts/:id', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    const [rows]: any = await conn.query('SELECT * FROM payment_receipts WHERE id = ? LIMIT 1', [id]);
+    if (!rows.length) {
+      conn.release();
+      return res.status(404).json({ error: 'Payment receipt not found' });
+    }
+    const receipt = rows[0];
+
+    // Reverse GL entries if journalEntryId exists
+    if (receipt.journalEntryId) {
+      const [lines]: any = await conn.query('SELECT * FROM journal_lines WHERE entryId = ?', [receipt.journalEntryId]);
+      for (const line of lines) {
+        if (Number(line.debit) > 0) {
+          await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [Number(line.debit), line.accountId]);
+        }
+        if (Number(line.credit) > 0) {
+          await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [Number(line.credit), line.accountId]);
+        }
+      }
+      await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [receipt.journalEntryId]);
+      await conn.query('DELETE FROM journal_entries WHERE id = ?', [receipt.journalEntryId]);
+    }
+
+    await conn.query('DELETE FROM payment_receipts WHERE id = ?', [id]);
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error('Failed to delete payment receipt:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete payment receipt' });
+  } finally {
+    conn.release();
+  }
+});
+
+// ==========================================
 // FINANCIAL REPORTS (GL, P&L, BS, Trial Balance)
 // ==========================================
 app.get('/api/finance/reports/trial-balance', async (req, res) => {
@@ -5772,180 +6045,10 @@ app.post('/api/hr/employees/:id/machines', async (req, res) => {
       await db.query('INSERT INTO employee_machines (employeeId, machineId) VALUES ?', [values]);
     }
     
-    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
-
-
-app.put('/api/production/machineries/:id', async (req, res) => {
-  try {
-    const { status, lastMaintenance } = req.body;
-    await db.query(
-      'UPDATE machineries SET status = ?, lastMaintenance = ? WHERE id = ?',
-      [status, lastMaintenance, req.params.id]
-    );
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/production/machineries', async (req, res) => {
-  try {
-    const { id, name, type, model, status, hourlyCost } = req.body;
-    await db.query(
-      'INSERT INTO machineries (id, name, type, model, status, hourlyCost, lastMaintenance) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-      [id, name, type, model, status, hourlyCost]
-    );
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
-
-
-
-// ==========================
-// SKILLS API
-// ==========================
-app.get('/api/hr/skills', async (req, res) => {
-  try {
-    const [rows] = await db.query('SELECT * FROM skills ORDER BY createdAt DESC');
-    res.json(rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/hr/skills', async (req, res) => {
-  try {
-    const { id, name, category, description } = req.body;
-    await db.query(
-      'INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)',
-      [id, name, category, description]
-    );
-    res.json({ success: true, id });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/hr/skills/:id', async (req, res) => {
-  try {
-    const { name, category, description } = req.body;
-    await db.query(
-      'UPDATE skills SET name=?, category=?, description=? WHERE id=?',
-      [name, category, description, req.params.id]
-    );
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/hr/skills/:id', async (req, res) => {
-  try {
-    await db.query('DELETE FROM employee_skills WHERE skillId = ?', [req.params.id]);
-    await db.query('DELETE FROM skills WHERE id = ?', [req.params.id]);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/hr/employees/:id/skills', async (req, res) => {
-  try {
-    const employeeId = req.params.id;
-    const { skillIds } = req.body;
-    
-    await db.query('DELETE FROM employee_skills WHERE employeeId = ?', [employeeId]);
-    if (skillIds && skillIds.length > 0) {
-      const values = skillIds.map(sId => [employeeId, sId]);
-      await db.query('INSERT INTO employee_skills (employeeId, skillId) VALUES ?', [values]);
-    }
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ==========================
-// HUMAN RESOURCES (HR) API
-// ==========================
-app.get('/api/hr/employees', async (req, res) => {
-  try {
-    const [employees] = await db.query('SELECT * FROM employees ORDER BY createdAt DESC');
-    const [machineAssignments] = await db.query('SELECT employeeId, machineId FROM employee_machines');
-    const [skillAssignments] = await db.query('SELECT employeeId, skillId FROM employee_skills');
-    
-    const enriched = employees.map(emp => ({
-      ...emp,
-      machineIds: machineAssignments.filter(a => a.employeeId === emp.id).map(a => a.machineId),
-      skillIds: skillAssignments.filter(a => a.employeeId === emp.id).map(a => a.skillId)
-    }));
-    
-    res.json(enriched);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/hr/employees', async (req, res) => {
-  try {
-    const { id, name, role, phone, email, status, skills } = req.body;
-    await db.query(
-      'INSERT INTO employees (id, name, role, phone, email, status, skills) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, name, role, phone, email, status, JSON.stringify(skills || [])]
-    );
-    res.json({ success: true, id });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/hr/employees/:id', async (req, res) => {
-  try {
-    const { name, role, phone, email, status, skills } = req.body;
-    await db.query(
-      'UPDATE employees SET name=?, role=?, phone=?, email=?, status=?, skills=? WHERE id=?',
-      [name, role, phone, email, status, JSON.stringify(skills || []), req.params.id]
-    );
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/hr/employees/:id', async (req, res) => {
-  try {
-    await db.query('DELETE FROM employee_machines WHERE employeeId = ?', [req.params.id]);
-    await db.query('DELETE FROM employees WHERE id = ?', [req.params.id]);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/hr/employees/:id/machines', async (req, res) => {
-  try {
-    const employeeId = req.params.id;
-    const { machineIds } = req.body; // Array of machine IDs
-    
-    await db.query('DELETE FROM employee_machines WHERE employeeId = ?', [employeeId]);
-    
-    if (machineIds && machineIds.length > 0) {
-      const values = machineIds.map(mId => [employeeId, mId]);
-      await db.query('INSERT INTO employee_machines (employeeId, machineId) VALUES ?', [values]);
-    }
-    
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 
 // ==========================
 // PRODUCTION / WORK ORDERS API (COMPREHENSIVE MANUFACTURING SUITE)

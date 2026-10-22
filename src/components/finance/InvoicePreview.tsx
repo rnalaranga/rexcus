@@ -108,6 +108,8 @@ export interface InvoicePreviewProps {
   taxProfile?: any;
   attention?: string;
   bankDetails?: any;
+  advanceDeducted?: number;
+  receiptNos?: string;
   [key: string]: any;
 }
 
@@ -135,7 +137,9 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   attention,
   taxBreakdown,
   taxType,
-  bankDetails
+  bankDetails,
+  advanceDeducted = 0,
+  receiptNos = ''
 }) => {
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
@@ -466,15 +470,19 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </div>
         </div>
 
-        {/* ROW 3: Date of Supply & Place of Supply */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: tableBorder }}>
+        {/* ROW 3: Date of Supply, Place of Supply & Dispatch / Gate Pass No. */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1fr', borderBottom: tableBorder }}>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Date of Supply :</span>{' '}
             <span>{supplyDateFormatted}</span>
           </div>
-          <div style={{ padding: '6px 10px' }}>
+          <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Place of Supply :*</span>{' '}
             <span>{placeOfSupply || '-'}</span>
+          </div>
+          <div style={{ padding: '6px 10px' }}>
+            <span style={{ fontWeight: '700' }}>Dispatch No. / Gate Pass :*</span>{' '}
+            <span style={{ fontWeight: '800', fontFamily: 'monospace', color: '#000000' }}>{dispatchNo || 'Direct Delivery'}</span>
           </div>
         </div>
 
@@ -629,11 +637,39 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </td>
           </tr>
 
+          {/* ADVANCE DEDUCTION & NET BALANCE DUE */}
+          {advanceDeducted > 0 && (
+            <>
+              <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                  {`Less: Advance Payment Received ${receiptNos ? `(${receiptNos})` : ''}:`}
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700', color: '#047857' }}>
+                  {`- ${Number(advanceDeducted).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                </td>
+              </tr>
+              <tr style={{ borderBottom: tableBorder, backgroundColor: '#f8fafc' }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '800', borderRight: tableBorder }}>
+                  Net Balance Payable / Due:
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '800', fontSize: '13px', color: '#1e293b' }}>
+                  {Math.max(0, total - advanceDeducted).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </>
+          )}
+
           {/* TOTAL AMOUNT IN WORDS */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left' }}>
               <span style={{ fontWeight: '700' }}>Total Amount in words:*</span>{' '}
               <span>{amountInWords}</span>
+              {advanceDeducted > 0 && (
+                <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#0f172a' }}>
+                  <span style={{ fontWeight: '700' }}>Net Balance Payable in words:</span>{' '}
+                  <span style={{ fontStyle: 'italic', fontWeight: '600' }}>{toWords(Math.max(0, total - advanceDeducted))}</span>
+                </div>
+              )}
             </td>
           </tr>
 

@@ -463,6 +463,46 @@ export const addInvoicePayment = async (id: string, data: any) => {
   return res.json();
 };
 
+// --- PAYMENT RECEIPTS (Customer Advance / Quotation Receipts) ---
+export const fetchPaymentReceipts = async (params?: Record<string, any>) => {
+  let url = `${API_URL}/finance/payment-receipts`;
+  if (params && Object.keys(params).length > 0) {
+    const cleanParams: Record<string, string> = {};
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        cleanParams[k] = String(v);
+      }
+    });
+    if (Object.keys(cleanParams).length > 0) {
+      const qs = new URLSearchParams(cleanParams).toString();
+      url += `?${qs}`;
+    }
+  }
+  const res = await fetch(url);
+  return res.json();
+};
+
+export const fetchPaymentReceiptById = async (id: string) => {
+  const res = await fetch(`${API_URL}/finance/payment-receipts/${encodeURIComponent(id)}`);
+  return res.json();
+};
+
+export const createPaymentReceipt = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/payment-receipts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deletePaymentReceipt = async (id: string) => {
+  const res = await fetch(`${API_URL}/finance/payment-receipts/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+};
+
 
 
 // --- PURCHASING ---

@@ -9,6 +9,7 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
 import { useLeads, useFollowups, useCustomers } from '@/hooks/useData'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
@@ -490,31 +491,38 @@ export const Leads: React.FC = () => {
               {!formData.isNewCustomer ? (
                 <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Select Customer <span className="text-rex-500">*</span></label>
-<SearchableSelect
-                    options={customers.map((c: any) => ({ value: c.id, label: c.company || c.name }))}
+                  <CustomerAutocomplete
                     value={formData.customerId}
-                    onChange={(val) => {
-                      setFormData({...formData, customerId: val});
-                      if (val) {
-                        const c = customers.find((x: any) => x.id === val);
-                        if (c) {
-                          setFormData((prev: any) => ({
-                              ...prev,
-                              customerId: val,
-                              name: c.name || '',
-                              company: c.company || '',
-                              email: c.email || '',
-                              phone: c.phone || '',
-                              vat: c.vat || '',
-                              svat: c.svat || '',
-                              address: c.address || '',
-                              brNumber: c.brNumber || '',
-                              industry: c.industry || ''
-                            }));
-                        }
-                      }
+                    customers={customers}
+                    onChange={(val, c) => {
+                      setFormData((prev: any) => ({
+                        ...prev,
+                        customerId: val,
+                        ...(c ? {
+                          name: c.name || '',
+                          company: c.company || '',
+                          email: c.email || '',
+                          phone: c.phone || '',
+                          vat: c.vat || '',
+                          svat: c.svat || '',
+                          address: c.address || '',
+                          brNumber: c.brNumber || '',
+                          industry: c.industry || ''
+                        } : {
+                          name: '',
+                          company: '',
+                          email: '',
+                          phone: '',
+                          vat: '',
+                          svat: '',
+                          address: '',
+                          brNumber: '',
+                          industry: ''
+                        })
+                      }));
                     }}
-                    placeholder="Search existing customer..."
+                    placeholder="Search existing customer (name, company, phone)..."
+                    className="text-xs"
                   />
                   {formData.customerId && (() => {
                      const sc = customers.find((x:any) => x.id === formData.customerId);

@@ -13,6 +13,7 @@ import { useInventory } from '@/hooks/useData';
 import { createMR, updateMR, fetchMRs, fetchWorkOrders } from '@/lib/api';
 import { usePurchaseOrders } from '@/hooks/usePurchasing';
 import { formatCurrency, cn } from '@/lib/utils';
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -992,18 +993,13 @@ export const MRBuilder: React.FC = () => {
                           </td>
                           <td className="p-3">
                             <div className="flex flex-col gap-1.5 max-w-md">
-                              <select 
+                              <ProductAutocomplete 
                                 value={item.inventoryId} 
-                                onChange={e => updateItem(item.id, 'inventoryId', e.target.value)} 
-                                className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-medium focus:border-blue-500"
-                              >
-                                <option value="">-- Select Material / Inventory Item --</option>
-                                {inventory.map(i => (
-                                  <option key={i.id} value={i.id}>
-                                    {i.sku ? `[${i.sku}] ` : ''}{i.name} ({i.category || 'General'})
-                                  </option>
-                                ))}
-                              </select>
+                                onChange={(val) => updateItem(item.id, 'inventoryId', val)} 
+                                products={inventory}
+                                placeholder="Search material / SKU..."
+                                className="text-xs py-1"
+                              />
                               <input 
                                 type="text" 
                                 value={item.desc} 

@@ -26,6 +26,7 @@ import {
   completeWorkOrder, 
   fetchQuotations 
 } from '@/lib/api'
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
@@ -2025,27 +2026,21 @@ export const WorkOrderDetail: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-secondary mb-1">Select Inventory Stock Item</label>
-              <select
+              <ProductAutocomplete
                 value={issueForm.inventoryId}
-                onChange={(e) => {
-                  const inv = inventory.find(i => i.id === e.target.value)
+                onChange={(val, inv) => {
                   setIssueForm({
                     ...issueForm,
-                    inventoryId: e.target.value,
+                    inventoryId: val,
                     materialName: inv ? inv.name : issueForm.materialName,
                     unit: inv?.uom || issueForm.unit,
                     unitCost: Number(inv?.unitCost || issueForm.unitCost)
                   })
                 }}
-                className="w-full input-base text-xs rounded-none"
-              >
-                <option value="">-- Choose from Catalog --</option>
-                {inventory.map((inv: any) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.name} ({inv.sku}) - Avail: {inv.quantity} {inv.uom}
-                  </option>
-                ))}
-              </select>
+                products={inventory}
+                placeholder="Search catalog stock item..."
+                className="rounded-none text-xs"
+              />
             </div>
 
             <div>

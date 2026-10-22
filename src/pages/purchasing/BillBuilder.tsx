@@ -116,16 +116,21 @@ export const BillBuilder: React.FC = () => {
     }
   }, [grnId, grns, selectedPO, remainingBalance]);
 
-  // Find GRNs matching the selected PO
+  // Find GRNs matching the selected PO or Supplier
   const matchingGRNs = useMemo(() => {
-    if (!poId) return grns;
+    if (!poId) {
+      if (supplierId) {
+        return grns.filter((g: any) => g.supplierId === supplierId);
+      }
+      return grns;
+    }
     return grns.filter((g: any) => {
       if (g.poId === poId) return true;
       if (Array.isArray(g.poIds) && g.poIds.includes(poId)) return true;
       if (typeof g.poIds === 'string' && g.poIds.includes(poId)) return true;
       return false;
     });
-  }, [poId, grns]);
+  }, [poId, supplierId, grns]);
 
   // Available POs (optionally filtered if supplier is already selected)
   const availablePOs = useMemo(() => {
@@ -329,13 +334,23 @@ export const BillBuilder: React.FC = () => {
                 </label>
                 <select 
                   value={grnId} 
-                  onChange={e => setGrnId(e.target.value)} 
+                  onChange={e => {
+                    const selId = e.target.value;
+                    setGrnId(selId);
+                    if (selId) {
+                      const g = grns.find((x: any) => x.id === selId);
+                      if (g) {
+                        if (g.supplierId && !supplierId) setSupplierId(g.supplierId);
+                        if (g.poId && !poId) setPoId(g.poId);
+                      }
+                    }
+                  }} 
                   className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium focus:border-amber-500"
                 >
                   <option value="">-- General / No Specific GRN --</option>
                   {matchingGRNs.map((g: any) => (
                     <option key={g.id} value={g.id}>
-                      {g.id} • {g.date?.split('T')[0]} {g.vehicleNo ? `(${g.vehicleNo})` : ''}
+                      {g.id} • {g.date?.split('T')[0]} {g.vehicleNo ? `(${g.vehicleNo})` : ''} {!g.poId ? '• [Direct Receipt]' : ''}
                     </option>
                   ))}
                 </select>
