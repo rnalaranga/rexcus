@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { 
   ShoppingCart, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
-  Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, X,
+  Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
   ShoppingBag, Receipt
 } from 'lucide-react'
@@ -560,6 +560,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
+  const [openActionOrderId, setOpenActionOrderId] = useState<string | number | null>(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.order-action-menu-container')) {
+        setOpenActionOrderId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
   const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
 
   const loadWorkOrders = useCallback(async () => {
@@ -679,7 +691,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Total Orders</span>
             <div className="text-2xl font-mono font-bold text-primary mt-1">{metrics.total}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+          <div className="w-10 h-10 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <ShoppingCart size={18} />
           </div>
         </GlassCard>
@@ -689,7 +701,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Pending / Confirmed</span>
             <div className="text-2xl font-mono font-bold text-amber-500 mt-1">{metrics.pending}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+          <div className="w-10 h-10 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <Clock size={18} />
           </div>
         </GlassCard>
@@ -699,7 +711,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Dispatched & Delivered</span>
             <div className="text-2xl font-mono font-bold text-emerald-500 mt-1">{metrics.readyOrDispatched}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+          <div className="w-10 h-10 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <CheckCircle size={18} />
           </div>
         </GlassCard>
@@ -709,7 +721,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             <span className="text-xs text-muted font-medium">Total Orders Value</span>
             <div className="text-xl font-mono font-bold text-rex-600 mt-1">{formatCurrency(metrics.totalRev)}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+          <div className="w-10 h-10 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
             <DollarSign size={18} />
           </div>
         </GlassCard>
@@ -717,21 +729,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          {['all', 'Pending', 'Confirmed', 'In Production', 'Ready to Dispatch', 'Dispatched'].map(st => (
-            <button
-              key={st}
-              type="button"
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 transition-all ${
-                statusFilter === st
-                  ? 'bg-rex-600 text-white shadow-sm'
-                  : 'bg-surface hover:bg-surface2 text-secondary border border-theme-subtle'
-              }`}
-            >
-              {st === 'all' ? `All Orders (${orders.length})` : st}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted font-medium flex items-center gap-1.5">
+            <Filter size={13} /> Status:
+          </label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-1.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary rounded-none focus:outline-none focus:border-rex-500 cursor-pointer shadow-2xs"
+          >
+            <option value="all">All Orders ({orders.length})</option>
+            <option value="Pending">Pending ({orders.filter(o => o.status === 'Pending').length})</option>
+            <option value="Confirmed">Confirmed ({orders.filter(o => o.status === 'Confirmed').length})</option>
+            <option value="In Production">In Production ({orders.filter(o => o.status === 'In Production').length})</option>
+            <option value="Ready to Dispatch">Ready to Dispatch ({orders.filter(o => o.status === 'Ready to Dispatch').length})</option>
+            <option value="Dispatched">Dispatched ({orders.filter(o => o.status === 'Dispatched' || o.isDispatched).length})</option>
+          </select>
         </div>
 
         <div className="flex items-center gap-3">
@@ -754,7 +767,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       {/* Orders Table */}
       <GlassCard className="p-0 overflow-hidden border border-theme-subtle">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[380px]">
           <table className="w-full text-left min-w-[900px]">
             <thead className="bg-surface2/50 border-b border-theme-subtle text-[10px] font-bold text-muted uppercase tracking-wider">
               <tr>
@@ -769,7 +782,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </tr>
             </thead>
             <tbody className="divide-y divide-theme-subtle/20 text-xs">
-              {filteredOrders.map(order => {
+              {filteredOrders.map((order, idx) => {
                 const prod = finishedProducts.find(p => p.id === order.productId)
                 const inStockNow = Number(prod?.quantity || 0)
                 const isShort = inStockNow < Number(order.qty) && !order.isDispatched
@@ -957,109 +970,140 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                     {/* Actions */}
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                        {/* PDF / Print Action */}
+                      <div className="flex items-center justify-end gap-1.5 order-action-menu-container relative">
+                        {/* Quick 1-click Print PDF */}
                         <Button
                           variant="ghost"
                           size="sm"
                           icon={Printer}
                           onClick={() => setPrintOrder(order)}
-                          className="h-7 text-xs px-2 border border-theme-subtle text-primary hover:bg-surface2"
+                          className="h-7 text-xs px-2 border border-theme-subtle text-primary hover:bg-surface2 rounded-none"
                           title="View / Print Sales Order PDF"
                         >
                           PDF
                         </Button>
 
-                        {/* Work Order Action */}
-                        {existingWO ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={Factory}
-                            onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                            className="h-7 text-xs px-2 border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-mono font-bold"
-                            title={`View active Work Order ${existingWO.orderNo || existingWO.id}`}
+                        {/* Actions Dropdown Button */}
+                        <div className="relative inline-block text-left">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenActionOrderId(openActionOrderId === order.id ? null : order.id);
+                            }}
+                            className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
+                              openActionOrderId === order.id
+                                ? 'bg-rex-600 text-white border-rex-600'
+                                : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+                            }`}
                           >
-                            WO
-                          </Button>
-                        ) : !order.isDispatched && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={Factory}
-                            onClick={() => handleCreateWorkOrder(order, orderItems)}
-                            className="h-7 text-xs px-2 border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-medium"
-                            title="Create Work Order for Production"
-                          >
-                            Work Order
-                          </Button>
-                        )}
+                            Actions
+                            <ChevronDown size={11} className={`transition-transform duration-150 ${openActionOrderId === order.id ? 'rotate-180' : ''}`} />
+                          </button>
 
-                        {/* Advance Payment Receipt Action */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={Receipt}
-                          onClick={() => handleOpenReceiptModal(order)}
-                          className="h-7 text-xs px-2 border border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 font-bold shadow-sm"
-                          title="Issue Official Advance Payment Receipt before Final Invoice"
-                        >
-                          Receipt
-                        </Button>
+                          {openActionOrderId === order.id && (
+                            <div 
+                              onClick={(e) => e.stopPropagation()}
+                              className={`absolute right-0 ${
+                                idx >= filteredOrders.length - 2 && filteredOrders.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
+                              } w-56 bg-surface border border-theme shadow-2xl z-[60] py-1 text-left rounded-none animate-fade-in`}
+                            >
+                              {/* 1. View / Print PDF */}
+                              <button
+                                type="button"
+                                onClick={() => { setPrintOrder(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                              >
+                                <Printer size={13} className="text-muted shrink-0" />
+                                <span>Print Sales Order PDF</span>
+                              </button>
 
-                        {/* Invoice Generation Action */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={FileText}
-                          onClick={() => handleInvoiceClick(order)}
-                          className="h-7 text-xs px-2 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 font-medium"
-                          title="Generate Final Invoice from Sales Order"
-                        >
-                          Invoice
-                        </Button>
+                              {/* 2. Work Order */}
+                              {existingWO ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { navigate(`/production/work-orders/${existingWO.id}`); setOpenActionOrderId(null); }}
+                                  className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                                >
+                                  <Factory size={13} className="shrink-0" />
+                                  <span className="truncate">View Work Order ({existingWO.orderNo || existingWO.id})</span>
+                                </button>
+                              ) : !order.isDispatched ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { handleCreateWorkOrder(order, orderItems); setOpenActionOrderId(null); }}
+                                  className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                                >
+                                  <Factory size={13} className="shrink-0" />
+                                  <span>Create Work Order</span>
+                                </button>
+                              ) : null}
 
-                        {/* Dispatch with Gate Pass */}
-                        {!order.isDispatched && order.status !== 'Dispatched' ? (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            icon={Truck}
-                            onClick={() => handleOpenDispatchModal(order)}
-                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                            title="Dispatch order and issue Gate Pass"
-                          >
-                            Dispatch
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={Shield}
-                            onClick={() => handleViewGatePass(order)}
-                            className="h-7 text-xs px-2 border border-purple-500/40 text-purple-600 hover:bg-purple-500/10 font-bold"
-                            title="View / Print Gate Pass"
-                          >
-                            Gate Pass
-                          </Button>
-                        )}
+                              {/* 3. Advance Payment Receipt */}
+                              <button
+                                type="button"
+                                onClick={() => { handleOpenReceiptModal(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
+                              >
+                                <Receipt size={13} className="shrink-0" />
+                                <span>Issue Advance Receipt</span>
+                              </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(order)}
-                          className="p-1.5 hover:bg-surface2 rounded text-muted hover:text-primary transition-colors"
-                          title="Edit Order"
-                        >
-                          <Edit size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(order)}
-                          className="p-1.5 hover:bg-red-500/10 rounded text-muted hover:text-red-500 transition-colors"
-                          title="Delete Order"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                              {/* 4. Invoice */}
+                              <button
+                                type="button"
+                                onClick={() => { handleInvoiceClick(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
+                              >
+                                <FileText size={13} className="shrink-0" />
+                                <span>Generate / View Invoice</span>
+                              </button>
+
+                              {/* 5. Dispatch / Gate Pass */}
+                              {!order.isDispatched && order.status !== 'Dispatched' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { handleOpenDispatchModal(order); setOpenActionOrderId(null); }}
+                                  className="w-full px-3 py-2 text-xs text-primary hover:bg-surface2 flex items-center gap-2 transition-colors font-semibold rounded-none"
+                                >
+                                  <Truck size={13} className="text-emerald-500 shrink-0" />
+                                  <span>Dispatch & Gate Pass</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { handleViewGatePass(order); setOpenActionOrderId(null); }}
+                                  className="w-full px-3 py-2 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 flex items-center gap-2 transition-colors rounded-none"
+                                >
+                                  <Shield size={13} className="shrink-0" />
+                                  <span>View Gate Pass ({order.gatePassNo || 'Issued'})</span>
+                                </button>
+                              )}
+
+                              <div className="my-1 border-t border-theme-subtle" />
+
+                              {/* 6. Edit Order */}
+                              <button
+                                type="button"
+                                onClick={() => { handleOpenEditModal(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                              >
+                                <Edit size={13} className="text-muted shrink-0" />
+                                <span>Edit Order</span>
+                              </button>
+
+                              {/* 7. Delete Order */}
+                              <button
+                                type="button"
+                                onClick={() => { setDeleteTarget(order); setOpenActionOrderId(null); }}
+                                className="w-full px-3 py-2 text-xs text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors font-medium rounded-none"
+                              >
+                                <Trash2 size={13} className="shrink-0" />
+                                <span>Delete Order</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -1096,7 +1140,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       {/* CREATE / EDIT ORDER MODAL */}
       {showOrderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-2xl bg-surface border border-theme-subtle rounded-2xl shadow-2xl p-6 overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-2xl bg-surface border border-theme-subtle rounded-none shadow-2xl p-6 overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-theme-subtle">
               <h3 className="text-base font-bold text-primary flex items-center gap-2">
                 <ShoppingBag size={18} className="text-blue-600" />
@@ -1105,7 +1149,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <button
                 type="button"
                 onClick={() => setShowOrderModal(false)}
-                className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface2"
+                className="p-1.5 rounded-none text-muted hover:text-primary hover:bg-surface2"
               >
                 <X size={16} />
               </button>
@@ -1121,7 +1165,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   <button
                     type="button"
                     onClick={() => handleSourceChange('from_quote')}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-none border text-xs font-bold transition-all ${
                       formData.orderSource === 'from_quote'
                         ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
                         : 'bg-surface2/50 text-secondary border-theme-subtle hover:bg-surface2 hover:text-primary'
@@ -1133,7 +1177,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   <button
                     type="button"
                     onClick={() => handleSourceChange('ready_made')}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-none border text-xs font-bold transition-all ${
                       formData.orderSource === 'ready_made'
                         ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
                         : 'bg-surface2/50 text-secondary border-theme-subtle hover:bg-surface2 hover:text-primary'
@@ -1145,7 +1189,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   <button
                     type="button"
                     onClick={() => handleSourceChange('custom_job')}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-none border text-xs font-bold transition-all ${
                       formData.orderSource === 'custom_job'
                         ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
                         : 'bg-surface2/50 text-secondary border-theme-subtle hover:bg-surface2 hover:text-primary'
@@ -1196,7 +1240,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </div>
 
                     {selectedQuotation && (
-                      <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 text-xs space-y-2">
+                      <div className="p-3 rounded-none bg-blue-500/5 border border-blue-500/20 text-xs space-y-2">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-2">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
@@ -1267,7 +1311,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     />
 
                     {selectedProduct && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
+                      <div className="mt-2 p-2.5 rounded-none bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
                           <Package size={14} className="text-rex-600" />
                           <span>In Stock: <strong className="font-mono text-primary">{availableStock} {selectedProduct.uom || 'pcs'}</strong></span>
@@ -1483,7 +1527,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           title={`Dispatch Order #${dispatchModalOrder.orderNo} & Issue Gate Pass`}
         >
           <form onSubmit={handleConfirmDispatch} className="space-y-4">
-            <div className="p-3.5 rounded-xl bg-surface2/60 border border-theme-subtle text-xs space-y-1.5">
+            <div className="p-3.5 rounded-none bg-surface2/60 border border-theme-subtle text-xs space-y-1.5">
               <div className="flex justify-between">
                 <span className="text-muted">Customer:</span>
                 <span className="font-bold text-primary">{dispatchModalOrder.customerName}</span>
@@ -1577,7 +1621,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </div>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-400">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-none text-[11px] text-amber-700 dark:text-amber-400">
               💡 Confirming dispatch will auto-generate an official <strong>Gate Pass (GP-XXXX)</strong>, mark order as <strong>Dispatched</strong>, and deduct stock with an OUT entry in the Stock Ledger.
             </div>
 
@@ -1644,7 +1688,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </div>
             </div>
 
-            <div className="max-h-[75vh] overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 rounded-xl flex justify-center">
+            <div className="max-h-[75vh] overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 rounded-none flex justify-center">
               <SalesOrderPrintView 
                 order={printOrder} 
                 customer={customers.find(c => c.id === printOrder.customerId) || leads.find(l => l.id === printOrder.customerId)}
@@ -1701,7 +1745,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </div>
             </div>
 
-            <div className="max-h-[75vh] overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 rounded-xl flex justify-center">
+            <div className="max-h-[75vh] overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 rounded-none flex justify-center">
               <GatePassPrintView 
                 gatePass={printGatePass} 
                 settings={settings} 
@@ -1778,8 +1822,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           title="Advance Payment Receipt Recommendation"
         >
           <div className="space-y-4">
-            <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-none flex items-start gap-3">
+              <div className="w-9 h-9 rounded-none bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
                 <Receipt size={18} />
               </div>
               <div className="text-xs space-y-1">
@@ -1792,7 +1836,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </div>
             </div>
 
-            <div className="bg-surface2/40 border border-theme-subtle rounded-xl p-3 text-xs flex justify-between items-center">
+            <div className="bg-surface2/40 border border-theme-subtle rounded-none p-3 text-xs flex justify-between items-center">
               <div>
                 <div className="text-muted text-[11px]">Sales Order</div>
                 <div className="font-mono font-bold text-primary">{preInvoicePromptOrder.orderNo}</div>

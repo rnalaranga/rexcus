@@ -87,20 +87,20 @@
   .rounded, [class~="rounded"]           { border-radius: 0.25rem !important; }
   .rounded-sm, [class*="rounded-sm"]     { border-radius: 0.125rem !important; }
 
-  /* Enterprise Button Ergonomics: Crisp, modern 4px corner radius across all interactive buttons */
-  button,
+  /* Enterprise Ergonomics: Strict sharp/square corners across all buttons, text fields (inputs, textareas, selects), and modals */
+  button:not(.rex-ai-trigger-btn),
+  button:not(.rex-ai-trigger-btn)[class*="rounded"],
   .btn,
-  [role="button"] {
-    border-radius: 0.25rem;
-  }
-
-  button:not([class*="rounded-full"]):not([class*="rounded-none"]):not([class*="rounded-t-"]):not([class*="rounded-b-"]):not([class*="rounded-l-"]):not([class*="rounded-r-"]):not(.rex-ai-trigger-btn),
-  .btn:not([class*="rounded-full"]):not([class*="rounded-none"]):not(.rex-ai-trigger-btn) {
-    border-radius: 0.25rem !important;
-  }
-
-  button[class*="rounded-full"] {
-    border-radius: 9999px !important;
+  .btn[class*="rounded"],
+  [role="button"]:not(.rex-ai-trigger-btn),
+  input:not([type="radio"]):not([type="checkbox"]),
+  input:not([type="radio"]):not([type="checkbox"])[class*="rounded"],
+  textarea,
+  textarea[class*="rounded"],
+  select,
+  select[class*="rounded"],
+  .input-base {
+    border-radius: 0px !important;
   }
 
   button.rounded-l-full,
@@ -112,12 +112,16 @@
     border-bottom-right-radius: 0px !important;
   }
 
-  button[class*="rounded-none"] {
+  /* Modals, dialog overlays, and popup panels: strictly sharp square corners */
+  [role="dialog"],
+  [role="dialog"] div,
+  .modal-dialog,
+  .modal-content,
+  div[class*="max-h-[90vh]"],
+  div[class*="max-h-[92vh]"],
+  div[class*="max-h-[94vh]"],
+  div[class*="max-h-[96vh]"] {
     border-radius: 0px !important;
-  }
-
-  button[class*="rounded-sm"] {
-    border-radius: 0.125rem !important;
   }
 
   /* Small button ergonomics: prevent text from wrapping into multiple lines & keep radius balanced */

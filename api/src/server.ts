@@ -584,6 +584,22 @@ async function runDatabaseSync() {
       journalEntryId VARCHAR(50) NULL,
       createdAt DATETIME NULL,
       updatedAt DATETIME NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS approval_logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      module VARCHAR(50) NOT NULL,
+      recordId VARCHAR(100) NOT NULL,
+      recordNo VARCHAR(100),
+      entityName VARCHAR(255),
+      amount DECIMAL(15,2) DEFAULT 0,
+      action VARCHAR(50) NOT NULL,
+      actionBy VARCHAR(100) NOT NULL,
+      actionDate DATETIME NULL,
+      notes TEXT,
+      metadata LONGTEXT,
+      createdAt DATETIME NULL,
+      INDEX idx_record (recordId),
+      INDEX idx_module (module)
     )`
   ];
 
@@ -1732,7 +1748,13 @@ app.put('/api/customers/:id', async (req, res) => {
 app.post('/api/customers/:id/approve-credit', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'approved' or 'rejected'
+    const { status, actionBy, reason } = req.body; // 'approved' or 'rejected'
+
+    const [custRows]: any = await db.query('SELECT * FROM customers WHERE id = ?', [id]);
+    const cust = custRows[0];
+    const entityName = cust?.company || cust?.name || id;
+    const requestedAmount = Number(cust?.pendingCreditLimit || 0);
+    const approver = actionBy || 'Finance Manager';
     
     if (status === 'approved') {
       await db.query(`UPDATE customers SET 
@@ -1744,6 +1766,14 @@ app.post('/api/customers/:id/approve-credit', async (req, res) => {
         pendingCreditDays = NULL,
         creditLimitStatus = 'approved' 
         WHERE id = ?`, [id]);
+
+      try {
+        await db.query(
+          `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+           VALUES (?, ?, ?, ?, ?, 'Approved', ?, NOW(), ?, NOW())`,
+          ['Credit Limit', id, cust?.id || id, entityName, requestedAmount, approver, `Credit limit authorized: Rs. ${requestedAmount.toLocaleString()}`]
+        );
+      } catch (logErr) {}
     } else if (status === 'rejected') {
       await db.query(`UPDATE customers SET 
         pendingCreditLimit = 0, 
@@ -1751,10 +1781,18 @@ app.post('/api/customers/:id/approve-credit', async (req, res) => {
         pendingCreditDays = NULL,
         creditLimitStatus = 'approved' 
         WHERE id = ?`, [id]); 
+
+      try {
+        await db.query(
+          `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+           VALUES (?, ?, ?, ?, ?, 'Rejected', ?, NOW(), ?, NOW())`,
+          ['Credit Limit', id, cust?.id || id, entityName, requestedAmount, approver, reason || 'Credit limit request rejected']
+        );
+      } catch (logErr) {}
     }
     
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
@@ -2067,6 +2105,26 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
       "UPDATE quotations SET status = 'Approved', approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?",
       [approvedBy || 'Authorized Approver', id]
     );
+
+    // Audit log
+    try {
+      const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+      const quote = rows[0];
+      let parsed: any = {};
+      if (quote?.data) {
+        try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
+      }
+      const recordNo = parsed.quotationNo || quote?.docNo || quote?.id || id;
+      const entityName = parsed.customerCompany || parsed.customerName || quote?.leadId || 'Customer';
+      const amount = Number(quote?.totalAmount || parsed.custTotals?.total || 0);
+
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Approved', ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, approvedBy || 'Authorized Approver', 'Commercial Quotation approved']
+      );
+    } catch (logErr) {}
+
     res.json({ success: true, id, status: 'Approved' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -2076,14 +2134,90 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
 app.post('/api/quotations/:id/reject', async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason, rejectedBy } = req.body;
     await db.query(
       "UPDATE quotations SET status = 'Rejected', rejectionReason = ? WHERE id = ?",
       [reason || 'Rejected by management', id]
     );
+
+    // Audit log
+    try {
+      const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+      const quote = rows[0];
+      let parsed: any = {};
+      if (quote?.data) {
+        try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
+      }
+      const recordNo = parsed.quotationNo || quote?.docNo || quote?.id || id;
+      const entityName = parsed.customerCompany || parsed.customerName || quote?.leadId || 'Customer';
+      const amount = Number(quote?.totalAmount || parsed.custTotals?.total || 0);
+
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Rejected', ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, rejectedBy || 'Authorized Approver', reason || 'Rejected by management']
+      );
+    } catch (logErr) {}
+
     res.json({ success: true, id, status: 'Rejected' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// -- APPROVAL LOGS AUDIT TRAIL API --
+app.get('/api/approval-logs', async (req, res) => {
+  try {
+    const { module, action, search } = req.query;
+    let sql = 'SELECT * FROM approval_logs WHERE 1=1';
+    const params: any[] = [];
+
+    if (module && module !== 'all') {
+      sql += ' AND module = ?';
+      params.push(module);
+    }
+    if (action && action !== 'all') {
+      sql += ' AND action = ?';
+      params.push(action);
+    }
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = `%${search.trim()}%`;
+      sql += ' AND (recordNo LIKE ? OR entityName LIKE ? OR actionBy LIKE ? OR notes LIKE ?)';
+      params.push(term, term, term, term);
+    }
+
+    sql += ' ORDER BY actionDate DESC, id DESC LIMIT 500';
+
+    const [rows]: any = await db.query(sql, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Error fetching approval logs:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch approval logs' });
+  }
+});
+
+app.post('/api/approval-logs', async (req, res) => {
+  try {
+    const { module, recordId, recordNo, entityName, amount, action, actionBy, notes, metadata } = req.body;
+    const [result]: any = await db.query(
+      `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, metadata, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW())`,
+      [
+        module || 'General',
+        recordId || '',
+        recordNo || recordId || '',
+        entityName || '',
+        Number(amount) || 0,
+        action || 'Approved',
+        actionBy || 'Authorized Approver',
+        notes || '',
+        metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null
+      ]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (error: any) {
+    console.error('Error creating approval log:', error);
+    res.status(500).json({ error: error.message || 'Failed to record approval log' });
   }
 });
 

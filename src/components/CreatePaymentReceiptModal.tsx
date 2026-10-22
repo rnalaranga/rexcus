@@ -292,11 +292,11 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-surface border border-theme-subtle rounded-2xl max-w-5xl w-full flex flex-col shadow-2xl overflow-hidden animate-fade-in my-6 max-h-[92vh]">
+      <div className="bg-surface border border-theme-subtle rounded-none max-w-5xl w-full flex flex-col shadow-2xl overflow-hidden animate-fade-in my-6 max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-theme-subtle bg-surface2/70 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-none bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
               <Receipt size={22} />
             </div>
             <div>
@@ -325,7 +325,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-muted hover:text-primary hover:bg-surface2 rounded-xl transition-colors"
+            className="p-1.5 text-muted hover:text-primary hover:bg-surface2 rounded-none transition-colors"
           >
             <X size={18} />
           </button>
@@ -337,7 +337,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
             {/* LEFT PANEL: Order, Scope, Customer & History (5 Cols) */}
             <div className="lg:col-span-5 space-y-4">
               {/* Customer Profile Card */}
-              <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-4 space-y-2.5">
+              <div className="bg-surface2/50 border border-theme-subtle rounded-none p-4 space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-bold text-primary">
                   <span className="flex items-center gap-1.5 text-muted uppercase text-[11px] tracking-wider">
                     <Building2 size={13} className="text-muted" /> Customer Information
@@ -388,7 +388,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               </div>
 
               {/* Order Scope / Line Items Preview */}
-              <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-4 space-y-2.5">
+              <div className="bg-surface2/50 border border-theme-subtle rounded-none p-4 space-y-2.5">
                 <div className="flex items-center justify-between text-[11px] font-bold text-muted uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
                     <Package size={13} className="text-muted" /> Scope Items ({itemsList.length})
@@ -420,7 +420,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               </div>
 
               {/* Payment Progress & Prior Receipts History */}
-              <div className="bg-surface2/50 border border-theme-subtle rounded-xl p-4 space-y-3">
+              <div className="bg-surface2/50 border border-theme-subtle rounded-none p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
                     <Clock size={13} className="text-muted" /> Advance Receipts History
@@ -449,7 +449,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     {existingReceipts.map((r) => (
                       <div
                         key={r.id}
-                        className="text-[11px] bg-surface p-2 rounded-lg border border-theme-subtle flex items-center justify-between"
+                        className="text-[11px] bg-surface p-2 rounded-none border border-theme-subtle flex items-center justify-between"
                       >
                         <div>
                           <div className="font-mono font-bold text-primary flex items-center gap-1">
@@ -466,7 +466,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     ))}
                   </div>
                 ) : (
-                  <div className="text-[11px] text-muted italic bg-surface p-2 rounded-lg border border-theme-subtle flex items-center gap-1.5">
+                  <div className="text-[11px] text-muted italic bg-surface p-2 rounded-none border border-theme-subtle flex items-center gap-1.5">
                     <AlertCircle size={13} className="text-muted shrink-0" />
                     <span>No prior advance vouchers recorded for this order/quote yet.</span>
                   </div>
@@ -477,7 +477,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
             {/* RIGHT PANEL: Form Entries & Payment Details (7 Cols) */}
             <div className="lg:col-span-7 space-y-4">
               {/* Financial Breakdown Metric Badges */}
-              <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-3 grid grid-cols-3 gap-3 text-center">
+              <div className="bg-surface2/60 border border-theme-subtle rounded-none p-3 grid grid-cols-3 gap-3 text-center">
                 <div className="p-1">
                   <div className="text-[10px] font-bold text-muted uppercase">Total Consideration</div>
                   <div className="text-xs md:text-sm font-black text-primary mt-0.5">
@@ -499,7 +499,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               </div>
 
               {/* Amount input & quick buttons */}
-              <div className="space-y-2 bg-surface2/30 border border-theme-subtle rounded-xl p-4">
+              <div className="space-y-2 bg-surface2/30 border border-theme-subtle rounded-none p-4">
                 <div className="flex items-center justify-between flex-wrap gap-1">
                   <label className="text-xs font-bold text-primary flex items-center gap-1.5">
                     <DollarSign size={14} className="text-emerald-600" /> Advance Amount to Receive (LKR) *
@@ -552,12 +552,12 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full pl-10 pr-4 py-2 bg-background border border-theme-subtle rounded-xl text-base font-black text-primary outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-inner"
+                    className="w-full pl-10 pr-4 py-2 bg-background border border-theme-subtle rounded-none text-base font-black text-primary outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-inner"
                   />
                 </div>
                 {/* Live Amount in words preview */}
                 {currentAmountNum > 0 && (
-                  <div className="text-[11px] text-muted italic bg-surface p-2 rounded-lg border border-theme-subtle flex items-start gap-1.5">
+                  <div className="text-[11px] text-muted italic bg-surface p-2 rounded-none border border-theme-subtle flex items-start gap-1.5">
                     <span className="font-bold text-neutral-700 dark:text-neutral-300 not-italic">In Words:</span>
                     <span className="text-primary font-medium">{amountWords}</span>
                   </div>
@@ -575,7 +575,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                   />
                 </div>
 
@@ -586,7 +586,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                   >
                     <option value="Bank Transfer">Bank Transfer / Online</option>
                     <option value="Cash">Cash</option>
@@ -605,7 +605,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                   <select
                     value={depositAccountId}
                     onChange={(e) => setDepositAccountId(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                   >
                     {depositAccounts.length > 0 ? (
                       depositAccounts.map((a: any) => (
@@ -628,14 +628,14 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
                     placeholder={paymentMethod === "Cheque" ? "e.g. CHQ-882102" : "e.g. Txn / Slip Ref No"}
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               {/* Extra Cheque Details if Cheque */}
               {paymentMethod === "Cheque" && (
-                <div className="space-y-1.5 bg-amber-500/5 border border-amber-500/20 p-2.5 rounded-xl">
+                <div className="space-y-1.5 bg-amber-500/5 border border-amber-500/20 p-2.5 rounded-none">
                   <label className="text-xs font-bold text-amber-800 dark:text-amber-300">
                     Drawn Bank Name & Branch
                   </label>
@@ -644,7 +644,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     value={chequeBank}
                     onChange={(e) => setChequeBank(e.target.value)}
                     placeholder="e.g. Commercial Bank - Colombo / HNB - Negombo"
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-amber-500"
                   />
                 </div>
               )}
@@ -660,7 +660,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     value={attention}
                     onChange={(e) => setAttention(e.target.value)}
                     placeholder="Contact person name"
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                   />
                 </div>
 
@@ -673,7 +673,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     value={receivedBy}
                     onChange={(e) => setReceivedBy(e.target.value)}
                     placeholder="Staff name / Accounts Dept"
-                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
@@ -711,12 +711,12 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Advance payment description"
-                  className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-xl text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-emerald-500"
                 />
               </div>
 
               {/* Statutory Notice */}
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-2.5 text-[11px] text-blue-900 dark:text-blue-300">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-none flex items-start gap-2.5 text-[11px] text-blue-900 dark:text-blue-300">
                 <AlertCircle size={15} className="text-blue-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold">Sri Lanka Accounting Standard:</span> Advance receipt vouchers credit

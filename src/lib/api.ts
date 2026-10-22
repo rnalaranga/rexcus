@@ -703,7 +703,45 @@ export const completeWorkOrder = async (id: string, data: any) => {
 export const fetchPartyLedger = async (id: string) => (await (await fetch(`${API_URL}/finance/party/${id}/ledger`)).json());
 export const deleteJournal = async (id: string) => (await (await fetch(`${API_URL}/finance/journals/${id}`, { method: 'DELETE' })).json());
 
-export const approveCreditLimit = async (id: string, status: 'approved' | 'rejected') => (await (await fetch(`${API_URL}/customers/${id}/approve-credit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })).json());
+export const approveCreditLimit = async (id: string, status: 'approved' | 'rejected', actionBy?: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/customers/${id}/approve-credit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, actionBy, reason })
+  });
+  return res.json();
+};
+
+export const fetchApprovalLogs = async (params?: { module?: string; action?: string; search?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.module && params.module !== 'all') query.append('module', params.module);
+  if (params?.action && params.action !== 'all') query.append('action', params.action);
+  if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+
+  const res = await fetch(`${API_URL}/approval-logs?${query.toString()}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch approval logs');
+  return Array.isArray(data) ? data : [];
+};
+
+export const createApprovalLog = async (logData: {
+  module: string;
+  recordId: string;
+  recordNo?: string;
+  entityName?: string;
+  amount?: number;
+  action: 'Approved' | 'Rejected';
+  actionBy: string;
+  notes?: string;
+  metadata?: any;
+}) => {
+  const res = await fetch(`${API_URL}/approval-logs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(logData)
+  });
+  return res.json();
+};
 
 export const fetchTaxProfiles = async () => {
   const res = await fetch(`${API_URL}/finance/tax-profiles`);

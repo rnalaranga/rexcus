@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
         {/* Fullscreen header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-theme-subtle flex-shrink-0 bg-surface">
           <h2 className="text-sm font-bold text-primary tracking-wide uppercase">{title}</h2>
-          <button onClick={onClose} className="text-muted hover:text-primary transition-colors p-1 hover:bg-surface2 rounded-md">
+          <button onClick={onClose} className="text-muted hover:text-primary transition-colors p-1 hover:bg-surface2 rounded-none">
             <X size={18} />
           </button>
         </div>
@@ -85,8 +85,8 @@ export const Modal: React.FC<ModalProps> = ({
       <div className={cn(
         'relative bg-surface border border-theme w-full shadow-2xl animate-fade-in flex flex-col transition-all duration-200 overflow-hidden',
         isMaximized 
-          ? 'max-w-[99vw] h-[96vh] max-h-[96vh] rounded-2xl' 
-          : cn('max-h-[92vh] rounded-2xl', !hasCustomMaxWidth && (sizeClasses[size] || 'max-w-lg')),
+          ? 'max-w-[99vw] h-[96vh] max-h-[96vh] rounded-none' 
+          : cn('max-h-[92vh] rounded-none', !hasCustomMaxWidth && (sizeClasses[size] || 'max-w-lg')),
         className
       )}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle flex-shrink-0 bg-surface2/30">
@@ -97,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
                 type="button"
                 onClick={() => setIsMaximized(!isMaximized)}
                 title={isMaximized ? "Restore standard size" : "Expand width (Full View)"}
-                className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface2 transition-colors"
+                className="p-1.5 rounded-none text-muted hover:text-primary hover:bg-surface2 transition-colors"
               >
                 {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               </button>
@@ -105,7 +105,7 @@ export const Modal: React.FC<ModalProps> = ({
             <button 
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-surface2 transition-colors"
+              className="p-1.5 rounded-none text-muted hover:text-primary hover:bg-surface2 transition-colors"
               title="Close modal"
             >
               <X size={16} />

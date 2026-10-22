@@ -99,14 +99,14 @@ const DialogRenderer: React.FC<{ dialogs: DialogConfig[]; onResolve: (id: string
 
       {/* Dialog */}
       <div className="relative w-full max-w-md animate-in zoom-in-95 fade-in duration-200">
-        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-none shadow-2xl overflow-hidden">
           
           {/* Accent top bar */}
           <div className="h-1 w-full" style={{ background: dialog.type === 'error' ? '#f43f5e' : dialog.type === 'success' ? '#10b981' : dialog.type === 'info' ? '#3b82f6' : dialog.type === 'confirm' ? '#dc2626' : '#f59e0b' }} />
           
           {/* Header */}
           <div className="flex items-start gap-4 p-6 pb-4 border-b border-gray-100 dark:border-zinc-800">
-            <div className={`mt-0.5 p-2 rounded-xl bg-gray-100 dark:bg-zinc-800 flex-shrink-0 ${cfg.iconClass}`}>
+            <div className={`mt-0.5 p-2 rounded-none bg-gray-100 dark:bg-zinc-800 flex-shrink-0 ${cfg.iconClass}`}>
               <Icon size={22} />
             </div>
             <div className="flex-1 min-w-0">
@@ -125,14 +125,14 @@ const DialogRenderer: React.FC<{ dialogs: DialogConfig[]; onResolve: (id: string
             {isConfirm && (
               <button
                 onClick={() => onResolve(dialog.id, false)}
-                className="px-5 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-600 border border-gray-200 dark:border-zinc-600 rounded-lg transition-all"
+                className="px-5 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-600 border border-gray-200 dark:border-zinc-600 rounded-none transition-all"
               >
                 {dialog.cancelLabel || 'Cancel'}
               </button>
             )}
             <button
               onClick={() => onResolve(dialog.id, true)}
-              className={`px-5 py-2 text-sm font-bold rounded-lg transition-all shadow-sm hover:shadow-md active:scale-95 ${cfg.confirmClass}`}
+              className={`px-5 py-2 text-sm font-bold rounded-none transition-all shadow-sm hover:shadow-md active:scale-95 ${cfg.confirmClass}`}
             >
               {dialog.confirmLabel || (isConfirm ? 'Confirm' : 'OK')}
             </button>
@@ -155,7 +155,7 @@ const ToastRenderer: React.FC<{ toasts: ToastConfig[]; onDismiss: (id: string) =
         const cfg = TOAST_CONFIG[toast.type];
         const Icon = cfg.icon;
         return (
-          <div key={toast.id} className="pointer-events-auto flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl px-4 py-3 min-w-[280px] max-w-[400px] animate-in slide-in-from-right-5 fade-in duration-300 relative overflow-hidden">
+          <div key={toast.id} className="pointer-events-auto flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-none shadow-xl px-4 py-3 min-w-[280px] max-w-[400px] animate-in slide-in-from-right-5 fade-in duration-300 relative overflow-hidden">
             <div className={`flex-shrink-0 ${cfg.iconClass}`}>
               <Icon size={18} />
             </div>

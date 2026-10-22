@@ -225,11 +225,11 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
         }
       `}</style>
 
-      <div className="bg-surface border border-theme-subtle rounded-2xl max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in my-auto">
+      <div className="bg-surface border border-theme-subtle rounded-none max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in my-auto">
         {/* Modal Top Header (No-Print) */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-theme-subtle bg-surface2/70 shrink-0 no-print">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-none bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
               <Receipt size={22} />
             </div>
             <div>
@@ -252,19 +252,19 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
             <button
               onClick={handleOpenNewTab}
               title="Open standalone printable page in a new tab"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-primary bg-surface border border-theme-subtle hover:bg-surface2 transition-colors"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-bold text-primary bg-surface border border-theme-subtle hover:bg-surface2 transition-colors"
             >
               <ExternalLink size={14} /> New Tab
             </button>
             <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md hover:shadow-emerald-600/20"
+              className="flex items-center gap-2 px-4 py-2 rounded-none text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md hover:shadow-emerald-600/20"
             >
               <Printer size={15} /> Print Receipt (A4)
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-muted hover:text-primary hover:bg-surface2 rounded-xl transition-colors ml-1"
+              className="p-1.5 text-muted hover:text-primary hover:bg-surface2 rounded-none transition-colors ml-1"
             >
               <X size={18} />
             </button>
@@ -275,7 +275,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
         <div className="px-6 py-3.5 bg-surface border-b border-theme-subtle no-print">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {/* Metric 1: Advance Amount */}
-            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-none p-2.5 flex flex-col justify-between">
               <div className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
                 <span>Advance Received</span>
                 {advancePercent && (
@@ -293,7 +293,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
             </div>
 
             {/* Metric 2: Total Consideration */}
-            <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="bg-surface2/60 border border-theme-subtle rounded-none p-2.5 flex flex-col justify-between">
               <div className="text-[10.5px] font-bold text-muted uppercase tracking-wider flex items-center justify-between">
                 <span>{receipt.orderNo ? "Sales Order Total" : "Quotation Total"}</span>
                 {receipt.orderNo ? (
@@ -315,7 +315,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
             </div>
 
             {/* Metric 3: Remaining Balance */}
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-none p-2.5 flex flex-col justify-between">
               <div className="text-[10.5px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
                 Balance Due On Delivery
               </div>
@@ -328,7 +328,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
             </div>
 
             {/* Metric 4: Deposit Account & Ledger */}
-            <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="bg-surface2/60 border border-theme-subtle rounded-none p-2.5 flex flex-col justify-between">
               <div className="text-[10.5px] font-bold text-muted uppercase tracking-wider flex items-center justify-between">
                 <span>GL Account & Ledger</span>
                 {receipt.journalEntryId && (
@@ -353,7 +353,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({ receipt, isOpen, onC
             {/* Exact A4 Document Section */}
             <div
               id="receipt-print-section"
-              className="bg-white text-black rounded-lg shadow-xl border-2 border-black w-full max-w-[190mm] p-6 flex flex-col justify-between"
+              className="bg-white text-black rounded-none shadow-xl border-2 border-black w-full max-w-[190mm] p-6 flex flex-col justify-between"
               style={{
                 fontFamily: "Arial, Helvetica, sans-serif",
                 fontSize: "12px",
