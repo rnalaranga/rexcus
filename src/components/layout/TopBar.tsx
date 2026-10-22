@@ -4,9 +4,10 @@ import {
   Bell, Search, ChevronRight, Sun, Moon, X,
   CheckCircle2, TrendingUp, AlertCircle, AlertTriangle, Star, Banknote,
   Users, FileText, Package, Wrench, Truck, Building2, CheckCheck, Clock,
-  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck
+  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck, HelpCircle
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
+import { HelpGuideModal } from '@/components/help/HelpGuideModal'
 import { useTheme } from '@/store/theme'
 import { useCurrencies } from '@/hooks/useFinance'
 
@@ -69,6 +70,18 @@ export const TopBar: React.FC = () => {
   const { isDark, toggle } = useTheme()
 
   const [showNotif,  setShowNotif]  = useState(false)
+  const [showHelp,   setShowHelp]   = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F1' || (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName))) {
+        e.preventDefault()
+        setShowHelp(v => !v)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all')
   const [notificationsList, setNotificationsList] = useState<any[]>([])
   const [readIds, setReadIds] = useState<string[]>(() => {
@@ -860,6 +873,22 @@ export const TopBar: React.FC = () => {
         {/* Divider */}
         <div className="w-px h-5 bg-theme-subtle mx-1" />
 
+        {/* ── Interactive UI Help Guide Button (Circular ? mark) ── */}
+        <button
+          onClick={() => setShowHelp(true)}
+          title="Interactive Page & Workflow Guide (Click or press '?' or F1)"
+          className={cn(
+            'flex items-center justify-center w-8 h-8 rounded-full border transition-all duration-150',
+            'border-theme-subtle text-muted hover:text-rex-600 dark:hover:text-rex-400 hover:border-rex-500/50 hover:bg-rex-500/10 font-bold text-xs shadow-xs',
+            showHelp && 'border-rex-500 text-rex-600 bg-rex-500/10'
+          )}
+        >
+          <span className="font-bold text-xs select-none">?</span>
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-5 bg-theme-subtle mx-1" />
+
         {/* User avatar */}
         <div className="flex items-center gap-2.5 pl-1 cursor-pointer group" onClick={() => navigate('/admin/settings')}>
           <div className="flex flex-col items-end">
@@ -871,6 +900,12 @@ export const TopBar: React.FC = () => {
           </div>
         </div>
       </div>
+          {/* Interactive Page Help & Workflow Guide Modal */}
+      <HelpGuideModal
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+        currentPath={location.pathname}
+      />
     </header>
   )
 }

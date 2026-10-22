@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -367,6 +367,19 @@ export const Quotations: React.FC = () => {
   const { data: taxProfiles } = useTaxProfiles()
   const { data: leads = [] } = useLeads()
   const { data: customers = [] } = useCustomers()
+    const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.quotation-action-menu-container')) {
+        setOpenActionId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')
@@ -517,7 +530,7 @@ export const Quotations: React.FC = () => {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider shrink-0 ${
+                className={`px-3 py-1.5 text-xs font-semibold rounded-none transition-all uppercase tracking-wider shrink-0 ${
                   statusFilter === s 
                     ? 'bg-rex-500/10 border border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold shadow-xs' 
                     : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
@@ -562,14 +575,14 @@ export const Quotations: React.FC = () => {
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
             />
             <span className="text-muted font-bold uppercase tracking-wider text-[11px]">To:</span>
             <input
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
-              className="bg-surface border border-theme-subtle rounded px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
             />
           </div>
 
@@ -582,7 +595,7 @@ export const Quotations: React.FC = () => {
                 setStartDate(`${y}-${m}-01`);
                 setEndDate(now.toISOString().slice(0, 10));
               }}
-              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-none text-[11px] text-secondary hover:text-primary transition-colors"
             >
               This Month
             </button>
@@ -593,7 +606,7 @@ export const Quotations: React.FC = () => {
                 setStartDate(past.toISOString().slice(0, 10));
                 setEndDate(now.toISOString().slice(0, 10));
               }}
-              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded text-[11px] text-secondary hover:text-primary transition-colors"
+              className="px-2 py-1 bg-surface hover:bg-surface2 border border-theme-subtle rounded-none text-[11px] text-secondary hover:text-primary transition-colors"
             >
               Last 30 Days
             </button>
@@ -606,7 +619,7 @@ export const Quotations: React.FC = () => {
                   setEndDate('');
                   setSearch('');
                 }}
-                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded font-semibold text-[11px] transition-colors ml-1"
+                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-none font-semibold text-[11px] transition-colors ml-1"
               >
                 Clear Filters
               </button>
@@ -625,9 +638,9 @@ export const Quotations: React.FC = () => {
                 {groupedQuotations.filter((g: any) => g.main[0]?.type === 'draft').map((g: any) => {
                    const snap = g.main[0]?.data ? (typeof g.main[0].data === 'string' ? JSON.parse(g.main[0].data) : g.main[0].data) : null
                    return (
-                     <div key={g.main[0].id} className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 hover:border-orange-500/40 transition-colors relative group">
+                     <div key={g.main[0].id} className="bg-orange-500/5 border border-orange-500/20 rounded-none p-4 hover:border-orange-500/40 transition-colors relative group">
                         <div className="flex justify-between items-start mb-2">
-                           <span className="text-[10px] font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">Draft</span>
+                           <span className="text-[10px] font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded-none uppercase tracking-wider">Draft</span>
                            <div className="flex items-center gap-2">
                              <span className="text-xs text-muted font-mono">{String(g.main[0].date).slice(0, 16).replace('T', ' ')}</span>
                              <button 
@@ -649,7 +662,7 @@ export const Quotations: React.FC = () => {
                         {snap?.subject && <p className="text-xs text-muted truncate mt-1">{snap.subject}</p>}
                         
                         <div className="mt-4 flex gap-2">
-                           <button onClick={() => navigate(`/crm/quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-md whitespace-nowrap transition-colors">
+                           <button onClick={() => navigate(`/crm/quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)} className="flex-1 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-none whitespace-nowrap transition-colors">
                              Resume Draft
                            </button>
                         </div>
@@ -664,437 +677,508 @@ export const Quotations: React.FC = () => {
            <div className="p-8 text-center text-muted">No quotations match your search.</div>
         )}
         
-        {filtered.map(group => {
-          const latestMain = group.main[0]
+        {filtered.map((group, idx) => {
+          const latestMain = group.main[0];
           // Hide drafts from the main list, as they are shown in the Active Drafts section above
           if (latestMain?.type === 'draft' && !group.job.length && !group.customer.length && group.main.length === 1) return null;
           
-          const latestJob = group.job[0]
-          const latestCust = group.customer[0]
+          const latestJob = group.job[0];
+          const latestCust = group.customer[0];
           
           // Determine parent display info (prefer main, then whatever is available)
-          const displayQ = latestMain || latestCust || latestJob
+          const displayQ = latestMain || latestCust || latestJob;
           if (!displayQ) return null;
 
+          let parsed: any = {};
+          try {
+            parsed = typeof latestMain?.data === 'string' ? JSON.parse(latestMain.data || '{}') : (latestMain?.data || {});
+          } catch (e) {}
+
+          const status = latestMain?.status || 'Draft';
+          const existingWO = getExistingWO(group, latestMain);
+          const quoteReceipts = getQuoteReceipts(group, latestMain);
+          const totalAdv = quoteReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+          const latestRec = quoteReceipts.length > 0 ? quoteReceipts[quoteReceipts.length - 1] : null;
+          const sampleGrns = quoteGrns[latestMain?.id] || [];
+          const itemsCount = parsed.custItems?.length || parsed.items?.length || parsed.boms?.length || 1;
+          const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
+
           return (
-            <GlassCard key={group.quoNo} className="overflow-hidden border-l-4 border-l-rex-500 !p-0">
-              {/* Header / Main Row */}
-              <div className="p-4 bg-gradient-to-r from-surface2 to-surface border-b border-theme-subtle flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-rex-500/10 text-rex-600 dark:text-rex-400 flex items-center justify-center">
-                    <input type="checkbox" className="w-5 h-5 cursor-pointer accent-rex-500"
+            <GlassCard
+              key={group.quoNo}
+              className="p-3.5 hover:border-rex-500/40 transition-all duration-200 border-theme-subtle rounded-none"
+            >
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                {/* Left Meta */}
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Checkbox for Final Quote compilation */}
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 cursor-pointer accent-rex-500 rounded-none shrink-0"
                       checked={selectedQuotes.includes(group.quoNo)}
                       onChange={(e) => {
-                         if (e.target.checked) setSelectedQuotes(p => [...p, group.quoNo]);
-                         else setSelectedQuotes(p => p.filter(x => x !== group.quoNo));
+                        if (e.target.checked) setSelectedQuotes(p => [...p, group.quoNo]);
+                        else setSelectedQuotes(p => p.filter(x => x !== group.quoNo));
                       }}
+                      title="Select for final quote"
                     />
-                  </div>
-                  <div>
-                                          <h3 className="text-base font-bold text-primary flex items-center gap-2">
-                        {group.quoNo}
-                        {latestMain && <span className="text-[10px] bg-rex-500/20 text-rex-700 dark:text-rex-300 px-2 py-0.5 rounded-full font-bold">MAIN v{latestMain.version}</span>}
-                        {latestMain && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="relative group/status cursor-pointer">
-                              <select 
-                                value={latestMain.status || 'Draft'}
-                                onChange={(e) => handleStatusChange(latestMain.id, e.target.value, latestMain.status || 'Draft')}
-                                className={`appearance-none cursor-pointer text-[10px] uppercase tracking-wider font-black rounded-full px-3 py-1 pr-6 border focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-rex-500/50 transition-all duration-200 ${getStatusColor(latestMain.status || 'Draft')}`}
-                              >
-                                <option value="Draft">Draft</option>
-                                <option value="Pending Approval">Pending Approval</option>
-                                <option value="Approved">Approved</option>
-                                <option value="Sent">Sent</option>
-                                <option value="In Production">In Production</option>
-                                <option value="Rejected">Rejected</option>
-                              </select>
-                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
-                                <svg className={`w-3 h-3 ${getStatusColor(latestMain.status || 'Draft').split(' ')[1]}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
-                              </div>
-                            </div>
 
-                            {/* Action Buttons based on Approval Workflow */}
-                            {(latestMain.status === 'Draft' || !latestMain.status) && (
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  icon={Send}
-                                  className="h-6 text-[9px] px-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/30"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    try {
-                                      await submitQuotationForApproval(latestMain.id);
-                                      toast('Quotation submitted for approval!', 'success');
-                                      refetch();
-                                    } catch (err: any) {
-                                      toast(err?.message || 'Failed to submit', 'error');
-                                    }
-                                  }}
-                                >
-                                  Submit Approval
-                                </Button>
-                                {canApprove && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    icon={CheckCircle2}
-                                    className="h-6 text-[9px] px-2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 font-bold"
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      try {
-                                        await approveQuotation(latestMain.id, user?.name || 'Manager');
-                                        toast('Quotation approved!', 'success');
-                                        refetch();
-                                      } catch (err: any) {
-                                        toast(err?.message || 'Failed to approve', 'error');
-                                      }
-                                    }}
-                                  >
-                                    Approve
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-
-                            {latestMain.status === 'Pending Approval' && (
-                              <div className="flex items-center gap-1.5">
-                                {canApprove ? (
-                                  <>
-                                    <Button
-                                      variant="primary"
-                                      size="sm"
-                                      icon={CheckCircle2}
-                                      className="h-6 text-[9px] px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white border-none shadow-xs font-bold"
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        try {
-                                          await approveQuotation(latestMain.id, user?.name || 'Manager');
-                                          toast('Quotation approved successfully!', 'success');
-                                          refetch();
-                                        } catch (err: any) {
-                                          toast(err?.message || 'Failed to approve', 'error');
-                                        }
-                                      }}
-                                    >
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      icon={XCircle}
-                                      className="h-6 text-[9px] px-2 bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        const reason = prompt('Enter rejection reason:');
-                                        if (!reason) return;
-                                        try {
-                                          await rejectQuotation(latestMain.id, reason);
-                                          toast('Quotation rejected', 'error');
-                                          refetch();
-                                        } catch (err: any) {
-                                          toast(err?.message || 'Failed to reject', 'error');
-                                        }
-                                      }}
-                                    >
-                                      Reject
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                                    <Clock size={11} /> Awaiting Manager Approval
-                                  </span>
-                                )}
-                              </div>
-                            )}
-
-                            {latestMain.status === 'Approved' && (
-                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                ✓ Approved {latestMain.approvedBy ? `by ${latestMain.approvedBy}` : ''}
-                              </span>
-                            )}
-
-                            {latestMain.status === 'Rejected' && (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-red-600 dark:text-red-400 font-semibold" title={latestMain.rejectionReason}>
-                                  ✕ Rejected {latestMain.rejectionReason ? `(${latestMain.rejectionReason})` : ''}
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-5 text-[9px] px-1.5 bg-surface border border-theme-subtle text-secondary hover:text-primary"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    try {
-                                      await submitQuotationForApproval(latestMain.id);
-                                      toast('Resubmitted for approval', 'success');
-                                      refetch();
-                                    } catch (err: any) {
-                                      toast(err?.message || 'Failed to resubmit', 'error');
-                                    }
-                                  }}
-                                >
-                                  Resubmit
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                          
-                            {latestMain && (latestMain.status === 'Approved' || latestMain.status === 'In Production' || latestMain.status === 'Sent' || latestMain.status === 'Accepted') && (
-                              <>
-                              {quoteGrns[latestMain.id] && quoteGrns[latestMain.id].length > 0 ? (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none font-bold" onClick={(e) => { e.stopPropagation(); setPrintGrnData({ grn: quoteGrns[latestMain.id][0], group }); }}>
-                                     Print Sample GRN
-                                   </Button>
-                                ) : (
-                                   <Button variant="primary" size="sm" className="ml-4 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white border-none font-bold" onClick={(e) => { e.stopPropagation(); setGrnDialog({ group, latestMain, items: [{description: '', qty: 1}] }); }}>
-                                     Receive Sample
-                                   </Button>
-                                )}
-                                <Button 
-                                  variant="primary" 
-                                  size="sm" 
-                                  icon={ShoppingBag} 
-                                  className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-500 text-white border-none font-bold"
-                                  onClick={() => handleCreateSalesOrder(group, latestMain)}
-                                  title="Create Official Sales Order"
-                                >
-                                  Sales Order
-                                </Button>
-                                <Button 
-                                  variant="primary" 
-                                  size="sm" 
-                                  icon={Receipt} 
-                                  className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold shadow-sm"
-                                  onClick={() => handleOpenReceiptModal(group, latestMain)}
-                                  title="Issue Official Advance Payment Receipt"
-                                >
-                                  Payment Receipt
-                                </Button>
-                                {(() => {
-                                  const recs = getQuoteReceipts(group, latestMain);
-                                  if (recs.length === 0) return null;
-                                  const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-                                  return (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const latestRec = recs[recs.length - 1];
-                                        setActivePrintReceipt({
-                                          ...latestRec,
-                                          totalQuoted: Number(latestMain.totalAmount || latestMain.customAmount || 0)
-                                        });
-                                        setPrintReceiptModalOpen(true);
-                                      }}
-                                      className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
-                                      title={"Click to view/print receipt (" + recs.length + " receipt" + (recs.length > 1 ? "s" : "") + ")"}
-                                    >
-                                      <Receipt size={10} /> Advance: {formatCurrency(totalAdv)}
-                                    </button>
-                                  );
-                                })()}
-                              {(() => {
-                                const existingWO = getExistingWO(group, latestMain);
-                                if (existingWO || latestMain.status === 'In Production') {
-                                  return (
-                                    <span className="ml-2 inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-mono">
-                                      <Factory size={11}/> WO Issued ({existingWO?.orderNo || existingWO?.id || 'Active'})
-                                    </span>
-                                  );
-                                }
-                                return (
-                                  <Button 
-                                    variant="primary" 
-                                    size="sm" 
-                                    icon={Factory} 
-                                    className="ml-2 h-6 text-[9px] px-2 rounded-none whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white border-none font-bold"
-                                    onClick={() => handleCreateWO(group, latestMain)}
-                                  >
-                                    Create WO
-                                  </Button>
-                                );
-                              })()}
-                              </>
-                            )}
-
-
-                      </h3>
-                    <p className="text-xs text-secondary mt-0.5 font-medium">{group.leadCompany || group.leadName || 'Unknown Customer'}</p>
-                    <p className="text-[10px] text-muted mt-0.5">Last updated: {formatDate(group.latestDate)}</p>
-                  </div>
-                </div>
-                
-                <div className="text-right flex items-center gap-6">
-                  {latestMain && (
-                    <div>
-                      <p className="text-[10px] text-muted font-bold uppercase tracking-wider mb-0.5">Main Total</p>
-                      <p className="text-lg font-black text-rex-600 dark:text-rex-400 font-mono">{formatCurrency(Number(latestMain.totalAmount))}</p>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })} className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/20 h-8">
-                         View Quote
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${displayQ.id}`)} className="bg-surface border border-theme-subtle hover:bg-surface2 h-8">
-                         Edit
-                      </Button>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={async () => {
-
-                       if (await showConfirm(`Delete entire quotation group ${group.quoNo}?`, 'Delete Quotation Group', { confirmLabel: 'Delete' })) {
-                          // Delete all associated ids
-                          for (const q of [...group.main, ...group.job, ...group.customer]) {
-                             await deleteQuotation(q.id);
-                          }
-                          refetch();
-                       }
-                    }} className="text-red-500 hover:bg-red-500/10 h-6 text-[10px]">Delete Group</Button>
-                  </div>
-                </div>
-              </div>
-
-                            {/* Sub-Quotes (Job & Customer) */}
-              <div className="p-3 bg-surface/30 flex flex-col divide-y divide-theme-subtle">
-                {/* New BOMs display */}
-                {latestMain && (() => {
-                   let boms = [];
-                   try { 
-                     const parsed = typeof latestMain.data === 'string' ? JSON.parse(latestMain.data) : latestMain.data;
-                     boms = parsed.boms || [];
-                   } catch(e) {}
-                   if (boms.length > 0) {
-                     return boms.map((bom: any, idx: number) => {
-                       return (
-                         <div key={bom.id} className="px-4 py-2 flex items-center justify-between">
-                           <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                               <Briefcase size={14} />
-                             </div>
-                             <div>
-                               <p className="text-xs font-bold text-secondary">{bom.title || `BOM Part ${idx + 1}`}</p>
-                               <span className="text-[10px] font-bold text-amber-600 font-mono">{formatCurrency(bom.bomTotal || 0)}</span>
-                             </div>
-                           </div>
-                           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setViewBomDialog(bom); }} className="text-[11px] h-7 bg-surface border border-theme-subtle/50 shadow-sm hover:bg-primary/10 hover:text-primary transition-colors">View Costing</Button>
-                         </div>
-                       )
-                     })
-                   }
-                   return null;
-                })()}
-
-                {/* Legacy Job Costing Branch */}
-                {latestJob && (!latestMain || (() => { try { return !(JSON.parse(latestMain.data || '{}').boms?.length > 0) } catch(e){return true} })()) && (
-                  <div className="px-4 py-2 flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                        <Briefcase size={14} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-secondary">Internal BOM (Job Costing)</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] text-muted font-mono">v{latestJob.version}</span>
-                          <span className="text-[10px] font-bold text-amber-600 font-mono">{formatCurrency(Number(latestJob.totalAmount))}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPreviewData({ quotation: latestJob, type: 'job', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } }); }} className="text-xs h-7 px-2">
-                        View
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${group.leadId}?quoteId=${latestJob.id}`); }} className="text-xs h-7 px-2">
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Legacy Customer Quote Branch */}
-                {latestCust && (
-                  <div className="px-4 py-2 flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 flex items-center justify-center">
-                        <User size={14} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-secondary">Customer Quotation</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] text-muted font-mono">v{latestCust.version}</span>
-                          <span className="text-[10px] font-bold text-blue-600 font-mono">{formatCurrency(Number(latestCust.totalAmount))}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPreviewData({ quotation: latestCust, type: 'customer', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } }); }} className="text-xs h-7 px-2">
-                        View
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${group.leadId}?quoteId=${latestCust.id}`); }} className="text-xs h-7 px-2">
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Quotation Versions */}
-              {group.main && group.main.length > 0 && (
-                <div className="px-4 py-3 bg-surface/50 border-t border-theme-subtle/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                      <History size={12} className="text-rex-500" />
-                      Quotation Versions ({group.main.length})
+                    <span className="font-mono font-bold text-sm text-rex-600 dark:text-rex-400">
+                      {group.quoNo}
                     </span>
+
+                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
+                      {status}
+                    </span>
+
+                    <span className="text-[10px] font-mono text-muted">
+                      v{latestMain?.version || 1} • {formatDate(group.latestDate)}
+                    </span>
+
+                    {/* Revisions Toggle */}
                     {group.main.length > 1 && (
-                      <span className="text-[10px] text-muted italic">Click trash icon to delete specific versions</span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-1"
+                      >
+                        {group.main.length} revisions
+                        <ChevronDown size={10} className={`transition-transform duration-150 ${isRevisionsExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
+
+                    {/* Work Order Badge */}
+                    {existingWO && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
+                        className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center gap-1 hover:bg-blue-500/20 transition-colors"
+                        title="View Work Order"
+                      >
+                        <Factory size={10} /> WO: {existingWO.orderNo || existingWO.id}
+                      </button>
+                    )}
+
+                    {/* Advance Payment Receipt Badge */}
+                    {totalAdv > 0 && latestRec && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActivePrintReceipt({
+                            ...latestRec,
+                            totalQuoted: Number(latestMain?.totalAmount || latestMain?.customAmount || 0)
+                          });
+                          setPrintReceiptModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
+                        title={`View / Print Payment Receipt (Advance: ${formatCurrency(totalAdv)})`}
+                      >
+                        <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
+                      </button>
+                    )}
+
+                    {/* Sample GRN Badge */}
+                    {sampleGrns.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setPrintGrnData({ grn: sampleGrns[0], group })}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-none bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 transition-colors font-mono"
+                        title="Print Sample GRN"
+                      >
+                        Sample GRN
+                      </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-bold text-primary truncate">
+                      {group.leadCompany || group.leadName}
+                    </span>
+                    {group.leadCompany && group.leadName && (
+                      <span className="text-muted truncate">• Attn: {group.leadName}</span>
+                    )}
+                  </div>
+
+                  {parsed.subject && (
+                    <p className="text-[11px] text-muted truncate max-w-xl">
+                      {parsed.subject}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-3 text-[11px] text-muted flex-wrap">
+                    <span className="flex items-center gap-1 font-medium">
+                      <Package size={12} className="text-rex-500" />
+                      {itemsCount} {itemsCount === 1 ? 'Quoted Item / BOM' : 'Quoted Items / BOMs'}
+                    </span>
+                    {parsed.boms && parsed.boms.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setViewBomDialog(parsed.boms[0])}
+                        className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5"
+                      >
+                        <Briefcase size={10} /> View Costing
+                      </button>
+                    )}
+                    {(parsed.custValidity || parsed.validity) && (
+                      <span>Valid: {parsed.custValidity || parsed.validity}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Financials & Actions */}
+                <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-theme-subtle">
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
+                      Total Value
+                    </span>
+                    <span className="text-base lg:text-lg font-black font-mono text-primary">
+                      {formatCurrency(Number(latestMain?.totalAmount || 0))}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 quotation-action-menu-container relative">
+                    {/* Quick 1-click Preview */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Eye}
+                      onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                      className="h-7 text-xs border border-theme-subtle rounded-none hover:bg-surface2"
+                      title="Preview Quotation Document"
+                    >
+                      Preview
+                    </Button>
+
+                    {/* Actions Dropdown Button */}
+                    <div className="relative inline-block text-left">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenActionId(openActionId === group.quoNo ? null : group.quoNo);
+                        }}
+                        className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
+                          openActionId === group.quoNo
+                            ? 'bg-rex-600 text-white border-rex-600'
+                            : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+                        }`}
+                      >
+                        Actions
+                        <ChevronDown size={11} className={`transition-transform duration-150 ${openActionId === group.quoNo ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {openActionId === group.quoNo && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className={`absolute right-0 ${
+                            idx >= filtered.length - 2 && filtered.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
+                          } w-56 bg-surface border border-theme shadow-2xl z-[60] py-1 text-left rounded-none animate-fade-in`}
+                        >
+                          {/* 1. Preview Document */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } });
+                              setOpenActionId(null);
+                            }}
+                            className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                          >
+                            <Eye size={13} className="text-muted shrink-0" />
+                            <span>Preview Document</span>
+                          </button>
+
+                          {/* 2. Open in Builder */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`);
+                              setOpenActionId(null);
+                            }}
+                            className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                          >
+                            <FileEdit size={13} className="text-muted shrink-0" />
+                            <span>Edit in Quotation Builder</span>
+                          </button>
+
+                          {/* 3. Send Email */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmailModalData({
+                                documentNumber: group.quoNo,
+                                customerEmail: group.leadEmail || '',
+                                customerName: group.leadCompany || group.leadName || 'Customer',
+                                totalAmount: latestMain?.totalAmount || '0.00',
+                                validityDays: parsed.validity || '30',
+                                elementIdToPdf: 'print-section'
+                              });
+                              setOpenActionId(null);
+                            }}
+                            className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                          >
+                            <Mail size={13} className="shrink-0" />
+                            <span>Send via Email</span>
+                          </button>
+
+                          {/* 4. Sales Order (if Approved/Sent/Accepted/In Production) */}
+                          {(latestMain?.status === 'Approved' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted' || latestMain?.status === 'In Production') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleCreateSalesOrder(group, latestMain);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
+                            >
+                              <ShoppingBag size={13} className="shrink-0" />
+                              <span>Create Sales Order</span>
+                            </button>
+                          )}
+
+                          {/* 5. Payment Receipt */}
+                          {(latestMain?.status === 'Approved' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted' || latestMain?.status === 'In Production') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleOpenReceiptModal(group, latestMain);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
+                            >
+                              <Receipt size={13} className="shrink-0" />
+                              <span>Issue Advance Receipt</span>
+                            </button>
+                          )}
+
+                          {/* 6. Invoice */}
+                          {(latestMain?.status === 'Approved' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted' || latestMain?.status === 'In Production') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handlePaymentRequest(group, latestMain);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <FileText size={13} className="shrink-0" />
+                              <span>Generate Tax Invoice</span>
+                            </button>
+                          )}
+
+                          {/* 7. Work Order */}
+                          {existingWO ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigate(`/production/work-orders/${existingWO.id}`);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Factory size={13} className="shrink-0" />
+                              <span className="truncate">View Work Order ({existingWO.orderNo || existingWO.id})</span>
+                            </button>
+                          ) : (latestMain?.status === 'Approved' || latestMain?.status === 'In Production') ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleCreateWO(group, latestMain);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Factory size={13} className="shrink-0" />
+                              <span>Create Work Order</span>
+                            </button>
+                          ) : null}
+
+                          {/* 8. Sample GRN */}
+                          {sampleGrns.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPrintGrnData({ grn: sampleGrns[0], group });
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Printer size={13} className="shrink-0" />
+                              <span>Print Sample GRN</span>
+                            </button>
+                          ) : (latestMain?.status === 'Approved' || latestMain?.status === 'In Production' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted') ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGrnDialog({ group, latestMain, items: [{ description: '', qty: 1 }] });
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Package size={13} className="shrink-0" />
+                              <span>Receive Sample (GRN)</span>
+                            </button>
+                          ) : null}
+
+                          {/* 9. View BOM / Costing if available */}
+                          {parsed.boms && parsed.boms.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewBomDialog(parsed.boms[0]);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Briefcase size={13} className="shrink-0" />
+                              <span>View BOM & Costing</span>
+                            </button>
+                          )}
+
+                          <div className="my-1 border-t border-theme-subtle" />
+
+                          {/* 10. Approvals */}
+                          {(latestMain?.status === 'Draft' || !latestMain?.status || latestMain?.status === 'Rejected') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenActionId(null);
+                                try {
+                                  await submitQuotationForApproval(latestMain.id);
+                                  toast('Quotation submitted for approval!', 'success');
+                                  refetch();
+                                } catch(err: any) {
+                                  toast(err?.message || 'Failed to submit', 'error');
+                                }
+                              }}
+                              className="w-full px-3 py-2 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Send size={13} className="shrink-0" />
+                              <span>Submit for Approval</span>
+                            </button>
+                          )}
+
+                          {canApprove && (latestMain?.status === 'Pending Approval' || latestMain?.status === 'Draft') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenActionId(null);
+                                try {
+                                  await approveQuotation(latestMain.id, user?.name || 'Manager');
+                                  toast('Quotation approved successfully!', 'success');
+                                  refetch();
+                                } catch(err: any) {
+                                  toast(err?.message || 'Failed to approve', 'error');
+                                }
+                              }}
+                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
+                            >
+                              <CheckCircle2 size={13} className="shrink-0" />
+                              <span>Approve Quotation</span>
+                            </button>
+                          )}
+
+                          {canApprove && latestMain?.status === 'Pending Approval' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenActionId(null);
+                                const reason = prompt('Enter rejection reason:');
+                                if (!reason) return;
+                                try {
+                                  await rejectQuotation(latestMain.id, reason);
+                                  toast('Quotation rejected', 'error');
+                                  refetch();
+                                } catch(err: any) {
+                                  toast(err?.message || 'Failed to reject', 'error');
+                                }
+                              }}
+                              className="w-full px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <XCircle size={13} className="shrink-0" />
+                              <span>Reject Quotation</span>
+                            </button>
+                          )}
+
+                          <div className="my-1 border-t border-theme-subtle" />
+
+                          {/* 11. Delete Group */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setOpenActionId(null);
+                              if (await showConfirm(`Delete entire quotation group ${group.quoNo}?`, 'Delete Quotation Group', { confirmLabel: 'Delete' })) {
+                                for (const q of [...group.main, ...group.job, ...group.customer]) {
+                                  await deleteQuotation(q.id);
+                                }
+                                toast(`Quotation group ${group.quoNo} deleted successfully`, 'success');
+                                refetch();
+                              }
+                            }}
+                            className="w-full px-3 py-2 text-xs text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors font-medium rounded-none"
+                          >
+                            <Trash2 size={13} className="shrink-0" />
+                            <span>Delete Quotation Group</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expandable Revisions Panel */}
+              {isRevisionsExpanded && group.main.length > 1 && (
+                <div className="mt-3 pt-3 border-t border-theme-subtle/50 space-y-1.5 animate-fade-in">
+                  <div className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                    <History size={11} className="text-rex-500" />
+                    Quotation Versions ({group.main.length})
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                     {group.main.map((v: any) => {
                       const isLatest = v.id === latestMain?.id;
                       return (
-                        <div 
-                          key={v.id} 
-                          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-xs transition-all shadow-xs ${
-                            isLatest 
-                              ? 'bg-rex-500/10 border-rex-500/30 text-primary' 
-                              : 'bg-surface2/60 border-theme-subtle/40 text-secondary hover:border-theme-subtle'
+                        <div
+                          key={v.id}
+                          className={`flex items-center justify-between px-2.5 py-1.5 border text-xs rounded-none transition-colors ${
+                            isLatest
+                              ? 'bg-rex-500/10 border-rex-500/30 text-primary'
+                              : 'bg-surface2/50 border-theme-subtle text-secondary'
                           }`}
                         >
-                          <span className="font-bold font-mono">v{v.version}</span>
-                          {isLatest && (
-                            <span className="text-[9px] font-bold bg-green-500/20 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
-                              Active
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold font-mono text-primary shrink-0">v{v.version}</span>
+                            {isLatest && (
+                              <span className="text-[9px] font-bold bg-green-500/20 text-green-600 dark:text-green-400 px-1 py-0.2 rounded-none uppercase">
+                                Active
+                              </span>
+                            )}
+                            <span className="font-mono text-muted text-[11px] truncate">
+                              {formatCurrency(Number(v.totalAmount || 0))}
                             </span>
-                          )}
-                          <span className="text-[11px] font-mono text-muted">{formatCurrency(Number(v.totalAmount || 0))}</span>
-                          <span className="text-[10px] text-muted">{formatDate(v.date)}</span>
-                          
-                          <div className="flex items-center gap-1 ml-1 pl-2 border-l border-theme-subtle/50">
+                            <span className="text-[10px] text-muted truncate">{formatDate(v.date)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 ml-1">
                             <button
                               onClick={() => setPreviewData({ quotation: v, type: 'main', lead: { name: group.leadName, company: group.leadCompany, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
-                              className="p-1 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
-                              title={`View Version v${v.version}`}
+                              className="p-1 text-blue-500 hover:bg-blue-500/10 rounded-none transition-colors"
+                              title={`Preview Version v${v.version}`}
                             >
                               <Eye size={12} />
                             </button>
                             <button
                               onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${v.id}`)}
-                              className="p-1 text-primary hover:bg-surface rounded transition-colors"
+                              className="p-1 text-primary hover:bg-surface rounded-none transition-colors"
                               title={`Edit Version v${v.version}`}
                             >
                               <FileEdit size={12} />
                             </button>
                             <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
+                              onClick={async () => {
                                 const ok = await showConfirm(
-                                  `Are you sure you want to delete Version v${v.version} of quotation ${group.quoNo}? This action cannot be undone.`,
-                                  'Delete Quotation Version',
-                                  { confirmLabel: 'Delete Version' }
+                                  `Delete Version v${v.version} of quotation ${group.quoNo}?`,
+                                  'Delete Version',
+                                  { confirmLabel: 'Delete' }
                                 );
                                 if (ok) {
                                   await deleteQuotation(v.id);
@@ -1102,7 +1186,7 @@ export const Quotations: React.FC = () => {
                                   refetch();
                                 }
                               }}
-                              className="p-1 text-red-500/70 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                              className="p-1 text-red-500/70 hover:text-red-500 hover:bg-red-500/10 rounded-none transition-colors"
                               title={`Delete Version v${v.version}`}
                             >
                               <Trash2 size={12} />
@@ -1115,8 +1199,7 @@ export const Quotations: React.FC = () => {
                 </div>
               )}
             </GlassCard>
-
-          )
+          );
         })}
       </div>
 

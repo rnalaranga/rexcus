@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { 
   CheckSquare, Search, Check, X, FileText, Eye, Clock, ShieldCheck, 
-  History, Filter, AlertTriangle, User, Calendar, RefreshCw, 
-  CheckCircle2, XCircle, Info, Layers, Tag, ExternalLink
+  History, Filter, User, RefreshCw, CheckCircle2, XCircle
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -194,17 +193,17 @@ export default function Approvals() {
   const canApproveCredit = can('approvals.credit_limit')
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       {/* Top Header */}
-      <div className="shrink-0 p-5 pb-3 border-b border-theme-subtle">
+      <div className="shrink-0 p-5 pb-3 border-b border-theme-subtle w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-primary flex items-center gap-2">
-              <ShieldCheck size={26} className="text-emerald-500" />
+            <h1 className="text-lg font-semibold text-primary flex items-center gap-2">
+              <ShieldCheck size={22} className="text-emerald-500" />
               Central Approvals Hub
             </h1>
-            <p className="text-xs text-secondary mt-1">
-              Review and authorize pending commercial quotations, customer credit limits, and audit all historical authorizations.
+            <p className="text-xs text-secondary mt-0.5">
+              Review and authorize pending commercial quotations, customer credit limits, and audit historical decisions.
             </p>
           </div>
 
@@ -216,19 +215,19 @@ export default function Approvals() {
                 icon={RefreshCw}
                 onClick={loadApprovalLogs}
                 disabled={loadingLogs}
-                className="h-8 text-xs rounded-none border border-theme-subtle text-secondary hover:text-primary"
+                className="h-8 text-xs rounded-none border border-theme-subtle text-secondary hover:text-primary font-medium"
               >
                 Refresh Log
               </Button>
             ) : (
               <div className="relative w-full md:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={13} />
                 <input
                   type="text"
                   placeholder="Search pending requests..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-1.5 text-xs bg-theme-base border border-theme-subtle rounded-none focus:outline-none focus:border-rex-500 transition-colors"
+                  className="w-full pl-8 pr-4 py-1.5 text-xs bg-theme-base border border-theme-subtle rounded-none focus:outline-none focus:border-rex-500 transition-colors"
                 />
               </div>
             )}
@@ -236,78 +235,78 @@ export default function Approvals() {
         </div>
 
         {/* Executive KPI Metric Badges */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-          <GlassCard className="p-3 flex items-center justify-between rounded-none">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 w-full">
+          <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted font-medium">Pending Quotations</span>
-              <div className="text-lg font-mono font-bold text-amber-500 mt-0.5">
+              <span className="text-[11px] text-muted">Pending Quotations</span>
+              <div className="text-lg font-mono font-medium text-amber-500 mt-0.5">
                 {metrics.pendingQuotesCount}
               </div>
-              <span className="text-[10px] text-muted">
+              <span className="text-[10px] text-muted font-mono">
                 Val: {formatCurrency(metrics.pendingQuotesTotal)}
               </span>
             </div>
-            <div className="w-9 h-9 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
-              <FileText size={16} />
+            <div className="w-8 h-8 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+              <FileText size={15} />
             </div>
           </GlassCard>
 
-          <GlassCard className="p-3 flex items-center justify-between rounded-none">
+          <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted font-medium">Pending Credit Requests</span>
-              <div className="text-lg font-mono font-bold text-blue-500 mt-0.5">
+              <span className="text-[11px] text-muted">Pending Credit Requests</span>
+              <div className="text-lg font-mono font-medium text-blue-500 mt-0.5">
                 {metrics.pendingCreditsCount}
               </div>
-              <span className="text-[10px] text-muted">
+              <span className="text-[10px] text-muted font-mono">
                 Req: {formatCurrency(metrics.pendingCreditsTotal)}
               </span>
             </div>
-            <div className="w-9 h-9 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
-              <CheckSquare size={16} />
+            <div className="w-8 h-8 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+              <CheckSquare size={15} />
             </div>
           </GlassCard>
 
-          <GlassCard className="p-3 flex items-center justify-between rounded-none">
+          <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted font-medium">Total Approved</span>
-              <div className="text-lg font-mono font-bold text-emerald-500 mt-0.5">
+              <span className="text-[11px] text-muted">Total Approved</span>
+              <div className="text-lg font-mono font-medium text-emerald-500 mt-0.5">
                 {metrics.approvedCount}
               </div>
-              <span className="text-[10px] text-muted">Authorized Decisions</span>
+              <span className="text-[10px] text-muted">Decisions Authorized</span>
             </div>
-            <div className="w-9 h-9 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
-              <CheckCircle2 size={16} />
+            <div className="w-8 h-8 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+              <CheckCircle2 size={15} />
             </div>
           </GlassCard>
 
-          <GlassCard className="p-3 flex items-center justify-between rounded-none">
+          <GlassCard className="p-3 flex items-center justify-between rounded-none w-full">
             <div>
-              <span className="text-[11px] text-muted font-medium">Total Rejected / Flagged</span>
-              <div className="text-lg font-mono font-bold text-rose-500 mt-0.5">
+              <span className="text-[11px] text-muted">Total Rejected / Returned</span>
+              <div className="text-lg font-mono font-medium text-rose-500 mt-0.5">
                 {metrics.rejectedCount}
               </div>
               <span className="text-[10px] text-muted">Returned with Notes</span>
             </div>
-            <div className="w-9 h-9 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
-              <XCircle size={16} />
+            <div className="w-8 h-8 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+              <XCircle size={15} />
             </div>
           </GlassCard>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 mt-4 overflow-x-auto">
+        <div className="flex items-center gap-2 mt-3 overflow-x-auto w-full">
           <button
             onClick={() => setActiveTab('quotations')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-none text-xs transition-all ${
               activeTab === 'quotations' 
-                ? 'bg-surface text-primary border border-theme shadow-xs font-bold' 
+                ? 'bg-surface text-primary border border-theme shadow-xs font-semibold' 
                 : 'text-secondary hover:text-primary hover:bg-surface2/50 border border-transparent font-medium'
             }`}
           >
-            <FileText size={15} />
+            <FileText size={14} />
             Quotation Approvals
             {pendingQuotations.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold">
+              <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-medium">
                 {pendingQuotations.length}
               </span>
             )}
@@ -317,14 +316,14 @@ export default function Approvals() {
             onClick={() => setActiveTab('credit')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-none text-xs transition-all ${
               activeTab === 'credit' 
-                ? 'bg-surface text-primary border border-theme shadow-xs font-bold' 
+                ? 'bg-surface text-primary border border-theme shadow-xs font-semibold' 
                 : 'text-secondary hover:text-primary hover:bg-surface2/50 border border-transparent font-medium'
             }`}
           >
-            <CheckSquare size={15} />
+            <CheckSquare size={14} />
             Credit Limit Requests
             {pendingCredits.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-bold">
+              <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-medium">
                 {pendingCredits.length}
               </span>
             )}
@@ -334,32 +333,32 @@ export default function Approvals() {
             onClick={() => setActiveTab('history')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-none text-xs transition-all ${
               activeTab === 'history' 
-                ? 'bg-surface text-primary border border-theme shadow-xs font-bold' 
+                ? 'bg-surface text-primary border border-theme shadow-xs font-semibold' 
                 : 'text-secondary hover:text-primary hover:bg-surface2/50 border border-transparent font-medium'
             }`}
           >
-            <History size={15} />
+            <History size={14} />
             Approval History Log
-            <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-surface2 text-secondary border border-theme-subtle font-bold">
+            <span className="px-1.5 py-0.2 rounded-none text-[10px] bg-surface2 text-secondary border border-theme-subtle font-medium">
               {metrics.totalHistoryCount}
             </span>
           </button>
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-5">
+      {/* Main Content Area - Full Width */}
+      <div className="flex-1 overflow-y-auto p-5 w-full">
         {/* --- TAB 1: QUOTATIONS PENDING APPROVAL --- */}
         {activeTab === 'quotations' && (
-          <GlassCard className="max-w-5xl rounded-none">
+          <GlassCard className="w-full rounded-none">
             <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
               <div>
-                <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <h2 className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-2">
                   <FileText className="w-4 h-4 text-amber-500" />
                   Commercial Quotations Awaiting Approval
                 </h2>
                 <p className="text-[11px] text-muted mt-0.5">
-                  Quotations must be approved before sales executives can dispatch them to clients.
+                  Quotations must be authorized before sales executives can dispatch them to clients.
                 </p>
               </div>
               <Badge value={`${pendingQuotations.length} Pending`} variant="warning" size="sm" />
@@ -384,28 +383,28 @@ export default function Approvals() {
                   const total = Number(q.totalAmount || parsed.custTotals?.total || 0)
 
                   return (
-                    <div key={q.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-theme-hover/30 transition-colors">
-                      <div className="space-y-1.5 flex-1">
+                    <div key={q.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-theme-hover/20 transition-colors">
+                      <div className="space-y-1 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-bold text-primary font-mono">{quoNo}</span>
-                          <span className="text-[10px] bg-surface2 text-secondary px-1.5 py-0.2 rounded-none border border-theme-subtle font-mono font-bold">
+                          <span className="text-xs font-mono font-semibold text-primary">{quoNo}</span>
+                          <span className="text-[10px] bg-surface2 text-secondary px-1.5 py-0.2 rounded-none border border-theme-subtle font-mono font-medium">
                             v{q.version || 1}
                           </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
                             {q.status || 'Pending Approval'}
                           </span>
                           <span className="text-xs text-muted flex items-center gap-1 font-mono">
-                            <Clock size={12} /> {formatDate(q.date)}
+                            <Clock size={11} /> {formatDate(q.date)}
                           </span>
                         </div>
 
-                        <p className="text-xs font-semibold text-primary">
-                          Client: <span className="text-rex-600 dark:text-rex-400 font-bold">{clientName}</span>
+                        <p className="text-xs text-secondary">
+                          Client: <span className="font-semibold text-primary">{clientName}</span>
                           {parsed.attention ? ` · Attn: ${parsed.attention}` : ''}
                         </p>
 
                         {parsed.subject && (
-                          <p className="text-xs text-muted truncate max-w-xl">
+                          <p className="text-xs text-muted truncate max-w-2xl">
                             {parsed.subject}
                           </p>
                         )}
@@ -417,8 +416,8 @@ export default function Approvals() {
 
                       <div className="flex items-center gap-5">
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Total Quote Value</p>
-                          <p className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">{formatCurrency(total)}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Total Quote Value</p>
+                          <p className="text-sm font-semibold font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(total)}</p>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -426,9 +425,9 @@ export default function Approvals() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setPreviewQuote({ quote: q, lead: lead || cust })}
-                            className="text-xs flex items-center gap-1.5 border border-theme-subtle rounded-none hover:bg-surface2"
+                            className="text-xs flex items-center gap-1.5 border border-theme-subtle rounded-none hover:bg-surface2 font-medium"
                           >
-                            <Eye size={14} /> Preview
+                            <Eye size={13} /> Preview
                           </Button>
 
                           {canApproveQuotations ? (
@@ -438,10 +437,10 @@ export default function Approvals() {
                                 size="sm"
                                 onClick={() => setRejectDialog({ id: q.id, title: `Reject Quotation ${quoNo}`, type: 'quote' })}
                                 disabled={processing === q.id}
-                                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20"
+                                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20 font-medium"
                                 title="Reject Quotation"
                               >
-                                <X size={15} /> Reject
+                                <X size={14} /> Reject
                               </Button>
 
                               <Button
@@ -449,9 +448,9 @@ export default function Approvals() {
                                 size="sm"
                                 onClick={() => handleApproveQuotation(q)}
                                 disabled={processing === q.id}
-                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1.5 rounded-none"
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1 rounded-none"
                               >
-                                <Check size={15} /> Approve
+                                <Check size={14} /> Approve
                               </Button>
                             </>
                           ) : (
@@ -469,10 +468,10 @@ export default function Approvals() {
 
         {/* --- TAB 2: CREDIT LIMIT REQUESTS --- */}
         {activeTab === 'credit' && (
-          <GlassCard className="max-w-5xl rounded-none">
+          <GlassCard className="w-full rounded-none">
             <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
               <div>
-                <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <h2 className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-2">
                   <CheckSquare className="w-4 h-4 text-blue-500" />
                   Customer Credit Limit & Terms Requests
                 </h2>
@@ -491,15 +490,15 @@ export default function Approvals() {
             ) : (
               <div className="divide-y divide-theme-subtle">
                 {pendingCredits.map((customer: any) => (
-                  <div key={customer.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-theme-hover/30 transition-colors">
+                  <div key={customer.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-theme-hover/20 transition-colors">
                     <div>
-                      <h3 className="text-sm font-bold text-primary">
+                      <h3 className="text-sm font-semibold text-primary">
                         {customer.name} {customer.company ? `(${customer.company})` : ''}
                       </h3>
                       <p className="text-xs text-secondary mt-0.5">
                         {customer.segment?.toUpperCase()}
                         <span className="mx-2">•</span>
-                        Current Limit: <span className="font-semibold font-mono">{formatCurrency(customer.creditLimit || 0)}</span>
+                        Current Limit: <span className="font-medium font-mono">{formatCurrency(customer.creditLimit || 0)}</span>
                         <span className="mx-2">•</span>
                         Advance Required: {customer.requiresAdvance ? 'Yes' : 'No'}
                       </p>
@@ -508,22 +507,22 @@ export default function Approvals() {
                     <div className="flex items-center gap-6">
                       {Number(customer.pendingCreditLimit) > 0 && Number(customer.pendingCreditLimit) !== Number(customer.creditLimit) && (
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Requested Limit</p>
-                          <p className="text-base font-bold text-amber-500 font-mono">{formatCurrency(customer.pendingCreditLimit || 0)}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Requested Limit</p>
+                          <p className="text-sm font-semibold text-amber-500 font-mono">{formatCurrency(customer.pendingCreditLimit || 0)}</p>
                         </div>
                       )}
 
                       {customer.pendingRequiresAdvance !== null && Boolean(customer.pendingRequiresAdvance) !== Boolean(customer.requiresAdvance) && (
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Advance Policy</p>
-                          <p className="text-xs font-bold text-amber-500">{customer.pendingRequiresAdvance ? 'Advance Req.' : 'Waiver'}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Advance Policy</p>
+                          <p className="text-xs font-semibold text-amber-500">{customer.pendingRequiresAdvance ? 'Advance Req.' : 'Waiver'}</p>
                         </div>
                       )}
 
                       {customer.pendingCreditDays !== null && customer.pendingCreditDays !== customer.creditDays && (
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-wider text-muted font-bold">Requested Period</p>
-                          <p className="text-xs font-bold text-amber-500 font-mono">{customer.pendingCreditDays} Days</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted font-medium">Requested Period</p>
+                          <p className="text-xs font-semibold text-amber-500 font-mono">{customer.pendingCreditDays} Days</p>
                         </div>
                       )}
 
@@ -534,19 +533,19 @@ export default function Approvals() {
                             size="sm"
                             onClick={() => setRejectDialog({ id: customer.id, title: `Reject Credit Limit for ${customer.company || customer.name}`, type: 'credit' })}
                             disabled={processing === customer.id}
-                            className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20"
+                            className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20 font-medium"
                             title="Reject Request"
                           >
-                            <X size={15} /> Reject
+                            <X size={14} /> Reject
                           </Button>
                           <Button
                             variant="primary"
                             size="sm"
                             onClick={() => handleApproveCredit(customer.id)}
                             disabled={processing === customer.id}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-none"
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-none"
                           >
-                            <Check size={15} className="mr-1" /> Approve
+                            <Check size={14} className="mr-1" /> Approve
                           </Button>
                         </div>
                       ) : (
@@ -562,11 +561,11 @@ export default function Approvals() {
 
         {/* --- TAB 3: APPROVAL HISTORY LOG --- */}
         {activeTab === 'history' && (
-          <GlassCard className="max-w-6xl rounded-none">
+          <GlassCard className="w-full rounded-none">
             {/* Header with Search and Module/Decision Filters */}
             <div className="p-4 border-b border-theme-subtle flex flex-col md:flex-row md:items-center justify-between gap-3 bg-surface2/30">
               <div>
-                <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <h2 className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-2">
                   <History className="w-4 h-4 text-emerald-500" />
                   Authorizations & Decision Audit Log
                 </h2>
@@ -578,7 +577,7 @@ export default function Approvals() {
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Search in History */}
                 <div className="relative w-48">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" size={13} />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" size={12} />
                   <input
                     type="text"
                     placeholder="Search history..."
@@ -612,10 +611,10 @@ export default function Approvals() {
               </div>
             </div>
 
-            {/* History Table */}
-            <div className="overflow-x-auto min-h-[300px]">
+            {/* History Table - Full Width */}
+            <div className="overflow-x-auto min-h-[300px] w-full">
               <table className="w-full text-left text-xs">
-                <thead className="bg-surface2/50 border-b border-theme-subtle text-[10px] font-bold text-muted uppercase tracking-wider">
+                <thead className="bg-surface2/50 border-b border-theme-subtle text-[10px] font-medium text-muted uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">Date & Time</th>
                     <th className="px-3 py-3">Module</th>
@@ -636,41 +635,41 @@ export default function Approvals() {
                         {/* Timestamp */}
                         <td className="px-4 py-3 whitespace-nowrap text-muted font-mono text-[11px]">
                           <div className="flex items-center gap-1.5">
-                            <Clock size={12} className="text-muted shrink-0" />
+                            <Clock size={11} className="text-muted shrink-0" />
                             <span>{formatDate(log.actionDate || log.createdAt)}</span>
                           </div>
                         </td>
 
                         {/* Module */}
                         <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-none border bg-surface2 text-secondary border-theme-subtle">
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-surface2 text-secondary border-theme-subtle">
                             {log.module}
                           </span>
                         </td>
 
                         {/* Reference Record No */}
-                        <td className="px-4 py-3 whitespace-nowrap font-mono font-bold text-primary">
+                        <td className="px-4 py-3 whitespace-nowrap font-mono font-medium text-primary">
                           {log.recordNo || log.recordId}
                         </td>
 
                         {/* Entity / Customer */}
-                        <td className="px-4 py-3 font-semibold text-primary max-w-[200px] truncate" title={log.entityName}>
+                        <td className="px-4 py-3 text-secondary max-w-[220px] truncate" title={log.entityName}>
                           {log.entityName || '-'}
                         </td>
 
                         {/* Consideration Amount */}
-                        <td className="px-4 py-3 text-right font-mono font-bold text-primary whitespace-nowrap">
+                        <td className="px-4 py-3 text-right font-mono font-medium text-primary whitespace-nowrap">
                           {Number(log.amount) > 0 ? formatCurrency(log.amount) : '-'}
                         </td>
 
                         {/* Decision */}
                         <td className="px-3 py-3 text-center whitespace-nowrap">
                           {isApproved ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-none border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 inline-flex items-center gap-1">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 inline-flex items-center gap-1">
                               <CheckCircle2 size={11} /> Approved
                             </span>
                           ) : (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-none border bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 inline-flex items-center gap-1">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-none border bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 inline-flex items-center gap-1">
                               <XCircle size={11} /> Rejected
                             </span>
                           )}
@@ -678,14 +677,14 @@ export default function Approvals() {
 
                         {/* Authorized By */}
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5 text-secondary font-medium">
-                            <User size={12} className="text-muted shrink-0" />
+                          <div className="flex items-center gap-1.5 text-secondary text-xs">
+                            <User size={11} className="text-muted shrink-0" />
                             <span>{log.actionBy || 'Authorized Manager'}</span>
                           </div>
                         </td>
 
                         {/* Notes / Remarks */}
-                        <td className="px-4 py-3 max-w-[240px] truncate text-muted text-[11px]" title={log.notes}>
+                        <td className="px-4 py-3 max-w-[280px] truncate text-muted text-[11px]" title={log.notes}>
                           {log.notes || '-'}
                         </td>
 
@@ -696,17 +695,17 @@ export default function Approvals() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleOpenQuotationPreviewFromLog(log)}
-                              className="h-6 text-[10px] px-2 rounded-none border border-theme-subtle text-primary hover:bg-surface2"
+                              className="h-6 text-[10px] px-2 rounded-none border border-theme-subtle text-primary hover:bg-surface2 font-medium"
                               title="Preview Quotation"
                             >
-                              <Eye size={12} className="mr-1" /> View
+                              <Eye size={11} className="mr-1" /> View
                             </Button>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedLogDetail(log)}
-                              className="h-6 text-[10px] px-2 rounded-none border border-theme-subtle text-secondary hover:text-primary hover:bg-surface2"
+                              className="h-6 text-[10px] px-2 rounded-none border border-theme-subtle text-secondary hover:text-primary hover:bg-surface2 font-medium"
                               title="View Log Details"
                             >
                               Details
@@ -747,7 +746,7 @@ export default function Approvals() {
             </p>
 
             <div>
-              <label className="block text-xs font-bold text-primary mb-1">Reason for Rejection *</label>
+              <label className="block text-xs font-medium text-primary mb-1">Reason for Rejection *</label>
               <textarea
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
@@ -758,7 +757,7 @@ export default function Approvals() {
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
-              <Button variant="ghost" size="sm" onClick={() => setRejectDialog(null)} className="rounded-none">
+              <Button variant="ghost" size="sm" onClick={() => setRejectDialog(null)} className="rounded-none font-medium">
                 Cancel
               </Button>
               <Button
@@ -766,7 +765,7 @@ export default function Approvals() {
                 size="sm"
                 onClick={handleConfirmRejectQuotation}
                 disabled={!rejectionReason.trim() || processing === rejectDialog.id}
-                className="bg-red-600 hover:bg-red-500 text-white font-bold rounded-none"
+                className="bg-red-600 hover:bg-red-500 text-white font-medium rounded-none"
               >
                 Confirm Rejection
               </Button>
@@ -801,7 +800,7 @@ export default function Approvals() {
                 Review line items and terms before granting managerial approval.
               </p>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setPreviewQuote(null)} className="rounded-none">
+                <Button variant="ghost" size="sm" onClick={() => setPreviewQuote(null)} className="rounded-none font-medium">
                   Close
                 </Button>
                 {canApproveQuotations && previewQuote.quote.status === 'Pending Approval' && (
@@ -813,9 +812,9 @@ export default function Approvals() {
                       setPreviewQuote(null)
                       await handleApproveQuotation(q)
                     }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-none"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-none"
                   >
-                    <Check size={16} className="mr-1" /> Approve Quotation
+                    <Check size={14} className="mr-1" /> Approve Quotation
                   </Button>
                 )}
               </div>
@@ -836,19 +835,19 @@ export default function Approvals() {
             <div className="p-3 bg-surface2/60 border border-theme-subtle rounded-none space-y-2 text-xs">
               <div className="flex justify-between items-center">
                 <span className="text-muted">Module / Request:</span>
-                <span className="font-bold text-primary">{selectedLogDetail.module}</span>
+                <span className="font-semibold text-primary">{selectedLogDetail.module}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted">Reference #:</span>
-                <span className="font-mono font-bold text-primary">{selectedLogDetail.recordNo || selectedLogDetail.recordId}</span>
+                <span className="font-mono font-semibold text-primary">{selectedLogDetail.recordNo || selectedLogDetail.recordId}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted">Client / Entity:</span>
-                <span className="font-semibold text-primary">{selectedLogDetail.entityName || '-'}</span>
+                <span className="text-primary">{selectedLogDetail.entityName || '-'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted">Decision:</span>
-                <span className={`font-bold px-2 py-0.5 rounded-none border text-[11px] ${
+                <span className={`font-medium px-2 py-0.5 rounded-none border text-[11px] ${
                   selectedLogDetail.action === 'Approved'
                     ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
                     : 'bg-rose-500/10 text-rose-600 border-rose-500/30'
@@ -858,7 +857,7 @@ export default function Approvals() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted">Authorized By:</span>
-                <span className="font-bold text-primary">{selectedLogDetail.actionBy}</span>
+                <span className="text-primary">{selectedLogDetail.actionBy}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted">Timestamp:</span>
@@ -867,7 +866,7 @@ export default function Approvals() {
               {Number(selectedLogDetail.amount) > 0 && (
                 <div className="flex justify-between items-center pt-1 border-t border-theme-subtle/50">
                   <span className="text-muted">Consideration Amount:</span>
-                  <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                  <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                     {formatCurrency(selectedLogDetail.amount)}
                   </span>
                 </div>
@@ -876,7 +875,7 @@ export default function Approvals() {
 
             {selectedLogDetail.notes && (
               <div className="p-3 bg-surface border border-theme-subtle rounded-none">
-                <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-medium text-muted uppercase tracking-wider mb-1">
                   Managerial Remarks / Justification
                 </label>
                 <p className="text-xs text-primary leading-relaxed whitespace-pre-wrap">
@@ -886,7 +885,7 @@ export default function Approvals() {
             )}
 
             <div className="flex justify-end pt-2 border-t border-theme-subtle">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedLogDetail(null)} className="rounded-none">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedLogDetail(null)} className="rounded-none font-medium">
                 Close
               </Button>
             </div>

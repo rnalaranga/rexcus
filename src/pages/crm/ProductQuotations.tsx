@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
-  PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt
+  PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
+  ChevronDown, ChevronUp, History
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -17,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
@@ -41,6 +42,19 @@ export const ProductQuotations: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState('all')
   const [previewData, setPreviewData] = useState<{ quotation: any, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
+
+  const [openActionId, setOpenActionId] = useState<string | null>(null)
+  const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.product-quote-action-container')) {
+        setOpenActionId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
 
   const [paymentReceiptsList, setPaymentReceiptsList] = useState<any[]>([])
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
@@ -303,7 +317,7 @@ export const ProductQuotations: React.FC = () => {
             variant="primary"
             icon={Plus}
             onClick={() => navigate('/crm/product-quotations/new')}
-            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20"
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 rounded-none"
           >
             New Product Quotation
           </Button>
@@ -337,7 +351,7 @@ export const ProductQuotations: React.FC = () => {
       </div>
 
       {/* Filters Bar */}
-      <div className="p-3.5 rounded-2xl bg-surface border border-theme-subtle flex flex-col md:flex-row gap-3 items-center justify-between">
+      <div className="p-3.5 rounded-none bg-surface border border-theme-subtle flex flex-col md:flex-row gap-3 items-center justify-between">
         <div className="relative w-full md:w-80">
           <Search size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
           <input
@@ -345,7 +359,7 @@ export const ProductQuotations: React.FC = () => {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by quote #, client, subject..."
-            className="w-full bg-surface2 border border-theme-subtle rounded-xl pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 transition-all placeholder:text-muted"
+            className="w-full bg-surface2 border border-theme-subtle rounded-none pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 transition-all placeholder:text-muted"
           />
         </div>
 
@@ -354,7 +368,7 @@ export const ProductQuotations: React.FC = () => {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="bg-surface2 border border-theme-subtle rounded-xl px-2.5 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 font-medium"
+            className="bg-surface2 border border-theme-subtle rounded-none px-2.5 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 font-medium"
           >
             <option value="all">All Statuses</option>
             <option value="Draft">Draft</option>
@@ -372,7 +386,7 @@ export const ProductQuotations: React.FC = () => {
               customers={customers}
               placeholder="Filter by customer..."
               allOptionLabel="All Customers"
-              className="py-1 text-xs rounded-xl"
+              className="py-1 text-xs rounded-none"
             />
           </div>
         </div>
@@ -380,34 +394,59 @@ export const ProductQuotations: React.FC = () => {
 
       {/* Quotations List */}
       <div className="space-y-3">
-        {filteredGroups.map((group: any) => {
+        {filteredGroups.map((group: any, idx: number) => {
           const latest = group.versions[0];
           const parsed = latest?.parsed || {};
           const status = latest?.status || 'Draft';
           const itemsCount = parsed.custItems?.length || 0;
+          const recs = getQuoteReceipts(group, latest);
+          const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+          const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
+          const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
 
           return (
             <GlassCard
               key={group.quoNo}
-              className="p-4 hover:border-emerald-500/40 transition-all duration-200 border-theme-subtle"
+              className="p-3.5 hover:border-emerald-500/40 transition-all duration-200 border-theme-subtle rounded-none"
             >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 {/* Left Meta */}
-                <div className="space-y-1.5 min-w-0 flex-1">
-                  <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                       {group.quoNo}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusColor(status)}`}>
+                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
                       {status}
                     </span>
                     <span className="text-[10px] font-mono text-muted">
                       v{latest.version || 1} • {formatDate(group.latestDate)}
                     </span>
                     {group.versions.length > 1 && (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface2 text-muted border border-theme-subtle">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-1"
+                      >
                         {group.versions.length} revisions
-                      </span>
+                        <ChevronDown size={10} className={`transition-transform duration-150 ${isRevisionsExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
+                    {totalAdv > 0 && latestRec && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActivePrintReceipt({
+                            ...latestRec,
+                            totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
+                          });
+                          setPrintReceiptModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
+                        title={`View / Print Payment Receipt (Advance: ${formatCurrency(totalAdv)})`}
+                      >
+                        <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
+                      </button>
                     )}
                   </div>
 
@@ -438,137 +477,284 @@ export const ProductQuotations: React.FC = () => {
                 </div>
 
                 {/* Right Financials & Actions */}
-                <div className="flex items-center justify-between lg:justify-end gap-5 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-theme-subtle">
+                <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-theme-subtle">
                   <div className="text-right">
                     <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
                       Total Value
                     </span>
-                    <span className="text-lg font-black font-mono text-primary">
+                    <span className="text-base lg:text-lg font-black font-mono text-primary">
                       {formatCurrency(Number(latest.totalAmount || 0))}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {/* View/Edit in Builder */}
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      icon={Edit3}
-                      onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-8 text-xs"
-                    >
-                      Open
-                    </Button>
-
-                    {/* Preview Modal */}
+                  <div className="flex items-center gap-1.5 product-quote-action-container relative">
+                    {/* Quick 1-click Preview */}
                     <Button
                       variant="ghost"
                       size="sm"
                       icon={Eye}
                       onClick={() => setPreviewData({ quotation: latest, lead: group })}
-                      className="h-8 text-xs border border-theme-subtle"
+                      className="h-7 text-xs border border-theme-subtle rounded-none hover:bg-surface2"
                       title="Preview Quotation Document"
                     >
                       Preview
                     </Button>
 
-                    {/* Email */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={Mail}
-                      onClick={() => setEmailModalData({
-                        documentNumber: group.quoNo,
-                        customerEmail: group.clientEmail || '',
-                        customerName: group.clientName || group.clientCompany || 'Customer',
-                        totalAmount: latest.totalAmount || latest.parsed?.totalPrice || '0.00',
-                        validityDays: latest.parsed?.validityDays || '30',
-                        quotation: latest,
-                        lead: group
-                      })}
-                      className="h-8 text-xs border border-theme-subtle text-blue-600 hover:bg-blue-500/10"
-                      title="Email to Client"
-                    >
-                      Email
-                    </Button>
+                    {/* Actions Dropdown Button */}
+                    <div className="relative inline-block text-left">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenActionId(openActionId === group.quoNo ? null : group.quoNo);
+                        }}
+                        className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
+                          openActionId === group.quoNo
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+                        }`}
+                      >
+                        Actions
+                        <ChevronDown size={11} className={`transition-transform duration-150 ${openActionId === group.quoNo ? 'rotate-180' : ''}`} />
+                      </button>
 
-                    {/* Sales Order & Invoice */}
-                    {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={ShoppingBag}
-                          onClick={() => handleCreateSalesOrder(group, latest)}
-                          className="h-8 text-xs border border-blue-500/40 text-blue-600 hover:bg-blue-500/10 font-bold"
-                          title="Generate Sales Order from Approved Quote"
+                      {openActionId === group.quoNo && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className={`absolute right-0 ${
+                            idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
+                          } w-56 bg-surface border border-theme shadow-2xl z-[60] py-1 text-left rounded-none animate-fade-in`}
                         >
-                          Sales Order
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={Receipt}
-                          onClick={() => handleOpenReceiptModal(group, latest)}
-                          className="h-8 text-xs border border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/15 font-bold shadow-sm"
-                          title="Issue Official Advance Payment Receipt"
-                        >
-                          Payment Receipt
-                        </Button>
-                        {(() => {
-                          const recs = getQuoteReceipts(group, latest);
-                          if (recs.length === 0) return null;
-                          const totalAdv = recs.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-                          return (
+                          {/* 1. Preview Document */}
+                          <button
+                            type="button"
+                            onClick={() => { setPreviewData({ quotation: latest, lead: group }); setOpenActionId(null); }}
+                            className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                          >
+                            <Eye size={13} className="text-muted shrink-0" />
+                            <span>Preview Document</span>
+                          </button>
+
+                          {/* 2. Open in Builder */}
+                          <button
+                            type="button"
+                            onClick={() => { navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`); setOpenActionId(null); }}
+                            className="w-full px-3 py-2 text-xs text-secondary hover:text-primary hover:bg-surface2 flex items-center gap-2 transition-colors rounded-none"
+                          >
+                            <Edit3 size={13} className="text-muted shrink-0" />
+                            <span>Edit in Builder</span>
+                          </button>
+
+                          {/* 3. Send Email */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmailModalData({
+                                documentNumber: group.quoNo,
+                                customerEmail: group.clientEmail || '',
+                                customerName: group.clientName || group.clientCompany || 'Customer',
+                                totalAmount: latest.totalAmount || latest.parsed?.totalPrice || '0.00',
+                                validityDays: latest.parsed?.validityDays || '30',
+                                quotation: latest,
+                                lead: group
+                              });
+                              setOpenActionId(null);
+                            }}
+                            className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none"
+                          >
+                            <Mail size={13} className="shrink-0" />
+                            <span>Send via Email</span>
+                          </button>
+
+                          {/* 4. Sales Order (if Approved/Sent/Accepted) */}
+                          {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const latestRec = recs[recs.length - 1];
-                                setActivePrintReceipt({
-                                  ...latestRec,
-                                  totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
-                                });
-                                setPrintReceiptModalOpen(true);
-                              }}
-                              className="h-8 px-2 inline-flex items-center gap-1 text-[11px] font-bold rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-mono"
-                              title={"Click to view/print receipt (" + recs.length + " receipt" + (recs.length > 1 ? "s" : "") + ")"}
+                              onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); }}
+                              className="w-full px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
                             >
-                              <Receipt size={12} /> Advance: {formatCurrency(totalAdv)}
+                              <ShoppingBag size={13} className="shrink-0" />
+                              <span>Create Sales Order</span>
                             </button>
-                          );
-                        })()}
-                      </>
-                    )}
+                          )}
 
-                    {/* Status Select for authorized */}
-                    <select
-                      value={status}
-                      onChange={e => handleStatusChange(latest.id, e.target.value, status)}
-                      className="bg-surface border border-theme-subtle rounded-lg px-2 py-1 text-[11px] font-semibold text-primary outline-none focus:border-emerald-500 h-8"
-                    >
-                      <option value="Draft">Draft</option>
-                      <option value="Pending Approval">Pending Approval</option>
-                      <option value="Approved">Approved</option>
-                      <option value="Sent">Sent</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
+                          {/* 5. Advance Payment Receipt */}
+                          {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
+                            <button
+                              type="button"
+                              onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); }}
+                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
+                            >
+                              <Receipt size={13} className="shrink-0" />
+                              <span>Issue Advance Receipt</span>
+                            </button>
+                          )}
 
-                    {/* Delete */}
-                    <button
-                      onClick={() => handleDelete(latest.id)}
-                      className="p-2 text-muted/40 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors"
-                      title="Delete Quote"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                          {/* 6. Invoice */}
+                          {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
+                            <button
+                              type="button"
+                              onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); }}
+                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <FileText size={13} className="shrink-0" />
+                              <span>Generate Tax Invoice</span>
+                            </button>
+                          )}
+
+                          <div className="my-1 border-t border-theme-subtle" />
+
+                          {/* Workflow Approval actions */}
+                          {(status === 'Draft' || !status || status === 'Rejected') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenActionId(null);
+                                try {
+                                  await submitQuotationForApproval(latest.id);
+                                  toast('Submitted for approval', 'success');
+                                  refetch();
+                                } catch(err: any) {
+                                  toast(err?.message || 'Failed to submit', 'error');
+                                }
+                              }}
+                              className="w-full px-3 py-2 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <Send size={13} className="shrink-0" />
+                              <span>Submit for Approval</span>
+                            </button>
+                          )}
+
+                          {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenActionId(null);
+                                try {
+                                  await approveQuotation(latest.id, user?.name || 'Manager');
+                                  toast('Quotation approved successfully!', 'success');
+                                  refetch();
+                                } catch(err: any) {
+                                  toast(err?.message || 'Failed to approve', 'error');
+                                }
+                              }}
+                              className="w-full px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors rounded-none font-semibold"
+                            >
+                              <CheckCircle2 size={13} className="shrink-0" />
+                              <span>Approve Quotation</span>
+                            </button>
+                          )}
+
+                          {canApprove && status === 'Pending Approval' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenActionId(null);
+                                const reason = prompt('Enter rejection reason:');
+                                if (!reason) return;
+                                try {
+                                  await rejectQuotation(latest.id, reason);
+                                  toast('Quotation rejected', 'error');
+                                  refetch();
+                                } catch(err: any) {
+                                  toast(err?.message || 'Failed to reject', 'error');
+                                }
+                              }}
+                              className="w-full px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 transition-colors rounded-none"
+                            >
+                              <XCircle size={13} className="shrink-0" />
+                              <span>Reject Quotation</span>
+                            </button>
+                          )}
+
+                          <div className="my-1 border-t border-theme-subtle" />
+
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={() => { handleDelete(latest.id); setOpenActionId(null); }}
+                            className="w-full px-3 py-2 text-xs text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors font-medium rounded-none"
+                          >
+                            <Trash2 size={13} className="shrink-0" />
+                            <span>Delete Quotation</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {/* Expandable Revisions Panel */}
+              {isRevisionsExpanded && group.versions.length > 1 && (
+                <div className="mt-3 pt-3 border-t border-theme-subtle/50 space-y-1.5 animate-fade-in">
+                  <div className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                    <History size={11} className="text-emerald-500" />
+                    Quotation Versions ({group.versions.length})
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {group.versions.map((v: any) => {
+                      const isLatest = v.id === latest.id;
+                      return (
+                        <div
+                          key={v.id}
+                          className={`flex items-center justify-between px-2.5 py-1.5 border text-xs rounded-none transition-colors ${
+                            isLatest
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-primary'
+                              : 'bg-surface2/50 border-theme-subtle text-secondary'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold font-mono text-primary shrink-0">v{v.version}</span>
+                            {isLatest && (
+                              <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1 py-0.2 rounded-none uppercase">
+                                Active
+                              </span>
+                            )}
+                            <span className="font-mono text-muted text-[11px] truncate">
+                              {formatCurrency(Number(v.totalAmount || 0))}
+                            </span>
+                            <span className="text-[10px] text-muted truncate">{formatDate(v.date)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 ml-1">
+                            <button
+                              onClick={() => setPreviewData({ quotation: v, lead: group })}
+                              className="p-1 text-blue-500 hover:bg-blue-500/10 rounded-none transition-colors"
+                              title={`Preview Version v${v.version}`}
+                            >
+                              <Eye size={12} />
+                            </button>
+                            <button
+                              onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${v.id}`)}
+                              className="p-1 text-primary hover:bg-surface rounded-none transition-colors"
+                              title={`Edit Version v${v.version}`}
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const ok = await showConfirm(`Delete Version v${v.version} of quotation ${group.quoNo}?`, 'Delete Version', { confirmLabel: 'Delete' });
+                                if (ok) {
+                                  await deleteQuotation(v.id);
+                                  toast(`Version v${v.version} deleted successfully`, 'success');
+                                  refetch();
+                                }
+                              }}
+                              className="p-1 text-red-500/70 hover:text-red-500 hover:bg-red-500/10 rounded-none transition-colors"
+                              title={`Delete Version v${v.version}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </GlassCard>
           );
         })}
-
         {filteredGroups.length === 0 && !loading && (
           <div className="py-16 text-center space-y-3 bg-surface rounded-2xl border border-dashed border-theme-subtle">
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
