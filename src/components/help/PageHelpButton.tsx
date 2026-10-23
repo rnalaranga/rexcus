@@ -5,11 +5,13 @@ import { HelpGuideModal } from './HelpGuideModal'
 interface PageHelpButtonProps {
   className?: string
   title?: string
+  moduleId?: string
 }
 
 export const PageHelpButton: React.FC<PageHelpButtonProps> = ({
   className = '',
-  title = 'Help & Workflow Guide'
+  title = 'Help & Workflow Guide',
+  moduleId
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const location = useLocation()
@@ -20,15 +22,17 @@ export const PageHelpButton: React.FC<PageHelpButtonProps> = ({
         type="button"
         onClick={() => setIsOpen(true)}
         title={title}
-        className={`w-7 h-7 rounded-full border border-theme-subtle hover:border-rex-500/50 hover:bg-rex-500/10 text-muted hover:text-rex-600 dark:hover:text-rex-400 font-bold text-xs flex items-center justify-center transition-all shadow-xs ${className}`}
+        className={`h-8 px-2.5 rounded-none border border-theme-subtle hover:border-theme bg-surface hover:bg-surface2 text-muted hover:text-primary font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${className}`}
       >
-        ?
+        <span className="font-mono font-bold text-[11px] text-secondary">?</span>
+        <span className="text-xs font-semibold hidden md:inline">Help</span>
       </button>
 
       <HelpGuideModal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         currentPath={location.pathname}
+        defaultModuleId={moduleId}
       />
     </>
   )

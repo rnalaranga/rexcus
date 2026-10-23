@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { useSettings } from '@/contexts/SettingsContext'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 export default function Approvals() {
   const { user, can } = useAuth()
@@ -208,6 +209,7 @@ export default function Approvals() {
           </div>
 
           <div className="flex items-center gap-2">
+            <PageHelpButton moduleId="admin-approvals" />
             {activeTab === 'history' ? (
               <Button
                 variant="ghost"

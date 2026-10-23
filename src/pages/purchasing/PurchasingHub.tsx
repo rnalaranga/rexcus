@@ -15,6 +15,7 @@ import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hoo
 import { useSuppliers } from '@/hooks/useData';
 import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
+import { PageHelpButton } from '@/components/help/PageHelpButton';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
@@ -490,6 +491,7 @@ export const PurchasingHub: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="purchasing-hub" />
           <Button variant="ghost" size="sm" icon={Download}>Export</Button>
           <Button variant="primary" size="sm" icon={Plus} onClick={handleAdd}>{getAddLabel()}</Button>
         </div>

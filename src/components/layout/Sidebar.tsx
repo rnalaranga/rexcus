@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -83,6 +83,7 @@ const navGroups: NavGroup[] = [
       { label: 'Approvals',           path: '/admin/approvals', icon: CheckSquare,        permission: 'admin.approvals.manage' },
       { label: 'Users',               path: '/admin/users',    icon: Users,               permission: 'admin.users.manage' },
       { label: 'Roles & Permissions', path: '/admin/roles',    icon: Shield,              permission: 'admin.roles.manage' },
+      { label: 'Serial & Prefix Rules', path: '/admin/variables#serials', icon: Hash,     permission: 'admin.settings.manage' },
       { label: 'Variable Settings',   path: '/admin/variables', icon: SlidersHorizontal, permission: 'admin.settings.manage' },
       { label: 'Settings',            path: '/admin/settings', icon: Settings,            permission: 'admin.settings.manage' },
     ],

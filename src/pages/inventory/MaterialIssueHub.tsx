@@ -22,6 +22,7 @@ import {
   issueMaterialToWorkOrder 
 } from '@/lib/api'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 type TabType = 'requisitions' | 'direct_issue' | 'history'
 
@@ -711,6 +712,7 @@ export const MaterialIssueHub: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <PageHelpButton moduleId="inventory-material-issue" />
           <Button 
             variant="outline" 
             size="sm" 

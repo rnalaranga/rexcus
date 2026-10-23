@@ -21,7 +21,7 @@ import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { 
   createQuotation, fetchQuotations, updateQuotation, deleteQuotation, 
   generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, 
-  approveQuotation, rejectQuotation 
+  approveQuotation, rejectQuotation, fetchNextDocumentNumber 
 } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -712,10 +712,22 @@ export const ProductQuotationBuilder: React.FC = () => {
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
 
-      const userPrefix = user?.prefix ? `${user.prefix}-` : '';
-      const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-      const seq = Date.now().toString().slice(-4);
-      setQuotationNo(`PQ-${userPrefix}${custPrefix}${seq}`);
+      fetchNextDocumentNumber('quotation', {
+        userPrefix: user?.prefix,
+        customerPrefix: cust.prefix,
+        reserve: false
+      }).then(res => {
+        if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
+        else {
+          const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+          const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
+          setQuotationNo(`${userPrefix}${custPrefix}2206`);
+        }
+      }).catch(() => {
+        const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+        const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
+        setQuotationNo(`${userPrefix}${custPrefix}2206`);
+      });
     } else {
       const leadItem = leads?.find((l: any) => l.id === itemId) || item;
       setCustomerName(leadItem.company || leadItem.name || '');
@@ -730,15 +742,40 @@ export const ProductQuotationBuilder: React.FC = () => {
         setCustomerAddress(cust.address || leadItem.address || '');
         setVatNo(cust.vat || leadItem.vat || '');
         setTinNo(cust.svat || cust.tin || cust.brNumber || leadItem.svat || '');
+        fetchNextDocumentNumber('quotation', {
+          userPrefix: user?.prefix,
+          customerPrefix: cust.prefix,
+          reserve: false
+        }).then(res => {
+          if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
+          else {
+            const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+            const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
+            setQuotationNo(`${userPrefix}${custPrefix}2206`);
+          }
+        }).catch(() => {
+          const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+          const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
+          setQuotationNo(`${userPrefix}${custPrefix}2206`);
+        });
       } else {
         setCustomerAddress(leadItem.address || '');
         setVatNo(leadItem.vat || '');
         setTinNo(leadItem.svat || '');
+        fetchNextDocumentNumber('quotation', {
+          userPrefix: user?.prefix,
+          reserve: false
+        }).then(res => {
+          if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
+          else {
+            const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+            setQuotationNo(`${userPrefix}2206`);
+          }
+        }).catch(() => {
+          const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+          setQuotationNo(`${userPrefix}2206`);
+        });
       }
-
-      const userPrefix = user?.prefix ? `${user.prefix}-` : '';
-      const seq = Date.now().toString().slice(-4);
-      setQuotationNo(`PQ-${userPrefix}${seq}`);
     }
   };
 

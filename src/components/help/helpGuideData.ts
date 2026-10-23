@@ -4,7 +4,7 @@ export interface HelpWorkflowStep {
   description: string;
   actor: string;
   statusBadge?: string;
-  color: 'emerald' | 'blue' | 'amber' | 'purple' | 'rose' | 'indigo' | 'cyan';
+  color?: string;
   nextSteps?: string[];
 }
 
@@ -14,6 +14,12 @@ export interface HelpActionItem {
   description: string;
   howTo: string;
   rolesAllowed?: string;
+}
+
+export interface HelpHowToStep {
+  title: string;
+  instructions: string[];
+  importantNote?: string;
 }
 
 export interface HelpGuideItem {
@@ -28,6 +34,7 @@ export interface HelpGuideItem {
     subtitle: string;
     steps: HelpWorkflowStep[];
   };
+  howToSteps?: HelpHowToStep[];
   actions: HelpActionItem[];
   tips: string[];
   faq: { question: string; answer: string }[];
@@ -39,71 +46,107 @@ export const HELP_GUIDES: HelpGuideItem[] = [
   {
     id: 'crm-quotations',
     routePatterns: ['/crm/quotations', '/quotations'],
-    title: 'Custom Engineering Quotations (BOM & Costing)',
+    title: 'Custom Engineering Quotations (BOM & Costing Engine)',
     category: 'CRM & Sales',
     iconName: 'FileText',
-    summary: 'The Quotations module enables sales and engineering teams to prepare multi-part engineering quotations with automated BOM calculations (steel plates, shafts, rods), manual materials, machining labor rates, and manager approvals.',
+    summary: 'The Engineering Quotations module enables estimating and technical sales teams to price complex machining jobs with automated BOM calculations (steel plates, shafts, rods), manual materials, machining labor rates, manager approvals, and downstream production/sales conversion.',
     workflowDiagram: {
-      title: 'Quotation to Delivery Lifecycle Flow',
-      subtitle: 'Complete flow from customer inquiry to work order and billing',
+      title: 'Engineering Quotation to Production & Delivery Flow',
+      subtitle: 'Complete lifecycle from inquiry costing to work order release and billing',
       steps: [
         {
           stepNumber: 1,
-          title: 'Draft Quote Creation',
-          description: 'Engineer or Sales Rep builds quote with BOMs, materials, machining hours, and profit margins.',
-          actor: 'Sales / Estimator',
+          title: 'BOM Costing & Draft Creation',
+          description: 'Estimator builds quotation using automated steel plate dimensions, shaft diameters, manual hardware, machine hours, and profit margins.',
+          actor: 'Estimator / Sales Engineer',
           statusBadge: 'Draft',
-          color: 'amber',
           nextSteps: ['Submit for Manager Approval']
         },
         {
           stepNumber: 2,
           title: 'Manager Approval Review',
-          description: 'Quotation is reviewed in Central Approvals Hub for technical feasibility, margins, and credit limits.',
-          actor: 'Manager / Admin',
+          description: 'Quotation is reviewed in Central Approvals Hub for technical feasibility, margins, and customer credit limits.',
+          actor: 'Technical Manager / Admin',
           statusBadge: 'Pending Approval',
-          color: 'purple',
           nextSteps: ['Approved', 'Rejected (Reason Logged)']
         },
         {
           stepNumber: 3,
-          title: 'Client Submission & Acceptance',
-          description: 'Official quote PDF is emailed or presented to client. Client accepts quotation terms.',
+          title: 'Official Submission & Acceptance',
+          description: 'Official quotation PDF is emailed or presented to the customer. Client approves and confirms the order.',
           actor: 'Client / Sales Rep',
           statusBadge: 'Approved / Sent',
-          color: 'emerald',
           nextSteps: ['Commercial Sales Order', 'Advance Receipt']
         },
         {
           stepNumber: 4,
-          title: 'Sales Order & Advance Receipt',
-          description: 'Official commercial Sales Order is generated. Advance payment receipt is issued to customer.',
-          actor: 'Sales / Finance',
+          title: 'Commercial Sales Order & Advance Deposit',
+          description: 'Official commercial Sales Order is generated with 1 click. Advance payment receipt is issued to customer.',
+          actor: 'Sales Coordinator / Finance',
           statusBadge: 'SO Confirmed',
-          color: 'blue',
-          nextSteps: ['Work Order in Production']
+          nextSteps: ['Production Work Order']
         },
         {
           stepNumber: 5,
-          title: 'Production Work Order',
-          description: 'Work order is generated from approved quote BOM and released to the machine shop floor.',
+          title: 'Production Work Order Release',
+          description: 'Quotation BOM and machining operations are released directly to the machine shop floor as an active Work Order.',
           actor: 'Production Planner',
           statusBadge: 'In Production',
-          color: 'indigo',
           nextSteps: ['Material Issue', 'Machining']
         },
         {
           stepNumber: 6,
-          title: 'Invoicing & Sample GRN',
-          description: 'Tax invoice is generated with VAT/SSCL profiles. Sample GRN printed if physical sample was provided.',
+          title: 'Tax Invoicing & Sample Tracking',
+          description: 'Tax Invoice is generated with VAT/SSCL profiles. Customer Sample GRN is printed if physical sample was provided.',
           actor: 'Accounts & Store',
           statusBadge: 'Invoiced',
-          color: 'cyan',
-          nextSteps: ['Payment Settlement']
+          nextSteps: ['Final Payment Settlement']
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Start a New Engineering Quote',
+        instructions: [
+          'Click "+ New Quotation" in the top right header.',
+          'Select an existing Customer or Lead, or register a new walk-in customer directly.',
+          'The quotation serial number is assigned from the unified sequence (starting at 2206).'
+        ],
+        importantNote: 'Unified serial numbering ensures no duplicate reference numbers between engineering and product quotes.'
+      },
+      {
+        title: 'Step 2: Add BOM Parts & Material Costing',
+        instructions: [
+          'Add parts using Automated Materials: enter Steel Plates (Length × Width × Thickness) or Round Shafts (Diameter × Length). The system calculates weights and material costs automatically.',
+          'Add Manual Materials (bearings, standard fasteners, bought-out components) with quantities and unit costs.',
+          'Add Machining & Labor operations (CNC Milling, Lathe turning, Surface Grinding, Welding) with estimated operational hours.'
+        ]
+      },
+      {
+        title: 'Step 3: Margins, Taxes & Approval Submission',
+        instructions: [
+          'Set overall profit margin (%) and customer discount (percentage or fixed amount).',
+          'Toggle Tax Profiles (VAT 18%, SSCL 2.5%) as needed.',
+          'Click Save. In the quotation list, click "Actions ▾ > Submit for Approval" so managers can authorize it in the Approvals Hub.'
+        ]
+      },
+      {
+        title: 'Step 4: Commercial Execution & Downstream Workflows',
+        instructions: [
+          'Once Approved, click "Actions ▾ > Create Sales Order" to confirm the commercial order.',
+          'Click "Actions ▾ > Issue Advance Receipt" to record down payments and print official cash/bank receipts.',
+          'Click "Actions ▾ > Create Work Order" to push the BOM directly to the machine shop floor.',
+          'Click "Actions ▾ > Generate Tax Invoice" to bill the customer without re-typing line items.'
+        ]
+      }
+    ],
     actions: [
+      {
+        name: '+ New Quotation',
+        badge: 'Plus',
+        description: 'Opens the full Quotation Builder to create a new custom engineering quotation from scratch.',
+        howTo: 'Click the primary button "+ New Quotation" at the top right of the page.'
+      },
       {
         name: 'Preview (1-Click)',
         badge: 'Eye',
@@ -111,10 +154,22 @@ export const HELP_GUIDES: HelpGuideItem[] = [
         howTo: 'Click the "Preview" button on any quotation row. Allows quick printing or PDF export.'
       },
       {
+        name: 'Actions ▾ > Preview Document',
+        badge: 'Eye',
+        description: 'Opens high-fidelity printable quotation view matching official Rex Industries letterhead format.',
+        howTo: 'Click Actions ▾ on any quotation row and choose "Preview Document".'
+      },
+      {
         name: 'Actions ▾ > Edit in Builder',
         badge: 'FileEdit',
         description: 'Opens the quotation in the full Quotation Builder to modify BOMs, plate dimensions, labor rates, and discounts.',
         howTo: 'Click Actions ▾ and choose "Edit in Quotation Builder". Saves new changes as revisions.'
+      },
+      {
+        name: 'Actions ▾ > Send via Email',
+        badge: 'Mail',
+        description: 'Emails official quotation PDF directly to customer contact with customized cover message.',
+        howTo: 'Click Actions ▾ and choose "Send via Email". Enter or confirm customer email address.'
       },
       {
         name: 'Actions ▾ > Create Sales Order',
@@ -141,23 +196,53 @@ export const HELP_GUIDES: HelpGuideItem[] = [
         howTo: 'Click Actions ▾ > "Generate Tax Invoice".'
       },
       {
-        name: 'Actions ▾ > Sample GRN',
+        name: 'Actions ▾ > Customer Sample GRN',
         badge: 'Package',
         description: 'Records customer samples received for testing/replication, prints official Customer Sample GRN.',
         howTo: 'Click Actions ▾ > "Receive Sample (GRN)" or "Print Sample GRN".'
       },
       {
-        name: 'Revisions Toggle ({count} revisions ▾)',
+        name: 'Actions ▾ > View Costing & Dimensions',
+        badge: 'Briefcase',
+        description: 'Quickly inspect raw material dimensions, weights, unit costs, and planned machining hours without entering full edit mode.',
+        howTo: 'Click Actions ▾ > "View Costing & Dimensions".'
+      },
+      {
+        name: 'Actions ▾ > Submit for Approval',
+        badge: 'Send',
+        description: 'Submits draft quotation to manager workflow in Central Approvals Hub.',
+        howTo: 'Click Actions ▾ > "Submit for Approval".'
+      },
+      {
+        name: 'Actions ▾ > Approve / Reject',
+        badge: 'CheckCircle',
+        description: 'Managers can approve or reject the quotation directly from the row without navigating to Approvals Hub.',
+        howTo: 'Available for users with approvals permission. Click Actions ▾ > "Approve Quotation" or "Reject Quotation".'
+      },
+      {
+        name: 'Actions ▾ > Delete Quotation Group',
+        badge: 'Trash2',
+        description: 'Permanently deletes all versions and sub-quotes associated with this quotation group.',
+        howTo: 'Click Actions ▾ > "Delete Quotation Group" and confirm.'
+      },
+      {
+        name: 'Revisions Toggle ({count} revs ▾)',
         badge: 'History',
         description: 'Toggles a compact history panel showing all previous versions (v1, v2, v3) of this quotation with individual view/edit/delete options.',
         howTo: 'Click the revisions pill in the quotation row.'
+      },
+      {
+        name: 'Filter Tabs (All, Draft, Pending, Approved, Sent, In Production)',
+        badge: 'Filter',
+        description: 'Filters quotation list by operational workflow state.',
+        howTo: 'Click any status tab above the table.'
       }
     ],
     tips: [
       'To combine multiple quotes into one final client quote, check the boxes next to the quote numbers and click "Make Final Quote" at the top.',
       'Quotations must be Approved before changing status to Sent or In Production.',
       'Use the quick date range buttons ("This Month", "Last 30 Days") in the filter bar to isolate recent activity.',
-      'BOM costing can be inspected anytime by clicking "View Costing" under the quoted item description.'
+      'BOM costing can be inspected anytime by clicking "Costing" under the quoted item description.'
     ],
     faq: [
       {
@@ -199,7 +284,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Select customer, search and pick ready-made finished goods items, set quantities and unit prices.',
           actor: 'Sales Rep',
           statusBadge: 'Draft',
-          color: 'emerald',
           nextSteps: ['Submit for Approval']
         },
         {
@@ -208,7 +292,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Manager validates customer creditworthiness, discount percentages, and availability.',
           actor: 'Manager',
           statusBadge: 'Pending Approval',
-          color: 'purple',
           nextSteps: ['Approved']
         },
         {
@@ -217,7 +300,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: '1-click conversion to Commercial Sales Order with stock reservation from finished goods warehouse.',
           actor: 'Sales Coordinator',
           statusBadge: 'SO Created',
-          color: 'blue',
           nextSteps: ['Advance Receipt', 'Dispatch']
         },
         {
@@ -226,17 +308,67 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Goods are packaged, Gate Pass is generated, and Tax Invoice is issued to customer.',
           actor: 'Store & Accounts',
           statusBadge: 'Invoiced / Dispatched',
-          color: 'indigo',
           nextSteps: ['Settlement']
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Start a Product Quotation',
+        instructions: [
+          'Click "+ New Product Quote" at top right.',
+          'Choose an existing customer or lead from the autocomplete dropdown.',
+          'Quotation serial number is unified with engineering quotes (starting at 2206).'
+        ]
+      },
+      {
+        title: 'Step 2: Add Finished Goods Items',
+        instructions: [
+          'Select stocked product lines from the finished goods inventory or type custom product descriptions.',
+          'Enter quantities, unit selling prices, and apply item-level or total commercial discounts.',
+          'Assign tax profiles (VAT/SSCL) and select the company bank account for wire transfers.'
+        ]
+      },
+      {
+        title: 'Step 3: Manager Sign-off & Client Email',
+        instructions: [
+          'Submit the quotation for approval if discounts or values require manager sign-off.',
+          'Once approved, click "Actions ▾ > Send via Email" to send the official quote directly to the client with PDF attachment.'
+        ]
+      },
+      {
+        title: 'Step 4: Sales Order & Invoice Conversion',
+        instructions: [
+          'Click "Actions ▾ > Create Sales Order" to convert the approved quote into a commercial order with warehouse stock reservation.',
+          'Issue customer advance payment receipts via "Actions ▾ > Issue Advance Receipt".',
+          'Click "Actions ▾ > Generate Tax Invoice" to issue the final commercial tax invoice.'
+        ]
+      }
+    ],
     actions: [
       {
-        name: 'Preview',
+        name: '+ New Product Quote',
+        badge: 'Plus',
+        description: 'Creates a new finished goods catalog quotation.',
+        howTo: 'Click "+ New Product Quote" at the top right.'
+      },
+      {
+        name: 'Preview Document',
         badge: 'Eye',
         description: 'View full formatted quotation document with Rex header, item specifications, and terms.',
-        howTo: 'Click "Preview" on any product quotation row.'
+        howTo: 'Click Actions ▾ on any row and choose "Preview Document".'
+      },
+      {
+        name: 'Actions ▾ > Edit in Quotation Builder',
+        badge: 'Edit3',
+        description: 'Opens the product quotation builder to edit line items, prices, discounts, or bank details.',
+        howTo: 'Click Actions ▾ and click "Edit in Quotation Builder".'
+      },
+      {
+        name: 'Actions ▾ > Send via Email',
+        badge: 'Mail',
+        description: 'Sends the quote directly to the customer email address with PDF attachment.',
+        howTo: 'Click Actions ▾ and choose "Send via Email".'
       },
       {
         name: 'Actions ▾ > Create Sales Order',
@@ -255,11 +387,24 @@ export const HELP_GUIDES: HelpGuideItem[] = [
         badge: 'FileText',
         description: 'Opens Tax Invoice Builder with pre-loaded product lines, customer details, and tax breakdowns.',
         howTo: 'Click Actions ▾ > "Generate Tax Invoice".'
+      },
+      {
+        name: 'Actions ▾ > Submit for Approval / Approve / Reject',
+        badge: 'CheckCircle2',
+        description: 'Controls the manager sign-off workflow for catalog quotations.',
+        howTo: 'Click Actions ▾ and select appropriate approval action.'
+      },
+      {
+        name: 'Actions ▾ > Delete Quotation',
+        badge: 'Trash2',
+        description: 'Deletes quotation record from system.',
+        howTo: 'Click Actions ▾ > "Delete Quotation".'
       }
     ],
     tips: [
       'Product quotations allow direct lookup from inventory stock items with real-time stock availability indicators.',
-      'Click the revisions button to inspect price changes between quotation versions.'
+      'Click the revisions button to inspect price changes between quotation versions.',
+      'In the "All" view, all real quotations are displayed while unfinished drafts are shown when filtering by customer.'
     ],
     faq: [
       {
@@ -292,7 +437,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Sales Order generated from Approved Quotation or created as a direct ready-made order.',
           actor: 'Sales Coordinator',
           statusBadge: 'Confirmed',
-          color: 'blue',
           nextSteps: ['Stock Availability Check']
         },
         {
@@ -301,7 +445,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'System checks warehouse stock. If shortage exists, a Production Work Order is created with 1 click.',
           actor: 'Storekeeper / Production',
           statusBadge: 'In Stock / Production',
-          color: 'indigo',
           nextSteps: ['Advance Payment Receipt']
         },
         {
@@ -310,7 +453,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Customer advance is collected and official receipt is issued.',
           actor: 'Cashier / Finance',
           statusBadge: 'Advance Received',
-          color: 'emerald',
           nextSteps: ['Invoice Generation']
         },
         {
@@ -319,11 +461,42 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Tax Invoice generated. Storekeeper fills driver & vehicle details to print the official Gate Pass.',
           actor: 'Store & Security',
           statusBadge: 'Dispatched',
-          color: 'purple',
           nextSteps: ['Delivered']
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Order Generation & Confirmation',
+        instructions: [
+          'Sales orders are automatically generated from Approved Quotations with 1 click, or created directly via "+ New Sales Order".',
+          'Review customer details, billing/shipping addresses, line items, and delivery deadlines.'
+        ]
+      },
+      {
+        title: 'Step 2: Warehouse Stock Check & Shortage Work Orders',
+        instructions: [
+          'Examine the "Stock Check" column on each line item.',
+          'If items are in stock, they are allocated for delivery.',
+          'If a shortage exists (amber badge), click "Actions ▾ > Create Work Order" to manufacture the required quantities immediately.'
+        ]
+      },
+      {
+        title: 'Step 3: Advance Receipts & Billing',
+        instructions: [
+          'Collect customer advance payments and click "Actions ▾ > Issue Advance Receipt" to generate an official numbered receipt.',
+          'Click "Actions ▾ > Generate Invoice" to create a tax invoice linked to the order.'
+        ]
+      },
+      {
+        title: 'Step 4: Dispatch & Factory Gate Pass',
+        instructions: [
+          'When goods are ready for dispatch, click "Actions ▾ > Dispatch & Gate Pass".',
+          'Enter carrier type, vehicle registration number, driver name, and phone number.',
+          'System generates and prints the official factory Gate Pass (GP-xxxx) required by security.'
+        ]
+      }
+    ],
     actions: [
       {
         name: 'Quick PDF (1-Click)',
@@ -391,7 +564,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Sales or CRM user submits a quotation or credit limit increase request for manager authorization.',
           actor: 'Requesting User',
           statusBadge: 'Pending Approval',
-          color: 'amber',
           nextSteps: ['Manager Review']
         },
         {
@@ -400,7 +572,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Manager inspects quote details, margins, customer outstanding balances, and terms.',
           actor: 'Manager / Director',
           statusBadge: 'In Review',
-          color: 'blue',
           nextSteps: ['Approve / Reject Decision']
         },
         {
@@ -409,7 +580,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Manager clicks Approve or Reject. Rejections require mandatory reason. Decision logged to database audit trail.',
           actor: 'Manager & System',
           statusBadge: 'Approved / Rejected',
-          color: 'emerald',
           nextSteps: ['Status updated in CRM', 'History Log created']
         },
         {
@@ -418,11 +588,41 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'All past decisions, approver names, reasons, and timestamps remain accessible in the History Log tab.',
           actor: 'Auditor / Compliance',
           statusBadge: 'Logged',
-          color: 'purple',
           nextSteps: []
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Inspect Pending Approvals',
+        instructions: [
+          'Open the Central Approvals Hub from the sidebar or notifications.',
+          'View pending engineering and product quotations in the "Quotation Approvals" tab.',
+          'Check customer credit limit extension requests in the "Credit Limit Requests" tab.'
+        ]
+      },
+      {
+        title: 'Step 2: Technical & Financial Evaluation',
+        instructions: [
+          'Review quoted amounts, discounts, payment terms, and profit margins.',
+          'Check customer outstanding receivables and credit history.'
+        ]
+      },
+      {
+        title: 'Step 3: Approve or Reject with Audit Logging',
+        instructions: [
+          'Click "Approve" (check icon) to immediately authorize the quotation or credit limit.',
+          'Click "Reject" (cross icon) and enter a mandatory revision reason so the estimator can correct the quotation.',
+          'Every decision is permanently recorded in the immutable database audit trail.'
+        ]
+      },
+      {
+        title: 'Step 4: Auditing History',
+        instructions: [
+          'Switch to "Approval History Log" tab to view all past approved and rejected requests with approver names, timestamps, and logged reasons.'
+        ]
+      }
+    ],
     actions: [
       {
         name: 'Quotation Approvals Tab',
@@ -478,7 +678,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Created from Approved Quote or Sales Order. Priority, due date, and job quantities assigned.',
           actor: 'Production Manager',
           statusBadge: 'Scheduled',
-          color: 'blue',
           nextSteps: ['Material Issue Station']
         },
         {
@@ -487,7 +686,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Store releases specified raw steel plates, rods, and hardware to the machining department.',
           actor: 'Storekeeper',
           statusBadge: 'Materials Issued',
-          color: 'indigo',
           nextSteps: ['Machining Operations']
         },
         {
@@ -496,7 +694,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Operators perform Turning, Milling, Boring, Welding, Grinding with logged machine hours.',
           actor: 'Machinists / Operators',
           statusBadge: 'In Progress',
-          color: 'amber',
           nextSteps: ['Quality Inspection']
         },
         {
@@ -505,11 +702,40 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Final dimensions inspected against technical drawings. Work order marked Completed.',
           actor: 'QC Inspector',
           statusBadge: 'Completed',
-          color: 'emerald',
           nextSteps: ['Finished Goods Warehouse']
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Work Order Creation & Release',
+        instructions: [
+          'Generated automatically from Approved Quotations or created directly via "+ New Work Order".',
+          'Review customer name, target delivery date, job priority, and item quantities.'
+        ]
+      },
+      {
+        title: 'Step 2: Material Requisition & Issue',
+        instructions: [
+          'Check BOM materials (plates, shafts, bought-out components).',
+          'Click "Issue Materials" to deduct raw materials from warehouse inventory and generate a Material Issue Note (MIN).'
+        ]
+      },
+      {
+        title: 'Step 3: Machine Shop Floor Operations',
+        instructions: [
+          'Operators record labor and machine hours spent on CNC Milling, Lathe turning, Boring, Heat Treatment, and Grinding.',
+          'Update progress percentage (e.g. 25%, 50%, 75%, 100%).'
+        ]
+      },
+      {
+        title: 'Step 4: Quality Inspection & Finished Goods Transfer',
+        instructions: [
+          'Quality control inspector checks part dimensions against blueprint tolerances.',
+          'Mark order as Completed to transfer finished parts into Finished Goods inventory or prepare for dispatch.'
+        ]
+      }
+    ],
     actions: [
       {
         name: 'View Work Order Detail',
@@ -565,7 +791,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Loaded directly from Quotation, Sales Order, or created manually with custom items.',
           actor: 'Accountant / Billing Clerk',
           statusBadge: 'Draft',
-          color: 'amber',
           nextSteps: ['Tax Profile Selection']
         },
         {
@@ -574,7 +799,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Standard VAT, SSCL, and withholding taxes computed automatically according to tax profile.',
           actor: 'Billing System',
           statusBadge: 'Calculated',
-          color: 'blue',
           nextSteps: ['Issue Official Invoice']
         },
         {
@@ -583,7 +807,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Official invoice number assigned. PDF printed or emailed directly to client.',
           actor: 'Accountant',
           statusBadge: 'Sent / Unpaid',
-          color: 'purple',
           nextSteps: ['Payment Collection']
         },
         {
@@ -592,11 +815,41 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Customer payment recorded (cash, cheque, bank transfer). Invoice marked Paid or Partially Paid.',
           actor: 'Accounts Receivable',
           statusBadge: 'Paid',
-          color: 'emerald',
           nextSteps: ['General Ledger Posting']
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Create Tax Invoice',
+        instructions: [
+          'Click "+ New Invoice" or click "Generate Tax Invoice" directly from an Approved Quotation or Sales Order.',
+          'Customer details, contact info, and tax numbers (VAT/SVAT) are pre-populated.'
+        ]
+      },
+      {
+        title: 'Step 2: Line Items, Taxes & SSCL',
+        instructions: [
+          'Add or verify billed line items, quantities, and rates.',
+          'Apply tax profiles: VAT (18%) and SSCL (2.5%) are computed according to official Sri Lankan Inland Revenue formulas.',
+          'Deduct customer discounts if applicable.'
+        ]
+      },
+      {
+        title: 'Step 3: Printing & Official Dispatch',
+        instructions: [
+          'Click "Preview" or "Print" to export official Rex Industries Tax Invoice on letterhead.',
+          'Email invoice PDF directly to customer accounting contacts.'
+        ]
+      },
+      {
+        title: 'Step 4: Payment Application & Receipts',
+        instructions: [
+          'Apply advance payments already collected, or record new customer payments (Cash, Bank Transfer, Cheque).',
+          'Track invoice status: Draft ➔ Issued ➔ Partially Paid ➔ Paid / Overdue.'
+        ]
+      }
+    ],
     actions: [
       {
         name: 'New Invoice (+)',
@@ -624,7 +877,7 @@ export const HELP_GUIDES: HelpGuideItem[] = [
     faq: [
       {
         question: 'Does generating an invoice show a browser alert message?',
-        answer: 'No. The invoice page now loads smoothly and directly without any disruptive browser popups or prompts.'
+        answer: 'No. The invoice page loads smoothly and directly without any disruptive browser popups or prompts.'
       }
     ],
     relatedModules: [
@@ -638,308 +891,412 @@ export const HELP_GUIDES: HelpGuideItem[] = [
   {
     id: 'inventory-stock',
     routePatterns: ['/inventory'],
-    title: 'Raw Materials & Finished Goods Inventory',
-    category: 'Inventory & Stores',
-    iconName: 'Package',
-    summary: 'Manages raw materials (steel plates, round shafts, bronze, fasteners), finished goods inventory, stock levels, reorder points, and linear cutting optimization.',
+    title: 'Raw Materials & Inventory Management',
+    category: 'Inventory & Warehousing',
+    iconName: 'Boxes',
+    summary: 'Real-time stock valuation, raw steel stock (plates, rods, hex bars), bought-out components, finished goods, reorder level alerts, and stock adjustments.',
     workflowDiagram: {
-      title: 'Inventory Flow Cycle',
-      subtitle: 'From supplier GRN to material issue and finished goods storage',
+      title: 'Inventory Movement Cycle',
+      subtitle: 'From supplier procurement to shop floor issue and stock reconciliation',
       steps: [
         {
           stepNumber: 1,
-          title: 'Stock Intake (GRN)',
-          description: 'Raw materials received from suppliers via purchasing GRN and added to warehouse ledger.',
+          title: 'Stock Receipt (GRN)',
+          description: 'Materials received from suppliers inspected and entered into warehouse stock via Supplier GRN.',
           actor: 'Storekeeper',
           statusBadge: 'Received',
-          color: 'blue',
-          nextSteps: ['Stock Valuation']
+          nextSteps: ['Warehouse Binning']
         },
         {
           stepNumber: 2,
-          title: 'Stock Cutting & Prep',
-          description: 'Linear stock cutting studio calculates optimal cuts from standard 6m bars/plates to minimize waste.',
-          actor: 'Store Cutter',
-          statusBadge: 'Available',
-          color: 'indigo',
-          nextSteps: ['Issue to Work Order']
+          title: 'Stock Allocation',
+          description: 'Stock allocated for production work orders or customer sales orders.',
+          actor: 'Inventory Controller',
+          statusBadge: 'Allocated',
+          nextSteps: ['Material Issue']
         },
         {
           stepNumber: 3,
-          title: 'Material Issue to Production',
-          description: 'Raw materials issued against specific Work Order numbers and deducted from stock balance.',
-          actor: 'Store Dispatcher',
+          title: 'Material Issue Note (MIN)',
+          description: 'Materials issued to machinists. Warehouse balances automatically reduced.',
+          actor: 'Storekeeper',
           statusBadge: 'Issued',
-          color: 'amber',
-          nextSteps: ['Production']
+          nextSteps: ['Finished Goods Receipt']
         },
         {
           stepNumber: 4,
-          title: 'Finished Goods Receipt',
-          description: 'Completed products received from shop floor into finished goods warehouse ready for customer dispatch.',
-          actor: 'Storekeeper',
-          statusBadge: 'In Stock',
-          color: 'emerald',
-          nextSteps: ['Sales Order Dispatch']
-        }
-      ]
-    },
-    actions: [
-      {
-        name: 'Linear Stock Cut Studio',
-        badge: 'Scissors',
-        description: 'Optimizes cut patterns for steel rods and shafts to minimize off-cut waste.',
-        howTo: 'Click "Linear Stock Cut Studio" button at the top of the inventory page.'
-      },
-      {
-        name: 'Material Issue Station',
-        badge: 'PackageCheck',
-        description: 'Station for storekeepers to issue raw stock against active production jobs.',
-        howTo: 'Click "Material Issue Station" or navigate to /inventory/material-issue.'
-      },
-      {
-        name: 'Stock Ledger Hub',
-        badge: 'History',
-        description: 'Detailed movement audit showing every intake, issue, adjustment, and scrap record.',
-        howTo: 'Click "Stock Ledger" tab.'
-      }
-    ],
-    tips: [
-      'Set reorder thresholds on high-demand raw stocks (e.g. Mild Steel 25mm shaft) to trigger automatic low-stock notifications.'
-    ],
-    faq: [
-      {
-        question: 'How do I add a new raw material?',
-        answer: 'Click "Add Raw Material" or create it automatically through a Purchasing Goods Received Note (GRN).'
-      }
-    ],
-    relatedModules: [
-      { title: 'Material Issue Station', route: '/inventory/material-issue' },
-      { title: 'Purchasing & GRN', route: '/purchasing' },
-      { title: 'Work Orders', route: '/production' }
-    ]
-  },
-
-  // 8. Material Issue & Store Dispatch
-  {
-    id: 'inventory-material-issue',
-    routePatterns: ['/inventory/material-issue', '/material-issue'],
-    title: 'Material Issue Station & Store Dispatch',
-    category: 'Inventory & Stores',
-    iconName: 'PackageCheck',
-    summary: 'Dedicated storekeeper station for issuing raw materials, fasteners, and stock items against active Work Orders with signature verification and inventory deduction.',
-    workflowDiagram: {
-      title: 'Store Material Requisition Flow',
-      subtitle: 'From production requisition to store physical release',
-      steps: [
-        {
-          stepNumber: 1,
-          title: 'Work Order Requisition',
-          description: 'Work order specifies required raw material dimensions, weights, and quantities.',
-          actor: 'Production Planner',
-          statusBadge: 'Requested',
-          color: 'blue',
-          nextSteps: ['Storekeeper Verification']
-        },
-        {
-          stepNumber: 2,
-          title: 'Stock Picking & Measurement',
-          description: 'Storekeeper identifies stock, cuts rod or plate if needed, and stages material for release.',
-          actor: 'Storekeeper',
-          statusBadge: 'Staged',
-          color: 'amber',
-          nextSteps: ['Issue Confirmation']
-        },
-        {
-          stepNumber: 3,
-          title: 'Issue Voucher Generation',
-          description: 'Material is officially marked as issued. Stock quantities are decremented from inventory ledger.',
-          actor: 'Storekeeper & Machinist',
-          statusBadge: 'Issued',
-          color: 'emerald',
-          nextSteps: ['Shop Floor Machining']
-        }
-      ]
-    },
-    actions: [
-      {
-        name: 'Select Work Order',
-        badge: 'Search',
-        description: 'Choose which active Work Order requires materials.',
-        howTo: 'Pick from the dropdown of active production jobs.'
-      },
-      {
-        name: 'Confirm Material Issue',
-        badge: 'CheckCircle2',
-        description: 'Deducts material from warehouse stock and logs the movement in the audit ledger.',
-        howTo: 'Verify quantities and click "Confirm Issue".'
-      }
-    ],
-    tips: [
-      'Always verify part numbers and heat numbers before issuing raw stock to critical engineering jobs.'
-    ],
-    faq: [
-      {
-        question: 'Can materials be returned to store if unused?',
-        answer: 'Yes! You can record a Material Return in the stock adjustments ledger to restore unused raw stock.'
-      }
-    ],
-    relatedModules: [
-      { title: 'Inventory Hub', route: '/inventory' },
-      { title: 'Work Orders', route: '/production' }
-    ]
-  },
-
-  // 9. Purchasing & GRN
-  {
-    id: 'purchasing-hub',
-    routePatterns: ['/purchasing', '/purchasing/po-builder', '/purchasing/grn-builder', '/purchasing/bill-builder'],
-    title: 'Purchasing, POs, GRN & Supplier Bills',
-    category: 'Procurement',
-    iconName: 'Truck',
-    summary: 'Manages procurement from Material Requisitions (MR), Purchase Orders (PO), Goods Received Notes (GRN) quality inspection, and Supplier Bills settlement.',
-    workflowDiagram: {
-      title: 'Procure-to-Pay Lifecycle',
-      subtitle: 'From material request to supplier payment settlement',
-      steps: [
-        {
-          stepNumber: 1,
-          title: 'Purchase Order (PO)',
-          description: 'Purchase Order sent to approved supplier with agreed prices, delivery target, and terms.',
-          actor: 'Purchasing Officer',
-          statusBadge: 'PO Issued',
-          color: 'blue',
-          nextSteps: ['Goods Received (GRN)']
-        },
-        {
-          stepNumber: 2,
-          title: 'Goods Received Note (GRN)',
-          description: 'Shipment received at factory gate. Storekeeper inspects quantities and physical condition.',
-          actor: 'Store Inspector',
-          statusBadge: 'GRN Approved',
-          color: 'emerald',
-          nextSteps: ['Inventory Auto-Update']
-        },
-        {
-          stepNumber: 3,
-          title: 'Supplier Bill Matching',
-          description: '3-way matching between Purchase Order, GRN, and Supplier Invoice for exact billing.',
-          actor: 'Accounts Payable',
-          statusBadge: 'Billed',
-          color: 'purple',
-          nextSteps: ['Payment Voucher']
-        },
-        {
-          stepNumber: 4,
-          title: 'Payment Settlement',
-          description: 'Finance releases cheque or bank transfer payment against approved supplier bill.',
-          actor: 'Finance Director',
-          statusBadge: 'Settled',
-          color: 'cyan',
+          title: 'Stock Audits & Valuation',
+          description: 'Periodic physical stock counts matched against system balances. Discrepancies logged as adjustments.',
+          actor: 'Internal Auditor',
+          statusBadge: 'Verified',
           nextSteps: []
         }
       ]
     },
-    actions: [
+    howToSteps: [
       {
-        name: 'New Purchase Order (PO)',
-        badge: 'Plus',
-        description: 'Creates a new purchase order with supplier selection and line items.',
-        howTo: 'Click "New PO" in the purchasing hub.'
+        title: 'Step 1: Adding & Managing Stock Items',
+        instructions: [
+          'Click "+ Add Item" to register raw material grades (MS, SS304, EN8, Brass) or finished products.',
+          'Define SKUs, category, unit of measure (kg, pcs, meters, plates), and reorder warning levels.'
+        ]
       },
       {
-        name: 'Create GRN from PO',
-        badge: 'Package',
-        description: 'Receives items against an open purchase order and automatically updates inventory stock balance.',
-        howTo: 'Click "Receive GRN" on an open PO.'
+        title: 'Step 2: Tracking In & Out Movements',
+        instructions: [
+          'Inspect the real-time stock ledger to see incoming supplier deliveries (GRN) and outgoing production issues (MIN).',
+          'Items falling below minimum reorder thresholds trigger amber warning badges automatically.'
+        ]
+      },
+      {
+        title: 'Step 3: Stock Adjustments & Physical Audits',
+        instructions: [
+          'If physical counts differ from system quantities, click "Adjust Stock" and enter reconciliation reason.',
+          'Audit log records all adjustments with user name and timestamp.'
+        ]
+      }
+    ],
+    actions: [
+      {
+        name: 'Add Item',
+        badge: 'Plus',
+        description: 'Registers a new raw material, tool, or finished product SKU.',
+        howTo: 'Click "+ Add Item" at the top right.'
+      },
+      {
+        name: 'Linear Cut Studio',
+        badge: 'Ruler',
+        description: 'Optimizes plate and bar cut plans to minimize steel scrap and wastage.',
+        howTo: 'Click "Linear Stock Cut Studio" button in toolbar.'
+      },
+      {
+        name: 'Stock Ledger',
+        badge: 'List',
+        description: 'View full audit log of transactions (IN, OUT, ADJUST) for any inventory item.',
+        howTo: 'Click "View Ledger" on any item card.'
       }
     ],
     tips: [
-      'Approved GRNs instantly update the raw stock balances in the main inventory ledger without manual entry.'
+      'Set reorder levels accurately so the system warns you well before critical steel grades run out during production.',
+      'Check the Linear Cut Studio to optimize rod cutting before issuing full bars to operators.'
     ],
     faq: [
       {
-        question: 'How do I handle partial supplier deliveries?',
-        answer: 'You can receive partial quantities in a GRN; the remaining balance stays open on the Purchase Order for subsequent deliveries.'
+        question: 'How do I adjust stock for damaged or scrapped materials?',
+        answer: 'Open the item detail modal and click "Adjust Stock". Select "Scrap/Loss" and enter the quantity to deduct.'
       }
     ],
     relatedModules: [
-      { title: 'Inventory Hub', route: '/inventory' },
-      { title: 'Accounts Payable', route: '/finance/payables' }
+      { title: 'Material Issue Station', route: '/inventory/material-issue' },
+      { title: 'Purchasing Hub', route: '/purchasing' }
     ]
   },
 
-  // 10. Leads & CRM Pipeline
+  // 8. Material Issue (MIN)
   {
-    id: 'crm-leads',
-    routePatterns: ['/crm/leads', '/leads'],
-    title: 'Customer Leads & Sales Opportunities',
-    category: 'CRM & Sales',
-    iconName: 'TrendingUp',
-    summary: 'Tracks incoming business inquiries, contact persons, follow-up calls, lead stages (New, Contacted, Quoted, Won, Lost), and 1-click conversion to official Quotations.',
+    id: 'inventory-material-issue',
+    routePatterns: ['/inventory/material-issue'],
+    title: 'Material Issue Station (MIN Dispatch)',
+    category: 'Inventory & Warehousing',
+    iconName: 'Package',
+    summary: 'The Material Issue Station controls raw material dispatches to the machine shop floor against specific work orders, generating official Material Issue Notes (MIN) and updating inventory balances in real-time.',
     workflowDiagram: {
-      title: 'Lead Conversion Pipeline',
-      subtitle: 'From first customer contact to quotation and deal win',
+      title: 'Material Requisition & Issue Flow',
+      subtitle: 'From shop floor request to warehouse issue and MIN printing',
       steps: [
         {
           stepNumber: 1,
-          title: 'Inbound Inquiry',
-          description: 'Lead recorded with company name, phone, email, and requirements description.',
-          actor: 'Sales Rep',
-          statusBadge: 'New',
-          color: 'blue',
-          nextSteps: ['Initial Follow-up']
+          title: 'Work Order Selection',
+          description: 'Storekeeper selects an active Work Order requiring raw steel, fasteners, or tooling.',
+          actor: 'Storekeeper',
+          statusBadge: 'Request Pending',
+          nextSteps: ['Stock Availability Check']
         },
         {
           stepNumber: 2,
-          title: 'Technical Discussion',
-          description: 'Sales engineer contacts client to discuss specifications, drawings, and quantities.',
-          actor: 'Sales Engineer',
-          statusBadge: 'Qualified',
-          color: 'indigo',
-          nextSteps: ['Create Quotation']
+          title: 'Verify Stock & Cut Off',
+          description: 'Storekeeper measures and cuts the required plates, rods, or takes components from warehouse bins.',
+          actor: 'Store Assistant',
+          statusBadge: 'Preparing',
+          nextSteps: ['Issue Confirmation']
         },
         {
           stepNumber: 3,
-          title: 'Generate Quotation',
-          description: '1-click action converts lead directly into an engineering or product quotation.',
-          actor: 'Estimator',
-          statusBadge: 'Quoted',
-          color: 'amber',
-          nextSteps: ['Quote Negotiation']
-        },
-        {
-          stepNumber: 4,
-          title: 'Deal Won & Customer Account',
-          description: 'Quote accepted. Lead converted into permanent registered Customer in database.',
-          actor: 'Sales Coordinator',
-          statusBadge: 'Won',
-          color: 'emerald',
-          nextSteps: ['Sales Order', 'Work Order']
+          title: 'Generate & Print MIN',
+          description: 'Official Material Issue Note (MIN-xxxx) is generated and printed. Signed by storekeeper and machine operator.',
+          actor: 'Storekeeper & Operator',
+          statusBadge: 'Issued',
+          nextSteps: ['Machining Job Started']
         }
       ]
     },
-    actions: [
+    howToSteps: [
       {
-        name: 'New Lead (+)',
-        badge: 'Plus',
-        description: 'Add a new lead record with contact person, phone, and requirements.',
-        howTo: 'Click "New Lead" at top right.'
+        title: 'Step 1: Select Work Order',
+        instructions: [
+          'Pick the active Work Order from the dropdown or search list.',
+          'Review the BOM requirements and items requested by the engineering team.'
+        ]
       },
       {
-        name: 'Create Quote for Lead',
+        title: 'Step 2: Confirm Quantities & Batches',
+        instructions: [
+          'Verify available physical stock in the store.',
+          'Enter the exact quantity, weight, or dimensions being issued to the machinist.'
+        ]
+      },
+      {
+        title: 'Step 3: Issue and Print MIN',
+        instructions: [
+          'Click "Confirm Material Issue". System deducts quantities from raw stock.',
+          'Print the Material Issue Note (MIN) for operator and gate signatures.'
+        ]
+      }
+    ],
+    actions: [
+      {
+        name: 'Issue Material Note',
         badge: 'FileText',
-        description: 'Directly opens Quotation Builder pre-filled with this lead\'s company and contact info.',
-        howTo: 'Click "Quote" button on any lead card.'
+        description: 'Records material issuance against a work order and prints the MIN.',
+        howTo: 'Select work order, click Issue Materials.'
+      },
+      {
+        name: 'Print MIN',
+        badge: 'Printer',
+        description: 'Prints official store dispatch slip for shop floor records.',
+        howTo: 'Click "Print MIN" on past issue logs.'
       }
     ],
     tips: [
-      'Use the Kanban view to drag and drop leads across pipeline stages.'
+      'Always have the operator sign the printed MIN slip to maintain physical audit accountability.'
     ],
     faq: [
       {
-        question: 'Does creating a quote convert the lead automatically?',
-        answer: 'The quotation links directly to the lead record. When the quote is approved and won, the lead stage updates to Won and can be promoted to a full Customer.'
+        question: 'Can I issue materials partially if full quantity is not in stock?',
+        answer: 'Yes. You can issue available quantities now and record a second MIN later when remaining stock arrives.'
+      }
+    ],
+    relatedModules: [
+      { title: 'Work Orders', route: '/production' },
+      { title: 'Inventory Stock', route: '/inventory' }
+    ]
+  },
+
+  // 9. Purchasing Hub
+  {
+    id: 'purchasing-hub',
+    routePatterns: ['/purchasing', '/purchasing/hub'],
+    title: 'Purchasing, Requisitions & Supplier GRN',
+    category: 'Procurement',
+    iconName: 'Truck',
+    summary: 'Manages internal Material Requisitions (MR), official Purchase Orders (PO) to vendors, Supplier Goods Received Notes (GRN), and supplier bill tracking.',
+    workflowDiagram: {
+      title: 'Procurement to Payment Cycle',
+      subtitle: 'From internal material need to supplier invoice settlement',
+      steps: [
+        {
+          stepNumber: 1,
+          title: 'Material Requisition (MR)',
+          description: 'Department heads request materials needed for jobs or reorder replenishment.',
+          actor: 'Requesting Dept',
+          statusBadge: 'MR Created',
+          nextSteps: ['PO Generation']
+        },
+        {
+          stepNumber: 2,
+          title: 'Purchase Order (PO)',
+          description: 'Official PO issued to approved supplier with agreed prices, delivery terms, and payment terms.',
+          actor: 'Purchasing Officer',
+          statusBadge: 'PO Issued',
+          nextSteps: ['Supplier Delivery']
+        },
+        {
+          stepNumber: 3,
+          title: 'Goods Received Note (GRN)',
+          description: 'Warehouse receives, counts, and inspects materials against supplier delivery order. GRN increments raw stock.',
+          actor: 'Storekeeper / Gate',
+          statusBadge: 'GRN Approved',
+          nextSteps: ['Supplier Bill']
+        },
+        {
+          stepNumber: 4,
+          title: 'Supplier Bill & Payment',
+          description: 'Accounts 3-way matches PO, GRN, and Supplier Invoice before payment release.',
+          actor: 'Accounts Payable',
+          statusBadge: 'Settled',
+          nextSteps: []
+        }
+      ]
+    },
+    howToSteps: [
+      {
+        title: 'Step 1: Create Purchase Order (PO)',
+        instructions: [
+          'Click "+ New Purchase Order" in the Purchasing Hub.',
+          'Select supplier from approved vendor list. Add steel grades, plates, or tooling items with quantities and agreed unit costs.'
+        ]
+      },
+      {
+        title: 'Step 2: Send PO to Supplier',
+        instructions: [
+          'Export PO as official PDF with Rex Industries letterhead and email to vendor sales representative.'
+        ]
+      },
+      {
+        title: 'Step 3: Receive Materials (GRN)',
+        instructions: [
+          'When the delivery truck arrives, open the PO and click "Receive Goods (GRN)".',
+          'Verify delivered quantities and test certificates. System automatically adds items into raw materials inventory.'
+        ]
+      }
+    ],
+    actions: [
+      {
+        name: 'New PO (+)',
+        badge: 'Plus',
+        description: 'Creates a purchase order for suppliers.',
+        howTo: 'Click "+ New PO" button in top toolbar.'
+      },
+      {
+        name: 'Create GRN',
+        badge: 'Package',
+        description: 'Receives materials from supplier delivery into inventory.',
+        howTo: 'Click "Receive GRN" on pending PO.'
+      }
+    ],
+    tips: [
+      'Always enter the supplier delivery invoice number on the GRN to simplify accounting 3-way matching.'
+    ],
+    faq: [
+      {
+        question: 'What happens when a supplier delivers partial items?',
+        answer: 'You can record a partial GRN. The PO will remain in "Partially Received" status until the remaining balance arrives.'
+      }
+    ],
+    relatedModules: [
+      { title: 'Inventory Stock', route: '/inventory' },
+      { title: 'Accounting Hub', route: '/finance/accounting' }
+    ]
+  },
+
+  // 10. Leads CRM
+  {
+    id: 'crm-leads',
+    routePatterns: ['/crm/leads', '/leads'],
+    title: 'Leads & Sales Pipeline CRM',
+    category: 'CRM & Sales',
+    iconName: 'Compass',
+    summary: 'Track customer inquiries, sample collections (GRN), lead qualification, drag-and-drop Kanban pipeline progression, and instant quotation creation.',
+    workflowDiagram: {
+      title: 'Lead Conversion Pipeline',
+      subtitle: 'From raw customer inquiry to qualified quote and customer creation',
+      steps: [
+        {
+          stepNumber: 1,
+          title: 'Lead Capture',
+          description: 'Record inquiry from phone, walk-in, website, or email with contact info and estimated project value.',
+          actor: 'Sales Rep',
+          statusBadge: 'New',
+          nextSteps: ['Contacted']
+        },
+        {
+          stepNumber: 2,
+          title: 'Contact & Qualification',
+          description: 'Sales engineer contacts client to understand technical drawings, physical sample requirements, and delivery dates.',
+          actor: 'Sales Engineer',
+          statusBadge: 'Contacted ➔ Qualified',
+          nextSteps: ['Sample Collection', 'Quotation']
+        },
+        {
+          stepNumber: 3,
+          title: 'Sample Collection (GRN)',
+          description: 'Client provides physical part/sample for measurement, reverse engineering, or testing. Sample GRN recorded.',
+          actor: 'Estimator / Store',
+          statusBadge: 'Sample Received',
+          nextSteps: ['Quotation Proposal']
+        },
+        {
+          stepNumber: 4,
+          title: 'Quotation & Win',
+          description: '1-click Quote button opens Quotation Builder. Lead marked Won upon quotation approval and customer sign-off.',
+          actor: 'Sales Rep & Client',
+          statusBadge: 'Proposal ➔ Won',
+          nextSteps: ['Sales Order & Production']
+        }
+      ]
+    },
+    howToSteps: [
+      {
+        title: 'Step 1: Register New Sales Leads',
+        instructions: [
+          'Click "+ Add Lead" in the top header.',
+          'Choose an existing customer or toggle "+ Register New Customer" with company name, email, phone, and BR/VAT details.',
+          'Assign expected deal value, initial priority (Urgent, High, Medium, Low), and sales owner.'
+        ]
+      },
+      {
+        title: 'Step 2: Move Leads through Pipeline Stages',
+        instructions: [
+          'In Kanban View, drag and drop lead cards between stages: New ➔ Contacted ➔ Qualified ➔ Proposal ➔ Negotiation ➔ Won / Lost.',
+          'Track idle days (idle alert badges appear on leads without updates for 7+ days).'
+        ]
+      },
+      {
+        title: 'Step 3: Sample Collection & Instant Quoting',
+        instructions: [
+          'Click "Sample" on any lead card to record a Customer Sample GRN when the client provides a physical part for measurement/copying.',
+          'Once a lead reaches "Qualified" stage, click "Quote" directly on the card to open the Quotation Builder with pre-filled customer details.'
+        ]
+      },
+      {
+        title: 'Step 4: Managing High-Volume Leads',
+        instructions: [
+          'The system displays the latest 20 leads by default to keep the interface fast and responsive.',
+          'Click "Load Next +20 Leads" or "See All ({total})" in Table view, or "+X more in {stage}" in Kanban columns to browse older leads.',
+          'Use filter pills (Hot Leads, Needs Followup, Won, Lost) to instantly isolate critical deals.'
+        ]
+      }
+    ],
+    actions: [
+      {
+        name: '+ Add Lead',
+        badge: 'Plus',
+        description: 'Creates a new lead record with customer selection or on-the-fly registration.',
+        howTo: 'Click "+ Add Lead" in top right.'
+      },
+      {
+        name: 'Kanban vs Table View',
+        badge: 'LayoutGrid',
+        description: 'Toggle between visual drag-and-drop pipeline stages and dense data table view.',
+        howTo: 'Click layout toggle icons in toolbar.'
+      },
+      {
+        name: 'Sample Button on Card',
+        badge: 'Package',
+        description: 'Opens Customer Sample GRN modal directly from lead card.',
+        howTo: 'Click "Sample" button on any kanban card.'
+      },
+      {
+        name: 'Quote Button on Card',
+        badge: 'FileText',
+        description: 'Immediately opens Quotation Builder with customer pre-loaded once lead is qualified.',
+        howTo: 'Click "Quote" button on cards in Qualified stage.'
+      },
+      {
+        name: 'Latest 20 vs See All Toggle',
+        badge: 'List',
+        description: 'Controls initial display limit for high performance with 1-click access to all records.',
+        howTo: 'Click "Latest 20" or "See All ({total})" toggle in toolbar.'
+      }
+    ],
+    tips: [
+      'Leads idle for more than 7 days automatically highlight in amber to prompt quick sales followup.',
+      'Always convert qualified leads into formal quotes to establish official audit pricing.'
+    ],
+    faq: [
+      {
+        question: 'How do I register a walk-in client without creating a customer first?',
+        answer: 'In the Add Lead modal, click "+ Register New Customer". It will create both the customer master record and the active lead in one step.'
       }
     ],
     relatedModules: [
@@ -948,53 +1305,73 @@ export const HELP_GUIDES: HelpGuideItem[] = [
     ]
   },
 
-  // 11. Customers Directory
+  // 11. Customers Hub
   {
     id: 'crm-customers',
     routePatterns: ['/crm/customers', '/customers'],
-    title: 'Customers Directory & Credit Management',
+    title: 'Customer Master & Accounts Hub',
     category: 'CRM & Sales',
     iconName: 'Users',
-    summary: 'Comprehensive database of all registered corporate clients and individual buyers, credit limits, outstanding receivables, VAT/SVAT numbers, and complete transaction history.',
+    summary: 'Master database of corporate and individual clients, credit limits, tax numbers (VAT/SVAT/TIN), historical transaction ledgers, and contact persons.',
     workflowDiagram: {
-      title: 'Customer Account Governance',
-      subtitle: 'Managing credit limits, accounts, and order histories',
+      title: 'Customer Relationship Lifecycle',
+      subtitle: 'From registration to credit governance and transaction history',
       steps: [
         {
           stepNumber: 1,
           title: 'Customer Onboarding',
-          description: 'Company registered with BR number, VAT, SVAT/TIN, billing and delivery addresses.',
-          actor: 'Sales / Admin',
+          description: 'Company registered with BR, VAT/SVAT certificate details, finance contact info, and delivery addresses.',
+          actor: 'CRM Admin',
           statusBadge: 'Active',
-          color: 'blue',
           nextSteps: ['Credit Assessment']
         },
         {
           stepNumber: 2,
-          title: 'Credit Limit Authorization',
-          description: 'Manager reviews financial history and approves credit limit and payment terms.',
-          actor: 'Finance Director',
-          statusBadge: 'Approved Limit',
-          color: 'emerald',
-          nextSteps: ['Transactions']
+          title: 'Credit Limit Governance',
+          description: 'Initial credit limit assigned. Increases must be approved by Manager in Central Approvals Hub.',
+          actor: 'Finance Manager',
+          statusBadge: 'Credit Approved',
+          nextSteps: ['Commercial Quoting']
         },
         {
           stepNumber: 3,
-          title: 'Order & Billing Activity',
-          description: 'Quotations, Sales Orders, and Invoices automatically update the customer ledger.',
-          actor: 'Sales & Accounts',
-          statusBadge: 'Ongoing',
-          color: 'purple',
-          nextSteps: ['Collections']
+          title: 'Transactions & Statements',
+          description: 'Full history of quotations, sales orders, invoices, and payment receipts compiled into customer statement.',
+          actor: 'Accounts Receivable',
+          statusBadge: 'Good Standing',
+          nextSteps: []
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Adding a Customer',
+        instructions: [
+          'Click "+ New Customer" at top right.',
+          'Fill Company Name, Business Registration (BR) number, VAT and SVAT numbers.',
+          'Add primary contact person, email, and finance phone number.'
+        ]
+      },
+      {
+        title: 'Step 2: Managing Credit Limits',
+        instructions: [
+          'Set maximum allowable outstanding balance.',
+          'If client requests credit increase, submit request to Central Approvals Hub.'
+        ]
+      },
+      {
+        title: 'Step 3: Inspecting Customer Statement',
+        instructions: [
+          'Click any customer row to inspect customer profile, past invoices, quotes, and payment receipts.'
+        ]
+      }
+    ],
     actions: [
       {
-        name: 'New Customer',
+        name: 'New Customer (+)',
         badge: 'Plus',
-        description: 'Register a new customer account.',
-        howTo: 'Click "New Customer" button.'
+        description: 'Creates a new client master account.',
+        howTo: 'Click "+ New Customer" button in header.'
       },
       {
         name: 'View Customer Profile',
@@ -1036,7 +1413,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Sales invoices, supplier bills, and payment receipts post automated journal entries to GL.',
           actor: 'Operational Sub-ledgers',
           statusBadge: 'Posted',
-          color: 'blue',
           nextSteps: ['Bank Reconciliation']
         },
         {
@@ -1045,7 +1421,6 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Bank statements matched against company payment receipts and disbursements.',
           actor: 'Accountant',
           statusBadge: 'Reconciled',
-          color: 'emerald',
           nextSteps: ['Month-End Closing']
         },
         {
@@ -1054,11 +1429,33 @@ export const HELP_GUIDES: HelpGuideItem[] = [
           description: 'Automated generation of Trial Balance, Profit & Loss Statement, and Balance Sheet.',
           actor: 'Chief Accountant',
           statusBadge: 'Finalized',
-          color: 'purple',
           nextSteps: []
         }
       ]
     },
+    howToSteps: [
+      {
+        title: 'Step 1: Chart of Accounts & GL Setup',
+        instructions: [
+          'Review the Standard Chart of Accounts (Assets, Liabilities, Equity, Revenue, Cost of Goods, Expenses).',
+          'Link company bank accounts (HNB, Commercial Bank, Sampath) to their corresponding ledger accounts.'
+        ]
+      },
+      {
+        title: 'Step 2: Posting Journal Vouchers',
+        instructions: [
+          'Click "New Journal Entry" for manual adjustments, depreciation, or accruals.',
+          'Ensure debits equal credits before saving.'
+        ]
+      },
+      {
+        title: 'Step 3: Generating Financial Reports',
+        instructions: [
+          'Select custom date ranges to run the Profit & Loss statement, Balance Sheet, and Trial Balance.',
+          'Export reports to PDF or Excel for management reviews.'
+        ]
+      }
+    ],
     actions: [
       {
         name: 'Journal Builder',

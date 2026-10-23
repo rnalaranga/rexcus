@@ -15,6 +15,7 @@ import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -611,7 +612,8 @@ export const Invoices: React.FC = () => {
           <h1 className="text-2xl font-bold text-primary tracking-tight">Invoices</h1>
           <p className="text-sm text-secondary mt-1">Manage billing, payments, and view real-time settlement snapshots.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="finance-invoices" />
           <Button variant="primary" icon={Plus} onClick={() => navigate('/finance/invoices/new')}>Create Invoice</Button>
         </div>
       </div>

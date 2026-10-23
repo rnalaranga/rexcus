@@ -9,6 +9,7 @@ import {
   HelpCircle, ShieldCheck, Zap, Factory, Clock
 } from 'lucide-react';
 import { EmailSettingsManager } from '@/components/EmailSettingsManager';
+import { SerialNumberManager } from '@/components/admin/SerialNumberManager';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -1586,7 +1587,10 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
         </div>
       </GlassCard>
 
-      {/* --- SECTION 2: OPERATIONAL & BUSINESS VARIABLES --- */}
+      {/* --- SECTION 2: DOCUMENT SERIAL NUMBERS & PREFIX MANAGEMENT --- */}
+      <SerialNumberManager />
+
+      {/* --- SECTION 3: OPERATIONAL & BUSINESS VARIABLES --- */}
       <GlassCard className="p-6 border border-theme-subtle rounded-2xl shadow-xs space-y-6">
         <div className="flex items-center gap-3 border-b border-theme-subtle pb-4">
           <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">

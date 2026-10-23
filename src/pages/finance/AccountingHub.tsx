@@ -13,6 +13,7 @@ import { AccountModal } from './AccountModal';
 import { deleteAccount, fetchAccountLedger } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
+import { PageHelpButton } from '@/components/help/PageHelpButton';
 
 type Tab = 'coa' | 'journals' | 'taxes';
 
@@ -202,6 +203,7 @@ export const AccountingHub: React.FC = () => {
           <p className="text-sm text-muted mt-0.5">{countLabel}</p>
         </div>
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="finance-accounting" />
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/income-builder')} className="border border-theme-subtle text-emerald-500">Record Income</Button>
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/expense-builder')} className="border border-theme-subtle text-red-500">Record Expense</Button>

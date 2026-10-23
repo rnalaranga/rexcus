@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/utils'
 import { fetchWorkOrders, deleteWorkOrder } from '@/lib/api'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
@@ -394,6 +395,7 @@ export const WorkOrders: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="production-work-orders" />
           <Button 
             variant="outline" 
             size="sm"

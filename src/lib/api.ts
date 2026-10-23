@@ -849,3 +849,37 @@ export const executeCutIssue = async (data: any) => {
   return res.json();
 };
 
+export const fetchDocumentSequences = async () => {
+  const res = await fetch(`${API_URL}/sequences`);
+  const json = await res.json();
+  return Array.isArray(json) ? json : [];
+};
+
+export const updateDocumentSequence = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/sequences/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const fetchNextDocumentNumber = async (type: string, options?: { userPrefix?: string; customerPrefix?: string; reserve?: boolean }) => {
+  const res = await fetch(`${API_URL}/sequences/next`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, ...options })
+  });
+  return res.json();
+};
+
+export const updateUserPrefix = async (userId: string | number, prefix: string) => {
+  const res = await fetch(`${API_URL}/users/${userId}/prefix`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefix })
+  });
+  return res.json();
+};
+
+

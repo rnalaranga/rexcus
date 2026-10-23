@@ -22,6 +22,7 @@ import { ItemFormStudio } from '@/components/inventory/ItemFormStudio'
 import { ItemDetailModal } from '@/components/inventory/ItemDetailModal'
 import { LinearStockCutStudio } from '@/components/inventory/LinearStockCutStudio'
 import html2pdf from 'html2pdf.js'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'linear_remnants' | 'all'
 
@@ -1446,6 +1447,7 @@ export const Inventory: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="inventory-stock" />
           {activeTab === 'customer_sample' ? (
             <Button variant="primary" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
               Receive Customer Sample

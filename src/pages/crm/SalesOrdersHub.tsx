@@ -2,6 +2,7 @@ import React from 'react'
 import { ShoppingBag, ArrowLeft, Plus } from 'lucide-react'
 import { FinishedGoodsOrdersView } from '@/pages/inventory/FinishedGoodsOrdersView'
 import { Badge } from '@/components/ui/Badge'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 export const SalesOrdersHub: React.FC = () => {
   return (
@@ -23,6 +24,10 @@ export const SalesOrdersHub: React.FC = () => {
               Approved commercial orders, sales order PDFs, invoice conversions, and security gate pass dispatches.
             </p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="crm-sales-orders" />
         </div>
       </div>
 

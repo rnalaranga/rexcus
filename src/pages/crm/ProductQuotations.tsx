@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { 
   FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
@@ -22,6 +23,7 @@ import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGo
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 
@@ -47,17 +49,35 @@ export const ProductQuotations: React.FC = () => {
   const [emailModalData, setEmailModalData] = useState<any>(null)
 
   const [openActionId, setOpenActionId] = useState<string | null>(null)
+  const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('.product-quote-action-container')) {
-        setOpenActionId(null)
+      const target = e.target as HTMLElement;
+      if (!target.closest('.product-quote-action-menu') && !target.closest('.product-quote-action-btn')) {
+        setOpenActionId(null);
+        setActionCoords(null);
       }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [])
+    };
+
+    const handleScrollOrResize = (e: Event) => {
+      if (e.target && (e.target as HTMLElement).closest?.('.product-quote-action-menu')) {
+        return;
+      }
+      setOpenActionId(null);
+      setActionCoords(null);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, []);
 
   const [paymentReceiptsList, setPaymentReceiptsList] = useState<any[]>([])
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
@@ -203,7 +223,7 @@ export const ProductQuotations: React.FC = () => {
   // Status counts for filter pills
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      all: groupedQuotes.length,
+      all: 0,
       draft: 0,
       'pending approval': 0,
       approved: 0,
@@ -211,11 +231,16 @@ export const ProductQuotations: React.FC = () => {
       rejected: 0
     };
     groupedQuotes.forEach((g: any) => {
-      const s = (g.versions[0]?.status || 'Draft').toLowerCase();
+      const latest = g.versions[0];
+      const isAutoDraft = latest?.type === 'product_draft';
+      if (isAutoDraft && customerFilter === 'all') return;
+
+      counts.all++;
+      const s = (latest?.status || 'Draft').toLowerCase();
       if (counts[s] !== undefined) counts[s]++;
     });
     return counts;
-  }, [groupedQuotes]);
+  }, [groupedQuotes, customerFilter]);
 
   // Total Quoted Value
   const totalQuotedValue = useMemo(() => {
@@ -227,20 +252,23 @@ export const ProductQuotations: React.FC = () => {
     return groupedQuotes.filter((g: any) => {
       const latest = g.versions[0];
       const status = latest?.status || 'Draft';
+      const isAutoDraft = latest?.type === 'product_draft';
 
-      // Pure drafts should only be shown if a customer is selected
-      if (statusFilter === 'draft') {
-        if (customerFilter === 'all') return false;
-        if (latest?.type !== 'product_draft' && status.toLowerCase() !== 'draft') return false;
-      } else if (statusFilter !== 'all') {
-        if (status.toLowerCase() !== statusFilter.toLowerCase()) return false;
-      } else {
-        // statusFilter === 'all'
-        // Hide standalone drafts from main list when viewing all, because they are prominently shown in Active Drafts above when customer is selected!
-        if (latest?.type === 'product_draft' || (status === 'Draft' && g.versions.length === 1)) {
-          return false;
+      // 1. Temporary autosaved drafts (type === 'product_draft') should only be shown if a customer is selected
+      if (isAutoDraft && customerFilter === 'all') {
+        return false;
+      }
+
+      // 2. Status filter
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'draft') {
+          if (status.toLowerCase() !== 'draft' && !isAutoDraft) return false;
+        } else {
+          if (status.toLowerCase() !== statusFilter.toLowerCase()) return false;
         }
       }
+
+      // 3. Customer filter
       if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
 
       // Date range filter
@@ -364,15 +392,58 @@ export const ProductQuotations: React.FC = () => {
 
   const renderActionsDropdown = (group: any, latest: any, status: string, idx: number) => {
     const isOpen = openActionId === group.quoNo;
+
+    let menuStyle: React.CSSProperties = {};
+    if (isOpen && actionCoords) {
+      const PADDING = 8;
+      const MENU_WIDTH = 260;
+
+      let left = actionCoords.right - MENU_WIDTH;
+      if (left < PADDING) left = PADDING;
+      if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+        left = window.innerWidth - MENU_WIDTH - PADDING;
+      }
+
+      const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING;
+      const spaceAbove = actionCoords.top - PADDING;
+      const openUpwards = spaceBelow < 340 && spaceAbove > spaceBelow;
+
+      menuStyle = {
+        position: 'fixed',
+        left: `${left}px`,
+        width: `${MENU_WIDTH}px`,
+        zIndex: 99999,
+        maxHeight: openUpwards ? `${Math.min(480, spaceAbove)}px` : `${Math.min(480, spaceBelow)}px`,
+        ...(openUpwards 
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
+        )
+      };
+    }
+
     return (
-      <div className={`relative inline-block text-left ${isOpen ? 'z-50' : ''}`}>
+      <div className="relative inline-block text-left">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setOpenActionId(isOpen ? null : group.quoNo);
+            if (openActionId === group.quoNo) {
+              setOpenActionId(null);
+              setActionCoords(null);
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setOpenActionId(group.quoNo);
+              setActionCoords({
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height
+              });
+            }
           }}
-          className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
+          className={`product-quote-action-btn h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
             isOpen
               ? 'bg-emerald-600 text-white border-emerald-600'
               : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
@@ -382,13 +453,11 @@ export const ProductQuotations: React.FC = () => {
           <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {isOpen && (
+        {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`absolute right-0 ${
-              idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] py-1.5 text-left rounded-none max-h-[75vh] overflow-y-auto custom-scrollbar`}
-            style={{ minWidth: '256px', boxShadow: '0 12px 32px rgba(0,0,0,0.22), 0 0 1px rgba(0,0,0,0.1)' }}
+            style={menuStyle}
+            className="product-quote-action-menu bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none overflow-y-auto custom-scrollbar"
           >
             <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
               Product Quote Actions
@@ -397,8 +466,8 @@ export const ProductQuotations: React.FC = () => {
             {/* 1. Preview Document */}
             <button
               type="button"
-              onClick={() => { setPreviewData({ quotation: latest, lead: group }); setOpenActionId(null); }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+              onClick={() => { setPreviewData({ quotation: latest, lead: group }); setOpenActionId(null); setActionCoords(null); }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
             >
               <Eye size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
               <span>Preview Document</span>
@@ -407,8 +476,8 @@ export const ProductQuotations: React.FC = () => {
             {/* 2. Open in Builder */}
             <button
               type="button"
-              onClick={() => { navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`); setOpenActionId(null); }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+              onClick={() => { navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`); setOpenActionId(null); setActionCoords(null); }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
             >
               <Edit3 size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
               <span>Edit in Quotation Builder</span>
@@ -428,8 +497,9 @@ export const ProductQuotations: React.FC = () => {
                   lead: group
                 });
                 setOpenActionId(null);
+                setActionCoords(null);
               }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
             >
               <Mail size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
               <span>Send via Email</span>
@@ -445,8 +515,8 @@ export const ProductQuotations: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
+                  onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); setActionCoords(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                 >
                   <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
                   <span>Create Sales Order</span>
@@ -454,8 +524,8 @@ export const ProductQuotations: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                  onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); setActionCoords(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                 >
                   <Receipt size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
                   <span>Issue Advance Receipt</span>
@@ -463,8 +533,8 @@ export const ProductQuotations: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+                  onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); setActionCoords(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                 >
                   <FileText size={14} className="shrink-0 text-emerald-500" />
                   <span>Generate Tax Invoice</span>
@@ -485,6 +555,7 @@ export const ProductQuotations: React.FC = () => {
                     type="button"
                     onClick={async () => {
                       setOpenActionId(null);
+                      setActionCoords(null);
                       try {
                         await submitQuotationForApproval(latest.id);
                         toast('Submitted for approval', 'success');
@@ -493,7 +564,7 @@ export const ProductQuotations: React.FC = () => {
                         toast(err?.message || 'Failed to submit', 'error');
                       }
                     }}
-                    className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                   >
                     <Send size={14} className="shrink-0 text-amber-500" />
                     <span>Submit for Approval</span>
@@ -505,6 +576,7 @@ export const ProductQuotations: React.FC = () => {
                     type="button"
                     onClick={async () => {
                       setOpenActionId(null);
+                      setActionCoords(null);
                       try {
                         await approveQuotation(latest.id, user?.name || 'Manager');
                         toast('Quotation approved successfully!', 'success');
@@ -513,7 +585,7 @@ export const ProductQuotations: React.FC = () => {
                         toast(err?.message || 'Failed to approve', 'error');
                       }
                     }}
-                    className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                   >
                     <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
                     <span>Approve Quotation</span>
@@ -525,6 +597,7 @@ export const ProductQuotations: React.FC = () => {
                     type="button"
                     onClick={async () => {
                       setOpenActionId(null);
+                      setActionCoords(null);
                       const reason = prompt('Enter rejection reason:');
                       if (!reason) return;
                       try {
@@ -535,7 +608,7 @@ export const ProductQuotations: React.FC = () => {
                         toast(err?.message || 'Failed to reject', 'error');
                       }
                     }}
-                    className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                   >
                     <XCircle size={14} className="shrink-0 text-rose-600" />
                     <span>Reject Quotation</span>
@@ -548,13 +621,14 @@ export const ProductQuotations: React.FC = () => {
             <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
             <button
               type="button"
-              onClick={() => { handleDelete(latest.id); setOpenActionId(null); }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
+              onClick={() => { handleDelete(latest.id); setOpenActionId(null); setActionCoords(null); }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
             >
               <Trash2 size={14} className="shrink-0 text-rose-500" />
               <span>Delete Quotation</span>
             </button>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     );
@@ -579,6 +653,7 @@ export const ProductQuotations: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="crm-product-quotations" />
           <Button
             variant="ghost"
             size="sm"

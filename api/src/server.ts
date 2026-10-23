@@ -600,6 +600,16 @@ async function runDatabaseSync() {
       createdAt DATETIME NULL,
       INDEX idx_record (recordId),
       INDEX idx_module (module)
+    )`,
+    `CREATE TABLE IF NOT EXISTS document_sequences (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      prefix VARCHAR(20) DEFAULT '',
+      next_number INT NOT NULL DEFAULT 1001,
+      padding INT NOT NULL DEFAULT 4,
+      include_user_prefix TINYINT(1) DEFAULT 0,
+      include_customer_prefix TINYINT(1) DEFAULT 0,
+      updated_at DATETIME DEFAULT NULL
     )`
   ];
 
@@ -1133,13 +1143,28 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
-    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())"
+    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('quotation', 'Quotations (Normal & Product)', '', 2206, 4, 1, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('work_order', 'Work Orders', 'WO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('invoice', 'Tax Invoices', 'INV-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('receipt', 'Payment Receipts', 'REC-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('customer_grn', 'Customer Samples (GRN)', 'CGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_order', 'Purchase Orders', 'PO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_grn', 'Purchase GRN', 'PGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('material_request', 'Material Requests', 'MR-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('gate_pass', 'Gate Passes / Delivery', 'GP-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)"
   ];
   for (const seed of defaultSeeds) {
     try {
       await db.query(seed);
     } catch (err) {}
   }
+
+  // Ensure quotation next_number is at least 2206 as requested
+  try {
+    await db.query("UPDATE document_sequences SET next_number = 2206 WHERE id = 'quotation' AND next_number < 2206");
+  } catch (err) {}
 
   // Auto-migrate groq_model & gemini_model default seeds
   try {
@@ -1445,6 +1470,100 @@ app.delete('/api/users/:id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// -- DOCUMENT SEQUENCES & SERIAL NUMBER MANAGEMENT --
+app.get('/api/sequences', async (req, res) => {
+  try {
+    const [rows]: any = await db.query('SELECT * FROM document_sequences ORDER BY id ASC');
+    res.json(rows || []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/sequences/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prefix, next_number, padding, include_user_prefix, include_customer_prefix } = req.body;
+    await db.query(
+      `UPDATE document_sequences SET 
+        prefix = COALESCE(?, prefix),
+        next_number = COALESCE(?, next_number),
+        padding = COALESCE(?, padding),
+        include_user_prefix = COALESCE(?, include_user_prefix),
+        include_customer_prefix = COALESCE(?, include_customer_prefix),
+        updated_at = NOW()
+       WHERE id = ?`,
+      [
+        prefix !== undefined ? prefix.trim() : null,
+        next_number !== undefined ? Number(next_number) : null,
+        padding !== undefined ? Number(padding) : null,
+        include_user_prefix !== undefined ? (include_user_prefix ? 1 : 0) : null,
+        include_customer_prefix !== undefined ? (include_customer_prefix ? 1 : 0) : null,
+        id
+      ]
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/users/:id/prefix', async (req, res) => {
+  try {
+    const { prefix } = req.body;
+    await db.query('UPDATE users SET prefix = ? WHERE id = ?', [
+      prefix !== undefined && prefix !== null ? prefix.trim().toUpperCase() : null,
+      req.params.id
+    ]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/sequences/next', async (req, res) => {
+  try {
+    const { type = 'quotation', userPrefix, customerPrefix, reserve = false } = req.body;
+    const [rows]: any = await db.query('SELECT * FROM document_sequences WHERE id = ? LIMIT 1', [type]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: `Sequence '${type}' not found` });
+    }
+    const seq = rows[0];
+    const currentNum = Number(seq.next_number) || 2206;
+    const padding = Number(seq.padding) || 4;
+    const paddedNum = String(currentNum).padStart(padding, '0');
+
+    const parts: string[] = [];
+    if (seq.prefix && seq.prefix.trim()) {
+      parts.push(seq.prefix.trim().replace(/[-_]+$/, ''));
+    }
+    if (seq.include_user_prefix && userPrefix && userPrefix.trim()) {
+      parts.push(userPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
+    }
+    if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
+      parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
+    }
+    parts.push(paddedNum);
+    const formattedNumber = parts.join('-');
+
+    if (reserve) {
+      await db.query('UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = ?', [type]);
+    }
+
+    res.json({
+      success: true,
+      type,
+      number: currentNum,
+      paddedNumber,
+      formattedNumber,
+      reserved: !!reserve,
+      nextNumber: reserve ? currentNum + 1 : currentNum
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

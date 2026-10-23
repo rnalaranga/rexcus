@@ -18,6 +18,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
 const STAGE_LABELS: Record<string, string> = {
@@ -39,7 +40,9 @@ export const Leads: React.FC = () => {
   const [selectedStage, setSelectedStage] = useState<string>('all')
   const [selectedPriority, setSelectedPriority] = useState<string>('all')
   const [selectedOwner, setSelectedOwner] = useState<string>('all')
-  const [sortBy, setSortBy] = useState<string>('value_desc')
+  const [sortBy, setSortBy] = useState<string>('date_desc')
+  const [displayLimit, setDisplayLimit] = useState<number>(20)
+  const [showAllLeads, setShowAllLeads] = useState<boolean>(false)
   const [cardDensity, setCardDensity] = useState<CardDensity>('compact')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [leadGrns, setLeadGrns] = useState<any[]>([])
@@ -402,7 +405,11 @@ export const Leads: React.FC = () => {
       if (sortBy === 'activity_asc') {
         return new Date(a.lastActivity || 0).getTime() - new Date(b.lastActivity || 0).getTime()
       }
-      return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime()
+      // date_desc (default): newest first
+      const dateA = new Date(a.lastActivity || a.createdAt || 0).getTime();
+      const dateB = new Date(b.lastActivity || b.createdAt || 0).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      return String(b.id || '').localeCompare(String(a.id || ''));
     })
 
     return result
@@ -424,7 +431,13 @@ export const Leads: React.FC = () => {
     return STAGES
   }, [presetFilter, selectedStage])
 
-  const hasActiveFilters = search.trim() !== '' || selectedStage !== 'all' || selectedPriority !== 'all' || selectedOwner !== 'all' || presetFilter !== 'active' || sortBy !== 'value_desc'
+  // Visible leads (Default latest 20, expand with See More)
+  const visibleLeads = useMemo(() => {
+    if (showAllLeads) return filtered;
+    return filtered.slice(0, displayLimit);
+  }, [filtered, showAllLeads, displayLimit]);
+
+  const hasActiveFilters = search.trim() !== '' || selectedStage !== 'all' || selectedPriority !== 'all' || selectedOwner !== 'all' || presetFilter !== 'active' || sortBy !== 'date_desc' || showAllLeads
 
   const resetFilters = () => {
     setSearch('')
@@ -432,7 +445,9 @@ export const Leads: React.FC = () => {
     setSelectedStage('all')
     setSelectedPriority('all')
     setSelectedOwner('all')
-    setSortBy('value_desc')
+    setSortBy('date_desc')
+    setDisplayLimit(20)
+    setShowAllLeads(false)
   }
 
   const columns: Column<any>[] = [
@@ -610,6 +625,7 @@ export const Leads: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="crm-leads" />
           <Button 
             variant="outline" 
             size="sm" 
@@ -845,6 +861,32 @@ export const Leads: React.FC = () => {
               </div>
             )}
 
+            {/* Latest 20 vs All Toggle */}
+            {filtered.length > 20 && (
+              <div className="flex items-center bg-surface border border-theme-subtle p-0.5 rounded-none text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setShowAllLeads(false); setDisplayLimit(20); }}
+                  className={`px-2 py-1 text-[11px] rounded-none transition-colors cursor-pointer ${
+                    !showAllLeads ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
+                  }`}
+                  title="Show Latest 20 Only"
+                >
+                  Latest 20
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAllLeads(true)}
+                  className={`px-2 py-1 text-[11px] rounded-none transition-colors cursor-pointer ${
+                    showAllLeads ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
+                  }`}
+                  title={`See All ${filtered.length} Leads`}
+                >
+                  See All ({filtered.length})
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center bg-surface border border-theme-subtle p-0.5 rounded-none">
               <button 
                 onClick={() => setView('kanban')} 
@@ -875,6 +917,8 @@ export const Leads: React.FC = () => {
           {displayedStages.map(stage => {
             const stageLeads = filtered.filter((l: any) => l.stage === stage)
             const stageValue = stageLeads.reduce((s: number, l: any) => s + Number(l.value || 0), 0)
+            const visibleStageLeads = showAllLeads ? stageLeads : stageLeads.slice(0, displayLimit)
+            const hasMoreInStage = !showAllLeads && stageLeads.length > displayLimit
 
             return (
               <div 
@@ -900,7 +944,7 @@ export const Leads: React.FC = () => {
 
                 {/* Cards Container */}
                 <div className="p-2 space-y-2 flex-1 overflow-y-auto pb-6 custom-scrollbar">
-                  {stageLeads.map((lead: any) => {
+                  {visibleStageLeads.map((lead: any) => {
                     const days = getDaysSinceActivity(lead.lastActivity)
                     const isStale = days >= 7 && !['won', 'lost'].includes(lead.stage)
 
@@ -1015,6 +1059,16 @@ export const Leads: React.FC = () => {
                     )
                   })}
 
+                  {hasMoreInStage && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllLeads(true)}
+                      className="w-full py-2 px-2 text-[11px] font-bold text-rex-600 dark:text-rex-400 hover:text-white bg-rex-50 dark:bg-rex-950/40 hover:bg-rex-600 border border-dashed border-rex-300 dark:border-rex-700 rounded-none transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                    >
+                      <span>+{stageLeads.length - displayLimit} more in {STAGE_LABELS[stage] || stage}</span>
+                    </button>
+                  )}
+
                   {stageLeads.length === 0 && (
                     <div className="py-10 text-center border border-dashed border-theme-subtle m-1">
                       <p className="text-[11px] text-muted italic">No leads in {STAGE_LABELS[stage] || stage}</p>
@@ -1029,7 +1083,12 @@ export const Leads: React.FC = () => {
         <GlassCard className="p-0 border-theme-subtle overflow-hidden rounded-none">
           <div className="px-4 py-2.5 border-b border-theme-subtle flex items-center justify-between bg-surface2/40">
             <span className="text-xs text-muted">
-              Showing <span className="text-primary font-bold font-mono">{filtered.length}</span> of <span className="font-mono">{leads.length}</span> leads
+              Showing <span className="text-primary font-bold font-mono">{visibleLeads.length}</span> of <span className="font-mono">{filtered.length}</span> leads
+              {!showAllLeads && filtered.length > displayLimit && (
+                <span className="ml-1.5 text-[11px] text-rex-600 dark:text-rex-400 font-semibold">
+                  (Latest {visibleLeads.length})
+                </span>
+              )}
             </span>
             {hasActiveFilters && (
               <span className="text-xs text-rex-600 dark:text-rex-400 font-semibold">
@@ -1039,11 +1098,34 @@ export const Leads: React.FC = () => {
           </div>
           <DataTable 
             columns={columns} 
-            data={filtered} 
+            data={visibleLeads} 
             keyExtractor={(r: any) => r.id} 
             onRowClick={openEditModal} 
             emptyMessage="No leads found matching your criteria. Try adjusting your filters or search." 
           />
+          {!showAllLeads && filtered.length > displayLimit && (
+            <div className="p-3 border-t border-theme-subtle bg-surface2/30 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted">
+                Showing latest <span className="font-bold text-primary">{visibleLeads.length}</span> of <span className="font-bold text-primary">{filtered.length}</span> leads.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDisplayLimit(prev => prev + 20)}
+                  className="px-3 py-1.5 text-xs font-semibold bg-surface border border-theme-subtle hover:border-rex-500 hover:text-rex-600 text-primary transition-all cursor-pointer rounded-none"
+                >
+                  Load Next +20 Leads
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAllLeads(true)}
+                  className="px-3.5 py-1.5 text-xs font-bold bg-rex-600 hover:bg-rex-700 text-white transition-all cursor-pointer rounded-none"
+                >
+                  See All ({filtered.length})
+                </button>
+              </div>
+            </div>
+          )}
         </GlassCard>
       )}
 

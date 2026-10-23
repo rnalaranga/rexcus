@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List } from 'lucide-react'
 import { X } from 'lucide-react';
@@ -23,6 +24,7 @@ import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 
 
 export const Quotations: React.FC = () => {
@@ -367,17 +369,35 @@ export const Quotations: React.FC = () => {
   const { data: taxProfiles } = useTaxProfiles()
   const { data: leads = [] } = useLeads()
   const { data: customers = [] } = useCustomers()
-    const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null);
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('.quotation-action-menu-container')) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.quotation-action-menu-dropdown') && !target.closest('.quotation-action-trigger-btn')) {
         setOpenActionId(null);
+        setActionCoords(null);
       }
     };
+
+    const handleScrollOrResize = (e: Event) => {
+      if (e.target && (e.target as HTMLElement).closest?.('.quotation-action-menu-dropdown')) {
+        return;
+      }
+      setOpenActionId(null);
+      setActionCoords(null);
+    };
+
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
   }, []);
 
   const [search, setSearch] = useState('')
@@ -536,7 +556,7 @@ export const Quotations: React.FC = () => {
   // Status counts for filter pills
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      all: groupedQuotations.length,
+      all: 0,
       draft: 0,
       'pending approval': 0,
       approved: 0,
@@ -545,11 +565,16 @@ export const Quotations: React.FC = () => {
       rejected: 0
     };
     groupedQuotations.forEach(g => {
-      const s = (g.main[0]?.status || 'Draft').toLowerCase();
+      const latestMain = g.main[0];
+      const isAutoDraft = latestMain?.type === 'draft';
+      if (isAutoDraft && customerFilter === 'all') return;
+
+      counts.all++;
+      const s = (latestMain?.status || 'Draft').toLowerCase();
       if (counts[s] !== undefined) counts[s]++;
     });
     return counts;
-  }, [groupedQuotations]);
+  }, [groupedQuotations, customerFilter]);
 
   // Total Quoted Value
   const totalQuotedValue = useMemo(() => {
@@ -560,26 +585,25 @@ export const Quotations: React.FC = () => {
 
   const filtered = groupedQuotations.filter(g => {
     const latestMain = g.main[0];
+    const isAutoDraft = latestMain?.type === 'draft';
 
     // Search filter
     const q = search.toLowerCase();
     const searchMatch = !search || [g.quoNo, g.leadName, g.leadCompany].some(v => v?.toLowerCase().includes(q));
     if (!searchMatch) return false;
 
-    // Status filter
-    if (statusFilter === 'draft') {
-      // Drafts should only be shown if a customer is selected!
-      if (customerFilter === 'all') return false;
+    // 1. Temporary autosaved drafts (type === 'draft') should only be shown if a customer is selected
+    if (isAutoDraft && customerFilter === 'all') {
+      return false;
+    }
+
+    // 2. Status filter
+    if (statusFilter !== 'all') {
       const latestStatus = (latestMain?.status || 'Draft').toLowerCase();
-      if (latestMain?.type !== 'draft' && latestStatus !== 'draft') return false;
-    } else if (statusFilter !== 'all') {
-      const latestStatus = (latestMain?.status || 'Draft').toLowerCase();
-      if (latestStatus !== statusFilter.toLowerCase()) return false;
-    } else {
-      // statusFilter === 'all'
-      // Hide pure drafts from the main list when viewing all, because they are prominently shown in Active Drafts section above when customer is selected
-      if (latestMain?.type === 'draft' || (latestMain?.status === 'Draft' && !g.job.length && !g.customer.length && g.main.length === 1)) {
-        return false;
+      if (statusFilter === 'draft') {
+        if (latestStatus !== 'draft' && !isAutoDraft) return false;
+      } else {
+        if (latestStatus !== statusFilter.toLowerCase()) return false;
       }
     }
 
@@ -611,15 +635,58 @@ export const Quotations: React.FC = () => {
     idx: number
   ) => {
     const isOpen = openActionId === group.quoNo;
+
+    let menuStyle: React.CSSProperties = {};
+    if (isOpen && actionCoords) {
+      const PADDING = 8;
+      const MENU_WIDTH = 260;
+
+      let left = actionCoords.right - MENU_WIDTH;
+      if (left < PADDING) left = PADDING;
+      if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+        left = window.innerWidth - MENU_WIDTH - PADDING;
+      }
+
+      const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING;
+      const spaceAbove = actionCoords.top - PADDING;
+      const openUpwards = spaceBelow < 340 && spaceAbove > spaceBelow;
+
+      menuStyle = {
+        position: 'fixed',
+        left: `${left}px`,
+        width: `${MENU_WIDTH}px`,
+        zIndex: 99999,
+        maxHeight: openUpwards ? `${Math.min(480, spaceAbove)}px` : `${Math.min(480, spaceBelow)}px`,
+        ...(openUpwards 
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
+        )
+      };
+    }
+
     return (
-      <div className={`relative inline-block text-left ${isOpen ? 'z-50' : ''}`}>
+      <div className="relative inline-block text-left">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setOpenActionId(isOpen ? null : group.quoNo);
+            if (openActionId === group.quoNo) {
+              setOpenActionId(null);
+              setActionCoords(null);
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setOpenActionId(group.quoNo);
+              setActionCoords({
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height
+              });
+            }
           }}
-          className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
+          className={`quotation-action-trigger-btn h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
             isOpen
               ? 'bg-rex-600 text-white border-rex-600'
               : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
@@ -629,13 +696,11 @@ export const Quotations: React.FC = () => {
           <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {isOpen && (
+        {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`absolute right-0 ${
-              idx >= filtered.length - 2 && filtered.length > 2 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] py-1.5 text-left rounded-none max-h-[75vh] overflow-y-auto custom-scrollbar`}
-            style={{ minWidth: '256px', boxShadow: '0 12px 32px rgba(0,0,0,0.22), 0 0 1px rgba(0,0,0,0.1)' }}
+            style={menuStyle}
+            className="quotation-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none overflow-y-auto custom-scrollbar"
           >
             <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
               Quotation Actions
@@ -892,6 +957,7 @@ export const Quotations: React.FC = () => {
               type="button"
               onClick={async () => {
                 setOpenActionId(null);
+                setActionCoords(null);
                 if (await showConfirm(`Delete entire quotation group ${group.quoNo}?`, 'Delete Quotation Group', { confirmLabel: 'Delete' })) {
                   for (const q of [...group.main, ...group.job, ...group.customer]) {
                     await deleteQuotation(q.id);
@@ -900,12 +966,13 @@ export const Quotations: React.FC = () => {
                   refetch();
                 }
               }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
+              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
             >
               <Trash2 size={14} className="shrink-0 text-rose-500" />
               <span>Delete Quotation Group</span>
             </button>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     );
@@ -930,6 +997,7 @@ export const Quotations: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="crm-quotations" />
           {selectedQuotes.length > 1 && (
             <Button
               variant="primary"

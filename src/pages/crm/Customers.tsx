@@ -8,6 +8,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
 import { CustomerModal } from '@/components/crm/CustomerModal'
+import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { useCustomers } from '@/hooks/useData'
 import { createCustomer, deleteCustomer } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
@@ -108,6 +109,7 @@ export const Customers: React.FC = () => {
           <p className="text-xs text-muted mt-0.5">{customers.length} total customers · {customers.filter(c => c.status === 'vip').length} VIPs</p>
         </div>
         <div className="flex items-center gap-2">
+          <PageHelpButton moduleId="crm-customers" />
           <Button variant="ghost" size="sm" icon={Download}>Export</Button>
           <Button variant="primary" size="sm" icon={UserPlus} onClick={() => setIsModalOpen(true)}>Add Customer</Button>
         </div>
