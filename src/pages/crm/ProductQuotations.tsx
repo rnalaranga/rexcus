@@ -496,7 +496,9 @@ export const ProductQuotations: React.FC = () => {
           return (
             <GlassCard
               key={group.quoNo}
-              className="p-3.5 hover:border-emerald-500/40 transition-all duration-200 border-theme-subtle rounded-none"
+              className={`p-3.5 hover:border-emerald-500/40 transition-all duration-200 border-theme-subtle rounded-none ${
+                openActionId === group.quoNo ? 'relative z-50 shadow-2xl' : 'relative z-0'
+              }`}
             >
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 {/* Left Meta */}
@@ -576,7 +578,7 @@ export const ProductQuotations: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5 product-quote-action-container relative">
+                  <div className={`flex items-center gap-1.5 product-quote-action-menu-container ${openActionId === group.quoNo ? 'relative z-50' : 'relative z-0'}`}>
                     {/* Quick 1-click Preview */}
                     <Button
                       variant="ghost"
@@ -590,7 +592,7 @@ export const ProductQuotations: React.FC = () => {
                     </Button>
 
                     {/* Actions Dropdown Button */}
-                    <div className="relative inline-block text-left">
+                    <div className={`relative inline-block text-left ${openActionId === group.quoNo ? 'z-50' : ''}`}>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -612,7 +614,7 @@ export const ProductQuotations: React.FC = () => {
                           onClick={(e) => e.stopPropagation()}
                           className={`absolute right-0 ${
                             idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                          } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[100] py-1.5 text-left rounded-none`}
+                          } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] py-1.5 text-left rounded-none max-h-[75vh] overflow-y-auto custom-scrollbar`}
                           style={{ minWidth: '256px', boxShadow: '0 12px 32px rgba(0,0,0,0.22), 0 0 1px rgba(0,0,0,0.1)' }}
                         >
                           <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">

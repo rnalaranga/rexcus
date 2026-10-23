@@ -766,8 +766,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       </div>
 
       {/* Orders Table */}
-      <GlassCard className="p-0 overflow-hidden border border-theme-subtle">
-        <div className="overflow-x-auto min-h-[380px]">
+      <GlassCard className="p-0 border border-theme-subtle">
+        <div className="overflow-x-auto min-h-[380px] pb-28">
           <table className="w-full text-left min-w-[900px]">
             <thead className="bg-surface2/50 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
               <tr>
@@ -805,7 +805,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 )
 
                 return (
-                  <tr key={order.id} className="hover:bg-surface2/30 transition-colors">
+                  <tr key={order.id} className={`hover:bg-surface2/30 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/50' : 'relative z-0'}`}>
                     {/* Order No, Reference Badges & Dates */}
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
@@ -969,8 +969,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Actions */}
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5 order-action-menu-container relative">
+                    <td className={`px-4 py-3 text-right ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
+                      <div className={`flex items-center justify-end gap-1.5 order-action-menu-container ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
                         {/* Quick 1-click Print PDF */}
                         <Button
                           variant="ghost"
@@ -984,7 +984,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         </Button>
 
                         {/* Actions Dropdown Button */}
-                        <div className="relative inline-block text-left">
+                        <div className={`relative inline-block text-left ${openActionOrderId === order.id ? 'z-50' : ''}`}>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1006,7 +1006,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               onClick={(e) => e.stopPropagation()}
                               className={`absolute right-0 ${
                                 idx >= filteredOrders.length - 2 && filteredOrders.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
-                              } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[100] py-1.5 text-left rounded-none animate-fade-in`}
+                              } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] max-h-[75vh] overflow-y-auto custom-scrollbar py-1.5 text-left rounded-none animate-fade-in`}
                             >
                               <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
                                 Order Documents
