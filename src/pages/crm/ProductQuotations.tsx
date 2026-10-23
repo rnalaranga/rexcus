@@ -4,7 +4,7 @@ import {
   FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
-  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package
+  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -38,6 +38,7 @@ export const ProductQuotations: React.FC = () => {
   const { data: customers = [] } = useCustomers()
 
   const [search, setSearch] = useState('')
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')
   const [startDate, setStartDate] = useState('')
@@ -169,19 +170,22 @@ export const ProductQuotations: React.FC = () => {
     return Object.values(map).sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
   }, [productQuotes, customers, leads]);
 
-  // Active Finished Goods Drafts
+  // Active Finished Goods Drafts - Only shown if customer is selected!
   const activeDrafts = useMemo(() => {
+    if (!customerFilter || customerFilter === 'all') return [];
     return groupedQuotes.filter((g: any) => {
+      if (g.leadId !== customerFilter) return false;
       const latest = g.versions[0];
       return latest?.type === 'product_draft' || latest?.status === 'Draft';
     });
-  }, [groupedQuotes]);
+  }, [groupedQuotes, customerFilter]);
 
   // Overall KPI stats
   const kpiStats = useMemo(() => {
     let totalQuoted = 0;
     let approvedVal = 0;
     let pendingCount = 0;
+    let draftsCount = 0;
 
     groupedQuotes.forEach((g: any) => {
       const latest = g.versions[0];
@@ -190,10 +194,11 @@ export const ProductQuotations: React.FC = () => {
       const st = (latest?.status || 'Draft').toLowerCase();
       if (st === 'approved' || st === 'accepted') approvedVal += val;
       if (st === 'pending approval') pendingCount++;
+      if (latest?.type === 'product_draft' || st === 'draft') draftsCount++;
     });
 
-    return { totalQuoted, approvedVal, pendingCount, draftsCount: activeDrafts.length };
-  }, [groupedQuotes, activeDrafts]);
+    return { totalQuoted, approvedVal, pendingCount, draftsCount };
+  }, [groupedQuotes]);
 
   // Status counts for filter pills
   const statusCounts = useMemo(() => {
@@ -223,14 +228,19 @@ export const ProductQuotations: React.FC = () => {
       const latest = g.versions[0];
       const status = latest?.status || 'Draft';
 
-      // Hide standalone drafts from main list when viewing all, because they are prominently shown in Active Drafts above!
-      if (statusFilter === 'all') {
+      // Pure drafts should only be shown if a customer is selected
+      if (statusFilter === 'draft') {
+        if (customerFilter === 'all') return false;
+        if (latest?.type !== 'product_draft' && status.toLowerCase() !== 'draft') return false;
+      } else if (statusFilter !== 'all') {
+        if (status.toLowerCase() !== statusFilter.toLowerCase()) return false;
+      } else {
+        // statusFilter === 'all'
+        // Hide standalone drafts from main list when viewing all, because they are prominently shown in Active Drafts above when customer is selected!
         if (latest?.type === 'product_draft' || (status === 'Draft' && g.versions.length === 1)) {
           return false;
         }
       }
-
-      if (statusFilter !== 'all' && status.toLowerCase() !== statusFilter.toLowerCase()) return false;
       if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
 
       // Date range filter
@@ -352,6 +362,204 @@ export const ProductQuotations: React.FC = () => {
     }
   };
 
+  const renderActionsDropdown = (group: any, latest: any, status: string, idx: number) => {
+    const isOpen = openActionId === group.quoNo;
+    return (
+      <div className={`relative inline-block text-left ${isOpen ? 'z-50' : ''}`}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenActionId(isOpen ? null : group.quoNo);
+          }}
+          className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
+            isOpen
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+          }`}
+        >
+          Actions
+          <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`absolute right-0 ${
+              idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] py-1.5 text-left rounded-none max-h-[75vh] overflow-y-auto custom-scrollbar`}
+            style={{ minWidth: '256px', boxShadow: '0 12px 32px rgba(0,0,0,0.22), 0 0 1px rgba(0,0,0,0.1)' }}
+          >
+            <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+              Product Quote Actions
+            </div>
+
+            {/* 1. Preview Document */}
+            <button
+              type="button"
+              onClick={() => { setPreviewData({ quotation: latest, lead: group }); setOpenActionId(null); }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+            >
+              <Eye size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>Preview Document</span>
+            </button>
+
+            {/* 2. Open in Builder */}
+            <button
+              type="button"
+              onClick={() => { navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`); setOpenActionId(null); }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+            >
+              <Edit3 size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
+              <span>Edit in Quotation Builder</span>
+            </button>
+
+            {/* 3. Send Email */}
+            <button
+              type="button"
+              onClick={() => {
+                setEmailModalData({
+                  documentNumber: group.quoNo,
+                  customerEmail: group.clientEmail || '',
+                  customerName: group.clientName || group.clientCompany || 'Customer',
+                  totalAmount: latest.totalAmount || latest.parsed?.totalPrice || '0.00',
+                  validityDays: latest.parsed?.validityDays || '30',
+                  quotation: latest,
+                  lead: group
+                });
+                setOpenActionId(null);
+              }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+            >
+              <Mail size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>Send via Email</span>
+            </button>
+
+            {/* Commercial Actions (If Approved / Sent / Accepted) */}
+            {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
+              <>
+                <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                  Commercial Operations
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
+                >
+                  <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                  <span>Create Sales Order</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                >
+                  <Receipt size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>Issue Advance Receipt</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+                >
+                  <FileText size={14} className="shrink-0 text-emerald-500" />
+                  <span>Generate Tax Invoice</span>
+                </button>
+              </>
+            )}
+
+            {/* Approval Actions */}
+            {((status === 'Draft' || !status || status === 'Rejected') || (canApprove && (status === 'Pending Approval' || status === 'Draft'))) && (
+              <>
+                <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                  Workflow & Approvals
+                </div>
+
+                {(status === 'Draft' || !status || status === 'Rejected') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setOpenActionId(null);
+                      try {
+                        await submitQuotationForApproval(latest.id);
+                        toast('Submitted for approval', 'success');
+                        refetch();
+                      } catch(err: any) {
+                        toast(err?.message || 'Failed to submit', 'error');
+                      }
+                    }}
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
+                  >
+                    <Send size={14} className="shrink-0 text-amber-500" />
+                    <span>Submit for Approval</span>
+                  </button>
+                )}
+
+                {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setOpenActionId(null);
+                      try {
+                        await approveQuotation(latest.id, user?.name || 'Manager');
+                        toast('Quotation approved successfully!', 'success');
+                        refetch();
+                      } catch(err: any) {
+                        toast(err?.message || 'Failed to approve', 'error');
+                      }
+                    }}
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                  >
+                    <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
+                    <span>Approve Quotation</span>
+                  </button>
+                )}
+
+                {canApprove && status === 'Pending Approval' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setOpenActionId(null);
+                      const reason = prompt('Enter rejection reason:');
+                      if (!reason) return;
+                      try {
+                        await rejectQuotation(latest.id, reason);
+                        toast('Quotation rejected', 'error');
+                        refetch();
+                      } catch(err: any) {
+                        toast(err?.message || 'Failed to reject', 'error');
+                      }
+                    }}
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
+                  >
+                    <XCircle size={14} className="shrink-0 text-rose-600" />
+                    <span>Reject Quotation</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Delete Action */}
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+            <button
+              type="button"
+              onClick={() => { handleDelete(latest.id); setOpenActionId(null); }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
+            >
+              <Trash2 size={14} className="shrink-0 text-rose-500" />
+              <span>Delete Quotation</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
@@ -443,8 +651,8 @@ export const ProductQuotations: React.FC = () => {
         </div>
       </div>
 
-      {/* Prominent Active Product Drafts Showcase at the Top */}
-      {activeDrafts.length > 0 && statusFilter === 'all' && (
+      {/* Prominent Active Product Drafts Showcase at the Top - Only shown if customer is selected */}
+      {customerFilter !== 'all' && activeDrafts.length > 0 && (
         <div className="border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent rounded-none p-3.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -550,15 +758,39 @@ export const ProductQuotations: React.FC = () => {
             ))}
           </div>
 
-          <div className="relative w-full sm:w-80 shrink-0">
-            <Search size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by quote #, client, subject..."
-              className="w-full bg-surface border border-theme-subtle rounded-none pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 transition-all placeholder:text-muted"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <div className="relative w-full sm:w-80 shrink-0">
+              <Search size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by quote #, client, subject..."
+                className="w-full bg-surface border border-theme-subtle rounded-none pl-9 pr-3 py-1.5 text-xs text-primary outline-none focus:border-emerald-500 transition-all placeholder:text-muted"
+              />
+            </div>
+            <div className="flex items-center bg-surface border border-theme-subtle p-0.5 rounded-none shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-none transition-colors cursor-pointer ${
+                  viewMode === 'table' ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-primary'
+                }`}
+                title="Table List View"
+              >
+                <List size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`p-1.5 rounded-none transition-colors cursor-pointer ${
+                  viewMode === 'cards' ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-primary'
+                }`}
+                title="Cards View"
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -641,85 +873,299 @@ export const ProductQuotations: React.FC = () => {
         </div>
       </GlassCard>
       {/* Quotations List */}
-      <div className="space-y-3">
-        {filteredGroups.map((group: any, idx: number) => {
-          const latest = group.versions[0];
-          const parsed = latest?.parsed || {};
-          const status = latest?.status || 'Draft';
-          const itemsCount = parsed.custItems?.length || 0;
-          const recs = getQuoteReceipts(group, latest);
-          const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-          const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
-          const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
+      {filteredGroups.length === 0 ? (
+        <div className="p-12 text-center text-muted border border-theme-subtle bg-surface">
+          <PackageCheck size={32} className="mx-auto mb-2 opacity-30 text-emerald-500" />
+          <p className="text-sm font-medium">
+            {statusFilter === 'draft' && customerFilter === 'all'
+              ? 'Please select a customer from the customer filter above to view active finished goods drafts.'
+              : 'No product quotations match your search or filter criteria.'}
+          </p>
+        </div>
+      ) : viewMode === 'table' ? (
+        <div className="border border-theme-subtle bg-surface shadow-xs overflow-hidden">
+          <div className="overflow-x-auto min-h-[380px] pb-28 custom-scrollbar">
+            <table className="w-full text-left min-w-[950px]">
+              <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
+                <tr>
+                  <th className="px-3.5 py-3">Quote # & Ver</th>
+                  <th className="px-3.5 py-3">Customer / Client</th>
+                  <th className="px-3.5 py-3">Catalog Items</th>
+                  <th className="px-3.5 py-3">Date & Validity</th>
+                  <th className="px-3.5 py-3 text-right">Quoted Value</th>
+                  <th className="px-3 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-theme-subtle/30 text-xs">
+                {filteredGroups.map((group: any, idx: number) => {
+                  const latest = group.versions[0];
+                  const parsed = latest?.parsed || {};
+                  const status = latest?.status || 'Draft';
+                  const itemsCount = parsed.custItems?.length || 0;
+                  const recs = getQuoteReceipts(group, latest);
+                  const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                  const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
+                  const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
 
-          return (
-            <GlassCard
-              key={group.quoNo}
-              className={`p-3.5 hover:border-emerald-500/40 transition-all duration-200 border-theme-subtle rounded-none ${
-                openActionId === group.quoNo ? 'relative z-50 shadow-2xl' : 'relative z-0'
-              }`}
-            >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                {/* Left Meta */}
-                <div className="space-y-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                      {group.quoNo}
+                  return (
+                    <React.Fragment key={group.quoNo}>
+                      <tr className={`hover:bg-surface2/40 transition-colors ${openActionId === group.quoNo ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
+                        {/* Quote # & Version */}
+                        <td className="px-3.5 py-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                              {group.quoNo}
+                            </span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
+                              v{latest?.version || 1}
+                            </span>
+                            {group.versions.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
+                                className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-0.5"
+                                title="Toggle version revisions"
+                              >
+                                {group.versions.length} revs
+                                <ChevronDown size={9} className={`transition-transform duration-150 ${isRevisionsExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Customer / Client */}
+                        <td className="px-3.5 py-2.5 max-w-[220px]">
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-semibold text-primary truncate" title={group.clientCompany || group.clientName}>
+                              {group.clientCompany || group.clientName}
+                            </span>
+                            {group.clientCompany && group.clientName && (
+                              <span className="text-[11px] text-muted truncate">
+                                Attn: {group.clientName}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Catalog Items */}
+                        <td className="px-3.5 py-2.5">
+                          {parsed.custItems && parsed.custItems.length > 0 ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {parsed.custItems.slice(0, 2).map((item: any, iIdx: number) => (
+                                <span key={iIdx} className="text-[10px] font-medium px-1.5 py-0.2 bg-surface2 text-secondary border border-theme-subtle flex items-center gap-1 truncate max-w-[170px]" title={item.name || item.desc}>
+                                  <Package size={10} className="text-emerald-500 shrink-0" />
+                                  <span className="truncate">{item.name || item.desc || 'Product'}</span>
+                                  <span className="font-mono text-muted">×{item.qty || 1}</span>
+                                </span>
+                              ))}
+                              {parsed.custItems.length > 2 && (
+                                <span className="text-[10px] font-mono text-muted px-1.5 py-0.2 bg-surface2 border border-theme-subtle">
+                                  +{parsed.custItems.length - 2} more
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted italic">Finished Goods</span>
+                          )}
+                          {parsed.subject && (
+                            <p className="text-[11px] text-muted truncate max-w-[200px] mt-0.5">
+                              {parsed.subject}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Date & Validity */}
+                        <td className="px-3.5 py-2.5">
+                          <div className="flex flex-col font-mono text-[11px]">
+                            <span className="text-primary">{formatDate(group.latestDate)}</span>
+                            {parsed.custValidity && (
+                              <span className="text-muted text-[10px]">Valid: {parsed.custValidity}</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Total Quoted Value */}
+                        <td className="px-3.5 py-2.5 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono font-bold text-xs text-primary">
+                              {formatCurrency(Number(latest.totalAmount || 0))}
+                            </span>
+                            {totalAdv > 0 && latestRec && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActivePrintReceipt({
+                                    ...latestRec,
+                                    totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
+                                  });
+                                  setPrintReceiptModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors mt-0.5"
+                                title={`View Advance Payment: ${formatCurrency(totalAdv)}`}
+                              >
+                                <Receipt size={9} /> Adv: {formatCurrency(totalAdv)}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`inline-block text-[10px] uppercase font-semibold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
+                            {status}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className={`px-4 py-2.5 text-right ${openActionId === group.quoNo ? 'relative z-50' : 'relative z-0'}`}>
+                          <div className="flex items-center justify-end gap-1.5 product-quote-action-menu-container">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Eye}
+                              onClick={() => setPreviewData({ quotation: latest, lead: group })}
+                              className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                              title="Preview Document"
+                            >
+                              PDF
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Edit3}
+                              onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
+                              className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                              title="Edit in Quotation Builder"
+                            >
+                              Edit
+                            </Button>
+                            {renderActionsDropdown(group, latest, status, idx)}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Revisions Row in Table */}
+                      {isRevisionsExpanded && group.versions.length > 1 && (
+                        <tr className="bg-surface2/25">
+                          <td colSpan={7} className="px-6 py-3 border-b border-theme-subtle">
+                            <div className="space-y-1.5 animate-fade-in">
+                              <div className="text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                                <History size={11} className="text-emerald-500" />
+                                Quotation Versions ({group.versions.length})
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                {group.versions.map((v: any) => {
+                                  const isLatest = v.id === latest.id;
+                                  return (
+                                    <div
+                                      key={v.id}
+                                      className={`flex items-center justify-between px-2.5 py-1.5 border text-xs rounded-none transition-colors ${
+                                        isLatest
+                                          ? 'bg-emerald-500/10 border-emerald-500/30 text-primary'
+                                          : 'bg-surface border-theme-subtle text-secondary'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <span className="font-bold font-mono text-primary shrink-0">v{v.version}</span>
+                                        {isLatest && (
+                                          <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1 py-0.2 rounded-none uppercase">
+                                            Active
+                                          </span>
+                                        )}
+                                        <span className="font-mono text-secondary text-xs truncate">
+                                          {formatCurrency(Number(v.totalAmount || 0))}
+                                        </span>
+                                        <span className="text-[10px] text-muted truncate">{formatDate(v.date)}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0 ml-1">
+                                        <button
+                                          onClick={() => setPreviewData({ quotation: v, lead: group })}
+                                          className="p-1 text-blue-500 hover:bg-blue-500/10 rounded-none transition-colors"
+                                          title={`Preview Version v${v.version}`}
+                                        >
+                                          <Eye size={12} />
+                                        </button>
+                                        <button
+                                          onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${v.id}`)}
+                                          className="p-1 text-primary hover:bg-surface2 rounded-none transition-colors"
+                                          title={`Edit Version v${v.version}`}
+                                        >
+                                          <Edit3 size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+          {filteredGroups.map((group: any, idx: number) => {
+            const latest = group.versions[0];
+            const parsed = latest?.parsed || {};
+            const status = latest?.status || 'Draft';
+            const itemsCount = parsed.custItems?.length || 0;
+            const recs = getQuoteReceipts(group, latest);
+            const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+            const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
+            const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
+
+            return (
+              <GlassCard
+                key={group.quoNo}
+                className={`p-3.5 hover:border-emerald-500/40 transition-all duration-200 border-theme-subtle rounded-none flex flex-col justify-between ${
+                  openActionId === group.quoNo ? 'relative z-50 shadow-2xl' : 'relative z-0'
+                }`}
+              >
+                <div>
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-2 pb-2 mb-2 border-b border-theme-subtle/40">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                        {group.quoNo}
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 bg-surface2 text-muted border border-theme-subtle">
+                        v{latest?.version || 1}
+                      </span>
+                      <span className={`text-[10px] uppercase font-semibold px-2 py-0.5 border ${getStatusColor(status)}`}>
+                        {status}
+                      </span>
+                    </div>
+
+                    <span className="text-[11px] font-mono text-muted shrink-0">
+                      {formatDate(group.latestDate)}
                     </span>
-                    <span className={`text-xs uppercase font-semibold px-2.5 py-1 rounded-none border ${getStatusColor(status)}`}>
-                      {status}
-                    </span>
-                    <span className="text-xs font-mono text-muted">
-                      v{latest.version || 1} • {formatDate(group.latestDate)}
-                    </span>
-                    {group.versions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
-                        className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-1.5"
-                      >
-                        {group.versions.length} revisions
-                        <ChevronDown size={10} className={`transition-transform duration-150 ${isRevisionsExpanded ? 'rotate-180' : ''}`} />
-                      </button>
-                    )}
-                    {totalAdv > 0 && latestRec && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActivePrintReceipt({
-                            ...latestRec,
-                            totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
-                          });
-                          setPrintReceiptModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1.5 text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
-                        title={`View / Print Payment Receipt (Advance: ${formatCurrency(totalAdv)})`}
-                      >
-                        <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
-                      </button>
-                    )}
                   </div>
 
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-semibold text-primary truncate">
+                  {/* Customer Info */}
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-sm text-primary truncate" title={group.clientCompany || group.clientName}>
                       {group.clientCompany || group.clientName}
-                    </span>
+                    </h4>
                     {group.clientCompany && group.clientName && (
-                      <span className="text-muted truncate">• Attn: {group.clientName}</span>
+                      <p className="text-xs text-muted truncate">Attn: {group.clientName}</p>
+                    )}
+                    {parsed.subject && (
+                      <p className="text-xs text-secondary truncate mt-1">{parsed.subject}</p>
                     )}
                   </div>
 
-                  {parsed.subject && (
-                    <p className="text-xs text-secondary truncate max-w-xl">
-                      {parsed.subject}
-                    </p>
-                  )}
-
-                  {/* Quoted Products Preview */}
+                  {/* Catalog items */}
                   {parsed.custItems && parsed.custItems.length > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
                       {parsed.custItems.slice(0, 3).map((item: any, iIdx: number) => (
-                        <span key={iIdx} className="text-[11px] font-medium px-2 py-0.5 bg-surface2 text-secondary border border-theme-subtle flex items-center gap-1 truncate max-w-[220px]" title={item.name || item.desc}>
+                        <span key={iIdx} className="text-[10px] font-medium px-1.5 py-0.5 bg-surface2 text-secondary border border-theme-subtle flex items-center gap-1 truncate max-w-[200px]" title={item.name || item.desc}>
                           <Package size={10} className="text-emerald-500 shrink-0" />
                           <span className="truncate">{item.name || item.desc || 'Product'}</span>
                           <span className="text-[10px] font-mono text-muted">×{item.qty || 1}</span>
@@ -733,332 +1179,63 @@ export const ProductQuotations: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 text-xs text-muted">
-                    <span className="flex items-center gap-1 font-medium">
-                      <Boxes size={12} className="text-emerald-500" />
-                      {itemsCount} {itemsCount === 1 ? 'Product Line' : 'Product Lines'}
-                    </span>
-                    {parsed.custValidity && (
-                      <span>Valid: {parsed.custValidity}</span>
-                    )}
-                  </div>
+                  {totalAdv > 0 && latestRec && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActivePrintReceipt({
+                            ...latestRec,
+                            totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
+                          });
+                          setPrintReceiptModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+                      >
+                        <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Right Financials & Actions */}
-                <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-theme-subtle">
-                  <div className="text-right">
-                    <span className="text-xs font-semibold text-muted uppercase tracking-wider block">
-                      Total Value
-                    </span>
-                    <span className="text-base lg:text-lg font-bold font-mono text-primary">
+                {/* Card Footer */}
+                <div className="mt-3.5 pt-2.5 border-t border-theme-subtle flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-muted block tracking-wider">Total Value</span>
+                    <span className="text-sm font-bold font-mono text-primary block">
                       {formatCurrency(Number(latest.totalAmount || 0))}
                     </span>
                   </div>
 
-                  <div className={`flex items-center gap-1.5 product-quote-action-menu-container ${openActionId === group.quoNo ? 'relative z-50' : 'relative z-0'}`}>
-                    {/* Quick 1-click Preview */}
+                  <div className="flex items-center gap-1.5 product-quote-action-menu-container">
                     <Button
                       variant="ghost"
                       size="sm"
                       icon={Eye}
                       onClick={() => setPreviewData({ quotation: latest, lead: group })}
-                      className="h-7 text-xs border border-theme-subtle rounded-none hover:bg-surface2"
-                      title="Preview Quotation Document"
+                      className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                      title="Preview Document"
                     >
-                      Preview
+                      PDF
                     </Button>
-
-                    {/* Actions Dropdown Button */}
-                    <div className={`relative inline-block text-left ${openActionId === group.quoNo ? 'z-50' : ''}`}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenActionId(openActionId === group.quoNo ? null : group.quoNo);
-                        }}
-                        className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
-                          openActionId === group.quoNo
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
-                        }`}
-                      >
-                        Actions
-                        <ChevronDown size={11} className={`transition-transform duration-150 ${openActionId === group.quoNo ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {openActionId === group.quoNo && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className={`absolute right-0 ${
-                            idx >= filteredGroups.length - 2 && filteredGroups.length > 2 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                          } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] py-1.5 text-left rounded-none max-h-[75vh] overflow-y-auto custom-scrollbar`}
-                          style={{ minWidth: '256px', boxShadow: '0 12px 32px rgba(0,0,0,0.22), 0 0 1px rgba(0,0,0,0.1)' }}
-                        >
-                          <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
-                            Product Quote Actions
-                          </div>
-
-                          {/* 1. Preview Document */}
-                          <button
-                            type="button"
-                            onClick={() => { setPreviewData({ quotation: latest, lead: group }); setOpenActionId(null); }}
-                            className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                          >
-                            <Eye size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                            <span>Preview Document</span>
-                          </button>
-
-                          {/* 2. Open in Builder */}
-                          <button
-                            type="button"
-                            onClick={() => { navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`); setOpenActionId(null); }}
-                            className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                          >
-                            <Edit3 size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
-                            <span>Edit in Quotation Builder</span>
-                          </button>
-
-                          {/* 3. Send Email */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEmailModalData({
-                                documentNumber: group.quoNo,
-                                customerEmail: group.clientEmail || '',
-                                customerName: group.clientName || group.clientCompany || 'Customer',
-                                totalAmount: latest.totalAmount || latest.parsed?.totalPrice || '0.00',
-                                validityDays: latest.parsed?.validityDays || '30',
-                                quotation: latest,
-                                lead: group
-                              });
-                              setOpenActionId(null);
-                            }}
-                            className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                          >
-                            <Mail size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-                            <span>Send via Email</span>
-                          </button>
-
-                          {/* Commercial Actions (If Approved / Sent / Accepted) */}
-                          {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
-                            <>
-                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
-                                Commercial Operations
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => { handleCreateSalesOrder(group, latest); setOpenActionId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
-                                <span>Create Sales Order</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <Receipt size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                                <span>Issue Advance Receipt</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <FileText size={14} className="shrink-0 text-emerald-500" />
-                                <span>Generate Tax Invoice</span>
-                              </button>
-                            </>
-                          )}
-
-                          {/* Approval Actions */}
-                          {((status === 'Draft' || !status || status === 'Rejected') || (canApprove && (status === 'Pending Approval' || status === 'Draft'))) && (
-                            <>
-                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
-                                Workflow & Approvals
-                              </div>
-
-                              {(status === 'Draft' || !status || status === 'Rejected') && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    setOpenActionId(null);
-                                    try {
-                                      await submitQuotationForApproval(latest.id);
-                                      toast('Submitted for approval', 'success');
-                                      refetch();
-                                    } catch(err: any) {
-                                      toast(err?.message || 'Failed to submit', 'error');
-                                    }
-                                  }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <Send size={14} className="shrink-0 text-amber-500" />
-                                  <span>Submit for Approval</span>
-                                </button>
-                              )}
-
-                              {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    setOpenActionId(null);
-                                    try {
-                                      await approveQuotation(latest.id, user?.name || 'Manager');
-                                      toast('Quotation approved successfully!', 'success');
-                                      refetch();
-                                    } catch(err: any) {
-                                      toast(err?.message || 'Failed to approve', 'error');
-                                    }
-                                  }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
-                                  <span>Approve Quotation</span>
-                                </button>
-                              )}
-
-                              {canApprove && status === 'Pending Approval' && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    setOpenActionId(null);
-                                    const reason = prompt('Enter rejection reason:');
-                                    if (!reason) return;
-                                    try {
-                                      await rejectQuotation(latest.id, reason);
-                                      toast('Quotation rejected', 'error');
-                                      refetch();
-                                    } catch(err: any) {
-                                      toast(err?.message || 'Failed to reject', 'error');
-                                    }
-                                  }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <XCircle size={14} className="shrink-0 text-rose-600" />
-                                  <span>Reject Quotation</span>
-                                </button>
-                              )}
-                            </>
-                          )}
-
-                          {/* Delete Action */}
-                          <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-                          <button
-                            type="button"
-                            onClick={() => { handleDelete(latest.id); setOpenActionId(null); }}
-                            className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
-                          >
-                            <Trash2 size={14} className="shrink-0 text-rose-500" />
-                            <span>Delete Quotation</span>
-                          </button>
-                        </div>
-                      )}                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Edit3}
+                      onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
+                      className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                      title="Edit in Builder"
+                    >
+                      Edit
+                    </Button>
+                    {renderActionsDropdown(group, latest, status, idx)}
                   </div>
                 </div>
-              </div>
-
-              {/* Expandable Revisions Panel */}
-              {isRevisionsExpanded && group.versions.length > 1 && (
-                <div className="mt-3 pt-3 border-t border-theme-subtle/50 space-y-1.5 animate-fade-in">
-                  <div className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
-                    <History size={11} className="text-emerald-500" />
-                    Quotation Versions ({group.versions.length})
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                    {group.versions.map((v: any) => {
-                      const isLatest = v.id === latest.id;
-                      return (
-                        <div
-                          key={v.id}
-                          className={`flex items-center justify-between px-2.5 py-1.5 border text-xs rounded-none transition-colors ${
-                            isLatest
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-primary'
-                              : 'bg-surface2/50 border-theme-subtle text-secondary'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-bold font-mono text-primary shrink-0">v{v.version}</span>
-                            {isLatest && (
-                              <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-none uppercase">
-                                Active
-                              </span>
-                            )}
-                            <span className="font-mono text-secondary text-xs truncate">
-                              {formatCurrency(Number(v.totalAmount || 0))}
-                            </span>
-                            <span className="text-xs text-muted truncate">{formatDate(v.date)}</span>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0 ml-1">
-                            <button
-                              onClick={() => setPreviewData({ quotation: v, lead: group })}
-                              className="p-1 text-blue-500 hover:bg-blue-500/10 rounded-none transition-colors"
-                              title={`Preview Version v${v.version}`}
-                            >
-                              <Eye size={12} />
-                            </button>
-                            <button
-                              onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${v.id}`)}
-                              className="p-1 text-primary hover:bg-surface rounded-none transition-colors"
-                              title={`Edit Version v${v.version}`}
-                            >
-                              <Edit3 size={12} />
-                            </button>
-                            <button
-                              onClick={async () => {
-                                const ok = await showConfirm(`Delete Version v${v.version} of quotation ${group.quoNo}?`, 'Delete Version', { confirmLabel: 'Delete' });
-                                if (ok) {
-                                  await deleteQuotation(v.id);
-                                  toast(`Version v${v.version} deleted successfully`, 'success');
-                                  refetch();
-                                }
-                              }}
-                              className="p-1 text-red-500/70 hover:text-red-500 hover:bg-red-500/10 rounded-none transition-colors"
-                              title={`Delete Version v${v.version}`}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </GlassCard>
-          );
-        })}
-        {filteredGroups.length === 0 && !loading && (
-          <div className="py-16 text-center space-y-3 bg-surface rounded-2xl border border-dashed border-theme-subtle">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
-              <PackageCheck size={26} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-primary">No Product Quotations Found</h3>
-              <p className="text-xs text-muted max-w-sm mx-auto">
-                {search || statusFilter !== 'all' 
-                  ? 'No quotations match the active search or filters.' 
-                  : 'Get started by creating your first sales quotation for finished goods.'}
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Plus}
-              onClick={() => navigate('/crm/product-quotations/new')}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
-            >
-              Create Product Quotation
-            </Button>
-          </div>
-        )}
-      </div>
+              </GlassCard>
+            );
+          })}
+        </div>
+      )}
 
       {/* Preview Modal */}
       {previewData && (

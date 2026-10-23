@@ -637,7 +637,7 @@ async function runDatabaseSync() {
   try {
     const ALL_PERMS = [
       'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
-      'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+      'crm.leads.view', 'crm.leads.create', 'crm.leads.edit', 'crm.leads.delete', 'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
       'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
       'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.invoices.delete', 'finance.payments.record',
       'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create',
@@ -670,11 +670,12 @@ async function runDatabaseSync() {
       },
       {
         id: 'sales',
-        name: 'Sales Executive',
-        description: 'Customer relations, quotations generation, discounts, and sales invoicing',
+        name: 'Sales Team (Executive)',
+        description: 'Lead generation & inquiry management, customer relations, quotations generation, discounts, and sales invoicing',
         permissions: JSON.stringify([
           'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.credit.request',
-          'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
+          'crm.leads.view', 'crm.leads.create', 'crm.leads.edit', 'crm.leads.delete', 'crm.leads.manage',
+          'crm.deals.manage', 'crm.followups.manage',
           'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.discount', 'quotations.print',
           'finance.invoices.view', 'inventory.items.view', 'inventory.items.view_details'
         ]),
@@ -1993,10 +1994,11 @@ app.post('/api/quotations', async (req, res) => {
         [data.leadId, qType]
       );
       if (existing && existing.length > 0) {
-        const draftId = existing[0].id;
+        const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
+        const qNo = data.quotationNo || qData.quotationNo || null;
         await db.query(
-          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=?, docNo=?, issueNo=?, issueDate=? WHERE id=?',
-          [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, new Date().toISOString().slice(0, 19).replace('T', ' '), data.docNo || null, data.issueNo || null, data.issueDate || null, draftId]
+          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=NOW(), docNo=?, issueNo=?, issueDate=?, quotationNo=? WHERE id=?',
+          [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, data.docNo || null, data.issueNo || null, data.issueDate || null, qNo, draftId]
         );
         return res.json({ success: true, quotation: { id: draftId, version: 1, type: qType } });
       }
@@ -2035,9 +2037,34 @@ app.put('/api/quotations/update/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
+    const qNo = data.quotationNo || qData.quotationNo || null;
+
     await db.query(
-      'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, type=? WHERE id=?',
-      [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, data.type || 'customer', id]
+      `UPDATE quotations SET 
+        data = ?, 
+        totalAmount = ?, 
+        customAmount = ?, 
+        type = COALESCE(?, type), 
+        leadId = COALESCE(?, leadId), 
+        date = NOW(), 
+        docNo = COALESCE(?, docNo), 
+        issueNo = COALESCE(?, issueNo), 
+        issueDate = COALESCE(?, issueDate),
+        quotationNo = COALESCE(?, quotationNo)
+      WHERE id = ?`,
+      [
+        JSON.stringify(data.data), 
+        data.totalAmount, 
+        data.customAmount || null, 
+        data.type || null, 
+        data.leadId || null, 
+        data.docNo || null, 
+        data.issueNo || null, 
+        data.issueDate || null,
+        qNo,
+        id
+      ]
     );
     res.json({ success: true, id });
   } catch (error: any) {

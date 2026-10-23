@@ -767,21 +767,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       {/* Orders Table */}
       <GlassCard className="p-0 border border-theme-subtle">
-        <div className="overflow-x-auto min-h-[380px] pb-28">
-          <table className="w-full text-left min-w-[900px]">
-            <thead className="bg-surface2/50 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
+        <div className="overflow-x-auto min-h-[380px] pb-28 custom-scrollbar">
+          <table className="w-full text-left min-w-[980px]">
+            <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-3">Order #</th>
-                <th className="px-4 py-3">Product Ordered</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-3 py-3 text-center">Qty</th>
-                <th className="px-4 py-3 text-right">Price / Total</th>
-                <th className="px-3 py-3 text-center">Stock Check</th>
+                <th className="px-3.5 py-3">Order # & Date</th>
+                <th className="px-3.5 py-3">Customer</th>
+                <th className="px-3.5 py-3">Product Ordered</th>
+                <th className="px-3 py-3 text-center">Qty & Stock</th>
+                <th className="px-3.5 py-3 text-right">Value & Advance</th>
+                <th className="px-3 py-3 text-center">Traceability</th>
                 <th className="px-3 py-3 text-center">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-theme-subtle/20 text-xs">
+            <tbody className="divide-y divide-theme-subtle/30 text-xs">
               {filteredOrders.map((order, idx) => {
                 const prod = finishedProducts.find(p => p.id === order.productId)
                 const inStockNow = Number(prod?.quantity || 0)
@@ -804,63 +804,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   (w.title && w.title.includes(order.orderNo))
                 )
 
+                const recs = getOrderReceipts(order);
+                const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
+
                 return (
-                  <tr key={order.id} className={`hover:bg-surface2/30 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/50' : 'relative z-0'}`}>
-                    {/* Order No, Reference Badges & Dates */}
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono font-bold text-primary">{order.orderNo}</span>
-                          {order.quotationNo && (
-                            <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Linked Quotation">
-                              Ref: {order.quotationNo}
-                            </span>
-                          )}
-                          {existingWO && (
-                            <span 
-                              onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                              className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-1.5" 
-                              title="Click to view linked Work Order"
-                            >
-                              <Factory size={10} /> WO: {existingWO.orderNo || existingWO.id}
-                            </span>
-                          )}
-                          {order.gatePassNo && (
-                            <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Gate Pass Issued">
-                              GP: {order.gatePassNo}
-                            </span>
-                          )}
-                          {order.invoiceNo && (
-                            <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Invoice Linked">
-                              Inv: {order.invoiceNo}
-                            </span>
-                          )}
-                          {(() => {
-                            const recs = getOrderReceipts(order);
-                            if (recs.length === 0) return null;
-                            const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-                            return (
-                              <span
-                                onClick={() => {
-                                  const latestRec = recs[0] || recs[recs.length - 1];
-                                  setActivePrintReceipt({
-                                    ...latestRec,
-                                    orderNo: order.orderNo,
-                                    totalQuoted: Number(order.totalPrice || 0)
-                                  });
-                                  setPrintReceiptModalOpen(true);
-                                }}
-                                className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-surface2 text-secondary hover:text-primary border border-theme-subtle cursor-pointer hover:border-theme transition-colors flex items-center gap-1.5"
-                                title={`Advance Paid: ${formatCurrency(totalAdv)} (${recs.length} receipt${recs.length > 1 ? 's' : ''}). Click to view/print`}
-                              >
-                                <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                        <div className="text-xs text-muted flex items-center gap-1.5 font-mono">
-                          <Calendar size={10} />
-                          {formatDate(order.orderDate)}
+                  <tr key={order.id} className={`hover:bg-surface2/40 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
+                    {/* Order No & Dates */}
+                    <td className="px-3.5 py-2.5">
+                      <div className="flex flex-col">
+                        <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
+                          {order.orderNo}
+                        </span>
+                        <div className="text-[11px] text-muted flex items-center gap-1 font-mono mt-0.5">
+                          <Calendar size={10} className="shrink-0" />
+                          <span>{formatDate(order.orderDate)}</span>
                           {order.targetDeliveryDate && (
                             <span className="text-secondary font-medium">• Due {formatDate(order.targetDeliveryDate)}</span>
                           )}
@@ -868,94 +826,139 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </div>
                     </td>
 
+                    {/* Customer */}
+                    <td className="px-3.5 py-2.5 max-w-[200px]">
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-primary truncate" title={order.customerName}>
+                          {order.customerName}
+                        </span>
+                        {order.attention && (
+                          <span className="text-[11px] text-muted truncate">
+                            Attn: {order.attention}
+                          </span>
+                        )}
+                        {order.customerPhone && (
+                          <span className="text-[10px] text-muted font-mono flex items-center gap-1 mt-0.5">
+                            <Phone size={9} /> {order.customerPhone}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
                     {/* Product & Line Items */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-none bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <td className="px-3.5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-none bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center shrink-0">
                           {prod?.imageUrl ? (
                             <img src={prod.imageUrl} alt="" className="w-full h-full object-cover rounded-none" />
                           ) : (
-                            <Package size={14} />
+                            <Package size={13} />
                           )}
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-primary truncate max-w-[200px]" title={order.productName}>
+                            <span className="font-semibold text-primary truncate max-w-[180px]" title={order.productName}>
                               {order.productName || (orderItems.length > 0 ? orderItems[0].description : 'Finished Goods')}
                             </span>
                             {orderItems.length > 1 && (
-                              <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
-                                +{orderItems.length - 1} more
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                                +{orderItems.length - 1}
                               </span>
                             )}
                           </div>
                           {order.productSku && (
-                            <div className="text-xs font-mono text-muted">{order.productSku}</div>
+                            <span className="text-[10px] font-mono text-muted block">{order.productSku}</span>
                           )}
                         </div>
                       </div>
                     </td>
 
-                    {/* Customer */}
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-sm text-primary flex items-center gap-1.5">
-                          <User size={12} className="text-muted" />
-                          {order.customerName}
+                    {/* Qty & Stock */}
+                    <td className="px-3 py-2.5 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="font-mono font-bold text-xs text-primary">
+                          {order.qty} pcs
                         </span>
-                        {order.attention && (
-                          <span className="text-xs font-medium text-secondary flex items-center gap-1.5 mt-0.5">
-                            <span className="text-xs uppercase px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle font-mono font-medium">Attn</span>
-                            {order.attention}
+                        {order.isDispatched ? (
+                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                            Dispatched
                           </span>
-                        )}
-                        {order.customerPhone && (
-                          <span className="text-xs text-muted font-mono flex items-center gap-1.5 mt-0.5">
-                            <Phone size={10} />
-                            {order.customerPhone}
+                        ) : isShort ? (
+                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-none bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 flex items-center gap-0.5" title={`Shortage: only ${inStockNow} in stock`}>
+                            <AlertTriangle size={9} /> Shortage ({inStockNow})
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-none bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
+                            In Stock ({inStockNow})
                           </span>
                         )}
                       </div>
                     </td>
 
-                    {/* Qty */}
-                    <td className="px-3 py-3 text-center">
-                      <span className="font-mono font-bold text-sm text-primary">
-                        {order.qty}
-                      </span>
-                    </td>
-
-                    {/* Price */}
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-col font-mono">
-                        <span className="font-bold text-primary">{formatCurrency(order.totalPrice)}</span>
+                    {/* Value & Advance */}
+                    <td className="px-3.5 py-2.5 text-right">
+                      <div className="flex flex-col items-end">
+                        <span className="font-mono font-bold text-xs text-primary">
+                          {formatCurrency(order.totalPrice)}
+                        </span>
                         {Number(order.unitPrice) > 0 && (
-                          <span className="text-xs text-muted font-mono">@ {formatCurrency(order.unitPrice)}</span>
+                          <span className="text-[10px] text-muted font-mono">@ {formatCurrency(order.unitPrice)}</span>
+                        )}
+                        {totalAdv > 0 && latestRec && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActivePrintReceipt({
+                                ...latestRec,
+                                orderNo: order.orderNo,
+                                totalQuoted: Number(order.totalPrice || 0)
+                              });
+                              setPrintReceiptModalOpen(true);
+                            }}
+                            className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors flex items-center gap-0.5 mt-0.5"
+                            title={`Advance Paid: ${formatCurrency(totalAdv)}`}
+                          >
+                            <Receipt size={9} /> Adv: {formatCurrency(totalAdv)}
+                          </button>
                         )}
                       </div>
                     </td>
 
-                    {/* Stock Status */}
-                    <td className="px-3 py-3 text-center">
-                      {order.isDispatched ? (
-                        <Badge variant="success" size="sm">
-                          Dispatched (-{order.qty})
-                        </Badge>
-                      ) : isShort ? (
-                        <span title={`Stock shortage: only ${inStockNow} in stock`}>
-                          <Badge variant="error" size="sm">
-                            <AlertTriangle size={10} className="mr-1 inline" /> Shortage
-                          </Badge>
-                        </span>
-                      ) : (
-                        <Badge variant="info" size="sm">
-                          In Stock ({inStockNow})
-                        </Badge>
-                      )}
+                    {/* Traceability Badges */}
+                    <td className="px-3 py-2.5 text-center">
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        {order.quotationNo && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Linked Quotation">
+                            Ref: {order.quotationNo}
+                          </span>
+                        )}
+                        {existingWO && (
+                          <span 
+                            onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
+                            className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 cursor-pointer hover:bg-blue-500/20 transition-colors flex items-center gap-1" 
+                            title="Click to view linked Work Order"
+                          >
+                            <Factory size={9} /> WO: {existingWO.orderNo || existingWO.id}
+                          </span>
+                        )}
+                        {order.gatePassNo && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/25" title="Gate Pass Issued">
+                            GP: {order.gatePassNo}
+                          </span>
+                        )}
+                        {order.invoiceNo && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25" title="Invoice Linked">
+                            Inv: {order.invoiceNo}
+                          </span>
+                        )}
+                        {!order.quotationNo && !existingWO && !order.gatePassNo && !order.invoiceNo && (
+                          <span className="text-muted text-[11px]">-</span>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Order Status */}
-                    <td className="px-3 py-3 text-center">
+                    {/* Status */}
+                    <td className="px-3 py-2.5 text-center">
                       <Badge
                         variant={
                           order.status === 'Dispatched' ? 'success' :
@@ -969,7 +972,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Actions */}
-                    <td className={`px-4 py-3 text-right ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
+                    <td className={`px-4 py-2.5 text-right ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
                       <div className={`flex items-center justify-end gap-1.5 order-action-menu-container ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
                         {/* Quick 1-click Print PDF */}
                         <Button

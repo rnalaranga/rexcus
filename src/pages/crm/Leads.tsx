@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2 } from 'lucide-react'
+import { 
+  Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2,
+  Flame, Clock, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, ChevronDown, 
+  Building2, Mail, ExternalLink, RefreshCw, Trophy, Zap, SlidersHorizontal, Search,
+  Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles
+} from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +26,8 @@ const STAGE_LABELS: Record<string, string> = {
 }
 
 type ViewMode = 'kanban' | 'list'
+type PresetFilter = 'active' | 'hot' | 'stale' | 'won' | 'lost' | 'all'
+type CardDensity = 'detailed' | 'compact'
 
 export const Leads: React.FC = () => {
   const navigate = useNavigate()
@@ -28,6 +35,12 @@ export const Leads: React.FC = () => {
   const { data: allFollowups } = useFollowups()
   const [view, setView]     = useState<ViewMode>('kanban')
   const [search, setSearch] = useState('')
+  const [presetFilter, setPresetFilter] = useState<PresetFilter>('active')
+  const [selectedStage, setSelectedStage] = useState<string>('all')
+  const [selectedPriority, setSelectedPriority] = useState<string>('all')
+  const [selectedOwner, setSelectedOwner] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<string>('value_desc')
+  const [cardDensity, setCardDensity] = useState<CardDensity>('compact')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [leadGrns, setLeadGrns] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -289,53 +302,282 @@ export const Leads: React.FC = () => {
     await refetch()
   }
 
-  const filtered = leads.filter(l =>
-    [l.name, l.company, l.id].some(v => v.toLowerCase().includes(search.toLowerCase()))
-  )
+  const getDaysSinceActivity = (dateStr?: string) => {
+    if (!dateStr) return 999
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return 999
+    const diffTime = Date.now() - d.getTime()
+    return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
+  }
+
+  const metrics = useMemo(() => {
+    const list = leads || []
+    const activeLeads = list.filter((l: any) => !['won', 'lost'].includes(l.stage))
+    const activeValue = activeLeads.reduce((s: number, l: any) => s + Number(l.value || 0), 0)
+
+    const hotLeads = activeLeads.filter((l: any) => (l.priority === 'high' || l.priority === 'urgent'))
+    const hotValue = hotLeads.reduce((s: number, l: any) => s + Number(l.value || 0), 0)
+
+    const staleLeads = activeLeads.filter((l: any) => getDaysSinceActivity(l.lastActivity) >= 7)
+
+    const wonLeads = list.filter((l: any) => l.stage === 'won')
+    const wonValue = wonLeads.reduce((s: number, l: any) => s + Number(l.value || 0), 0)
+
+    const lostLeads = list.filter((l: any) => l.stage === 'lost')
+    const conversionRate = list.length > 0 ? Math.round((wonLeads.length / list.length) * 100) : 0
+    const avgDealSize = activeLeads.length > 0 ? Math.round(activeValue / activeLeads.length) : 0
+
+    return {
+      activeCount: activeLeads.length,
+      activeValue,
+      hotCount: hotLeads.length,
+      hotValue,
+      staleCount: staleLeads.length,
+      wonCount: wonLeads.length,
+      wonValue,
+      lostCount: lostLeads.length,
+      conversionRate,
+      avgDealSize,
+      totalCount: list.length
+    }
+  }, [leads])
+
+  const uniqueOwners = useMemo(() => {
+    const owners = new Set<string>()
+    ;(leads || []).forEach((l: any) => {
+      if (l.assignedTo && typeof l.assignedTo === 'string' && l.assignedTo.trim()) {
+        owners.add(l.assignedTo.trim())
+      }
+    })
+    return Array.from(owners)
+  }, [leads])
+
+  const filtered = useMemo(() => {
+    let result = [...(leads || [])]
+
+    // 1. Search Query
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter((l: any) =>
+        (l.name && l.name.toLowerCase().includes(q)) ||
+        (l.company && l.company.toLowerCase().includes(q)) ||
+        (l.id && l.id.toLowerCase().includes(q)) ||
+        (l.phone && l.phone.toLowerCase().includes(q)) ||
+        (l.email && l.email.toLowerCase().includes(q)) ||
+        (l.description && l.description.toLowerCase().includes(q))
+      )
+    }
+
+    // 2. Preset Filter
+    if (presetFilter === 'active') {
+      result = result.filter((l: any) => !['won', 'lost'].includes(l.stage))
+    } else if (presetFilter === 'hot') {
+      result = result.filter((l: any) => (l.priority === 'high' || l.priority === 'urgent') && !['won', 'lost'].includes(l.stage))
+    } else if (presetFilter === 'stale') {
+      result = result.filter((l: any) => getDaysSinceActivity(l.lastActivity) >= 7 && !['won', 'lost'].includes(l.stage))
+    } else if (presetFilter === 'won') {
+      result = result.filter((l: any) => l.stage === 'won')
+    } else if (presetFilter === 'lost') {
+      result = result.filter((l: any) => l.stage === 'lost')
+    }
+
+    // 3. Stage Filter
+    if (selectedStage !== 'all') {
+      result = result.filter((l: any) => l.stage === selectedStage)
+    }
+
+    // 4. Priority Filter
+    if (selectedPriority !== 'all') {
+      result = result.filter((l: any) => (l.priority || '').toLowerCase() === selectedPriority.toLowerCase())
+    }
+
+    // 5. Owner Filter
+    if (selectedOwner !== 'all') {
+      result = result.filter((l: any) => l.assignedTo === selectedOwner)
+    }
+
+    // 6. Sorting
+    result.sort((a: any, b: any) => {
+      if (sortBy === 'value_desc') return Number(b.value || 0) - Number(a.value || 0)
+      if (sortBy === 'value_asc') return Number(a.value || 0) - Number(b.value || 0)
+      if (sortBy === 'prob_desc') return Number(b.probability || 0) - Number(a.probability || 0)
+      if (sortBy === 'activity_asc') {
+        return new Date(a.lastActivity || 0).getTime() - new Date(b.lastActivity || 0).getTime()
+      }
+      return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime()
+    })
+
+    return result
+  }, [leads, search, presetFilter, selectedStage, selectedPriority, selectedOwner, sortBy])
+
+  const displayedStages = useMemo(() => {
+    if (selectedStage !== 'all') {
+      return [selectedStage as any]
+    }
+    if (presetFilter === 'active' || presetFilter === 'hot' || presetFilter === 'stale') {
+      return ['new', 'contacted', 'qualified', 'proposal', 'negotiation'] as const
+    }
+    if (presetFilter === 'won') {
+      return ['won'] as const
+    }
+    if (presetFilter === 'lost') {
+      return ['lost'] as const
+    }
+    return STAGES
+  }, [presetFilter, selectedStage])
+
+  const hasActiveFilters = search.trim() !== '' || selectedStage !== 'all' || selectedPriority !== 'all' || selectedOwner !== 'all' || presetFilter !== 'active' || sortBy !== 'value_desc'
+
+  const resetFilters = () => {
+    setSearch('')
+    setPresetFilter('active')
+    setSelectedStage('all')
+    setSelectedPriority('all')
+    setSelectedOwner('all')
+    setSortBy('value_desc')
+  }
 
   const columns: Column<any>[] = [
     {
-      key: 'name', header: 'Lead', sortable: true,
+      key: 'name', 
+      header: 'Company & Contact', 
+      sortable: true,
       render: (_, row) => (
-        <div>
-          <p className="text-sm font-medium text-primary">{row.company}</p>
-          <p className="text-[10px] text-muted">{row.name}</p>
+        <div className="py-1 min-w-[190px]">
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-sm text-primary hover:text-rex-600 transition-colors">
+              {row.company || 'Unnamed Company'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-secondary">
+            <span className="flex items-center gap-1">
+              <User size={11} className="text-muted" /> {row.name || 'No contact'}
+            </span>
+            <span className="text-[10px] font-mono text-muted bg-surface2 px-1 rounded-none border border-theme-subtle">
+              {row.id}
+            </span>
+          </div>
         </div>
       ),
     },
-    { key: 'id',       header: 'ID',       width: '100px', render: v => <span className="text-[10px] text-muted font-mono">{String(v)}</span> },
-    { key: 'stage',    header: 'Stage',    width: '120px', render: v => <Badge value={String(v)} /> },
-    { key: 'priority', header: 'Priority', width: '90px',  render: v => <Badge value={String(v)} /> },
-    { key: 'source',   header: 'Source',   render: v => <span className="text-xs text-muted">{String(v).replace(/_/g, ' ')}</span> },
     {
-      key: 'value', header: 'Value', sortable: true, align: 'right', width: '120px',
-      render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300">{formatCurrency(Number(v))}</span>,
+      key: 'contact',
+      header: 'Contact Info',
+      render: (_, row) => (
+        <div className="space-y-0.5 min-w-[150px] text-xs">
+          {row.phone ? (
+            <a 
+              href={`tel:${row.phone}`} 
+              onClick={e => e.stopPropagation()} 
+              className="flex items-center gap-1.5 text-primary hover:text-rex-600 font-mono"
+            >
+              <Phone size={11} className="text-muted" /> {row.phone}
+            </a>
+          ) : (
+            <span className="text-muted text-[11px] italic">No phone</span>
+          )}
+          {row.email && (
+            <a 
+              href={`mailto:${row.email}`} 
+              onClick={e => e.stopPropagation()} 
+              className="flex items-center gap-1.5 text-[11px] text-muted hover:text-primary truncate max-w-[160px]"
+            >
+              <Mail size={11} className="text-muted shrink-0" /> <span className="truncate">{row.email}</span>
+            </a>
+          )}
+        </div>
+      )
     },
     {
-      key: 'probability', header: 'Prob.', align: 'center', width: '70px',
-      render: v => (
-        <span className={`text-xs font-medium ${Number(v) >= 70 ? 'text-emerald-600 dark:text-emerald-400' : Number(v) >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-muted'}`}>
-          {String(v)}%
-        </span>
-      ),
+      key: 'stage',
+      header: 'Stage & Priority',
+      sortable: true,
+      render: (_, row) => (
+        <div className="space-y-1 min-w-[110px]">
+          <Badge value={row.stage} />
+          <div className="flex items-center gap-1">
+            <Badge value={row.priority} size="sm" />
+            {row.source && (
+              <span className="text-[9px] uppercase tracking-wider text-muted font-medium">
+                {row.source.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
+        </div>
+      )
     },
-    { key: 'assignedTo',   header: 'Owner',    render: v => <span className="text-xs text-muted">{String(v).split(' ')[0]}</span> },
-    { key: 'lastActivity', header: 'Activity', sortable: true, width: '100px', render: v => <span className="text-xs text-muted">{relativeTime(String(v))}</span> },
+    {
+      key: 'value',
+      header: 'Deal Value & Probability',
+      sortable: true,
+      align: 'right',
+      render: (_, row) => (
+        <div className="space-y-1 text-right min-w-[130px]">
+          <span className="font-mono font-bold text-xs text-primary block">
+            {formatCurrency(Number(row.value || 0))}
+          </span>
+          <div className="flex items-center justify-end gap-1.5">
+            <div className="w-16 h-1.5 bg-surface2 rounded-none overflow-hidden border border-theme-subtle">
+              <div 
+                className="h-full bg-rex-500 rounded-none" 
+                style={{ width: `${row.probability || 10}%` }} 
+              />
+            </div>
+            <span className="text-[10px] font-mono text-muted">{row.probability || 10}%</span>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'activity',
+      header: 'Activity & Health',
+      sortable: true,
+      render: (_, row) => {
+        const days = getDaysSinceActivity(row.lastActivity)
+        const isStale = days >= 7 && !['won', 'lost'].includes(row.stage)
+
+        return (
+          <div className="space-y-0.5 min-w-[120px]">
+            <span className="text-xs text-secondary block">
+              {relativeTime(row.lastActivity)}
+            </span>
+            {isStale ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-none border border-amber-500/20">
+                <AlertTriangle size={10} /> {days}d inactive
+              </span>
+            ) : (
+              <span className="text-[10px] text-muted font-mono">
+                {row.assignedTo ? row.assignedTo.split(' ')[0] : 'Unassigned'}
+              </span>
+            )}
+          </div>
+        )
+      }
+    },
     {
       key: 'actions',
       header: '',
       align: 'right',
-      width: '120px',
       render: (_, row) => (
-        <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
           <button
             type="button"
             onClick={() => openCollectSampleModal(row)}
-            className="px-2 py-1 text-[10px] font-semibold rounded bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 hover:text-rex-600 transition-colors flex items-center gap-1"
+            className="px-2 py-1 text-xs font-semibold rounded-none bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 hover:text-rex-600 transition-colors flex items-center gap-1"
             title="Collect Customer Sample (GRN)"
           >
-            <Package size={11} className="text-rex-600 dark:text-rex-400" /> Collect Sample
+            <Package size={12} className="text-rex-600 dark:text-rex-400" /> Sample
           </button>
+          {row.stage === 'qualified' && (
+            <button
+              type="button"
+              onClick={() => navigate(`/crm/quotations/new/${row.id}`)}
+              className="px-2 py-1 text-xs font-bold rounded-none bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center gap-1"
+              title="Create Quotation"
+            >
+              <FileText size={12} /> Quote
+            </button>
+          )}
         </div>
       )
     }
@@ -352,109 +594,431 @@ export const Leads: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 animate-fade-in pb-12">
+      {/* ── TOP HEADER ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-primary">Lead Management</h1>
-          <p className="text-xs text-muted mt-0.5">
-            {leads.filter(l => !['won', 'lost'].includes(l.stage)).length} active leads ·{' '}
-            <span className="text-rex-600 dark:text-rex-400 font-medium">{formatCurrency(
-              leads.filter(l => !['won', 'lost'].includes(l.stage)).reduce((s, l) => s + Number(l.value), 0), true
-            )} pipeline</span>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-primary tracking-tight">Lead Pipeline & CRM Command</h1>
+            <span className="text-xs font-mono font-bold bg-rex-500/10 text-rex-600 dark:text-rex-400 px-2 py-0.5 rounded-none border border-rex-500/20">
+              {metrics.totalCount} Leads Total
+            </span>
+          </div>
+          <p className="text-xs text-secondary mt-0.5">
+            Real-time pipeline tracking, stale follow-up detection, sample collections, and quick quotation generation.
           </p>
         </div>
+
         <div className="flex items-center gap-2">
-          <div className="flex border border-theme">
-            <button onClick={() => setView('kanban')} className={`p-2 transition-colors ${view === 'kanban' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>
-              <LayoutGrid size={14} />
-            </button>
-            <button onClick={() => setView('list')}   className={`p-2 transition-colors ${view === 'list'   ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400' : 'text-muted hover:text-primary'}`}>
-              <List size={14} />
-            </button>
-          </div>
-          <SearchBar placeholder="Search leads..." value={search} onChange={setSearch} size="sm" className="w-48" />
-          <Button variant="primary" size="sm" icon={Plus} onClick={openCreateModal}>Add Lead</Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => refetch()} 
+            disabled={loading}
+            className="rounded-none border-theme text-xs"
+          >
+            <RefreshCw size={12} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+
+          <Button 
+            variant="primary" 
+            size="sm" 
+            icon={Plus} 
+            onClick={openCreateModal}
+            className="rounded-none text-xs font-bold"
+          >
+            Add New Lead
+          </Button>
         </div>
       </div>
 
+      {/* ── INTERACTIVE 5-METRIC COMMAND RIBBON (CLICK TO FILTER IMMEDIATELY) ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        <GlassCard 
+          onClick={() => { setPresetFilter('active'); setSelectedStage('all'); }}
+          className={`p-3 border-theme-subtle rounded-none cursor-pointer transition-all hover:border-theme ${
+            presetFilter === 'active' ? 'ring-1 ring-rex-500/50 bg-rex-500/5' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">Active Pipeline</span>
+            <Briefcase size={13} className="text-rex-600 dark:text-rex-400" />
+          </div>
+          <p className="text-lg font-mono font-bold text-primary mt-1">{metrics.activeCount}</p>
+          <span className="text-[11px] font-mono font-bold text-rex-600 dark:text-rex-300 block truncate">
+            {formatCurrency(metrics.activeValue)}
+          </span>
+        </GlassCard>
+
+        <GlassCard 
+          onClick={() => { setPresetFilter('hot'); setSelectedStage('all'); }}
+          className={`p-3 border-theme-subtle rounded-none cursor-pointer transition-all hover:border-theme ${
+            presetFilter === 'hot' ? 'ring-1 ring-amber-500/50 bg-amber-500/5' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">🔥 Hot / Urgent</span>
+            <Flame size={13} className="text-amber-500 animate-pulse" />
+          </div>
+          <p className="text-lg font-mono font-bold text-amber-600 dark:text-amber-400 mt-1">{metrics.hotCount}</p>
+          <span className="text-[11px] font-mono text-muted block truncate">
+            {formatCurrency(metrics.hotValue)}
+          </span>
+        </GlassCard>
+
+        <GlassCard 
+          onClick={() => { setPresetFilter('stale'); setSelectedStage('all'); }}
+          className={`p-3 border-theme-subtle rounded-none cursor-pointer transition-all hover:border-theme ${
+            presetFilter === 'stale' ? 'ring-1 ring-rose-500/50 bg-rose-500/5' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">⚠️ Needs Follow-up</span>
+            <AlertTriangle size={13} className={metrics.staleCount > 0 ? "text-rose-500" : "text-muted"} />
+          </div>
+          <p className={`text-lg font-mono font-bold mt-1 ${metrics.staleCount > 0 ? 'text-rose-500' : 'text-primary'}`}>
+            {metrics.staleCount}
+          </p>
+          <span className="text-[11px] text-muted block truncate">
+            &gt; 7 days idle
+          </span>
+        </GlassCard>
+
+        <GlassCard 
+          onClick={() => { setPresetFilter('won'); setSelectedStage('all'); }}
+          className={`p-3 border-theme-subtle rounded-none cursor-pointer transition-all hover:border-theme ${
+            presetFilter === 'won' ? 'ring-1 ring-emerald-500/50 bg-emerald-500/5' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">🏆 Won Deals</span>
+            <Trophy size={13} className="text-emerald-500" />
+          </div>
+          <p className="text-lg font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{metrics.wonCount}</p>
+          <span className="text-[11px] font-mono text-muted block truncate">
+            {formatCurrency(metrics.wonValue)}
+          </span>
+        </GlassCard>
+
+        <GlassCard className="p-3 border-theme-subtle rounded-none">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">Conversion & Avg</span>
+            <Zap size={13} className="text-blue-500" />
+          </div>
+          <p className="text-lg font-mono font-bold text-primary mt-1">{metrics.conversionRate}%</p>
+          <span className="text-[11px] font-mono text-muted block truncate">
+            Avg: {formatCurrency(metrics.avgDealSize)}
+          </span>
+        </GlassCard>
+      </div>
+
+      {/* ── FILTER & WORKSPACE CONTROL BAR ──────────────────────────────────── */}
+      <GlassCard className="p-3 space-y-2.5 rounded-none border-theme-subtle">
+        {/* Preset Tabs */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            {[
+              { id: 'active', label: 'Active Pipeline', count: metrics.activeCount },
+              { id: 'hot', label: '🔥 Hot Deals', count: metrics.hotCount },
+              { id: 'stale', label: '⚠️ Needs Attention', count: metrics.staleCount },
+              { id: 'won', label: '🏆 Won', count: metrics.wonCount },
+              { id: 'lost', label: 'Lost', count: metrics.lostCount },
+              { id: 'all', label: 'All Leads', count: metrics.totalCount }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => { setPresetFilter(tab.id as PresetFilter); setSelectedStage('all'); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-none tracking-wider shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                  presetFilter === tab.id
+                    ? 'border-b-2 border-rex-600 text-rex-600 dark:text-rex-400 font-bold bg-rex-500/10 border-rex-500/30'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono ${
+                  presetFilter === tab.id ? 'bg-rex-600 text-white font-bold' : 'text-muted'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              onClick={resetFilters}
+              className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 font-semibold cursor-pointer underline"
+            >
+              <X size={12} /> Clear all filters
+            </button>
+          )}
+        </div>
+
+        {/* Detailed Controls Row */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-1 border-t border-theme-subtle">
+          <div className="flex items-center gap-2 flex-wrap flex-1">
+            <div className="w-56">
+              <SearchBar 
+                placeholder="Search company, name, phone, email..." 
+                value={search} 
+                onChange={setSearch} 
+                size="sm" 
+                className="rounded-none text-xs" 
+              />
+            </div>
+
+            {/* Stage Selector */}
+            <select
+              value={selectedStage}
+              onChange={e => setSelectedStage(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs font-medium focus:border-primary outline-none"
+            >
+              <option value="all">Stage: All Stages</option>
+              {STAGES.map(s => (
+                <option key={s} value={s}>{STAGE_LABELS[s]}</option>
+              ))}
+            </select>
+
+            {/* Priority Selector */}
+            <select
+              value={selectedPriority}
+              onChange={e => setSelectedPriority(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs font-medium focus:border-primary outline-none"
+            >
+              <option value="all">Priority: All</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+
+            {/* Owner Selector */}
+            {uniqueOwners.length > 0 && (
+              <select
+                value={selectedOwner}
+                onChange={e => setSelectedOwner(e.target.value)}
+                className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs font-medium focus:border-primary outline-none"
+              >
+                <option value="all">Owner: All Reps</option>
+                {uniqueOwners.map(owner => (
+                  <option key={owner} value={owner}>{owner}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Sort Selector */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs font-medium focus:border-primary outline-none"
+            >
+              <option value="value_desc">Sort: Highest Value</option>
+              <option value="value_asc">Sort: Lowest Value</option>
+              <option value="activity_asc">Sort: Oldest Idle (Followup)</option>
+              <option value="date_desc">Sort: Newest First</option>
+              <option value="prob_desc">Sort: Highest Probability</option>
+            </select>
+          </div>
+
+          {/* View Mode & Density Switch */}
+          <div className="flex items-center gap-2 shrink-0">
+            {view === 'kanban' && (
+              <div className="flex items-center bg-surface border border-theme-subtle p-0.5 rounded-none text-xs">
+                <button
+                  onClick={() => setCardDensity('compact')}
+                  className={`px-2 py-1 text-[11px] rounded-none transition-colors cursor-pointer ${
+                    cardDensity === 'compact' ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
+                  }`}
+                  title="Compact Cards (Fits 3x more cards)"
+                >
+                  Compact
+                </button>
+                <button
+                  onClick={() => setCardDensity('detailed')}
+                  className={`px-2 py-1 text-[11px] rounded-none transition-colors cursor-pointer ${
+                    cardDensity === 'detailed' ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
+                  }`}
+                  title="Detailed Cards (Full view)"
+                >
+                  Detailed
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center bg-surface border border-theme-subtle p-0.5 rounded-none">
+              <button 
+                onClick={() => setView('kanban')} 
+                className={`p-1.5 rounded-none transition-colors cursor-pointer ${
+                  view === 'kanban' ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
+                }`}
+                title="Kanban Board View"
+              >
+                <LayoutGrid size={13} />
+              </button>
+              <button 
+                onClick={() => setView('list')}   
+                className={`p-1.5 rounded-none transition-colors cursor-pointer ${
+                  view === 'list' ? 'bg-surface2 text-primary font-bold' : 'text-muted hover:text-primary'
+                }`}
+                title="Data Table View"
+              >
+                <List size={13} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* ── MAIN CONTENT (KANBAN OR TABLE) ─────────────────────────────────── */}
       {view === 'kanban' ? (
-        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-160px)]">
-          {STAGES.map(stage => {
-            const stageLeads = filtered.filter(l => l.stage === stage)
-            const stageValue = stageLeads.reduce((s, l) => s + Number(l.value), 0)
+        <div className="flex gap-3 overflow-x-auto pb-4 h-[calc(100vh-270px)] min-h-[450px]">
+          {displayedStages.map(stage => {
+            const stageLeads = filtered.filter((l: any) => l.stage === stage)
+            const stageValue = stageLeads.reduce((s: number, l: any) => s + Number(l.value || 0), 0)
+
             return (
               <div 
                 key={stage} 
-                className="flex-shrink-0 w-56 flex flex-col h-full"
+                className="flex-shrink-0 w-64 flex flex-col h-full bg-surface/50 border border-theme-subtle rounded-none"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage)}
               >
                 {/* Column header */}
-                <div className={`glass px-3 py-2.5 mb-2 shrink-0 ${stageColorBorder[stage] || 'border-b-2 border-b-theme'}`}>
+                <div className={`p-2.5 shrink-0 bg-surface2/60 border-b ${stageColorBorder[stage] || 'border-b-theme'}`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">{STAGE_LABELS[stage]}</span>
-                    <span className="text-[10px] bg-surface2 text-muted px-1.5 py-0.5 font-medium">{stageLeads.length}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                      {STAGE_LABELS[stage] || stage}
+                    </span>
+                    <span className="text-[10px] bg-surface text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle">
+                      {stageLeads.length}
+                    </span>
                   </div>
-                  {stageValue > 0 && <p className="text-[9px] text-muted mt-0.5">{formatCurrency(stageValue)}</p>}
+                  <p className="text-[10px] font-mono font-semibold text-muted mt-1">
+                    {formatCurrency(stageValue)}
+                  </p>
                 </div>
 
-                <div className="space-y-2 flex-1 overflow-y-auto pr-1 pb-4 min-h-[200px] custom-scrollbar">
-                  {stageLeads.map(lead => (
-                    <div 
-                      key={lead.id} 
-                      className="kanban-card p-3 cursor-pointer" 
-                      onClick={() => openEditModal(lead)}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, lead.id)}
-                    >
-                      <div className="flex items-start justify-between mb-1.5">
-                        <p className="text-xs font-medium text-primary leading-snug flex-1 mr-1">{lead.company}</p>
-                        <Badge value={lead.priority} size="sm" />
-                      </div>
-                      <p className="text-[10px] text-muted mb-1 truncate">{lead.name}</p>
-                      {lead.description && <p className="text-[9px] text-secondary mb-2 line-clamp-2 italic border-l-2 border-theme-subtle pl-1">{lead.description}</p>}
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-rex-600 dark:text-rex-300 font-semibold">{formatCurrency(lead.value)}</span>
-                        <span className="text-[10px] text-muted">{lead.probability}%</span>
-                      </div>
-                      <div className="mt-1.5 h-0.5 bg-surface2">
-                        <div className="h-full bg-rex-500" style={{ width: `${lead.probability}%`, opacity: 0.6 }} />
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[9px] text-faint">{lead.assignedTo?.split(' ')[0] || ''}</span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigate('/crm/followups') }}
-                            className="text-[9px] text-muted hover:text-amber-500 transition-colors flex items-center gap-0.5"
-                          ><Bell size={9}/></button>
-                          <span className="text-[9px] text-faint">{relativeTime(lead.lastActivity)}</span>
-                        </div>
-                      </div>
-                      {/* Action buttons on kanban card */}
-                      <div className="mt-2 pt-1.5 border-t border-theme-subtle flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openCollectSampleModal(lead); }}
-                          className="flex-1 text-[10px] font-semibold py-1 px-1.5 rounded bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 hover:text-rex-600 transition-colors flex items-center justify-center gap-1"
-                          title="Collect Customer Sample (GRN)"
+                {/* Cards Container */}
+                <div className="p-2 space-y-2 flex-1 overflow-y-auto pb-6 custom-scrollbar">
+                  {stageLeads.map((lead: any) => {
+                    const days = getDaysSinceActivity(lead.lastActivity)
+                    const isStale = days >= 7 && !['won', 'lost'].includes(lead.stage)
+
+                    if (cardDensity === 'compact') {
+                      return (
+                        <div 
+                          key={lead.id} 
+                          className="p-2 bg-surface border border-theme-subtle hover:border-rex-500/50 transition-all cursor-pointer rounded-none group hover:shadow-xs" 
+                          onClick={() => openEditModal(lead)}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, lead.id)}
                         >
-                          <Package size={10} className="text-rex-600 dark:text-rex-400" /> Collect Sample
-                        </button>
-                        {lead.stage === 'qualified' && (
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <p className="text-xs font-bold text-primary truncate flex-1 group-hover:text-rex-600 transition-colors" title={lead.company}>
+                              {lead.company}
+                            </p>
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${
+                              lead.priority === 'urgent' ? 'bg-rose-500' :
+                              lead.priority === 'high' ? 'bg-amber-500' :
+                              lead.priority === 'medium' ? 'bg-blue-400' : 'bg-slate-300'
+                            }`} title={`Priority: ${lead.priority}`} />
+                          </div>
+                          
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-muted truncate max-w-[110px]">{lead.name}</span>
+                            <span className="font-mono font-bold text-rex-600 dark:text-rex-300">
+                              {formatCurrency(lead.value)}
+                            </span>
+                          </div>
+
+                          {isStale && (
+                            <div className="mt-1 pt-1 border-t border-theme-subtle flex items-center justify-between text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                              <span className="flex items-center gap-1">
+                                <Clock size={10} /> {days}d idle
+                              </span>
+                              <span className="text-muted font-mono">{lead.probability}%</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    // Detailed Card View
+                    return (
+                      <div 
+                        key={lead.id} 
+                        className="p-3 bg-surface border border-theme-subtle hover:border-rex-500/50 transition-all cursor-pointer rounded-none group" 
+                        onClick={() => openEditModal(lead)}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, lead.id)}
+                      >
+                        <div className="flex items-start justify-between mb-1">
+                          <p className="text-xs font-bold text-primary leading-snug flex-1 mr-1 group-hover:text-rex-600 transition-colors">{lead.company}</p>
+                          <Badge value={lead.priority} size="sm" />
+                        </div>
+                        <p className="text-[11px] text-muted mb-1.5 truncate flex items-center gap-1">
+                          <User size={10} className="text-muted shrink-0" /> {lead.name}
+                        </p>
+
+                        {lead.description && (
+                          <p className="text-[10px] text-secondary mb-2 line-clamp-2 italic border-l-2 border-theme-subtle pl-1.5">
+                            {lead.description}
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-rex-600 dark:text-rex-300 font-bold font-mono">
+                            {formatCurrency(lead.value)}
+                          </span>
+                          <span className="text-[10px] text-muted font-mono">{lead.probability}%</span>
+                        </div>
+
+                        <div className="mt-1.5 h-1 bg-surface2 rounded-none overflow-hidden">
+                          <div className="h-full bg-rex-500 rounded-none" style={{ width: `${lead.probability}%` }} />
+                        </div>
+
+                        <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-theme-subtle">
+                          <span className="text-[10px] text-faint truncate max-w-[90px]">{lead.assignedTo?.split(' ')[0] || 'Unassigned'}</span>
+                          <div className="flex items-center gap-1.5">
+                            {isStale ? (
+                              <span className="text-[10px] text-amber-600 font-bold flex items-center gap-0.5">
+                                <Clock size={10} /> {days}d
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted">{relativeTime(lead.lastActivity)}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action buttons on kanban card */}
+                        <div className="mt-2 pt-1.5 border-t border-theme-subtle flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${lead.id}`); }}
-                            className="text-[10px] font-semibold py-1 px-2 rounded bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center justify-center gap-1"
-                            title="Create Quotation"
+                            onClick={(e) => { e.stopPropagation(); openCollectSampleModal(lead); }}
+                            className="flex-1 text-[10px] font-semibold py-1 px-1.5 rounded-none bg-surface hover:bg-surface2 text-primary border border-theme-subtle hover:border-rex-500 hover:text-rex-600 transition-colors flex items-center justify-center gap-1"
+                            title="Collect Customer Sample (GRN)"
                           >
-                            <FileText size={10} /> Quote
+                            <Package size={11} className="text-rex-600 dark:text-rex-400" /> Sample
                           </button>
-                        )}
+                          {lead.stage === 'qualified' && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${lead.id}`); }}
+                              className="text-[10px] font-bold py-1 px-2 rounded-none bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center justify-center gap-1"
+                              title="Create Quotation"
+                            >
+                              <FileText size={11} /> Quote
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
+
                   {stageLeads.length === 0 && (
-                    <div className="py-6 text-center"><p className="text-[10px] text-faint">No leads</p></div>
+                    <div className="py-10 text-center border border-dashed border-theme-subtle m-1">
+                      <p className="text-[11px] text-muted italic">No leads in {STAGE_LABELS[stage] || stage}</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -462,12 +1026,24 @@ export const Leads: React.FC = () => {
           })}
         </div>
       ) : (
-        <GlassCard className="overflow-hidden">
-          <div className="px-5 py-3 border-b border-theme-subtle flex items-center justify-between">
-            <span className="text-xs text-muted">Showing <span className="text-primary font-medium">{filtered.length}</span> leads</span>
-            <button className="flex items-center gap-1.5 text-xs text-muted hover:text-primary transition-colors"><Filter size={11} /> Filters</button>
+        <GlassCard className="p-0 border-theme-subtle overflow-hidden rounded-none">
+          <div className="px-4 py-2.5 border-b border-theme-subtle flex items-center justify-between bg-surface2/40">
+            <span className="text-xs text-muted">
+              Showing <span className="text-primary font-bold font-mono">{filtered.length}</span> of <span className="font-mono">{leads.length}</span> leads
+            </span>
+            {hasActiveFilters && (
+              <span className="text-xs text-rex-600 dark:text-rex-400 font-semibold">
+                Filters Active
+              </span>
+            )}
           </div>
-          <DataTable columns={columns} data={filtered} keyExtractor={r => r.id} onRowClick={openEditModal} emptyMessage="No leads found." />
+          <DataTable 
+            columns={columns} 
+            data={filtered} 
+            keyExtractor={(r: any) => r.id} 
+            onRowClick={openEditModal} 
+            emptyMessage="No leads found matching your criteria. Try adjusting your filters or search." 
+          />
         </GlassCard>
       )}
 

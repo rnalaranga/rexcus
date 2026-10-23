@@ -392,10 +392,11 @@ export const ProductQuotationBuilder: React.FC = () => {
   
   const lead = customers?.find(c => c.id === leadId) || leads?.find(l => l.id === leadId)
 
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [savedVersions, setSavedVersions] = useState<any[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [currentId, setCurrentId] = useState<string | null>(null)
-  const [draftId, setDraftId] = useState<string | null>(null)
+  const [draftId, setDraftId] = useState<string | null>(() => quoteIdParam || null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -498,6 +499,8 @@ export const ProductQuotationBuilder: React.FC = () => {
   }
   const [quickSearchText, setQuickSearchText] = useState('')
   const initialLoadedRef = useRef(false)
+  const draftIdRef = useRef<string | null>(quoteIdParam || null)
+  const currentIdRef = useRef<string | null>(null)
 
   const currentQuote = useMemo(() => {
     if (!currentId && !draftId) return null;
@@ -506,39 +509,57 @@ export const ProductQuotationBuilder: React.FC = () => {
   }, [currentId, draftId, savedVersions])
 
   const loadVersions = useCallback(async () => {
-    if (!leadId) return
     try {
-      const data = await fetchQuotations(leadId)
-      // Filter product quotes
-      const prodQuotes = (data || []).filter((q: any) => {
-        let snap: any = {};
-        try { snap = JSON.parse(q.data || '{}'); } catch(e){}
-        return q.type === 'product' || q.type === 'product_draft' || snap.isProductQuotation === true || snap.quotationCategory === 'product';
-      });
-      setSavedVersions(prodQuotes)
-      
+      let targetQuote: any = null;
+      if (quoteIdParam && !initialLoadedRef.current) {
+        try {
+          const singleRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/single/${quoteIdParam}`);
+          if (singleRes.ok) {
+            targetQuote = await singleRes.json();
+          }
+        } catch (e) {
+          console.error('Failed to fetch single quote:', e);
+        }
+      }
+
+      const effectiveLeadId = targetQuote?.leadId || leadId || selectedLeadId;
+      let data: any[] = [];
+      if (effectiveLeadId && effectiveLeadId !== 'WALK-IN') {
+        const rawData = await fetchQuotations(effectiveLeadId);
+        data = (rawData || []).filter((q: any) => {
+          let snap: any = {};
+          try { snap = JSON.parse(q.data || '{}'); } catch(e){}
+          return q.type === 'product' || q.type === 'product_draft' || snap.isProductQuotation === true || snap.quotationCategory === 'product';
+        });
+        setSavedVersions(data);
+      }
+
       // Auto-load if quoteId is in URL (only on initial load so it doesn't overwrite user edits)
       if (quoteIdParam && !initialLoadedRef.current) {
-         const target = prodQuotes.find((v: any) => v.id === quoteIdParam)
-         if (target) {
-            initialLoadedRef.current = true
-            const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data
-            restoreSnapshot(snap)
-            if (target.type === 'product_draft') {
-               setDraftId(target.id)
-            } else {
-               setCurrentId(target.id)
-            }
-            
-            if (previewParam) {
-               setShowPreview(true)
-            }
-         }
+        const target = targetQuote || data.find((v: any) => v.id === quoteIdParam);
+        if (target) {
+          initialLoadedRef.current = true;
+          const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
+          restoreSnapshot(snap);
+          if (target.type === 'product_draft' || target.status === 'Draft') {
+            setDraftId(target.id);
+            draftIdRef.current = target.id;
+          } else {
+            setCurrentId(target.id);
+            currentIdRef.current = target.id;
+          }
+          if (target.leadId) {
+            setSelectedLeadId(target.leadId);
+          }
+          if (previewParam) {
+            setShowPreview(true);
+          }
+        }
       }
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
-  }, [leadId, quoteIdParam, previewParam])
+  }, [leadId, quoteIdParam, previewParam, selectedLeadId])
 
   useEffect(() => { loadVersions() }, [loadVersions])
 
@@ -556,7 +577,6 @@ export const ProductQuotationBuilder: React.FC = () => {
   const [subject, setSubject] = useState('Supply of Finished Goods / Products')
   const [customerName, setCustomerName] = useState('')
   const [clientType, setClientType] = useState<'customer' | 'lead'>(leadId ? 'lead' : 'customer')
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [allGrns, setAllGrns] = useState<any[]>([]);
   const [jobItems, setJobItems] = useState<{ id: number; text: string }[]>([
@@ -661,6 +681,17 @@ export const ProductQuotationBuilder: React.FC = () => {
     if (!item) return;
     const itemId = item.id || item;
     setSelectedLeadId(itemId);
+
+    // If not currently working on an existing finalized quote, check if this customer has an active draft to resume
+    if (!currentIdRef.current && !quoteIdParam) {
+      fetchQuotations(itemId).then((custQuotes) => {
+        const existingDraft = (custQuotes || []).find((q: any) => q.type === 'product_draft' || q.status === 'Draft');
+        if (existingDraft) {
+          setDraftId(existingDraft.id);
+          draftIdRef.current = existingDraft.id;
+        }
+      }).catch(() => {});
+    }
 
     if (clientType === 'customer') {
       const cust = customers?.find((c: any) => c.id === itemId) || item;
@@ -997,9 +1028,6 @@ export const ProductQuotationBuilder: React.FC = () => {
   };
 
   // --- Auto Save Draft (DB) ---
-  const draftIdRef = useRef<string | null>(draftId);
-  const currentIdRef = useRef<string | null>(currentId);
-  
   useEffect(() => {
     draftIdRef.current = draftId;
     currentIdRef.current = currentId;
@@ -1043,9 +1071,12 @@ export const ProductQuotationBuilder: React.FC = () => {
           if (res.success && res.quotation) {
              setDraftId(res.quotation.id);
              draftIdRef.current = res.quotation.id;
+             const curLead = selectedLeadId || 'WALK-IN';
+             window.history.replaceState(null, '', `/crm/product-quotations/new/${curLead}?quoteId=${res.quotation.id}`);
           }
         } else {
           await updateQuotation(draftIdRef.current, {
+            leadId: selectedLeadId || 'WALK-IN',
             type: 'product_draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
         }
@@ -1163,6 +1194,11 @@ export const ProductQuotationBuilder: React.FC = () => {
           issueDate
         });
         if (result.success) {
+          if (draftIdRef.current && draftIdRef.current !== currentId) {
+            try { await deleteQuotation(draftIdRef.current); } catch (e) {}
+            setDraftId(null);
+            draftIdRef.current = null;
+          }
           showToast('success', 'Product Quotation updated successfully!');
           await loadVersions();
         } else {
@@ -1184,6 +1220,12 @@ export const ProductQuotationBuilder: React.FC = () => {
         if (result.success) {
           const newId = result.quotation?.id || null;
           setCurrentId(newId);
+          currentIdRef.current = newId;
+          if (draftIdRef.current && draftIdRef.current !== newId) {
+            try { await deleteQuotation(draftIdRef.current); } catch (e) {}
+            setDraftId(null);
+            draftIdRef.current = null;
+          }
           if (newId && leadId) {
             navigate(`/crm/product-quotations/new/${leadId}?quoteId=${newId}`, { replace: true });
           }

@@ -24,7 +24,11 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'crm.customers.edit', label: 'Edit Customers', description: 'Update customer contact info, billing addresses, and tags' },
       { id: 'crm.customers.delete', label: 'Delete Customers', description: 'Remove customer profiles from the system' },
       { id: 'crm.credit.request', label: 'Credit Limit & Terms', description: 'Modify customer credit limits and payment terms' },
-      { id: 'crm.leads.manage', label: 'Manage Leads & Inquiries', description: 'Create, assign, qualify, and update incoming customer leads' },
+      { id: 'crm.leads.view', label: 'View Leads & Inquiries', description: 'Access incoming inquiries, lead pipeline stages, and contact cards' },
+      { id: 'crm.leads.create', label: 'Create Leads', description: 'Register new customer leads and initial inquiry requirements' },
+      { id: 'crm.leads.edit', label: 'Edit & Qualify Leads', description: 'Update lead stages, qualify leads, and log communications' },
+      { id: 'crm.leads.delete', label: 'Delete Leads', description: 'Remove obsolete or spam leads from pipeline' },
+      { id: 'crm.leads.manage', label: 'Manage Leads & Pipeline', description: 'Comprehensive lead administration, assignments, and conversion to customers' },
       { id: 'crm.deals.manage', label: 'Pipeline & Deals', description: 'Track deal stages, values, and sales milestones' },
       { id: 'crm.followups.manage', label: 'Follow-ups & Reminders', description: 'Log interactions, call notes, and schedule client reminders' }
     ]
@@ -177,7 +181,12 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   'production.work_orders.approve': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit'],
   'approvals.work_orders': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit'],
   'inventory.items.view_details': ['inventory.items.view_details', 'inventory.items.view'],
-  'inventory.stock_ledger.view': ['inventory.stock_ledger.view', 'inventory.ledger.manage', 'inventory.items.view']
+  'inventory.stock_ledger.view': ['inventory.stock_ledger.view', 'inventory.ledger.manage', 'inventory.items.view'],
+  'crm.leads.view': ['crm.leads.view', 'crm.leads.manage'],
+  'crm.leads.create': ['crm.leads.create', 'crm.leads.manage'],
+  'crm.leads.edit': ['crm.leads.edit', 'crm.leads.manage'],
+  'crm.leads.delete': ['crm.leads.delete', 'crm.leads.manage'],
+  'crm.leads.manage': ['crm.leads.manage', 'crm.leads.view']
 };
 
 export const hasPermission = (

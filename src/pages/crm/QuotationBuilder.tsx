@@ -254,11 +254,14 @@ export const QuotationBuilder: React.FC = () => {
 
   const [savedVersions, setSavedVersions] = useState<any[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [currentId, setCurrentId] = useState<string | null>(null)
-  const [draftId, setDraftId] = useState<string | null>(null)
+  const [draftId, setDraftId] = useState<string | null>(() => quoteIdParam || null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const initialLoadedRef = useRef(false)
+  const draftIdRef = useRef<string | null>(quoteIdParam || null)
+  const currentIdRef = useRef<string | null>(null)
 
   const currentQuote = useMemo(() => {
     if (!currentId && !draftId) return null;
@@ -267,33 +270,52 @@ export const QuotationBuilder: React.FC = () => {
   }, [currentId, draftId, savedVersions])
 
   const loadVersions = useCallback(async () => {
-      if (!leadId) return
       try {
-        const data = await fetchQuotations(leadId)
-        setSavedVersions(data)
-        
+        let targetQuote: any = null;
+        if (quoteIdParam && !initialLoadedRef.current) {
+          try {
+            const singleRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/single/${quoteIdParam}`);
+            if (singleRes.ok) {
+              targetQuote = await singleRes.json();
+            }
+          } catch (e) {
+            console.error('Failed to fetch quote by id:', e);
+          }
+        }
+
+        const effectiveLeadId = targetQuote?.leadId || leadId || selectedLeadId;
+        let data: any[] = [];
+        if (effectiveLeadId && effectiveLeadId !== 'WALK-IN') {
+          data = await fetchQuotations(effectiveLeadId);
+          setSavedVersions(data);
+        }
+
         // Auto-load if quoteId is in URL (only on initial load so it doesn't overwrite user edits)
         if (quoteIdParam && !initialLoadedRef.current) {
-           const target = data.find((v: any) => v.id === quoteIdParam)
-           if (target) {
-              initialLoadedRef.current = true
-              const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data
-              restoreSnapshot(snap)
-              if (target.type === 'draft') {
-                 setDraftId(target.id)
-              } else {
-                 setCurrentId(target.id)
-              }
-              
-              if (previewParam) {
-                 setShowPreview(true)
-              }
-           }
+          const target = targetQuote || data.find((v: any) => v.id === quoteIdParam);
+          if (target) {
+            initialLoadedRef.current = true;
+            const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
+            restoreSnapshot(snap);
+            if (target.type === 'draft' || target.status === 'Draft') {
+              setDraftId(target.id);
+              draftIdRef.current = target.id;
+            } else {
+              setCurrentId(target.id);
+              currentIdRef.current = target.id;
+            }
+            if (target.leadId) {
+              setSelectedLeadId(target.leadId);
+            }
+            if (previewParam) {
+              setShowPreview(true);
+            }
+          }
         }
       } catch (err) {
-        console.error(err)
+        console.error(err);
       }
-    }, [leadId, quoteIdParam, previewParam])
+    }, [leadId, quoteIdParam, previewParam, selectedLeadId])
 
   useEffect(() => { loadVersions() }, [loadVersions])
 
@@ -311,7 +333,6 @@ export const QuotationBuilder: React.FC = () => {
   const [subject, setSubject] = useState('To machining parts as per given sample')
   const [customerName, setCustomerName] = useState('')
   const [clientType, setClientType] = useState<'customer' | 'lead'>(leadId ? 'lead' : 'customer')
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadId || null)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [allGrns, setAllGrns] = useState<any[]>([]);
   
@@ -412,6 +433,17 @@ export const QuotationBuilder: React.FC = () => {
     if (!item) return;
     const itemId = item.id || item;
     setSelectedLeadId(itemId);
+
+    // If not currently working on an existing finalized quote, check if this customer has an active draft to resume
+    if (!currentIdRef.current && !quoteIdParam) {
+      fetchQuotations(itemId).then((custQuotes) => {
+        const existingDraft = (custQuotes || []).find((q: any) => q.type === 'draft' || q.status === 'Draft');
+        if (existingDraft) {
+          setDraftId(existingDraft.id);
+          draftIdRef.current = existingDraft.id;
+        }
+      }).catch(() => {});
+    }
 
     if (clientType === 'customer') {
       const cust = customers?.find((c: any) => c.id === itemId) || item;
@@ -853,9 +885,6 @@ export const QuotationBuilder: React.FC = () => {
 
 
   // --- Auto Save Draft (DB) ---
-  const draftIdRef = useRef<string | null>(draftId);
-  const currentIdRef = useRef<string | null>(currentId);
-  
   useEffect(() => {
     draftIdRef.current = draftId;
     currentIdRef.current = currentId;
@@ -879,7 +908,8 @@ export const QuotationBuilder: React.FC = () => {
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
-        selectedProfile, custSscl, custVat, jobSscl, jobVat
+        selectedProfile, custSscl, custVat, jobSscl, jobVat,
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
       }
       
       const sub = custItems.reduce((s, i) => s + Number(i.qty) * Number(i.unitPrice), 0);
@@ -897,9 +927,12 @@ export const QuotationBuilder: React.FC = () => {
           if (res.success && res.quotation) {
              setDraftId(res.quotation.id);
              draftIdRef.current = res.quotation.id;
+             const curLead = selectedLeadId || 'WALK-IN';
+             window.history.replaceState(null, '', `/crm/quotations/new/${curLead}?quoteId=${res.quotation.id}`);
           }
         } else {
           await updateQuotation(draftIdRef.current, {
+            leadId: selectedLeadId || 'WALK-IN',
             type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
         }
@@ -1199,6 +1232,11 @@ export const QuotationBuilder: React.FC = () => {
           totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
         });
         if (result.success) {
+          if (draftIdRef.current && draftIdRef.current !== currentId) {
+            try { await deleteQuotation(draftIdRef.current); } catch (e) {}
+            setDraftId(null);
+            draftIdRef.current = null;
+          }
           showToast('success', 'Quotation updated successfully!');
           await loadVersions();
         } else {
@@ -1212,6 +1250,12 @@ export const QuotationBuilder: React.FC = () => {
         if (result.success) {
           const newId = result.quotation?.id || null;
           setCurrentId(newId);
+          currentIdRef.current = newId;
+          if (draftIdRef.current && draftIdRef.current !== newId) {
+            try { await deleteQuotation(draftIdRef.current); } catch (e) {}
+            setDraftId(null);
+            draftIdRef.current = null;
+          }
           if (newId && leadId) {
             navigate(`/crm/quotations/new/${leadId}?quoteId=${newId}`, { replace: true });
           }
