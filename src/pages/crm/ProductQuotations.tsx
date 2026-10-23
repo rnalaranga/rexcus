@@ -4,7 +4,7 @@ import {
   FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
-  ChevronDown, ChevronUp, History
+  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -169,6 +169,32 @@ export const ProductQuotations: React.FC = () => {
     return Object.values(map).sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
   }, [productQuotes, customers, leads]);
 
+  // Active Finished Goods Drafts
+  const activeDrafts = useMemo(() => {
+    return groupedQuotes.filter((g: any) => {
+      const latest = g.versions[0];
+      return latest?.type === 'product_draft' || latest?.status === 'Draft';
+    });
+  }, [groupedQuotes]);
+
+  // Overall KPI stats
+  const kpiStats = useMemo(() => {
+    let totalQuoted = 0;
+    let approvedVal = 0;
+    let pendingCount = 0;
+
+    groupedQuotes.forEach((g: any) => {
+      const latest = g.versions[0];
+      const val = Number(latest?.totalAmount || 0);
+      totalQuoted += val;
+      const st = (latest?.status || 'Draft').toLowerCase();
+      if (st === 'approved' || st === 'accepted') approvedVal += val;
+      if (st === 'pending approval') pendingCount++;
+    });
+
+    return { totalQuoted, approvedVal, pendingCount, draftsCount: activeDrafts.length };
+  }, [groupedQuotes, activeDrafts]);
+
   // Status counts for filter pills
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {
@@ -196,6 +222,13 @@ export const ProductQuotations: React.FC = () => {
     return groupedQuotes.filter((g: any) => {
       const latest = g.versions[0];
       const status = latest?.status || 'Draft';
+
+      // Hide standalone drafts from main list when viewing all, because they are prominently shown in Active Drafts above!
+      if (statusFilter === 'all') {
+        if (latest?.type === 'product_draft' || (status === 'Draft' && g.versions.length === 1)) {
+          return false;
+        }
+      }
 
       if (statusFilter !== 'all' && status.toLowerCase() !== statusFilter.toLowerCase()) return false;
       if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
@@ -358,6 +391,132 @@ export const ProductQuotations: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* KPI Stats Ribbon */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="p-3 bg-surface border border-theme-subtle rounded-none flex items-center justify-between shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Total Product Quoted</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-primary mt-0.5 block">{formatCurrency(kpiStats.totalQuoted)}</span>
+            <span className="text-[11px] text-muted font-mono">{groupedQuotes.length} total quotes</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+            <TrendingUp size={18} />
+          </div>
+        </div>
+
+        <div className="p-3 bg-surface border border-theme-subtle rounded-none flex items-center justify-between shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Approved / Won</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">{formatCurrency(kpiStats.approvedVal)}</span>
+            <span className="text-[11px] text-muted">Confirmed orders</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+            <CheckCircle2 size={18} />
+          </div>
+        </div>
+
+        <div className="p-3 bg-surface border border-theme-subtle rounded-none flex items-center justify-between shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Pending Approval</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5 block">{kpiStats.pendingCount}</span>
+            <span className="text-[11px] text-muted">Awaiting review</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20">
+            <Clock size={18} />
+          </div>
+        </div>
+
+        <div 
+          onClick={() => setStatusFilter('draft')}
+          className="p-3 bg-surface border border-theme-subtle hover:border-orange-500/50 rounded-none flex items-center justify-between cursor-pointer transition-colors shadow-xs"
+          title="Click to view drafts"
+        >
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Active Drafts</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-orange-600 dark:text-orange-400 mt-0.5 block">{kpiStats.draftsCount}</span>
+            <span className="text-[11px] text-orange-600 dark:text-orange-400 font-medium">Ready to resume &rarr;</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center border border-orange-500/20">
+            <FileEdit size={18} />
+          </div>
+        </div>
+      </div>
+
+      {/* Prominent Active Product Drafts Showcase at the Top */}
+      {activeDrafts.length > 0 && statusFilter === 'all' && (
+        <div className="border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent rounded-none p-3.5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-none bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center border border-orange-500/30">
+                <FileEdit size={15} />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                  Active Finished Goods Drafts
+                  <span className="px-1.5 py-0.2 text-[10px] bg-orange-500/20 text-orange-700 dark:text-orange-300 font-mono font-bold">
+                    {activeDrafts.length}
+                  </span>
+                </h3>
+                <p className="text-[11px] text-muted">Unfinished finished goods product quotation drafts ready to resume</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {activeDrafts.map((g: any) => {
+              const latest = g.versions[0];
+              const snap = latest?.parsed || {};
+              const pCount = snap?.custItems?.length || 1;
+              return (
+                <div key={latest.id} className="bg-surface border border-orange-500/30 rounded-none p-3 hover:border-orange-500/60 transition-all hover:shadow-md relative group flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-500/15 px-2 py-0.5 rounded-none uppercase tracking-wider font-mono">
+                        Draft • {g.quoNo || 'UNSAVED'}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-muted font-mono">{String(latest.date).slice(0, 10)}</span>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (await showConfirm('Are you sure you want to delete this product draft?', 'Delete Draft', { confirmLabel: 'Delete' })) {
+                              await deleteQuotation(latest.id);
+                              refetch();
+                            }
+                          }}
+                          className="text-red-500/70 hover:text-red-500 p-0.5 hover:bg-red-500/10 transition-colors"
+                          title="Delete Draft"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <h4 className="font-bold text-xs text-primary truncate" title={g.clientCompany || g.clientName}>
+                      {g.clientCompany || g.clientName || 'Unknown Customer'}
+                    </h4>
+                    {snap?.subject ? (
+                      <p className="text-[11px] text-muted truncate mt-0.5">{snap.subject}</p>
+                    ) : (
+                      <p className="text-[11px] text-muted italic mt-0.5">{pCount} Product Line(s) in draft</p>
+                    )}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-theme-subtle flex items-center justify-between gap-2">
+                    <span className="text-xs font-mono font-bold text-primary">
+                      {formatCurrency(Number(latest.totalAmount || 0))}
+                    </span>
+                    <button
+                      onClick={() => navigate(`/crm/product-quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
+                      className="px-2.5 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-none transition-colors flex items-center gap-1 shadow-xs"
+                    >
+                      Resume Draft <ArrowRight size={11} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Comprehensive Filter Toolbar (Unified & Professional) */}
       <GlassCard className="p-3 space-y-3 rounded-none">
@@ -554,6 +713,24 @@ export const ProductQuotations: React.FC = () => {
                     <p className="text-xs text-secondary truncate max-w-xl">
                       {parsed.subject}
                     </p>
+                  )}
+
+                  {/* Quoted Products Preview */}
+                  {parsed.custItems && parsed.custItems.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      {parsed.custItems.slice(0, 3).map((item: any, iIdx: number) => (
+                        <span key={iIdx} className="text-[11px] font-medium px-2 py-0.5 bg-surface2 text-secondary border border-theme-subtle flex items-center gap-1 truncate max-w-[220px]" title={item.name || item.desc}>
+                          <Package size={10} className="text-emerald-500 shrink-0" />
+                          <span className="truncate">{item.name || item.desc || 'Product'}</span>
+                          <span className="text-[10px] font-mono text-muted">×{item.qty || 1}</span>
+                        </span>
+                      ))}
+                      {parsed.custItems.length > 3 && (
+                        <span className="text-[10px] font-mono text-muted px-1.5 py-0.5 bg-surface2 border border-theme-subtle">
+                          +{parsed.custItems.length - 3} more
+                        </span>
+                      )}
+                    </div>
                   )}
 
                   <div className="flex items-center gap-3 text-xs text-muted">

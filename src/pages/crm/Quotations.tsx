@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2 } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -392,6 +392,47 @@ export const Quotations: React.FC = () => {
   const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string } | null>(null)
   const [printGrnData, setPrintGrnData] = useState<{ grn: any, group: any } | null>(null)
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
+  const [selectedBomTab, setSelectedBomTab] = useState<number | 'overview'>('overview')
+
+  const formatAutoMatDimensions = (m: any) => {
+    if (!m) return '-';
+    const hasThick = m.thick !== undefined && m.thick !== '' && m.thick !== null && Number(m.thick) > 0;
+    const hasWidth = m.width !== undefined && m.width !== '' && m.width !== null && Number(m.width) > 0;
+    const hasLength = m.length !== undefined && m.length !== '' && m.length !== null && Number(m.length) > 0;
+    const hasDia = (m.dia !== undefined && m.dia !== '' && m.dia !== null && Number(m.dia) > 0) ||
+                   (m.shaftDia !== undefined && m.shaftDia !== '' && m.shaftDia !== null && Number(m.shaftDia) > 0);
+
+    if (hasDia) {
+      const diaVal = m.dia || m.shaftDia;
+      return `Ø ${diaVal} mm × L: ${hasLength ? `${m.length} mm` : '-'}`;
+    }
+    if (hasThick || hasWidth || hasLength) {
+      const parts = [];
+      if (hasThick) parts.push(`T: ${m.thick} mm`);
+      if (hasWidth) parts.push(`W: ${m.width} mm`);
+      if (hasLength) parts.push(`L: ${m.length} mm`);
+      return parts.join(' × ');
+    }
+    if (m.dimensions) return m.dimensions;
+    if (m.size) return m.size;
+    if (m.spec) return m.spec;
+    return '-';
+  };
+
+  const openCostingModal = (group: any, parsed: any, defaultIndex: number = 0) => {
+    const bomsList = parsed.boms && parsed.boms.length > 0 ? parsed.boms : [];
+    setViewBomDialog({
+      quotationNo: group.quoNo,
+      customerName: group.leadCompany || group.leadName || 'Customer',
+      boms: bomsList,
+      custItems: parsed.custItems || [],
+      jobTotals: parsed.jobTotals,
+      custTotals: parsed.custTotals,
+      totalQuoted: parsed.custTotals?.total || group.main[0]?.totalAmount || 0,
+      ...(bomsList.length === 0 ? parsed : {})
+    });
+    setSelectedBomTab(bomsList.length > 1 ? 'overview' : 0);
+  };
   const [quoteGrns, setQuoteGrns] = useState<Record<string, any[]>>({})
   const [showTemplatesModal, setShowTemplatesModal] = useState(false)
   const { settings } = useSettings()
@@ -459,6 +500,34 @@ export const Quotations: React.FC = () => {
     return Object.values(groups).sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
   }, [quotations, customers, leads])
 
+  // Active Drafts (Custom Engineering)
+  const activeDrafts = useMemo(() => {
+    return groupedQuotations.filter((g: any) => {
+      const main0 = g.main[0];
+      return main0?.type === 'draft' || main0?.status === 'Draft';
+    });
+  }, [groupedQuotations]);
+
+  // Overall KPI stats
+  const kpiStats = useMemo(() => {
+    let totalQuoted = 0;
+    let approvedVal = 0;
+    let pendingCount = 0;
+    let inProdCount = 0;
+
+    groupedQuotations.forEach(g => {
+      const m = g.main[0];
+      const val = Number(m?.totalAmount || 0);
+      totalQuoted += val;
+      const st = (m?.status || 'Draft').toLowerCase();
+      if (st === 'approved' || st === 'accepted') approvedVal += val;
+      if (st === 'pending approval') pendingCount++;
+      if (st === 'in production') inProdCount++;
+    });
+
+    return { totalQuoted, approvedVal, pendingCount, inProdCount, draftsCount: activeDrafts.length };
+  }, [groupedQuotations, activeDrafts]);
+
   // Status counts for filter pills
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {
@@ -485,6 +554,14 @@ export const Quotations: React.FC = () => {
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
 
   const filtered = groupedQuotations.filter(g => {
+    const latestMain = g.main[0];
+    // Hide pure drafts from the main list when viewing all, because they are prominently shown in Active Drafts section above!
+    if (statusFilter === 'all') {
+      if (latestMain?.type === 'draft' || (latestMain?.status === 'Draft' && !g.job.length && !g.customer.length && g.main.length === 1)) {
+        return false;
+      }
+    }
+
     // Search filter
     const q = search.toLowerCase();
     const searchMatch = !search || [g.quoNo, g.leadName, g.leadCompany].some(v => v?.toLowerCase().includes(q));
@@ -584,6 +661,131 @@ export const Quotations: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* KPI Stats Ribbon */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="p-3 bg-surface border border-theme-subtle rounded-none flex items-center justify-between shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Total Quoted Value</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-primary mt-0.5 block">{formatCurrency(kpiStats.totalQuoted)}</span>
+            <span className="text-[11px] text-muted font-mono">{groupedQuotations.length} total quotes</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-rex-500/10 text-rex-600 dark:text-rex-400 flex items-center justify-center border border-rex-500/20">
+            <TrendingUp size={18} />
+          </div>
+        </div>
+
+        <div className="p-3 bg-surface border border-theme-subtle rounded-none flex items-center justify-between shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Approved / Won</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">{formatCurrency(kpiStats.approvedVal)}</span>
+            <span className="text-[11px] text-muted">Confirmed orders</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+            <CheckCircle2 size={18} />
+          </div>
+        </div>
+
+        <div className="p-3 bg-surface border border-theme-subtle rounded-none flex items-center justify-between shadow-xs">
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Pending Approval</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5 block">{kpiStats.pendingCount}</span>
+            <span className="text-[11px] text-muted">Awaiting review</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20">
+            <Clock size={18} />
+          </div>
+        </div>
+
+        <div 
+          onClick={() => setStatusFilter('draft')}
+          className="p-3 bg-surface border border-theme-subtle hover:border-orange-500/50 rounded-none flex items-center justify-between cursor-pointer transition-colors shadow-xs"
+          title="Click to view drafts"
+        >
+          <div>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Active Drafts</span>
+            <span className="text-base lg:text-lg font-bold font-mono text-orange-600 dark:text-orange-400 mt-0.5 block">{kpiStats.draftsCount}</span>
+            <span className="text-[11px] text-orange-600 dark:text-orange-400 font-medium">Ready to resume &rarr;</span>
+          </div>
+          <div className="w-9 h-9 rounded-none bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center border border-orange-500/20">
+            <FileEdit size={18} />
+          </div>
+        </div>
+      </div>
+
+      {/* Prominent Active Drafts Showcase at the Top */}
+      {activeDrafts.length > 0 && statusFilter === 'all' && (
+        <div className="border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent rounded-none p-3.5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-none bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center border border-orange-500/30">
+                <FileEdit size={15} />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                  Active Draft Quotations
+                  <span className="px-1.5 py-0.2 text-[10px] bg-orange-500/20 text-orange-700 dark:text-orange-300 font-mono font-bold">
+                    {activeDrafts.length}
+                  </span>
+                </h3>
+                <p className="text-[11px] text-muted">Unfinished custom engineering quotation drafts ready to resume</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {activeDrafts.map((g: any) => {
+              const snap = g.main[0]?.data ? (typeof g.main[0].data === 'string' ? JSON.parse(g.main[0].data) : g.main[0].data) : null;
+              const bCount = snap?.boms?.length || snap?.custItems?.length || 1;
+              return (
+                <div key={g.main[0].id} className="bg-surface border border-orange-500/30 rounded-none p-3 hover:border-orange-500/60 transition-all hover:shadow-md relative group flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-500/15 px-2 py-0.5 rounded-none uppercase tracking-wider font-mono">
+                        Draft • {g.quoNo || 'UNSAVED'}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-muted font-mono">{String(g.main[0].date).slice(0, 10)}</span>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (await showConfirm('Are you sure you want to delete this draft?', 'Delete Draft', { confirmLabel: 'Delete' })) {
+                              await deleteQuotation(g.main[0].id);
+                              refetch();
+                            }
+                          }}
+                          className="text-red-500/70 hover:text-red-500 p-0.5 hover:bg-red-500/10 transition-colors"
+                          title="Delete Draft"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <h4 className="font-bold text-xs text-primary truncate" title={g.leadCompany || g.leadName || snap?.customerName}>
+                      {g.leadCompany || g.leadName || snap?.customerName || 'Unknown Customer'}
+                    </h4>
+                    {snap?.subject ? (
+                      <p className="text-[11px] text-muted truncate mt-0.5">{snap.subject}</p>
+                    ) : (
+                      <p className="text-[11px] text-muted italic mt-0.5">{bCount} Quoted Item(s) in draft</p>
+                    )}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-theme-subtle flex items-center justify-between gap-2">
+                    <span className="text-xs font-mono font-bold text-primary">
+                      {formatCurrency(Number(g.main[0]?.totalAmount || 0))}
+                    </span>
+                    <button
+                      onClick={() => navigate(`/crm/quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${g.main[0].id}`)}
+                      className="px-2.5 py-1 text-xs font-bold text-white bg-orange-600 hover:bg-orange-500 rounded-none transition-colors flex items-center gap-1 shadow-xs"
+                    >
+                      Resume Draft <ArrowRight size={11} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Comprehensive Filter Toolbar (Unified & Professional) */}
       <GlassCard className="p-3 space-y-3 rounded-none">
@@ -846,13 +1048,14 @@ export const Quotations: React.FC = () => {
                       <Package size={12} className="text-rex-500" />
                       {itemsCount} {itemsCount === 1 ? 'Quoted Item / BOM' : 'Quoted Items / BOMs'}
                     </span>
-                    {parsed.boms && parsed.boms.length > 0 && (
+                    {((parsed.boms && parsed.boms.length > 0) || (parsed.custItems && parsed.custItems.length > 0)) && (
                       <button
                         type="button"
-                        onClick={() => setViewBomDialog(parsed.boms[0])}
-                        className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+                        onClick={() => openCostingModal(group, parsed)}
+                        className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 border border-amber-500/30 rounded-none flex items-center gap-1.5 transition-colors"
+                        title="View complete material dimensions, machining operations, and costing breakdown"
                       >
-                        <Briefcase size={10} /> View Costing
+                        <Briefcase size={11} /> View Costing & Dimensions
                       </button>
                     )}
                     {(parsed.custValidity || parsed.validity) && (
@@ -1059,20 +1262,20 @@ export const Quotations: React.FC = () => {
                             </>
                           )}
 
-                          {/* View BOM Costing if available */}
-                          {parsed.boms && parsed.boms.length > 0 && (
+                          {/* View BOM Costing & Dimensions */}
+                          {((parsed.boms && parsed.boms.length > 0) || (parsed.custItems && parsed.custItems.length > 0)) && (
                             <>
                               <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setViewBomDialog(parsed.boms[0]);
+                                  openCostingModal(group, parsed);
                                   setOpenActionId(null);
                                 }}
                                 className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
                               >
                                 <Briefcase size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                                <span>View BOM Costing</span>
+                                <span>View Costing & Dimensions</span>
                               </button>
                             </>
                           )}
@@ -1359,110 +1562,453 @@ export const Quotations: React.FC = () => {
           )}
         </div>
       </Modal>
-      <Modal isOpen={!!viewBomDialog} onClose={() => setViewBomDialog(null)} title={viewBomDialog?.title ? `Costing Details: ${viewBomDialog.title}` : "View Costing Details"} size="xl">
-        {viewBomDialog && (
-          <div className="bg-surface text-primary p-0 flex flex-col h-full rounded-b-xl overflow-hidden">
-             {/* Header Summary Bar */}
-             <div className="px-6 py-5 bg-gradient-to-r from-surface2 via-surface2/50 to-transparent border-b border-theme-subtle flex justify-between items-center shrink-0">
-               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                   <Briefcase size={20} />
-                 </div>
-                 <div>
-                   <p className="text-sm font-bold text-secondary">{viewBomDialog.title || 'Internal BOM Costing'}</p>
-                   <p className="text-xs text-muted font-medium mt-0.5">Full Materials & Machining Breakdown</p>
-                 </div>
-               </div>
-               <div className="text-right">
-                 <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Total Estimated Cost</p>
-                 <p className="font-mono font-bold text-primary text-2xl leading-none">{formatCurrency(viewBomDialog.bomTotal || 0)}</p>
-               </div>
-             </div>
+      <Modal 
+        isOpen={!!viewBomDialog} 
+        onClose={() => setViewBomDialog(null)} 
+        title={viewBomDialog?.quotationNo ? `Costing & Dimensions: ${viewBomDialog.quotationNo}` : (viewBomDialog?.title ? `Costing Details: ${viewBomDialog.title}` : "View Costing Details")} 
+        size="xl"
+      >
+        {viewBomDialog && (() => {
+          const bomsList: any[] = viewBomDialog.boms && viewBomDialog.boms.length > 0
+            ? viewBomDialog.boms
+            : (viewBomDialog.autoMats || viewBomDialog.manualMats || viewBomDialog.procState ? [viewBomDialog] : []);
+          
+          const custItemsList: any[] = viewBomDialog.custItems || [];
+          
+          // Calculate overall totals
+          const totalBomCost = bomsList.reduce((sum: number, b: any) => {
+            const autoMatTotal = (b.autoMats || []).reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
+            const manualMatTotal = (b.manualMats || []).reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
+            const machCost = Object.values(b.procState || {}).reduce((s: number, st: any) => {
+              const quoHrCost = Number(st.quoHr || 0) * Number(st.hrRate || st.rate || 0);
+              const setCost = Number(st.setTime || 0) * Number(st.setTimeRate || 0);
+              return s + quoHrCost + setCost;
+            }, 0);
+            return sum + (b.bomTotal ? Number(b.bomTotal) : (autoMatTotal + manualMatTotal + machCost));
+          }, 0);
 
-             <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                 {/* Auto Materials */}
-                 {viewBomDialog.autoMats?.length > 0 && (
-                   <div className="border border-theme-subtle/50 rounded-xl bg-surface/30 shadow-sm overflow-hidden">
-                     <div className="px-4 py-3 bg-surface2/30 border-b border-theme-subtle/40 flex items-center gap-2">
-                       <Package size={14} className="text-blue-500" />
-                       <h4 className="text-xs font-semibold text-secondary uppercase tracking-wider">Plate / Rod Materials</h4>
-                     </div>
-                     <table className="w-full text-left">
-                       <thead className="bg-surface/50 border-b border-theme-subtle/30 text-xs uppercase text-muted font-semibold tracking-wider">
-                         <tr><th className="px-4 py-2.5">Material</th><th className="px-4 py-2.5">Dimensions</th><th className="px-4 py-2.5 text-right w-24">Qty</th><th className="px-4 py-2.5 text-right w-32">Total Cost</th></tr>
-                       </thead>
-                       <tbody className="divide-y divide-theme-subtle/20 text-xs">
-                         {viewBomDialog.autoMats.map((m: any, i: number) => (
-                           <tr key={i} className="hover:bg-surface/50 transition-colors">
-                             <td className="px-4 py-2 font-semibold text-secondary">{m.material}</td>
-                             <td className="px-4 py-2 font-mono text-muted">{m.width ? `${m.width} x ${m.length}` : `Ø${m.dia} x ${m.length}`}</td>
-                             <td className="px-4 py-2 text-right font-medium">{m.qty}</td>
-                             <td className="px-4 py-2 text-right font-mono text-primary font-bold">{formatCurrency(Number(m.platePrice || 0) + Number(m.shaftPrice || 0))}</td>
-                           </tr>
-                         ))}
-                       </tbody>
-                     </table>
-                   </div>
-                 )}
+          const totalQuoted = Number(viewBomDialog.totalQuoted || custItemsList.reduce((s: number, i: any) => s + Number(i.qty || 1) * Number(i.unitPrice || 0), 0) || 0);
+          const grossProfit = totalQuoted > 0 ? (totalQuoted - totalBomCost) : 0;
+          const marginPct = totalQuoted > 0 ? ((grossProfit / totalQuoted) * 100).toFixed(1) : '0';
 
-                 {/* Manual Materials */}
-                 {viewBomDialog.manualMats?.length > 0 && (
-                   <div className="border border-theme-subtle/50 rounded-xl bg-surface/30 shadow-sm overflow-hidden">
-                     <div className="px-4 py-3 bg-surface2/30 border-b border-theme-subtle/40 flex items-center gap-2">
-                       <Package size={14} className="text-amber-500" />
-                       <h4 className="text-xs font-semibold text-secondary uppercase tracking-wider">Manual Materials</h4>
-                     </div>
-                     <table className="w-full text-left">
-                       <thead className="bg-surface/50 border-b border-theme-subtle/30 text-xs uppercase text-muted font-semibold tracking-wider">
-                         <tr><th className="px-4 py-2.5">Material</th><th className="px-4 py-2.5 text-right w-32">Unit Price</th><th className="px-4 py-2.5 text-right w-24">Qty</th><th className="px-4 py-2.5 text-right w-32">Total Cost</th></tr>
-                       </thead>
-                       <tbody className="divide-y divide-theme-subtle/20 text-xs">
-                         {viewBomDialog.manualMats.map((m: any, i: number) => (
-                           <tr key={i} className="hover:bg-surface/50 transition-colors">
-                             <td className="px-4 py-2 font-semibold text-secondary">{m.material}</td>
-                             <td className="px-4 py-2 text-right font-mono text-muted">{formatCurrency(m.unitPrice || 0)}</td>
-                             <td className="px-4 py-2 text-right font-medium">{m.qty}</td>
-                             <td className="px-4 py-2 text-right font-mono text-primary font-bold">{formatCurrency(Number(m.unitPrice || 0)*Number(m.qty || 0))}</td>
-                           </tr>
-                         ))}
-                       </tbody>
-                     </table>
-                   </div>
-                 )}
+          const activeBom = selectedBomTab === 'overview' 
+            ? null 
+            : (bomsList[Number(selectedBomTab)] || bomsList[0]);
 
-                 {/* Machining */}
-                 {viewBomDialog.procState && Object.keys(viewBomDialog.procState).length > 0 && (
-                   <div className="border border-theme-subtle/50 rounded-xl bg-surface/30 shadow-sm overflow-hidden">
-                     <div className="px-4 py-3 bg-surface2/30 border-b border-theme-subtle/40 flex items-center gap-2">
-                       <Factory size={14} className="text-red-500" />
-                       <h4 className="text-xs font-semibold text-secondary uppercase tracking-wider">Machining Operations</h4>
-                     </div>
-                     <table className="w-full text-left">
-                       <thead className="bg-surface/50 border-b border-theme-subtle/30 text-xs uppercase text-muted font-semibold tracking-wider">
-                         <tr><th className="px-4 py-2.5">Process / Operation</th><th className="px-4 py-2.5 text-right w-24">Est. Hrs</th><th className="px-4 py-2.5 text-right w-24">Set Time</th><th className="px-4 py-2.5 text-right w-24 text-primary">Quo. Hrs</th><th className="px-4 py-2.5 text-right w-32">Sub Total</th></tr>
-                       </thead>
-                       <tbody className="divide-y divide-theme-subtle/20 text-xs">
-                         {Object.keys(viewBomDialog.procState).map((k: string) => {
-                            const st = viewBomDialog.procState[k];
-                            const subTotal = (Number(st.quoHr || 0) * Number(st.hrRate || st.rate || 0)) + (Number(st.setTime || 0) * Number(st.setTimeRate || 0));
-                            if (subTotal === 0 && !st.estHr && !st.quoHr && !st.setTime) return null;
-                            return (
-                              <tr key={k} className="hover:bg-surface/50 transition-colors">
-                                <td className="px-4 py-2 font-bold text-red-500/90">{k}</td>
-                                <td className="px-4 py-2 text-right font-mono text-muted">{st.estHr || '-'}</td>
-                                <td className="px-4 py-2 text-right font-mono text-muted">{st.setTime || '-'}</td>
-                                <td className="px-4 py-2 text-right font-mono text-primary font-bold">{st.quoHr || '-'}</td>
-                                <td className="px-4 py-2 text-right font-mono text-primary font-bold">{formatCurrency(subTotal)}</td>
+          return (
+            <div className="bg-surface text-primary p-0 flex flex-col h-full rounded-b-none overflow-hidden max-h-[85vh]">
+              {/* Header Summary Bar */}
+              <div className="px-6 py-4 bg-surface2/60 border-b border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-none bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                    <Briefcase size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-primary font-mono">{viewBomDialog.quotationNo || viewBomDialog.title || 'Quotation Costing'}</p>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 uppercase tracking-wider font-mono">
+                        {bomsList.length} BOM {bomsList.length === 1 ? 'Part' : 'Parts'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted font-medium mt-0.5">
+                      Customer: <span className="font-semibold text-secondary">{viewBomDialog.customerName || 'Standard Client'}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-right">
+                  <div className="border-r border-theme-subtle pr-4 hidden sm:block">
+                    <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">Est. Production Cost</p>
+                    <p className="font-mono font-bold text-primary text-base leading-tight mt-0.5">{formatCurrency(totalBomCost)}</p>
+                  </div>
+                  {totalQuoted > 0 && (
+                    <div className="border-r border-theme-subtle pr-4 hidden sm:block">
+                      <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">Total Quoted Value</p>
+                      <p className="font-mono font-bold text-rex-600 dark:text-rex-400 text-base leading-tight mt-0.5">{formatCurrency(totalQuoted)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">Estimated Margin</p>
+                    <div className="flex items-center gap-1.5 justify-end mt-0.5">
+                      <span className={`text-base font-bold font-mono ${Number(marginPct) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
+                        {marginPct}%
+                      </span>
+                      {totalQuoted > 0 && (
+                        <span className="text-xs text-muted font-mono">({formatCurrency(grossProfit)})</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Multi-BOM Navigation Tabs */}
+              {bomsList.length > 1 && (
+                <div className="px-6 py-2 bg-surface border-b border-theme-subtle flex items-center gap-2 overflow-x-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBomTab('overview')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-none uppercase tracking-wider transition-colors shrink-0 flex items-center gap-1.5 ${
+                      selectedBomTab === 'overview'
+                        ? 'bg-amber-600 text-white font-bold shadow-xs'
+                        : 'bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle'
+                    }`}
+                  >
+                    <Layers size={13} /> All Parts Overview ({bomsList.length})
+                  </button>
+
+                  {bomsList.map((bom: any, bIdx: number) => {
+                    const hasDims = (bom.autoMats || []).some((m: any) => formatAutoMatDimensions(m) !== '-');
+                    return (
+                      <button
+                        key={bom.id || bIdx}
+                        type="button"
+                        onClick={() => setSelectedBomTab(bIdx)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-none transition-colors shrink-0 flex items-center gap-1.5 ${
+                          selectedBomTab === bIdx
+                            ? 'bg-rex-600 text-white font-bold shadow-xs'
+                            : 'bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle'
+                        }`}
+                      >
+                        <span>{bom.title || `Part #${bIdx + 1}`}</span>
+                        {hasDims && (
+                          <span className={`text-[10px] font-mono px-1 py-0.2 rounded-none ${selectedBomTab === bIdx ? 'bg-black/20 text-white' : 'bg-surface text-amber-600 dark:text-amber-400 border border-theme-subtle'}`}>
+                            Dims
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+                {/* 1. All Parts Overview Tab */}
+                {selectedBomTab === 'overview' && bomsList.length > 1 && (
+                  <div className="space-y-4">
+                    <div className="border border-theme-subtle rounded-none overflow-hidden bg-surface">
+                      <div className="px-4 py-3 bg-surface2/40 border-b border-theme-subtle flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Layers size={14} className="text-amber-600 dark:text-amber-400" />
+                          <h4 className="text-xs font-bold text-primary uppercase tracking-wider">All Quoted Parts & Dimensions Summary</h4>
+                        </div>
+                        <span className="text-xs text-muted font-mono">{bomsList.length} Line Items</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                          <thead className="bg-surface2/20 border-b border-theme-subtle text-[11px] uppercase text-muted font-semibold tracking-wider">
+                            <tr>
+                              <th className="px-4 py-2.5">Part / Item</th>
+                              <th className="px-4 py-2.5">Stock Dimensions</th>
+                              <th className="px-4 py-2.5 text-right">Materials Cost</th>
+                              <th className="px-4 py-2.5 text-right">Machining Cost</th>
+                              <th className="px-4 py-2.5 text-right">Part Total</th>
+                              <th className="px-4 py-2.5 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-theme-subtle/30 text-xs">
+                            {bomsList.map((bom: any, bIdx: number) => {
+                              const autoMatTotal = (bom.autoMats || []).reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
+                              const manualMatTotal = (bom.manualMats || []).reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
+                              const machCost = Object.values(bom.procState || {}).reduce((s: number, st: any) => {
+                                const quoHrCost = Number(st.quoHr || 0) * Number(st.hrRate || st.rate || 0);
+                                const setCost = Number(st.setTime || 0) * Number(st.setTimeRate || 0);
+                                return s + quoHrCost + setCost;
+                              }, 0);
+                              const bTotal = bom.bomTotal ? Number(bom.bomTotal) : (autoMatTotal + manualMatTotal + machCost);
+
+                              const dimStrs = (bom.autoMats || []).map((m: any) => formatAutoMatDimensions(m)).filter((d: string) => d !== '-');
+
+                              return (
+                                <tr key={bom.id || bIdx} className="hover:bg-surface2/30 transition-colors">
+                                  <td className="px-4 py-3">
+                                    <div className="font-semibold text-primary">{bom.title || `Part #${bIdx + 1}`}</div>
+                                    {bom.description && <div className="text-[11px] text-muted truncate max-w-xs">{bom.description}</div>}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {dimStrs.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {dimStrs.map((d: string, di: number) => (
+                                          <span key={di} className="inline-block text-[11px] font-mono font-medium px-2 py-0.5 bg-surface2 text-primary border border-theme-subtle mr-1.5">
+                                            {d}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted text-[11px] italic">No dimension specified</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-mono font-medium text-secondary">
+                                    {formatCurrency(autoMatTotal + manualMatTotal)}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-mono font-medium text-secondary">
+                                    {formatCurrency(machCost)}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                                    {formatCurrency(bTotal)}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedBomTab(bIdx)}
+                                      className="px-2.5 py-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-500/30 transition-colors"
+                                    >
+                                      Inspect Part &rarr;
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Specific BOM Tab (or Single BOM View) */}
+                {activeBom && (
+                  <div className="space-y-6">
+                    {/* Part Banner with Dimensions Showcase */}
+                    <div className="p-4 bg-gradient-to-r from-surface2/60 via-surface2/30 to-transparent border border-theme-subtle rounded-none flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-sm text-primary">{activeBom.title || 'Internal BOM Costing'}</h3>
+                          <span className="text-[10px] font-mono px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 font-semibold uppercase">
+                            Part Detail
+                          </span>
+                        </div>
+                        {activeBom.description && (
+                          <p className="text-xs text-muted mt-1 max-w-2xl">{activeBom.description}</p>
+                        )}
+                      </div>
+
+                      {/* Stock Dimensions Pill */}
+                      {(() => {
+                        const dimStrs = (activeBom.autoMats || []).map((m: any) => formatAutoMatDimensions(m)).filter((d: string) => d !== '-');
+                        if (dimStrs.length === 0) return null;
+                        return (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                              <Ruler size={11} className="text-amber-600" /> Stock Dims:
+                            </span>
+                            {dimStrs.map((d: string, di: number) => (
+                              <span key={di} className="text-xs font-mono font-bold px-2.5 py-1 bg-surface text-primary border border-amber-500/40 shadow-xs">
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Auto Materials Table (Plates & Round Rods with COMPLETE dimensions) */}
+                    <div className="border border-theme-subtle rounded-none bg-surface shadow-xs overflow-hidden">
+                      <div className="px-4 py-2.5 bg-surface2/40 border-b border-theme-subtle flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package size={14} className="text-blue-500" />
+                          <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">
+                            Plate & Round Shaft Raw Materials
+                          </h4>
+                        </div>
+                        <span className="text-[11px] font-mono text-muted">
+                          {(activeBom.autoMats || []).length} Blanks / Items
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                          <thead className="bg-surface2/20 border-b border-theme-subtle text-[11px] uppercase text-muted font-semibold tracking-wider">
+                            <tr>
+                              <th className="px-4 py-2.5">Material</th>
+                              <th className="px-4 py-2.5">Type</th>
+                              <th className="px-4 py-2.5">Dimensions (T × W × L / Ø × L)</th>
+                              <th className="px-4 py-2.5">Supplier</th>
+                              <th className="px-4 py-2.5 text-right w-20">Qty</th>
+                              <th className="px-4 py-2.5 text-right w-28">Unit Rate</th>
+                              <th className="px-4 py-2.5 text-right w-32">Total Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-theme-subtle/20 text-xs">
+                            {(activeBom.autoMats || []).map((m: any, i: number) => {
+                              const isShaft = Boolean((m.dia && Number(m.dia) > 0) || (m.shaftDia && Number(m.shaftDia) > 0));
+                              const formattedDim = formatAutoMatDimensions(m);
+                              const lineCost = Number(m.platePrice || 0) + Number(m.shaftPrice || 0);
+
+                              return (
+                                <tr key={i} className="hover:bg-surface2/30 transition-colors">
+                                  <td className="px-4 py-2.5 font-bold text-primary">
+                                    {m.material || 'Raw Material'}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-none uppercase ${
+                                      isShaft ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                                    }`}>
+                                      {isShaft ? 'Round Shaft' : 'Plate / Sheet'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 font-mono font-bold text-primary">
+                                    {formattedDim !== '-' ? formattedDim : (
+                                      <span className="text-muted font-normal italic">None</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-secondary text-[11px]">
+                                    {m.supplier || '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-mono font-semibold">
+                                    {m.qty || 1}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-muted">
+                                    {m.unitPrice ? formatCurrency(m.unitPrice) : '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-mono font-bold text-primary">
+                                    {formatCurrency(lineCost)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {(!activeBom.autoMats || activeBom.autoMats.length === 0) && (
+                              <tr>
+                                <td colSpan={7} className="px-4 py-4 text-center text-muted italic text-xs">
+                                  No plate or shaft materials entered for this part.
+                                </td>
                               </tr>
-                            )
-                         })}
-                       </tbody>
-                     </table>
-                   </div>
-                 )}
-             </div>
-          </div>
-        )}
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Manual Materials Table */}
+                    <div className="border border-theme-subtle rounded-none bg-surface shadow-xs overflow-hidden">
+                      <div className="px-4 py-2.5 bg-surface2/40 border-b border-theme-subtle flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package size={14} className="text-amber-500" />
+                          <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">
+                            Manual / Bought-Out Materials & Hardware
+                          </h4>
+                        </div>
+                        <span className="text-[11px] font-mono text-muted">
+                          {(activeBom.manualMats || []).length} Components
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                          <thead className="bg-surface2/20 border-b border-theme-subtle text-[11px] uppercase text-muted font-semibold tracking-wider">
+                            <tr>
+                              <th className="px-4 py-2.5">Material / Hardware</th>
+                              <th className="px-4 py-2.5">Dimensions & Spec</th>
+                              <th className="px-4 py-2.5">Supplier</th>
+                              <th className="px-4 py-2.5">Price Mode</th>
+                              <th className="px-4 py-2.5 text-right w-24">Unit Price</th>
+                              <th className="px-4 py-2.5 text-right w-20">Qty</th>
+                              <th className="px-4 py-2.5 text-right w-32">Total Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-theme-subtle/20 text-xs">
+                            {(activeBom.manualMats || []).map((m: any, i: number) => (
+                              <tr key={i} className="hover:bg-surface2/30 transition-colors">
+                                <td className="px-4 py-2.5 font-bold text-primary">{m.material || 'Bought-out Component'}</td>
+                                <td className="px-4 py-2.5 font-mono text-secondary">{m.dimensions || m.spec || m.size || '—'}</td>
+                                <td className="px-4 py-2.5 text-muted text-[11px]">{m.supplier || '—'}</td>
+                                <td className="px-4 py-2.5 text-[11px] text-muted uppercase font-mono">{m.priceMode || 'per unit'}</td>
+                                <td className="px-4 py-2.5 text-right font-mono text-muted">{formatCurrency(m.unitPrice || 0)}</td>
+                                <td className="px-4 py-2.5 text-right font-mono font-semibold">{m.qty || 1}</td>
+                                <td className="px-4 py-2.5 text-right font-mono font-bold text-primary">{formatCurrency(Number(m.unitPrice || 0) * Number(m.qty || 0))}</td>
+                              </tr>
+                            ))}
+                            {(!activeBom.manualMats || activeBom.manualMats.length === 0) && (
+                              <tr>
+                                <td colSpan={7} className="px-4 py-4 text-center text-muted italic text-xs">
+                                  No manual or bought-out materials added.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Machining Operations Table */}
+                    {activeBom.procState && Object.keys(activeBom.procState).length > 0 && (
+                      <div className="border border-theme-subtle rounded-none bg-surface shadow-xs overflow-hidden">
+                        <div className="px-4 py-2.5 bg-surface2/40 border-b border-theme-subtle flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Factory size={14} className="text-rose-500" />
+                            <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">
+                              Machining & Fabrication Operations
+                            </h4>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left">
+                            <thead className="bg-surface2/20 border-b border-theme-subtle text-[11px] uppercase text-muted font-semibold tracking-wider">
+                              <tr>
+                                <th className="px-4 py-2.5">Process / Operation</th>
+                                <th className="px-4 py-2.5 text-right w-24">Est. Hrs</th>
+                                <th className="px-4 py-2.5 text-right w-24">Set Time</th>
+                                <th className="px-4 py-2.5 text-right w-24 text-primary">Quo. Hrs</th>
+                                <th className="px-4 py-2.5 text-right w-28">Rate / Hr</th>
+                                <th className="px-4 py-2.5 text-right w-32">Sub Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-theme-subtle/20 text-xs">
+                              {Object.keys(activeBom.procState).map((k: string) => {
+                                const st = activeBom.procState[k];
+                                const subTotal = (Number(st.quoHr || 0) * Number(st.hrRate || st.rate || 0)) + (Number(st.setTime || 0) * Number(st.setTimeRate || 0));
+                                if (subTotal === 0 && !st.estHr && !st.quoHr && !st.setTime) return null;
+                                return (
+                                  <tr key={k} className="hover:bg-surface2/30 transition-colors">
+                                    <td className="px-4 py-2.5 font-bold text-rose-600 dark:text-rose-400">{k}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-muted">{st.estHr || '—'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-muted">{st.setTime || '—'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-primary font-bold">{st.quoHr || '—'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-muted">{formatCurrency(st.hrRate || st.rate || 0)}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-primary font-bold">{formatCurrency(subTotal)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Fallback if only Customer Line Items exist without BOM */}
+                {bomsList.length === 0 && custItemsList.length > 0 && (
+                  <div className="border border-theme-subtle rounded-none bg-surface shadow-xs overflow-hidden">
+                    <div className="px-4 py-3 bg-surface2/40 border-b border-theme-subtle">
+                      <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Quotation Customer Line Items & Dimensions</h4>
+                    </div>
+                    <table className="w-full text-left">
+                      <thead className="bg-surface2/20 border-b border-theme-subtle text-[11px] uppercase text-muted font-semibold tracking-wider">
+                        <tr>
+                          <th className="px-4 py-2.5">Item Description</th>
+                          <th className="px-4 py-2.5">Dimensions</th>
+                          <th className="px-4 py-2.5 text-right w-24">Qty</th>
+                          <th className="px-4 py-2.5 text-right w-32">Unit Price</th>
+                          <th className="px-4 py-2.5 text-right w-32">Total Price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-theme-subtle/20 text-xs">
+                        {custItemsList.map((item: any, idx: number) => (
+                          <tr key={item.id || idx} className="hover:bg-surface2/30 transition-colors">
+                            <td className="px-4 py-2.5 font-semibold text-primary whitespace-pre-line">{item.desc || item.description || `Item #${idx + 1}`}</td>
+                            <td className="px-4 py-2.5 font-mono text-secondary font-medium">{item.dimensions || '—'}</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{item.qty || 1}</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{formatCurrency(item.unitPrice || 0)}</td>
+                            <td className="px-4 py-2.5 text-right font-mono font-bold text-primary">{formatCurrency(Number(item.qty || 1) * Number(item.unitPrice || 0))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
       <Modal isOpen={!!grnDialog} onClose={() => setGrnDialog(null)} title="Receive Customer Sample (GRN)" size="md">
