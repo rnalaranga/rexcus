@@ -1125,6 +1125,7 @@ async function runDatabaseSync() {
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
     "INSERT IGNORE INTO settings (id, val) VALUES ('gemini_model', 'gemini-1.5-flash')",
     "INSERT INTO settings (id, val) VALUES ('openai_model', 'gpt-4o-mini') ON DUPLICATE KEY UPDATE val=VALUES(val)",
+    "INSERT IGNORE INTO settings (id, val) VALUES ('deepseek_model', 'deepseek-chat')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_provider', 'gemini')",
     "INSERT INTO settings (id, val) VALUES ('groq_model', 'llama-3.3-70b-versatile') ON DUPLICATE KEY UPDATE val=IF(val LIKE '%gpt-oss%', 'llama-3.3-70b-versatile', val)",
     "INSERT IGNORE INTO settings (id, val) VALUES ('ai_enabled', 'true')",
@@ -8350,12 +8351,15 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
   try {
     const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+    const isDeepSeek = provider === 'deepseek';
 
     let endpoint = 'https://api.groq.com/openai/v1/models';
     if (isGemini) {
       endpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/models';
     } else if (isGroq) {
       endpoint = 'https://api.groq.com/openai/v1/models';
+    } else if (isDeepSeek) {
+      endpoint = 'https://api.deepseek.com/models';
     } else {
       endpoint = 'https://api.openai.com/v1/models';
     }
@@ -8367,6 +8371,9 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
       console.warn(`[Rex AI] Failed to fetch models list from ${provider}: HTTP ${res.status}`);
       if (isGemini) {
         return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+      }
+      if (isDeepSeek) {
+        return ['deepseek-chat', 'deepseek-reasoner'];
       }
       return [];
     }
@@ -8382,16 +8389,25 @@ async function fetchProviderModels(provider: string, apiKey: string): Promise<st
       if (isGemini && chatModels.length === 0) {
         return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
       }
+      if (isDeepSeek && chatModels.length === 0) {
+        return ['deepseek-chat', 'deepseek-reasoner'];
+      }
       return chatModels;
     }
     if (isGemini) {
       return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+    }
+    if (isDeepSeek) {
+      return ['deepseek-chat', 'deepseek-reasoner'];
     }
     return [];
   } catch (err: any) {
     console.error(`[Rex AI] Error fetching models from ${provider}:`, err.message);
     if (provider === 'gemini' || apiKey.startsWith('AIzaSy')) {
       return ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+    }
+    if (provider === 'deepseek') {
+      return ['deepseek-chat', 'deepseek-reasoner'];
     }
     return [];
   }
@@ -8404,6 +8420,7 @@ function normalizeModelName(modelName: string, provider: string): string {
   if (!modelName) {
     if (provider === 'gemini') return 'gemini-1.5-flash';
     if (provider === 'groq') return 'llama-3.1-8b-instant';
+    if (provider === 'deepseek') return 'deepseek-chat';
     return 'gpt-4o-mini';
   }
   let m = modelName.trim().toLowerCase().replace(/^models\//, '');
@@ -8432,6 +8449,10 @@ function normalizeModelName(modelName: string, provider: string): string {
       return 'llama-3.1-70b-versatile';
     }
     return m || 'llama-3.3-70b-versatile';
+  } else if (provider === 'deepseek') {
+    if (m === 'chat' || m === 'v3' || m === 'deepseek-v3' || m === 'deepseek-chat') return 'deepseek-chat';
+    if (m === 'reasoner' || m === 'r1' || m === 'deepseek-r1' || m === 'deepseek-reasoner') return 'deepseek-reasoner';
+    return m || 'deepseek-chat';
   } else {
     if (m === '4o-mini' || m === 'gpt4o-mini') return 'gpt-4o-mini';
     if (m === '4o' || m === 'gpt4o') return 'gpt-4o';
@@ -8479,6 +8500,14 @@ function selectBestModel(availableModels: string[], provider: string, failedMode
     if (pro15) return pro15;
 
     return validCandidates[0] || 'gemini-1.5-flash';
+  }
+
+  if (provider === 'deepseek') {
+    const chat = candidates.find(m => m === 'deepseek-chat' || m.includes('chat'));
+    if (chat) return chat;
+    const reasoner = candidates.find(m => m === 'deepseek-reasoner' || m.includes('reasoner'));
+    if (reasoner) return reasoner;
+    return candidates[0] || 'deepseek-chat';
   }
 
   if (candidates.length === 0) {
@@ -8539,7 +8568,7 @@ function selectBestModel(availableModels: string[], provider: string, failedMode
   }
 }
 
-// Endpoint to test AI API Key connection (Google Gemini, Groq Cloud, or OpenAI)
+// Endpoint to test AI API Key connection (Google Gemini, Groq Cloud, DeepSeek, or OpenAI)
 app.post('/api/ai/test-key', async (req, res) => {
   try {
     const { apiKey, provider } = req.body;
@@ -8550,6 +8579,7 @@ app.post('/api/ai/test-key', async (req, res) => {
 
     const isGemini = provider === 'gemini' || testKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || testKey.startsWith('gsk_');
+    const isDeepSeek = provider === 'deepseek';
 
     let endpoint = 'https://api.groq.com/openai/v1/models';
     let providerLabel = 'Groq Cloud (Meta Llama)';
@@ -8559,6 +8589,9 @@ app.post('/api/ai/test-key', async (req, res) => {
     } else if (isGroq) {
       endpoint = 'https://api.groq.com/openai/v1/models';
       providerLabel = 'Groq Cloud (Meta Llama)';
+    } else if (isDeepSeek) {
+      endpoint = 'https://api.deepseek.com/models';
+      providerLabel = 'DeepSeek (DeepSeek-V3 / R1)';
     } else {
       endpoint = 'https://api.openai.com/v1/models';
       providerLabel = 'OpenAI';
@@ -8587,8 +8620,11 @@ app.post('/api/ai/test-key', async (req, res) => {
     if (isGemini && chatModels.length === 0) {
       chatModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
     }
+    if (isDeepSeek && chatModels.length === 0) {
+      chatModels = ['deepseek-chat', 'deepseek-reasoner'];
+    }
 
-    const resolvedProvider = isGemini ? 'gemini' : (isGroq ? 'groq' : 'openai');
+    const resolvedProvider = isGemini ? 'gemini' : (isGroq ? 'groq' : (isDeepSeek ? 'deepseek' : 'openai'));
     const recommendedModel = selectBestModel(chatModels, resolvedProvider);
 
     res.json({ 
@@ -8607,28 +8643,37 @@ app.post('/api/ai/test-key', async (req, res) => {
 app.get('/api/ai/models', async (req, res) => {
   try {
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'deepseek_api_key', 'deepseek_model')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
     
     const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+    const deepseekKey = (settingsMap.deepseek_api_key || process.env.DEEPSEEK_API_KEY || '').trim();
 
-    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : 'gemini'))).trim();
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : (deepseekKey ? 'deepseek' : 'gemini')))).trim();
 
     let apiKey = '';
     if (provider === 'gemini') {
-      apiKey = geminiKey || groqKey || openAiKey;
+      apiKey = geminiKey || groqKey || deepseekKey || openAiKey;
       if (!geminiKey && groqKey) provider = 'groq';
+      else if (!geminiKey && deepseekKey) provider = 'deepseek';
       else if (!geminiKey && openAiKey) provider = 'openai';
     } else if (provider === 'groq') {
-      apiKey = groqKey || geminiKey || openAiKey;
+      apiKey = groqKey || geminiKey || deepseekKey || openAiKey;
       if (!groqKey && geminiKey) provider = 'gemini';
+      else if (!groqKey && deepseekKey) provider = 'deepseek';
       else if (!groqKey && openAiKey) provider = 'openai';
+    } else if (provider === 'deepseek') {
+      apiKey = deepseekKey || geminiKey || groqKey || openAiKey;
+      if (!deepseekKey && geminiKey) provider = 'gemini';
+      else if (!deepseekKey && groqKey) provider = 'groq';
+      else if (!deepseekKey && openAiKey) provider = 'openai';
     } else {
-      apiKey = openAiKey || geminiKey || groqKey;
-      if (!openAiKey && geminiKey) provider = 'gemini';
+      apiKey = openAiKey || deepseekKey || geminiKey || groqKey;
+      if (!openAiKey && deepseekKey) provider = 'deepseek';
+      else if (!openAiKey && geminiKey) provider = 'gemini';
       else if (!openAiKey && groqKey) provider = 'groq';
     }
 
@@ -8640,7 +8685,11 @@ app.get('/api/ai/models', async (req, res) => {
     const recommendedModel = selectBestModel(models, provider);
     const currentModel = provider === 'gemini' 
       ? normalizeModelName(settingsMap.gemini_model || recommendedModel, 'gemini')
-      : (provider === 'groq' ? normalizeModelName(settingsMap.groq_model || recommendedModel, 'groq') : normalizeModelName(settingsMap.openai_model || recommendedModel, 'openai'));
+      : (provider === 'groq' 
+          ? normalizeModelName(settingsMap.groq_model || recommendedModel, 'groq') 
+          : (provider === 'deepseek'
+              ? normalizeModelName(settingsMap.deepseek_model || recommendedModel, 'deepseek')
+              : normalizeModelName(settingsMap.openai_model || recommendedModel, 'openai')));
 
     res.json({
       success: true,
@@ -8661,7 +8710,7 @@ app.post('/api/ai/chat', async (req, res) => {
 
     // 1. Retrieve AI Settings from Database
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'openai_system_instructions', 'ai_enabled')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'deepseek_api_key', 'deepseek_model', 'openai_system_instructions', 'ai_enabled')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
 
@@ -8676,15 +8725,19 @@ app.post('/api/ai/chat', async (req, res) => {
     const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
-    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : 'gemini'))).trim();
+    const deepseekKey = (settingsMap.deepseek_api_key || process.env.DEEPSEEK_API_KEY || '').trim();
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : (deepseekKey ? 'deepseek' : 'gemini')))).trim();
 
-    // Auto-detect provider if user entered a Gemini key (starts with AIzaSy), Groq key (starts with gsk_), or OpenAI key (starts with sk-)
+    // Auto-detect provider if user entered a Gemini key (starts with AIzaSy), Groq key (starts with gsk_), DeepSeek, or OpenAI key
     let apiKey = '';
     if (provider === 'gemini') {
       apiKey = geminiKey;
       if (!apiKey && groqKey) {
         provider = 'groq';
         apiKey = groqKey;
+      } else if (!apiKey && deepseekKey) {
+        provider = 'deepseek';
+        apiKey = deepseekKey;
       } else if (!apiKey && openAiKey) {
         provider = 'openai';
         apiKey = openAiKey;
@@ -8694,13 +8747,31 @@ app.post('/api/ai/chat', async (req, res) => {
       if (!apiKey && geminiKey) {
         provider = 'gemini';
         apiKey = geminiKey;
+      } else if (!apiKey && deepseekKey) {
+        provider = 'deepseek';
+        apiKey = deepseekKey;
+      } else if (!apiKey && openAiKey) {
+        provider = 'openai';
+        apiKey = openAiKey;
+      }
+    } else if (provider === 'deepseek') {
+      apiKey = deepseekKey;
+      if (!apiKey && geminiKey) {
+        provider = 'gemini';
+        apiKey = geminiKey;
+      } else if (!apiKey && groqKey) {
+        provider = 'groq';
+        apiKey = groqKey;
       } else if (!apiKey && openAiKey) {
         provider = 'openai';
         apiKey = openAiKey;
       }
     } else {
       apiKey = openAiKey;
-      if (!apiKey && geminiKey) {
+      if (!apiKey && deepseekKey) {
+        provider = 'deepseek';
+        apiKey = deepseekKey;
+      } else if (!apiKey && geminiKey) {
         provider = 'gemini';
         apiKey = geminiKey;
       } else if (!apiKey && groqKey) {
@@ -8712,24 +8783,27 @@ app.post('/api/ai/chat', async (req, res) => {
     // Auto-detect if key prefix doesn't match selected provider
     if (apiKey.startsWith('AIzaSy')) provider = 'gemini';
     else if (apiKey.startsWith('gsk_')) provider = 'groq';
-    else if (apiKey.startsWith('sk-')) provider = 'openai';
+    else if (provider !== 'deepseek' && apiKey.startsWith('sk-') && !deepseekKey) provider = 'openai';
 
     if (!apiKey) {
       return res.json({
         success: false,
         missingKey: true,
-        reply: 'AI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Google Gemini API Key** එකක් (AIzaSy...) හෝ Groq Cloud Key එකක් ඇතුළත් කර Save කරන්න.'
+        reply: 'AI API Key එක තවමත් සකසා නැත. කරුණාකර **Admin > Variable Settings** වෙත ගොස් නොමිලේ **Google Gemini**, **Groq Cloud**, නැතහොත් **DeepSeek** API Key එකක් ඇතුළත් කර Save කරන්න.'
       });
     }
 
     const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+    const isDeepSeek = provider === 'deepseek';
 
     let endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
     if (isGemini) {
       endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
     } else if (isGroq) {
       endpointUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    } else if (isDeepSeek) {
+      endpointUrl = 'https://api.deepseek.com/chat/completions';
     } else {
       endpointUrl = 'https://api.openai.com/v1/chat/completions';
     }
@@ -8748,6 +8822,8 @@ app.post('/api/ai/chat', async (req, res) => {
         activeModelName = 'llama-3.3-70b-versatile';
         db.query("UPDATE settings SET val = 'llama-3.3-70b-versatile' WHERE id = 'groq_model'").catch(() => {});
       }
+    } else if (isDeepSeek) {
+      activeModelName = normalizeModelName((settingsMap.deepseek_model || 'deepseek-chat').trim(), 'deepseek');
     } else {
       activeModelName = normalizeModelName((settingsMap.openai_model || 'gpt-4o-mini').trim(), 'openai');
       if (activeModelName.includes('luna') || !activeModelName) {
@@ -9256,7 +9332,7 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
     } = req.body;
 
     const [settingsRows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'ai_enabled')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'deepseek_api_key', 'deepseek_model', 'ai_enabled')"
     );
     const settingsMap = settingsRows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
 
@@ -9267,42 +9343,54 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
     const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
     const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
-    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : 'gemini'))).trim();
+    const deepseekKey = (settingsMap.deepseek_api_key || process.env.DEEPSEEK_API_KEY || '').trim();
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : (deepseekKey ? 'deepseek' : 'gemini')))).trim();
 
     let apiKey = '';
     if (provider === 'gemini') {
-      apiKey = geminiKey || groqKey || openAiKey;
+      apiKey = geminiKey || groqKey || deepseekKey || openAiKey;
       if (!geminiKey && groqKey) provider = 'groq';
+      else if (!geminiKey && deepseekKey) provider = 'deepseek';
       else if (!geminiKey && openAiKey) provider = 'openai';
     } else if (provider === 'groq') {
-      apiKey = groqKey || geminiKey || openAiKey;
+      apiKey = groqKey || geminiKey || deepseekKey || openAiKey;
       if (!groqKey && geminiKey) provider = 'gemini';
+      else if (!groqKey && deepseekKey) provider = 'deepseek';
       else if (!groqKey && openAiKey) provider = 'openai';
+    } else if (provider === 'deepseek') {
+      apiKey = deepseekKey || geminiKey || groqKey || openAiKey;
+      if (!deepseekKey && geminiKey) provider = 'gemini';
+      else if (!deepseekKey && groqKey) provider = 'groq';
+      else if (!deepseekKey && openAiKey) provider = 'openai';
     } else {
-      apiKey = openAiKey || geminiKey || groqKey;
-      if (!openAiKey && geminiKey) provider = 'gemini';
+      apiKey = openAiKey || deepseekKey || geminiKey || groqKey;
+      if (!openAiKey && deepseekKey) provider = 'deepseek';
+      else if (!openAiKey && geminiKey) provider = 'gemini';
       else if (!openAiKey && groqKey) provider = 'groq';
     }
 
     if (apiKey.startsWith('AIzaSy')) provider = 'gemini';
     else if (apiKey.startsWith('gsk_')) provider = 'groq';
-    else if (apiKey.startsWith('sk-')) provider = 'openai';
+    else if (provider !== 'deepseek' && apiKey.startsWith('sk-') && !deepseekKey) provider = 'openai';
 
     if (!apiKey) {
       return res.status(400).json({
         success: false,
-        error: 'AI API Key is not configured. Please add a free Google Gemini or Groq API Key in Variable Settings.'
+        error: 'AI API Key is not configured. Please add an API Key in Variable Settings.'
       });
     }
 
     const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
     const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+    const isDeepSeek = provider === 'deepseek';
 
     let endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
     if (isGemini) {
       endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
     } else if (isGroq) {
       endpointUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    } else if (isDeepSeek) {
+      endpointUrl = 'https://api.deepseek.com/chat/completions';
     } else {
       endpointUrl = 'https://api.openai.com/v1/chat/completions';
     }
@@ -9312,6 +9400,8 @@ app.post('/api/ai/generate-quotation-description', async (req, res) => {
       activeModelName = normalizeModelName((settingsMap.gemini_model || 'gemini-1.5-flash').trim(), 'gemini');
     } else if (isGroq) {
       activeModelName = normalizeModelName((settingsMap.groq_model || 'llama-3.1-8b-instant').trim(), 'groq');
+    } else if (isDeepSeek) {
+      activeModelName = normalizeModelName((settingsMap.deepseek_model || 'deepseek-chat').trim(), 'deepseek');
     } else {
       activeModelName = normalizeModelName((settingsMap.openai_model || 'gpt-4o-mini').trim(), 'openai');
     }
@@ -9421,14 +9511,21 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
 (async () => {
   try {
     const [rows]: any = await db.query(
-      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model')"
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'deepseek_api_key', 'deepseek_model')"
     );
     const map = rows.reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
     const prov = map.ai_provider || 'gemini';
-    const key = (prov === 'gemini' ? map.gemini_api_key : (prov === 'groq' ? map.groq_api_key : map.openai_api_key)) || map.gemini_api_key || map.groq_api_key || map.openai_api_key || '';
+    const key = (prov === 'gemini' 
+      ? map.gemini_api_key 
+      : (prov === 'groq' 
+          ? map.groq_api_key 
+          : (prov === 'deepseek' ? map.deepseek_api_key : map.openai_api_key))) 
+      || map.gemini_api_key || map.groq_api_key || map.deepseek_api_key || map.openai_api_key || '';
     const activeModel = prov === 'gemini' 
       ? (map.gemini_model || 'gemini-1.5-flash')
-      : (prov === 'groq' ? (map.groq_model || 'llama-3.1-8b-instant') : (map.openai_model || 'gpt-4o-mini'));
+      : (prov === 'groq' 
+          ? (map.groq_model || 'llama-3.1-8b-instant') 
+          : (prov === 'deepseek' ? (map.deepseek_model || 'deepseek-chat') : (map.openai_model || 'gpt-4o-mini')));
     console.log(`[Rex AI] Provider: ${prov} | Model: ${activeModel} | Key: ${key ? key.slice(0, 7) + '...' : 'Not configured'}`);
   } catch(e: any) {
     console.error('[Rex AI] Diagnostic error:', e.message);

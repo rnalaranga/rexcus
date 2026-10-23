@@ -17,7 +17,7 @@ export const VariableSettings: React.FC = () => {
   const { settings, updateSettings, loading } = useSettings();
 
   // AI Variables & Provider selection
-  const [provider, setProvider] = useState<'gemini' | 'groq' | 'openai'>('gemini');
+  const [provider, setProvider] = useState<'gemini' | 'groq' | 'openai' | 'deepseek'>('gemini');
 
   // Google Gemini credentials & model
   const [geminiKey, setGeminiKey] = useState('');
@@ -30,6 +30,12 @@ export const VariableSettings: React.FC = () => {
   const [showGroqKey, setShowGroqKey] = useState(false);
   const [groqModel, setGroqModel] = useState('llama-3.1-8b-instant');
   const [availableGroqModels, setAvailableGroqModels] = useState<string[]>([]);
+
+  // DeepSeek credentials & model
+  const [deepseekKey, setDeepseekKey] = useState('');
+  const [showDeepseekKey, setShowDeepseekKey] = useState(false);
+  const [deepseekModel, setDeepseekModel] = useState('deepseek-chat');
+  const [availableDeepSeekModels, setAvailableDeepSeekModels] = useState<string[]>([]);
 
   // OpenAI credentials & model
   const [openAiKey, setOpenAiKey] = useState('');
@@ -63,6 +69,8 @@ export const VariableSettings: React.FC = () => {
             setAvailableGeminiModels(data.models);
           } else if (data.provider === 'groq') {
             setAvailableGroqModels(data.models);
+          } else if (data.provider === 'deepseek') {
+            setAvailableDeepSeekModels(data.models);
           } else {
             setAvailableOpenAiModels(data.models);
           }
@@ -75,7 +83,7 @@ export const VariableSettings: React.FC = () => {
   // Sync settings when loaded
   useEffect(() => {
     if (settings && Object.keys(settings).length > 0) {
-      if (settings.ai_provider) setProvider(settings.ai_provider as 'gemini' | 'groq' | 'openai');
+      if (settings.ai_provider) setProvider(settings.ai_provider as 'gemini' | 'groq' | 'openai' | 'deepseek');
       if (settings.gemini_api_key) setGeminiKey(settings.gemini_api_key);
       if (settings.gemini_model) {
         setGeminiModel(settings.gemini_model);
@@ -91,6 +99,12 @@ export const VariableSettings: React.FC = () => {
         }
       } else {
         setGroqModel('llama-3.1-8b-instant');
+      }
+      if (settings.deepseek_api_key) setDeepseekKey(settings.deepseek_api_key);
+      if (settings.deepseek_model) {
+        setDeepseekModel(settings.deepseek_model);
+      } else {
+        setDeepseekModel('deepseek-chat');
       }
       if (settings.openai_api_key) setOpenAiKey(settings.openai_api_key);
       if (settings.openai_model) {
@@ -123,8 +137,12 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
 
   // Test Active Provider Key
   const handleTestKey = async () => {
-    const keyToTest = provider === 'gemini' ? geminiKey : (provider === 'groq' ? groqKey : openAiKey);
-    const providerName = provider === 'gemini' ? 'Google Gemini' : (provider === 'groq' ? 'Groq Cloud' : 'OpenAI');
+    const keyToTest = provider === 'gemini' 
+      ? geminiKey 
+      : (provider === 'groq' ? groqKey : (provider === 'deepseek' ? deepseekKey : openAiKey));
+    const providerName = provider === 'gemini' 
+      ? 'Google Gemini' 
+      : (provider === 'groq' ? 'Groq Cloud' : (provider === 'deepseek' ? 'DeepSeek' : 'OpenAI'));
 
     if (!keyToTest.trim()) {
       toast(`Please enter a ${providerName} API key first`, 'error');
@@ -143,6 +161,7 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
         setKeyTestResult({ success: true, msg: data.message || `${providerName} API key verified! Connection established.` });
         let newGeminiModel = geminiModel;
         let newGroqModel = groqModel;
+        let newDeepSeekModel = deepseekModel;
         let newOpenAiModel = openAiModel;
         if (Array.isArray(data.models) && data.models.length > 0) {
           if (provider === 'gemini') {
@@ -156,6 +175,12 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
             if ((groqModel.includes('gpt-oss') || !data.models.includes(groqModel)) && data.recommendedModel) {
               newGroqModel = data.recommendedModel;
               setGroqModel(data.recommendedModel);
+            }
+          } else if (provider === 'deepseek') {
+            setAvailableDeepSeekModels(data.models);
+            if (data.recommendedModel) {
+              newDeepSeekModel = data.recommendedModel;
+              setDeepseekModel(data.recommendedModel);
             }
           } else {
             setAvailableOpenAiModels(data.models);
@@ -172,6 +197,8 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
           gemini_model: newGeminiModel,
           groq_api_key: provider === 'groq' ? keyToTest.trim() : groqKey.trim(),
           groq_model: newGroqModel,
+          deepseek_api_key: provider === 'deepseek' ? keyToTest.trim() : deepseekKey.trim(),
+          deepseek_model: newDeepSeekModel,
           openai_api_key: provider === 'openai' ? keyToTest.trim() : openAiKey.trim(),
           openai_model: newOpenAiModel,
           ai_enabled: 'true'
@@ -223,6 +250,8 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
         gemini_model: normalizedGeminiModel || 'gemini-1.5-flash',
         groq_api_key: groqKey.trim(),
         groq_model: normalizedGroqModel,
+        deepseek_api_key: deepseekKey.trim(),
+        deepseek_model: deepseekModel || 'deepseek-chat',
         openai_api_key: openAiKey.trim(),
         openai_model: openAiModel,
         openai_system_instructions: systemInstructions,
@@ -314,9 +343,9 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
         <div className="space-y-2">
           <label className="block text-xs font-bold text-secondary flex items-center justify-between">
             <span>Select Active AI Provider Engine</span>
-            <span className="text-[10px] text-muted">Choose between Free Google Gemini, Groq Llama, or OpenAI</span>
+            <span className="text-[10px] text-muted">Choose between Free Google Gemini, Groq Llama, DeepSeek, or OpenAI</span>
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Google Gemini Option (Recommended #1) */}
             <button
               type="button"
@@ -369,6 +398,34 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                 </div>
                 <p className="text-[11px] text-muted leading-relaxed">
                   Ultra-fast ~560 tps, native function calling for live ERP queries.
+                </p>
+              </div>
+            </button>
+
+            {/* DeepSeek Option */}
+            <button
+              type="button"
+              onClick={() => { setProvider('deepseek'); setKeyTestResult(null); }}
+              className={`p-4 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${
+                provider === 'deepseek'
+                  ? 'bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-500/20 shadow-sm'
+                  : 'bg-surface border-theme-subtle hover:border-theme-strong'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${provider === 'deepseek' ? 'bg-cyan-600 text-white shadow-md shadow-cyan-500/30' : 'bg-surface2 text-muted'}`}>
+                <Cpu size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="font-bold text-xs text-primary flex items-center gap-1.5">
+                    DeepSeek (V3 / R1)
+                  </span>
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0">
+                    Ultra-Low Cost
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted leading-relaxed">
+                  DeepSeek-V3 & R1. 20x cheaper than OpenAI, native tool calling, deep reasoning & fluent Singlish.
                 </p>
               </div>
             </button>
@@ -989,6 +1046,240 @@ Be concise, direct, polite, and format key data with clean markdown bullet point
                   }}
                   placeholder="e.g. llama-3.1-8b-instant, llama-3.3-70b-versatile"
                   className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 w-80"
+                />
+              </div>
+            </div>
+          </div>
+        ) : provider === 'deepseek' ? (
+          /* DEEPSEEK SETTINGS */
+          <div className="space-y-5 p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20">
+            {/* DeepSeek API Key Input & Verification */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-secondary flex items-center gap-1.5">
+                  <KeyRound size={14} className="text-cyan-600 dark:text-cyan-400" />
+                  DeepSeek API Key <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  {deepseekKey ? (
+                    <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                      <CheckCircle2 size={11} /> Configured
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono font-bold text-cyan-600 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 flex items-center gap-1">
+                      <AlertCircle size={11} /> Key Missing
+                    </span>
+                  )}
+                  <a
+                    href="https://platform.deepseek.com/api_keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold flex items-center gap-1"
+                  >
+                    Get DeepSeek Key &rarr;
+                  </a>
+                </div>
+              </div>
+
+              {/* Key format warning if user pasted a Groq key */}
+              {deepseekKey.trim().startsWith('gsk_') && (
+                <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0 text-amber-500" />
+                  <span>
+                    Notice: This key starts with <code className="font-bold bg-amber-500/20 px-1 py-0.5 rounded">gsk_</code>, which is a Groq key. DeepSeek API keys begin with <code className="font-bold bg-amber-500/20 px-1 py-0.5 rounded">sk-</code>.
+                  </span>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showDeepseekKey ? 'text' : 'password'}
+                    value={deepseekKey}
+                    onChange={e => {
+                      setDeepseekKey(e.target.value);
+                      setKeyTestResult(null);
+                    }}
+                    placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowDeepseekKey(p => !p)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-primary transition-colors"
+                    title={showDeepseekKey ? 'Hide Secret Key' : 'Reveal Secret Key'}
+                  >
+                    {showDeepseekKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={handleTestKey}
+                  disabled={testingKey || !deepseekKey.trim()}
+                  className="text-xs font-bold border border-theme-subtle bg-surface hover:bg-surface2 shrink-0 px-4"
+                >
+                  {testingKey ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin mr-1.5" /> Testing...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck size={14} className="text-cyan-600 dark:text-cyan-400 mr-1.5" /> Test Connection
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {keyTestResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                    keyTestResult.success
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-red-500/10 border-red-500/30 text-red-600'
+                  }`}
+                >
+                  {keyTestResult.success ? <CheckCircle2 size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
+                  <span>{keyTestResult.msg}</span>
+                </div>
+              )}
+            </div>
+
+            {/* DeepSeek Model Selection */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-secondary flex items-center gap-1.5">
+                  <Cpu size={14} className="text-cyan-600 dark:text-cyan-400" />
+                  DeepSeek Model Engine
+                </label>
+                <span className="text-[10px] font-mono text-muted">Active: <span className="font-bold text-cyan-600 dark:text-cyan-400">{deepseekModel}</span></span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Option 1: DeepSeek Chat (V3) */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    deepseekModel === 'deepseek-chat'
+                      ? 'bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-500/20 shadow-sm'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Sparkles size={13} className="text-cyan-600 dark:text-cyan-400" />
+                        deepseek-chat
+                      </span>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                        DeepSeek-V3 · Recommended
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      DeepSeek-V3 flagship. Full tool calling & function calling support for ERP database queries, quotes, and leads.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="deepseek_model"
+                    value="deepseek-chat"
+                    checked={deepseekModel === 'deepseek-chat'}
+                    onChange={e => {
+                      setDeepseekModel(e.target.value);
+                      updateSettings({ deepseek_model: e.target.value });
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+
+                {/* Option 2: DeepSeek Reasoner (R1) */}
+                <label
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    deepseekModel === 'deepseek-reasoner'
+                      ? 'bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-500/20 shadow-sm'
+                      : 'bg-surface border-theme-subtle hover:border-theme-strong'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-primary font-mono flex items-center gap-1">
+                        <Cpu size={13} className="text-cyan-600 dark:text-cyan-400" />
+                        deepseek-reasoner
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                        DeepSeek-R1 · Reasoning
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed line-clamp-3">
+                      DeepSeek-R1 reasoning model with chain-of-thought analysis. Superb for complex math, business strategy, and in-depth analytics.
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="deepseek_model"
+                    value="deepseek-reasoner"
+                    checked={deepseekModel === 'deepseek-reasoner'}
+                    onChange={e => {
+                      setDeepseekModel(e.target.value);
+                      updateSettings({ deepseek_model: e.target.value });
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
+
+              {/* Live Discovered Models from DeepSeek Account */}
+              {availableDeepSeekModels.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-surface border-2 border-cyan-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-cyan-700 dark:text-cyan-400 flex items-center gap-1.5">
+                      <CheckCircle2 size={15} className="text-cyan-500" />
+                      Live Models Detected on Your DeepSeek Account ({availableDeepSeekModels.length}):
+                    </span>
+                    <span className="text-[11px] text-muted">Click any model pill to activate & save immediately</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto pt-1">
+                    {availableDeepSeekModels.map((m) => {
+                      const isSelected = deepseekModel === m;
+                      const isToolReady = m.includes('chat') || m.includes('v3');
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            setDeepseekModel(m);
+                            updateSettings({ deepseek_model: m });
+                            toast(`Activated & saved model: ${m}`, 'success');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isSelected
+                              ? 'bg-cyan-600 text-white shadow-md ring-2 ring-cyan-500'
+                              : 'bg-surface2 hover:bg-surface2/80 text-primary border border-theme-subtle hover:border-cyan-500'
+                          }`}
+                        >
+                          {isSelected ? <CheckCircle2 size={13} className="text-white" /> : <div className={`w-2 h-2 rounded-full ${isToolReady ? 'bg-cyan-500' : 'bg-purple-400'}`} />}
+                          {m}
+                          {isToolReady && (
+                            <span className={`text-[8px] uppercase tracking-wider px-1 py-0.2 rounded font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'}`}>
+                              Tools Ready
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom DeepSeek Model Input */}
+              <div className="pt-1 flex items-center gap-2">
+                <span className="text-[11px] text-muted shrink-0 font-medium">Or custom DeepSeek model:</span>
+                <input
+                  type="text"
+                  value={deepseekModel}
+                  onChange={e => setDeepseekModel(e.target.value)}
+                  placeholder="e.g. deepseek-chat, deepseek-reasoner"
+                  className="px-3 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 w-80"
                 />
               </div>
             </div>

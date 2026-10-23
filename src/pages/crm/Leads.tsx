@@ -138,8 +138,6 @@ export const Leads: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading leads...</div>
-
   const openCreateModal = () => {
     setEditId(null)
         setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', grnList: [] as any[] })
@@ -592,6 +590,8 @@ export const Leads: React.FC = () => {
     qualified: 'border-b-2 border-b-cyan-400',
     proposal: 'border-b-2 border-b-amber-400',
   }
+
+  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading leads...</div>
 
   return (
     <div className="space-y-4 animate-fade-in pb-12">
