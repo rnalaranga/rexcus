@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Printer, Download, X, FileText, ExternalLink, Calendar, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { InvoicePreview } from '@/components/finance/InvoicePreview';
+import { useTaxProfiles } from '@/hooks/useFinance';
 import { formatCurrency, formatDate } from '@/lib/utils';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -20,6 +21,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   settings
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
+  const { data: taxProfiles = [] } = useTaxProfiles();
 
   if (!isOpen || !invoice) return null;
 
@@ -151,6 +153,10 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               modeOfPayment={invoice.modeOfPayment || 'Bank Wire / TT'}
               attention={invoice.attention || ''}
               bankDetails={bankDetails}
+              taxProfileId={invoice.taxProfileId}
+              taxProfile={taxProfiles?.find((p: any) => p.id === invoice.taxProfileId)}
+              taxBreakdown={invoice.taxBreakdown ? (typeof invoice.taxBreakdown === 'string' ? JSON.parse(invoice.taxBreakdown) : invoice.taxBreakdown) : null}
+              taxType={invoice.taxType || (invoice.taxProfileId ? 'profile' : 'none')}
             />
           </div>
         </div>

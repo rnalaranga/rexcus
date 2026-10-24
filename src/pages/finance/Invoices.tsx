@@ -331,6 +331,13 @@ export const Invoices: React.FC = () => {
     };
   };
 
+  const proformaCount = React.useMemo(() => {
+    if (!Array.isArray(invoices)) return 0;
+    return invoices.filter((inv: any) => 
+      Boolean(inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-'))
+    ).length;
+  }, [invoices]);
+
   const customerDuesMap = React.useMemo(() => {
     const map: Record<string, { totalDue: number, unpaidCount: number }> = {};
     if (!Array.isArray(invoices)) return map;
@@ -376,14 +383,19 @@ export const Invoices: React.FC = () => {
     let statusMatch = true;
     if (statusFilter !== 'all') {
       const invStatus = (inv.status || '').toLowerCase();
-      if (statusFilter === 'unpaid') {
-        statusMatch = !pay.isSettled && invStatus !== 'draft';
+      const isProforma = Boolean(inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-'));
+      if (statusFilter === 'proforma') {
+        statusMatch = isProforma;
+      } else if (statusFilter === 'unpaid') {
+        statusMatch = !isProforma && !pay.isSettled && invStatus !== 'draft';
       } else if (statusFilter === 'paid') {
-        statusMatch = pay.isSettled || invStatus === 'paid';
+        statusMatch = !isProforma && (pay.isSettled || invStatus === 'paid');
       } else if (statusFilter === 'partial') {
-        statusMatch = pay.paid > 0 && !pay.isSettled;
+        statusMatch = !isProforma && pay.paid > 0 && !pay.isSettled;
       } else if (statusFilter === 'overdue') {
-        statusMatch = pay.isOverdue || invStatus === 'overdue';
+        statusMatch = !isProforma && (pay.isOverdue || invStatus === 'overdue');
+      } else if (statusFilter === 'draft') {
+        statusMatch = !isProforma && invStatus === 'draft';
       } else {
         statusMatch = invStatus === statusFilter.toLowerCase();
       }
@@ -737,19 +749,31 @@ export const Invoices: React.FC = () => {
         {/* Row 1: Status Tabs & Search */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            {['all', 'unpaid', 'partial', 'paid', 'overdue', 'draft', 'sent'].map(s => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-wider shrink-0 ${
-                  statusFilter === s 
-                    ? 'bg-rex-500/10 border border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold shadow-xs' 
-                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
-                }`}
-              >
-                {s === 'partial' ? 'Partially Paid' : s}
-              </button>
-            ))}
+            {['all', 'proforma', 'unpaid', 'partial', 'paid', 'overdue', 'draft', 'sent'].map(s => {
+              const label = s === 'proforma' 
+                ? `Proforma (${proformaCount})` 
+                : s === 'partial' 
+                ? 'Partially Paid' 
+                : s;
+
+              return (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-none transition-all uppercase tracking-wider shrink-0 flex items-center gap-1 ${
+                    statusFilter === s 
+                      ? s === 'proforma'
+                        ? 'bg-blue-600 text-white border border-blue-600 font-bold shadow-xs'
+                        : 'bg-rex-500/10 border border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold shadow-xs' 
+                      : s === 'proforma' && proformaCount > 0
+                        ? 'bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold hover:bg-blue-500/20'
+                        : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           <SearchBar 

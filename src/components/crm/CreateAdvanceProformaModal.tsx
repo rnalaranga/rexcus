@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, FileText, CheckCircle, Percent, DollarSign, Calendar, 
-  Building2, User, Phone, Mail, MapPin, Receipt, ShieldCheck, 
-  CreditCard, Sparkles, AlertCircle 
+  Building2, User, Receipt, ShieldCheck, CreditCard, Sparkles, AlertCircle 
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
@@ -40,9 +39,6 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const customerId = order?.customerId || order?.matchedCustomerId || '';
   const customerName = order?.customerName || 'Customer';
   const customerCompany = order?.customerCompany || order?.customerName || '';
-  const customerAddress = order?.deliveryAddress || '';
-  const customerPhone = order?.customerPhone || '';
-  const customerEmail = order?.customerEmail || '';
   const customerAttention = order?.attention || '';
 
   // Order total
@@ -55,37 +51,54 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   );
   const [advancePercent, setAdvancePercent] = useState<number>(30);
-  const [advanceAmount, setAdvanceAmount] = useState<number>(0);
+  const [advanceBaseAmount, setAdvanceBaseAmount] = useState<number>(0);
+  
+  // Tax Options: 'opt1' (Absorbed) | 'opt2' (SSCL Absorbed + VAT 18%) | 'opt3' (SSCL + VAT 2 Lines) | 'none'
+  const [taxOption, setTaxOption] = useState<'opt1' | 'opt2' | 'opt3' | 'none'>('opt2');
+
   const [modeOfPayment, setModeOfPayment] = useState('Bank Wire / TT');
   const [selectedBankId, setSelectedBankId] = useState('');
-  const [selectedTaxProfileId, setSelectedTaxProfileId] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Initialize advance amount and proforma number
+  // Initialize advance base amount, proforma number, and tax option from order
   useEffect(() => {
     if (orderTotal > 0) {
       const initAdv = Math.round((orderTotal * 0.3) * 100) / 100;
-      setAdvanceAmount(initAdv);
+      setAdvanceBaseAmount(initAdv);
       setAdvancePercent(30);
     }
 
-    // Default Proforma Invoice number: PI-<YEAR><MONTH>_REX_<ORDER_NO>
+    // Default Proforma Invoice number: PI-<YEAR><MONTH>-<CLEAN_ORD>
     const now = new Date();
     const yy = now.getFullYear().toString().slice(-2);
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const mmm = months[now.getMonth()];
     const cleanOrd = orderNo ? orderNo.replace(/[^A-Za-z0-9]/g, '') : Date.now().toString().slice(-4);
-    setProformaNo(`PI-${yy}${mmm}-ORD${cleanOrd.slice(-4)}`);
+    setProformaNo(`PI-${yy}${mmm}-${cleanOrd.slice(-5)}`);
+
+    // Match order's tax profile if available
+    if (order?.taxProfileId) {
+      const pId = String(order.taxProfileId).toLowerCase();
+      if (pId.includes('opt1') || pId.includes('absorbed')) {
+        setTaxOption('opt1');
+      } else if (pId.includes('opt3') || pId.includes('both')) {
+        setTaxOption('opt3');
+      } else if (pId.includes('none') || pId.includes('no_tax')) {
+        setTaxOption('none');
+      } else {
+        setTaxOption('opt2');
+      }
+    }
 
     // Default notes
     setNotes(
       `Proforma Invoice for advance payment against Sales Order #${orderNo}. ` +
-      `Kindly arrange payment to the bank account stated below to commence manufacturing & material reservation.`
+      `Kindly arrange payment to the bank account stated below to commence manufacturing.`
     );
   }, [order, orderTotal, orderNo]);
 
-  // Handle bank accounts filter (Cash / Bank accounts)
+  // Handle bank accounts filter
   const bankAccounts = useMemo(() => {
     return accounts.filter(
       (a: any) => 
@@ -101,41 +114,69 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     }
   }, [bankAccounts, selectedBankId]);
 
-  // Set default tax profile if available
-  useEffect(() => {
-    if (taxProfiles.length > 0 && !selectedTaxProfileId) {
-      const def = taxProfiles.find((t: any) => t.is_default) || taxProfiles[0];
-      if (def) setSelectedTaxProfileId(def.id);
-    }
-  }, [taxProfiles, selectedTaxProfileId]);
-
   // Quick percent buttons
   const handlePercentSelect = (pct: number) => {
     setAdvancePercent(pct);
     const val = Math.round((orderTotal * (pct / 100)) * 100) / 100;
-    setAdvanceAmount(val);
+    setAdvanceBaseAmount(val);
   };
 
   const handleAmountChange = (amt: number) => {
-    setAdvanceAmount(amt);
+    setAdvanceBaseAmount(amt);
     if (orderTotal > 0) {
       const pct = Math.round((amt / orderTotal) * 100);
       setAdvancePercent(pct);
     }
   };
 
-  const remainingBalance = Math.max(0, orderTotal - advanceAmount);
+  // Statutory Tax Calculations for Sri Lanka Inland Revenue
+  const calculation = useMemo(() => {
+    const subtotal = Math.max(0, advanceBaseAmount);
+    let ssclAmount = 0;
+    let vatAmount = 0;
+    let actualTaxProfileId = 'tp_opt2_sscl_absorbed_vat_sep';
 
-  // Selected Bank Object
+    if (taxOption === 'opt1') {
+      // Option 1: VAT & SSCL Absorbed (Total Value includes taxes)
+      actualTaxProfileId = 'tp_opt1_absorbed';
+      ssclAmount = 0;
+      vatAmount = 0;
+    } else if (taxOption === 'opt2') {
+      // Option 2: SSCL (2.5%) Absorbed into Subtotal, VAT 18% Separate
+      actualTaxProfileId = 'tp_opt2_sscl_absorbed_vat_sep';
+      ssclAmount = 0;
+      vatAmount = Math.round((subtotal * 0.18) * 100) / 100;
+    } else if (taxOption === 'opt3') {
+      // Option 3: Both SSCL (2.5%) and VAT (18%) Separate (2 Lines)
+      actualTaxProfileId = 'tp_opt3_both_separate';
+      ssclAmount = Math.round((subtotal * 0.025) * 100) / 100;
+      vatAmount = Math.round(((subtotal + ssclAmount) * 0.18) * 100) / 100;
+    } else {
+      // No Tax / Non-VAT
+      actualTaxProfileId = '';
+      ssclAmount = 0;
+      vatAmount = 0;
+    }
+
+    const totalTax = ssclAmount + vatAmount;
+    const totalPayable = subtotal + totalTax;
+
+    return {
+      subtotal,
+      ssclAmount,
+      vatAmount,
+      totalTax,
+      totalPayable,
+      actualTaxProfileId
+    };
+  }, [advanceBaseAmount, taxOption]);
+
   const selectedBank = bankAccounts.find((b: any) => b.id === selectedBankId);
-
-  // Selected Tax Profile
-  const selectedTax = taxProfiles.find((t: any) => t.id === selectedTaxProfileId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!advanceAmount || advanceAmount <= 0) {
+    if (!advanceBaseAmount || advanceBaseAmount <= 0) {
       toast('Please enter a valid advance amount', 'warning');
       return;
     }
@@ -147,38 +188,48 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
     setLoading(true);
     try {
-      // Build line items for proforma
+      const cleanDocNo = proformaNo.trim();
+
+      // Build line item for proforma invoice
       const proformaItems = [
         {
           id: `item-${Date.now()}`,
           description: `Advance Deposit (${advancePercent}% of Order Total) - Sales Order #${orderNo}`,
-          details: order?.productName ? `Ref Item: ${order.productName} (Order Total: ${formatCurrency(orderTotal)})` : `Order Total: ${formatCurrency(orderTotal)}`,
+          details: order?.productName ? `Ref Item: ${order.productName} (Total Order Value: ${formatCurrency(orderTotal)})` : `Order Value: ${formatCurrency(orderTotal)}`,
           qty: 1,
-          unitPrice: advanceAmount,
-          amount: advanceAmount,
-          taxRate: selectedTax?.rate || 0
+          unitPrice: calculation.subtotal,
+          amount: calculation.subtotal,
+          taxRate: (taxOption === 'opt2' || taxOption === 'opt3') ? 18 : 0
         }
       ];
 
-      const payload = {
-        id: proformaNo.trim(),
-        invoiceNo: proformaNo.trim(),
+      const payload: any = {
+        id: cleanDocNo,
+        invoiceNo: cleanDocNo,
         orderNo: orderNo,
-        orderId: String(orderId),
-        quotationNo: quotationNo,
-        quotationId: quotationId ? String(quotationId) : null,
         customerId: customerId || 'CUST-DIRECT',
         leadId: customerId || 'CUST-DIRECT',
         date: date,
         dueDate: dueDate,
-        total: advanceAmount,
-        subtotal: advanceAmount,
-        taxAmount: 0,
-        amount: advanceAmount,
+        subtotal: calculation.subtotal,
+        taxAmount: calculation.totalTax,
+        total: calculation.totalPayable,
+        amount: calculation.totalPayable,
         paidAmount: 0,
         status: 'unpaid',
         isProforma: 1,
         invoiceType: 'proforma',
+        taxProfileId: calculation.actualTaxProfileId || null,
+        taxType: taxOption === 'none' ? 'none' : 'profile',
+        taxBreakdown: JSON.stringify({
+          tax1Name: 'SSCL',
+          tax1Rate: 2.5,
+          tax1Amount: calculation.ssclAmount,
+          tax2Name: 'VAT',
+          tax2Rate: 18,
+          tax2Amount: calculation.vatAmount,
+          vatRate: (taxOption === 'opt2' || taxOption === 'opt3') ? 18 : 0
+        }),
         modeOfPayment: modeOfPayment,
         bankDetailId: selectedBankId || null,
         bankDetails: selectedBank ? JSON.stringify({
@@ -191,11 +242,28 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         items: JSON.stringify(proformaItems),
         notes: notes,
         attention: customerAttention,
-        customerVat: order?.customerVat || ''
+        customerVat: order?.customerVat || '',
+        additionalInfo: JSON.stringify({
+          isProforma: true,
+          orderNo: orderNo,
+          orderId: orderId,
+          quotationNo: quotationNo,
+          advancePercent: advancePercent,
+          advanceBase: advanceBaseAmount,
+          taxOption: taxOption
+        })
       };
 
+      if (quotationNo) payload.quotationNo = quotationNo;
+      if (quotationId) payload.quotationId = String(quotationId);
+      if (orderId) payload.orderId = String(orderId);
+
       const res = await createInvoice(payload);
-      toast(`Proforma Invoice ${proformaNo} created successfully!`, 'success');
+      if (res && res.error) {
+        throw new Error(res.error || res.message || 'Server rejected invoice creation');
+      }
+
+      toast(`Proforma Invoice ${cleanDocNo} created successfully!`, 'success');
       onSuccess(res || payload);
       onClose();
     } catch (err: any) {
@@ -211,26 +279,26 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
       <div 
-        className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col my-8"
+        className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-xl overflow-hidden flex flex-col my-6"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 bg-surface2/60 border-b border-theme-subtle flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
-              <FileText size={18} />
+        <div className="px-5 py-3.5 bg-surface2/70 border-b border-theme-subtle flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+              <FileText size={16} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base text-primary tracking-tight">
+                <h3 className="font-bold text-sm text-primary tracking-tight">
                   Issue Advance Proforma Invoice
                 </h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-semibold uppercase">
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-bold uppercase">
                   Proforma
                 </span>
               </div>
-              <p className="text-xs text-muted mt-0.5 font-mono">
-                Sales Order #{orderNo} • {customerName}
+              <p className="text-[11px] text-muted font-mono mt-0.5">
+                Sales Order #{orderNo} • {customerCompany || customerName}
               </p>
             </div>
           </div>
@@ -238,40 +306,36 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-muted hover:text-primary hover:bg-surface3 rounded-none transition-colors"
+            className="p-1 text-muted hover:text-primary hover:bg-surface3 rounded-none transition-colors"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
-          {/* Order Summary Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-surface2/30 border border-theme-subtle rounded-none text-xs font-mono">
+        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 max-h-[82vh] overflow-y-auto custom-scrollbar text-xs">
+          {/* Order Snapshot Strip */}
+          <div className="grid grid-cols-3 gap-2 p-2.5 bg-surface2/40 border border-theme-subtle rounded-none font-mono">
             <div>
-              <span className="text-muted block text-[10px] uppercase">Order Total</span>
-              <span className="font-bold text-primary text-sm">{formatCurrency(orderTotal)}</span>
+              <span className="text-muted block text-[10px] uppercase">Order Value</span>
+              <span className="font-bold text-primary text-xs">{formatCurrency(orderTotal)}</span>
             </div>
             <div>
-              <span className="text-muted block text-[10px] uppercase">Customer</span>
-              <span className="font-semibold text-secondary truncate block" title={customerCompany || customerName}>
+              <span className="text-muted block text-[10px] uppercase">Ref Quotation</span>
+              <span className="text-secondary truncate block">{quotationNo || 'Direct'}</span>
+            </div>
+            <div>
+              <span className="text-muted block text-[10px] uppercase">Client</span>
+              <span className="text-secondary truncate block" title={customerCompany || customerName}>
                 {customerCompany || customerName}
               </span>
             </div>
-            <div>
-              <span className="text-muted block text-[10px] uppercase">Ref Quote</span>
-              <span className="text-secondary">{quotationNo || 'Direct'}</span>
-            </div>
-            <div>
-              <span className="text-muted block text-[10px] uppercase">Order Status</span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{order?.status || 'Confirmed'}</span>
-            </div>
           </div>
 
-          {/* Document Details Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Section 1: Document Details */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
                 Proforma Invoice #
               </label>
               <input
@@ -279,45 +343,45 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 required
                 value={proformaNo}
                 onChange={(e) => setProformaNo(e.target.value)}
-                className="w-full h-8 px-2.5 text-xs font-mono font-bold bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                className="w-full h-8 px-2.5 font-mono font-bold bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                Invoice Date
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Issue Date
               </label>
               <input
                 type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full h-8 px-2.5 text-xs font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                className="w-full h-8 px-2.5 font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                Valid Until / Due
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Valid Until
               </label>
               <input
                 type="date"
                 required
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full h-8 px-2.5 text-xs font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                className="w-full h-8 px-2.5 font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
           </div>
 
-          {/* Advance Calculation Box */}
-          <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-none space-y-3">
+          {/* Section 2: Advance Amount & Percentage */}
+          <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-none space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
-                <Percent size={13} className="text-blue-500" /> Advance Deposit Terms
+                <Percent size={13} className="text-blue-500" /> Advance Deposit Amount
               </span>
               <span className="text-[11px] font-mono text-muted">
-                Order Value: {formatCurrency(orderTotal)}
+                Order: {formatCurrency(orderTotal)}
               </span>
             </div>
 
@@ -328,7 +392,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                   key={pct}
                   type="button"
                   onClick={() => handlePercentSelect(pct)}
-                  className={`px-2.5 py-1 text-xs font-mono font-semibold rounded-none border transition-colors ${
+                  className={`px-2 py-0.5 text-xs font-mono font-semibold rounded-none border transition-colors ${
                     advancePercent === pct
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-surface hover:bg-surface2 text-secondary border-theme-subtle'
@@ -339,81 +403,160 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
               ))}
             </div>
 
-            {/* Inputs: Percentage & Amount */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Inputs: Percentage & Base Amount */}
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-[11px] font-semibold text-muted mb-1 font-mono">
-                  Advance Percentage (%)
+                <label className="block text-[10px] font-semibold text-muted uppercase mb-1">
+                  Percentage (%)
                 </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    value={advancePercent}
-                    onChange={(e) => handlePercentSelect(Number(e.target.value))}
-                    className="w-full h-8 px-2.5 pr-8 text-xs font-mono font-bold bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
-                  />
-                  <span className="absolute right-2.5 top-2 text-xs text-muted font-mono">%</span>
-                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={advancePercent}
+                  onChange={(e) => handlePercentSelect(Number(e.target.value))}
+                  className="w-full h-8 px-2.5 font-mono font-bold bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-muted mb-1 font-mono">
-                  Advance Amount (LKR)
+                <label className="block text-[10px] font-semibold text-muted uppercase mb-1">
+                  Base Advance (LKR)
                 </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={advanceAmount}
-                    onChange={(e) => handleAmountChange(Number(e.target.value))}
-                    className="w-full h-8 px-2.5 text-xs font-mono font-bold bg-surface border border-blue-500/40 rounded-none text-blue-600 dark:text-blue-400 focus:outline-none focus:border-rex-500"
-                  />
-                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={advanceBaseAmount}
+                  onChange={(e) => handleAmountChange(Number(e.target.value))}
+                  className="w-full h-8 px-2.5 font-mono font-bold bg-surface border border-blue-500/40 rounded-none text-blue-600 dark:text-blue-400 focus:outline-none focus:border-rex-500"
+                />
               </div>
-            </div>
-
-            {/* Summary preview */}
-            <div className="flex items-center justify-between pt-2 border-t border-blue-500/15 text-xs font-mono">
-              <span className="text-secondary">
-                Advance Payable: <strong className="text-blue-600 dark:text-blue-400">{formatCurrency(advanceAmount)}</strong>
-              </span>
-              <span className="text-muted">
-                Remaining Balance: <strong>{formatCurrency(remainingBalance)}</strong>
-              </span>
             </div>
           </div>
 
-          {/* Payment & Bank Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                Remittance Mode
+          {/* Section 3: The 3 Statutory Tax Options (Sri Lanka Inland Revenue) */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-bold text-secondary uppercase tracking-wider">
+                Select Tax Option
               </label>
-              <select
-                value={modeOfPayment}
-                onChange={(e) => setModeOfPayment(e.target.value)}
-                className="w-full h-8 px-2.5 text-xs bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+              <button
+                type="button"
+                onClick={() => setTaxOption(taxOption === 'none' ? 'opt2' : 'none')}
+                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
               >
-                <option value="Bank Wire / TT">Bank Wire / TT Transfer</option>
-                <option value="Cheque">Company Cheque</option>
-                <option value="Cash">Cash Deposit</option>
-                <option value="Online Payment">Online / Card Gateway</option>
-              </select>
+                {taxOption === 'none' ? '← Enable Tax Options' : 'Non-VAT Client? (No Tax)'}
+              </button>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {/* Option 1 */}
+              <div
+                onClick={() => setTaxOption('opt1')}
+                className={`p-2.5 border rounded-none cursor-pointer transition-all ${
+                  taxOption === 'opt1'
+                    ? 'border-blue-600 bg-blue-500/10 text-primary shadow-xs'
+                    : 'border-theme-subtle bg-surface2/30 hover:bg-surface2 text-secondary'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px]">Option 1</span>
+                  <input
+                    type="radio"
+                    name="taxOpt"
+                    checked={taxOption === 'opt1'}
+                    onChange={() => setTaxOption('opt1')}
+                    className="text-blue-600"
+                  />
+                </div>
+                <p className="font-semibold text-primary mt-1 text-[11px]">VAT & SSCL Absorbed</p>
+                <p className="text-[10px] text-muted">Taxes bundled in total value</p>
+              </div>
+
+              {/* Option 2 (Standard) */}
+              <div
+                onClick={() => setTaxOption('opt2')}
+                className={`p-2.5 border rounded-none cursor-pointer transition-all ${
+                  taxOption === 'opt2'
+                    ? 'border-blue-600 bg-blue-500/10 text-primary shadow-xs'
+                    : 'border-theme-subtle bg-surface2/30 hover:bg-surface2 text-secondary'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-blue-600 dark:text-blue-400">Option 2 (Standard)</span>
+                  <input
+                    type="radio"
+                    name="taxOpt"
+                    checked={taxOption === 'opt2'}
+                    onChange={() => setTaxOption('opt2')}
+                    className="text-blue-600"
+                  />
+                </div>
+                <p className="font-semibold text-primary mt-1 text-[11px]">SSCL Absorbed + VAT 18%</p>
+                <p className="text-[10px] text-muted">VAT 18% shown separately</p>
+              </div>
+
+              {/* Option 3 */}
+              <div
+                onClick={() => setTaxOption('opt3')}
+                className={`p-2.5 border rounded-none cursor-pointer transition-all ${
+                  taxOption === 'opt3'
+                    ? 'border-blue-600 bg-blue-500/10 text-primary shadow-xs'
+                    : 'border-theme-subtle bg-surface2/30 hover:bg-surface2 text-secondary'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px]">Option 3</span>
+                  <input
+                    type="radio"
+                    name="taxOpt"
+                    checked={taxOption === 'opt3'}
+                    onChange={() => setTaxOption('opt3')}
+                    className="text-blue-600"
+                  />
+                </div>
+                <p className="font-semibold text-primary mt-1 text-[11px]">SSCL 2.5% + VAT 18%</p>
+                <p className="text-[10px] text-muted">2 separate statutory lines</p>
+              </div>
+            </div>
+
+            {/* Live Financial Breakdown */}
+            <div className="p-2.5 bg-surface2/70 border border-theme-subtle rounded-none flex items-center justify-between flex-wrap gap-2 text-xs font-mono mt-1.5">
+              <div>
+                <span className="text-[10px] text-muted block uppercase">Supply Subtotal</span>
+                <span className="font-bold text-primary">{formatCurrency(calculation.subtotal)}</span>
+              </div>
+              {taxOption === 'opt3' && (
+                <div>
+                  <span className="text-[10px] text-muted block uppercase">SSCL (2.5%)</span>
+                  <span className="font-bold text-primary">{formatCurrency(calculation.ssclAmount)}</span>
+                </div>
+              )}
+              {(taxOption === 'opt2' || taxOption === 'opt3') && (
+                <div>
+                  <span className="text-[10px] text-muted block uppercase">VAT (18%)</span>
+                  <span className="font-bold text-primary">{formatCurrency(calculation.vatAmount)}</span>
+                </div>
+              )}
+              <div className="text-right">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold block uppercase">Proforma Total Payable</span>
+                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{formatCurrency(calculation.totalPayable)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Bank Account & Payment Method */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
                 Beneficiary Bank Account
               </label>
               <select
                 value={selectedBankId}
                 onChange={(e) => setSelectedBankId(e.target.value)}
-                className="w-full h-8 px-2.5 text-xs bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                className="w-full h-8 px-2 bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               >
                 <option value="">-- No Bank Specified --</option>
                 {bankAccounts.map((b: any) => (
@@ -423,19 +566,35 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Remittance Mode
+              </label>
+              <select
+                value={modeOfPayment}
+                onChange={(e) => setModeOfPayment(e.target.value)}
+                className="w-full h-8 px-2 bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+              >
+                <option value="Bank Wire / TT">Bank Wire / TT Transfer</option>
+                <option value="Cheque">Company Cheque</option>
+                <option value="Cash">Cash Deposit</option>
+                <option value="Online Payment">Online / Card Gateway</option>
+              </select>
+            </div>
           </div>
 
-          {/* Notes */}
+          {/* Section 5: Remarks */}
           <div>
-            <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-              Instructions / Proforma Remarks
+            <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+              Proforma Remarks / Instructions
             </label>
-            <textarea
-              rows={2}
+            <input
+              type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full p-2.5 text-xs font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
-              placeholder="Bank details, terms, and instructions for customer remittance..."
+              className="w-full h-8 px-2.5 font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+              placeholder="Instructions for customer payment..."
             />
           </div>
 
@@ -456,11 +615,11 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
               type="submit"
               variant="primary"
               size="sm"
-              disabled={loading || advanceAmount <= 0}
+              disabled={loading || advanceBaseAmount <= 0}
               className="text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-none flex items-center gap-1.5"
             >
               <FileText size={13} />
-              {loading ? 'Creating Proforma...' : `Create Proforma (${formatCurrency(advanceAmount)})`}
+              {loading ? 'Creating...' : `Issue Proforma Invoice (${formatCurrency(calculation.totalPayable)})`}
             </Button>
           </div>
         </form>

@@ -930,6 +930,7 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN receiptIds TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN isProforma TINYINT(1) DEFAULT 0",
     "ALTER TABLE invoices ADD COLUMN invoiceType VARCHAR(50) DEFAULT 'tax_invoice'",
+    "ALTER TABLE invoices ADD COLUMN orderId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
@@ -4748,7 +4749,17 @@ app.post('/api/invoices', async (req, res) => {
     }
     if (!data.id) data.id = data.invoiceNo;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    await db.query('INSERT INTO invoices SET ?', data);
+
+    // Strip unknown columns dynamically to prevent ER_BAD_FIELD_ERROR 500s
+    const [invCols]: any = await db.query('SHOW COLUMNS FROM invoices');
+    const validCols = new Set(invCols.map((col: any) => col.Field));
+    const safeData: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (validCols.has(key)) {
+        safeData[key] = value;
+      }
+    }
+    await db.query('INSERT INTO invoices SET ?', safeData);
     
     // Auto GL: Accrual Basis - Record Receivable & Sales
     try {
