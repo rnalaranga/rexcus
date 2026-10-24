@@ -1,14 +1,14 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { 
   CheckSquare, Search, Check, X, FileText, Eye, Clock, ShieldCheck, 
-  History, Filter, User, RefreshCw, CheckCircle2, XCircle
+  History, Filter, User, RefreshCw, CheckCircle2, XCircle, ArrowLeftRight, Package
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useQuotations, useLeads } from '@/hooks/useData'
-import { approveCreditLimit, approveQuotation, rejectQuotation, fetchApprovalLogs } from '@/lib/api'
+import { approveCreditLimit, approveQuotation, rejectQuotation, fetchApprovalLogs, fetchSubstituteRequests, approveMaterialSubstitute, rejectMaterialSubstitute, createMRForShortage } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -25,7 +25,9 @@ export default function Approvals() {
   const { data: quotations = [], refetch: refetchQuotations } = useQuotations()
   const { data: leads = [] } = useLeads()
 
-  const [activeTab, setActiveTab] = useState<'quotations' | 'credit' | 'history'>('quotations')
+  const [activeTab, setActiveTab] = useState<'quotations' | 'credit' | 'substitutes' | 'history'>('quotations')
+  const [substituteRequests, setSubstituteRequests] = useState<any[]>([])
+  const [loadingSubstitutes, setLoadingSubstitutes] = useState(false)
   const [search, setSearch] = useState('')
   const [processing, setProcessing] = useState<string | null>(null)
 
@@ -38,7 +40,7 @@ export default function Approvals() {
   const [selectedLogDetail, setSelectedLogDetail] = useState<any | null>(null)
 
   // Rejection dialog state
-  const [rejectDialog, setRejectDialog] = useState<{ id: string; title: string; type?: 'quote' | 'credit' } | null>(null)
+  const [rejectDialog, setRejectDialog] = useState<{ id: string; title: string; type?: 'quote' | 'credit' | 'substitute'; workOrderId?: string; bomIndex?: number } | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
   // Quotation Preview state
@@ -60,6 +62,22 @@ export default function Approvals() {
   useEffect(() => {
     loadApprovalLogs()
   }, [loadApprovalLogs])
+  const loadSubstituteRequests = useCallback(async () => {
+    setLoadingSubstitutes(true)
+    try {
+      const data = await fetchSubstituteRequests()
+      setSubstituteRequests(data || [])
+    } catch (e: any) {
+      console.error('Error fetching substitute requests:', e)
+    } finally {
+      setLoadingSubstitutes(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSubstituteRequests()
+  }, [loadSubstituteRequests])
+
 
   // --- Quotation Approvals (Pending) ---
   const pendingQuotations = useMemo(() => {
@@ -87,6 +105,23 @@ export default function Approvals() {
       return (c.name || '').toLowerCase().includes(term) || (c.company || '').toLowerCase().includes(term)
     })
   }, [customers, search])
+
+
+  // --- Material Substitutes & Shortages (Pending) ---
+  const pendingSubstitutes = useMemo(() => {
+    return substituteRequests.filter((item: any) => {
+      const isPending = item.substituteRequest?.status === 'pending_approval'
+      if (!isPending) return false
+      if (!search.trim()) return true
+      const term = search.toLowerCase()
+      return (
+        (item.workOrderNo || '').toLowerCase().includes(term) ||
+        (item.material || '').toLowerCase().includes(term) ||
+        (item.substituteRequest?.substituteMaterial || '').toLowerCase().includes(term) ||
+        (item.customer || '').toLowerCase().includes(term)
+      )
+    })
+  }, [substituteRequests, search])
 
   // --- Filtered Approval History Logs ---
   const filteredHistory = useMemo(() => {
@@ -160,6 +195,45 @@ export default function Approvals() {
       await loadApprovalLogs()
     } catch (e: any) {
       toast(e.message || 'Failed to reject request', 'error')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+
+  const handleApproveSubstitute = async (item: any) => {
+    setProcessing(`sub-${item.workOrderId}-${item.bomIndex}`)
+    try {
+      await approveMaterialSubstitute(item.workOrderId, {
+        bomIndex: item.bomIndex,
+        approvedBy: user?.name || 'Department Head',
+        actionNotes: `Approved substitute ${item.substituteRequest?.substituteMaterial || ''} for ${item.material}`
+      })
+      toast(`Substitute material approved for Work Order #${item.workOrderNo}! BOM updated and ready for issue.`, 'success')
+      await loadSubstituteRequests()
+      await loadApprovalLogs()
+    } catch (e: any) {
+      toast(e.message || 'Failed to approve substitute', 'error')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const handleCreateMRForShortage = async (item: any) => {
+    setProcessing(`mr-${item.workOrderId}-${item.bomIndex}`)
+    try {
+      const res = await createMRForShortage(item.workOrderId, {
+        bomIndex: item.bomIndex,
+        requestedBy: user?.name || 'Department Head',
+        department: 'Production',
+        priority: 'High',
+        notes: `Procurement MR auto-generated due to material shortage for ${item.material} on WO #${item.workOrderNo}`
+      })
+      toast(`Purchase MR ${res.mrNo} raised successfully! Purchasing and sales notified.`, 'success')
+      await loadSubstituteRequests()
+      await loadApprovalLogs()
+    } catch (e: any) {
+      toast(e.message || 'Failed to create Purchase MR', 'error')
     } finally {
       setProcessing(null)
     }
@@ -557,6 +631,151 @@ export default function Approvals() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </GlassCard>
+        )}
+
+
+        {/* --- TAB 3: MATERIAL SUBSTITUTES & SHORTAGES --- */}
+        {activeTab === 'substitutes' && (
+          <GlassCard className="w-full rounded-none">
+            <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
+              <div>
+                <h2 className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-2">
+                  <ArrowLeftRight className="w-4 h-4 text-amber-500" />
+                  Material Shortages & Alternative Substitutes
+                </h2>
+                <p className="text-xs text-muted font-medium mt-0.5">
+                  Stores shortage alerts and proposed in-stock substitutes requiring Department Head sign-off or Purchase MR creation.
+                </p>
+              </div>
+              <Badge value={`${pendingSubstitutes.length} Pending`} variant="warning" size="sm" />
+            </div>
+
+            {pendingSubstitutes.length === 0 ? (
+              <div className="p-12 text-center text-muted">
+                <ArrowLeftRight size={36} className="mx-auto mb-3 opacity-20 text-amber-500" />
+                <p className="text-sm font-medium">No pending material substitute or shortage requests.</p>
+                <p className="text-xs text-muted mt-1">When stores reports a material shortage on a Work Order, it will appear here for review.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-theme-subtle">
+                {pendingSubstitutes.map((item: any, idx: number) => {
+                  const sub = item.substituteRequest || {}
+                  const isProcessing = processing === `sub-${item.workOrderId}-${item.bomIndex}` || processing === `mr-${item.workOrderId}-${item.bomIndex}`
+
+                  return (
+                    <div key={`${item.workOrderId}-${item.bomIndex}-${idx}`} className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-theme-hover/20 transition-colors">
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-mono font-bold text-rex-600 dark:text-rex-400 bg-rex-500/10 border border-rex-500/20 px-2 py-0.5">
+                            WO: {item.workOrderNo}
+                          </span>
+                          {item.customer && (
+                            <span className="text-xs font-semibold text-primary">
+                              {item.customer}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-muted font-mono">
+                            Requested {formatDate(sub.requestedAt || item.createdAt)} by {sub.requestedBy || 'Stores'}
+                          </span>
+                        </div>
+
+                        {/* Comparison Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                          {/* Missing Original */}
+                          <div className="p-2.5 bg-rose-500/10 border border-rose-500/25 rounded-none">
+                            <span className="text-[10px] uppercase font-bold text-rose-600 block">
+                              Missing / Depleted in Stores
+                            </span>
+                            <div className="font-bold text-xs text-primary mt-0.5">
+                              {item.material}
+                            </div>
+                            <div className="text-[11px] text-secondary mt-1 flex items-center gap-3">
+                              <span>Required: <strong className="font-mono">{sub.requiredQty || item.bomQty} {item.bomUnit || 'pcs'}</strong></span>
+                              <span>In Stock: <strong className="font-mono text-rose-600">{sub.currentStock}</strong></span>
+                              <span>Shortage: <strong className="font-mono text-rose-700 font-bold">{sub.shortageQty || sub.requiredQty}</strong></span>
+                            </div>
+                          </div>
+
+                          {/* Proposed Substitute */}
+                          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-none">
+                            <span className="text-[10px] uppercase font-bold text-emerald-600 block flex items-center gap-1">
+                              <ArrowLeftRight size={11}/> Proposed Alternative / Substitute
+                            </span>
+                            <div className="font-bold text-xs text-primary mt-0.5">
+                              {sub.substituteMaterial || <em className="text-muted font-normal">No substitute specified (Purchase required)</em>}
+                            </div>
+                            {sub.substituteMaterial && (
+                              <div className="text-[11px] text-secondary mt-1 flex items-center gap-3">
+                                <span>Allocated Qty: <strong className="font-mono text-emerald-700">{sub.substituteQty} {item.bomUnit || 'pcs'}</strong></span>
+                                {sub.substituteUnitCost > 0 && (
+                                  <span>Unit Cost: <strong className="font-mono">{formatCurrency(sub.substituteUnitCost)}</strong></span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Remarks */}
+                        {sub.reason && (
+                          <div className="text-xs text-secondary mt-1 p-2 bg-surface2/50 border border-theme-subtle">
+                            <span className="font-bold text-muted mr-1.5 uppercase text-[10px]">Store Note:</span>
+                            {sub.reason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons for Department Head */}
+                      <div className="flex sm:flex-col lg:flex-row items-stretch sm:items-end lg:items-center gap-2 shrink-0">
+                        {sub.substituteMaterial && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleApproveSubstitute(item)}
+                            disabled={isProcessing}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none text-xs flex items-center gap-1.5"
+                          >
+                            <Check size={13}/>
+                            Approve Substitute
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCreateMRForShortage(item)}
+                          disabled={isProcessing}
+                          className="border-blue-500/40 text-blue-600 hover:bg-blue-500/10 font-bold rounded-none text-xs flex items-center gap-1.5"
+                        >
+                          <Package size={13}/>
+                          Create Purchase MR
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setRejectDialog({
+                              id: `sub-${item.workOrderId}-${item.bomIndex}`,
+                              title: `Reject Substitute for WO #${item.workOrderNo} (${item.material})`,
+                              type: 'substitute',
+                              workOrderId: item.workOrderId,
+                              bomIndex: item.bomIndex
+                            })
+                            setRejectionReason('')
+                          }}
+                          disabled={isProcessing}
+                          className="text-rose-600 hover:bg-rose-500/10 rounded-none text-xs"
+                        >
+                          <X size={13}/>
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </GlassCard>

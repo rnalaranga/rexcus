@@ -1116,7 +1116,13 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_receipts ADD COLUMN status VARCHAR(50) DEFAULT 'Received'",
     "ALTER TABLE payment_receipts ADD COLUMN journalEntryId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE payment_receipts ADD COLUMN createdAt DATETIME DEFAULT NULL",
-    "ALTER TABLE payment_receipts ADD COLUMN updatedAt DATETIME DEFAULT NULL"
+    "ALTER TABLE payment_receipts ADD COLUMN updatedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN materialStatus VARCHAR(100) DEFAULT 'Normal'",
+    "ALTER TABLE work_orders ADD COLUMN materialAlert TEXT DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN materialStatus VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN materialAlert TEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN materialStatus VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN materialAlert TEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -6786,6 +6792,478 @@ app.put('/api/production/work-orders/:id', async (req, res) => {
 });
 
 // Update Work Order Status
+
+// Substitute Requests Endpoints for Work Orders, Stores & Approvals
+app.get('/api/production/substitute-requests', async (req, res) => {
+  try {
+    const [rows]: any = await db.query(
+      "SELECT id, orderNo, title, customer, quoteId, status, materialStatus, materialAlert, bom, createdAt FROM work_orders WHERE bom LIKE '%substituteRequest%' ORDER BY updatedAt DESC"
+    );
+    const requests: any[] = [];
+    for (const wo of rows) {
+      let bomItems: any[] = [];
+      try {
+        bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+      } catch (e) { bomItems = []; }
+
+      bomItems.forEach((b: any, idx: number) => {
+        if (b.substituteRequest) {
+          requests.push({
+            workOrderId: wo.id,
+            workOrderNo: wo.orderNo || wo.id,
+            workOrderTitle: wo.title,
+            customer: wo.customer,
+            quoteId: wo.quoteId,
+            bomIndex: idx,
+            material: b.material,
+            bomQty: b.qty,
+            bomUnit: b.unit,
+            bomUnitCost: b.unitCost,
+            substituteRequest: b.substituteRequest,
+            createdAt: wo.createdAt
+          });
+        }
+      });
+    }
+    res.json(requests);
+  } catch (error: any) {
+    console.error('Error fetching substitute requests:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Report Shortage & Propose Substitute
+app.post('/api/production/work-orders/:id/report-shortage', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      bomIndex, missingMaterial, requiredQty, currentStock, 
+      substituteMaterial, substituteInvId, substituteQty, substituteUnitCost,
+      reason, requestedBy, notifySales 
+    } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    let bomItems: any[] = [];
+    try {
+      bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+    } catch (e) { bomItems = []; }
+
+    const reqIdx = Number(bomIndex);
+    const shortageQty = Math.max(0, Number(requiredQty || 1) - Number(currentStock || 0));
+    const subReqId = 'SUB-' + Date.now().toString().slice(-6);
+
+    const subReq = {
+      id: subReqId,
+      requestedAt: new Date().toISOString(),
+      requestedBy: requestedBy || 'Stores Personnel',
+      missingMaterial: missingMaterial || (bomItems[reqIdx]?.material) || 'Material',
+      requiredQty: Number(requiredQty || 1),
+      currentStock: Number(currentStock || 0),
+      shortageQty,
+      substituteMaterial: substituteMaterial || null,
+      substituteInvId: substituteInvId || null,
+      substituteQty: Number(substituteQty || requiredQty || 1),
+      substituteUnitCost: Number(substituteUnitCost || 0),
+      reason: reason || 'Material not in stock in stores',
+      status: 'pending_approval',
+      notifySales: !!notifySales
+    };
+
+    if (bomItems[reqIdx]) {
+      bomItems[reqIdx].substituteRequest = subReq;
+    }
+
+    const materialStatus = 'Shortage / Substitute Pending';
+    const alertText = `Shortage: ${subReq.missingMaterial} (Qty: ${shortageQty}). Proposed Substitute: ${substituteMaterial || 'None'}.`;
+
+    await db.query(
+      'UPDATE work_orders SET bom = ?, materialStatus = ?, materialAlert = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(bomItems), materialStatus, alertText, id]
+    );
+
+    // Update Quotation if linked
+    if (wo.quoteId) {
+      await db.query(
+        'UPDATE quotations SET materialStatus = ?, materialAlert = ? WHERE id = ? OR quotationNo = ?',
+        [materialStatus, alertText, wo.quoteId, wo.quoteId]
+      ).catch(() => {});
+    }
+
+    // Update Sales Order (finished_goods_orders) if linked
+    if (wo.orderNo) {
+      await db.query(
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
+        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+      ).catch(() => {});
+    }
+
+    // Log in approval_logs
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, metadata, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Pending', ?, NOW(), ?, ?, NOW())`,
+        [
+          'Material Substitute',
+          id,
+          wo.orderNo || id,
+          wo.customer || 'Customer Job',
+          0,
+          requestedBy || 'Stores Personnel',
+          `Shortage: ${subReq.missingMaterial}. Proposed: ${substituteMaterial || 'None'}. Reason: ${reason}`,
+          JSON.stringify(subReq)
+        ]
+      );
+    } catch (e) {}
+
+    // If notifySales is true, automatically create a Followup record for Sales/Quotation team
+    if (notifySales) {
+      try {
+        const folId = 'FOL-' + Date.now().toString().slice(-6);
+        const folData = {
+          id: folId,
+          title: `Material Shortage Alert: ${wo.orderNo || id}`,
+          type: 'Material Alert',
+          priority: 'urgent',
+          status: 'Pending',
+          leadId: wo.quoteId || null,
+          notes: `ATTN Sales Team: Work Order ${wo.orderNo || id} (Customer: ${wo.customer || 'N/A'}) has a material shortage for "${subReq.missingMaterial}" (Shortage Qty: ${shortageQty}). Proposed substitute: "${substituteMaterial || 'None'}". Reason: "${reason || 'Stores out of stock'}". Please inform the client if delivery schedule or specifications need adjustment.`,
+          dueDate: new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' '),
+          assignedTo: 'Sales Team',
+          createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        };
+        await db.query('INSERT INTO followups SET ?', folData);
+      } catch (e) {}
+    }
+
+    res.json({ success: true, substituteRequest: subReq, bom: bomItems });
+  } catch (error: any) {
+    console.error('Error reporting shortage:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Approve Substitute Material
+app.post('/api/production/work-orders/:id/approve-substitute', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bomIndex, approvedBy, actionNotes } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    let bomItems: any[] = [];
+    try {
+      bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+    } catch (e) { bomItems = []; }
+
+    const reqIdx = Number(bomIndex);
+    const item = bomItems[reqIdx];
+    if (!item || !item.substituteRequest) {
+      return res.status(400).json({ error: 'No substitute request found for this BOM item.' });
+    }
+
+    const sub = item.substituteRequest;
+    const origMaterial = item.material;
+    const newMaterial = sub.substituteMaterial || item.material;
+    const newQty = Number(sub.substituteQty || item.qty);
+    const newUnitCost = Number(sub.substituteUnitCost || item.unitCost || 0);
+
+    // Update substitute request status
+    sub.status = 'approved';
+    sub.approvedBy = approvedBy || 'Department Head';
+    sub.approvedAt = new Date().toISOString();
+    sub.actionNotes = actionNotes || 'Substitute approved by Department Head';
+
+    // Replace the BOM item material with approved substitute
+    item.material = newMaterial;
+    item.qty = newQty;
+    if (newUnitCost > 0) item.unitCost = newUnitCost;
+    item.notes = `${item.notes || ''} [Substituted for ${origMaterial} on ${new Date().toLocaleDateString()}]`.trim();
+
+    // Check if any other items are still pending
+    const hasRemainingPending = bomItems.some(b => b.substituteRequest && b.substituteRequest.status === 'pending_approval');
+    const newMatStatus = hasRemainingPending ? 'Shortage / Substitute Pending' : 'Substitute Approved';
+    const alertText = `Substitute approved: ${newMaterial} (replaces ${origMaterial})`;
+
+    await db.query(
+      'UPDATE work_orders SET bom = ?, materialStatus = ?, materialAlert = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(bomItems), newMatStatus, alertText, id]
+    );
+
+    // Update Quotation if linked
+    if (wo.quoteId) {
+      await db.query(
+        'UPDATE quotations SET materialStatus = ?, materialAlert = ? WHERE id = ? OR quotationNo = ?',
+        [newMatStatus, alertText, wo.quoteId, wo.quoteId]
+      ).catch(() => {});
+    }
+
+    // Update Sales Order if linked
+    if (wo.orderNo) {
+      await db.query(
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
+        [newMatStatus, alertText, wo.orderNo, wo.orderNo]
+      ).catch(() => {});
+    }
+
+    // Log to approval_logs
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, metadata, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Approved', ?, NOW(), ?, ?, NOW())`,
+        [
+          'Material Substitute',
+          id,
+          wo.orderNo || id,
+          wo.customer || 'Customer Job',
+          0,
+          approvedBy || 'Department Head',
+          `Approved substitute ${newMaterial} for ${origMaterial}. ${actionNotes || ''}`,
+          JSON.stringify(sub)
+        ]
+      );
+    } catch (e) {}
+
+    // Alert Stores & Sales
+    try {
+      const folId = 'FOL-' + Date.now().toString().slice(-6);
+      await db.query('INSERT INTO followups SET ?', {
+        id: folId,
+        title: `Substitute Approved: ${wo.orderNo || id} Ready for Material Issue`,
+        type: 'Material Update',
+        priority: 'high',
+        status: 'Pending',
+        leadId: wo.quoteId || null,
+        notes: `Department Head approved substitute "${newMaterial}" for Work Order ${wo.orderNo || id}. Stores can now issue this material directly to production.`,
+        dueDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        assignedTo: 'Stores / Production',
+        createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      });
+    } catch (e) {}
+
+    res.json({ success: true, bom: bomItems });
+  } catch (error: any) {
+    console.error('Error approving substitute:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reject Substitute Request
+app.post('/api/production/work-orders/:id/reject-substitute', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bomIndex, rejectedBy, reason } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    let bomItems: any[] = [];
+    try {
+      bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+    } catch (e) { bomItems = []; }
+
+    const reqIdx = Number(bomIndex);
+    const item = bomItems[reqIdx];
+    if (!item || !item.substituteRequest) {
+      return res.status(400).json({ error: 'No substitute request found for this BOM item.' });
+    }
+
+    item.substituteRequest.status = 'rejected';
+    item.substituteRequest.rejectedBy = rejectedBy || 'Department Head';
+    item.substituteRequest.rejectedAt = new Date().toISOString();
+    item.substituteRequest.actionNotes = reason || 'Substitute rejected by Department Head';
+
+    const materialStatus = 'Substitute Rejected (Purchase Required)';
+    const alertText = `Substitute rejected: ${reason || 'Procurement required'}`;
+
+    await db.query(
+      'UPDATE work_orders SET bom = ?, materialStatus = ?, materialAlert = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(bomItems), materialStatus, alertText, id]
+    );
+
+    // Update Quotation if linked
+    if (wo.quoteId) {
+      await db.query(
+        'UPDATE quotations SET materialStatus = ?, materialAlert = ? WHERE id = ? OR quotationNo = ?',
+        [materialStatus, alertText, wo.quoteId, wo.quoteId]
+      ).catch(() => {});
+    }
+
+    // Update Sales Order if linked
+    if (wo.orderNo) {
+      await db.query(
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
+        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+      ).catch(() => {});
+    }
+
+    // Log to approval_logs
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, metadata, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Rejected', ?, NOW(), ?, ?, NOW())`,
+        [
+          'Material Substitute',
+          id,
+          wo.orderNo || id,
+          wo.customer || 'Customer Job',
+          0,
+          rejectedBy || 'Department Head',
+          `Rejected substitute for ${item.material}. Reason: ${reason || 'N/A'}`,
+          JSON.stringify(item.substituteRequest)
+        ]
+      );
+    } catch (e) {}
+
+    res.json({ success: true, bom: bomItems });
+  } catch (error: any) {
+    console.error('Error rejecting substitute:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create MR for Shortage Item
+app.post('/api/production/work-orders/:id/create-mr-shortage', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bomIndex, requestedBy, department, priority, notes } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    let bomItems: any[] = [];
+    try {
+      bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+    } catch (e) { bomItems = []; }
+
+    const reqIdx = Number(bomIndex);
+    const item = bomItems[reqIdx];
+    if (!item) return res.status(400).json({ error: 'BOM item not found.' });
+
+    const shortageQty = item.substituteRequest ? item.substituteRequest.shortageQty : Number(item.qty || 1);
+    const mrId = 'MR-' + Date.now().toString().slice(-6);
+    const mrNo = `MR-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+
+    const mrItems = [
+      {
+        id: 'MRI-1',
+        materialName: item.material,
+        description: `Procurement for Work Order ${wo.orderNo || id} (${wo.title || ''})`,
+        qty: shortageQty,
+        uom: item.unit || 'pcs',
+        estimatedUnitCost: Number(item.unitCost || 0),
+        estimatedTotal: shortageQty * Number(item.unitCost || 0),
+        requiredDate: wo.plannedStartDate || new Date().toISOString().slice(0, 10)
+      }
+    ];
+
+    const mrData = {
+      id: mrId,
+      mrNo,
+      department: department || 'Production',
+      priority: priority || 'High',
+      status: 'Pending',
+      workOrderNo: wo.orderNo || id,
+      workOrderNos: JSON.stringify([wo.orderNo || id]),
+      items: JSON.stringify(mrItems),
+      requestedBy: requestedBy || 'Department Head',
+      notes: notes || `Auto-generated Purchase MR due to material shortage for Work Order ${wo.orderNo || id}`,
+      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    };
+
+    await db.query('INSERT INTO material_requests SET ?', mrData);
+
+    // Update substituteRequest if present
+    if (!item.substituteRequest) {
+      item.substituteRequest = {
+        id: 'SUB-' + Date.now().toString().slice(-6),
+        requestedAt: new Date().toISOString(),
+        requestedBy: requestedBy || 'Department Head',
+        missingMaterial: item.material,
+        shortageQty,
+        status: 'mr_created'
+      };
+    } else {
+      item.substituteRequest.status = 'mr_created';
+    }
+    item.substituteRequest.mrId = mrId;
+    item.substituteRequest.mrNo = mrNo;
+    item.substituteRequest.actionNotes = `Material Request ${mrNo} raised for procurement.`;
+
+    const materialStatus = 'Purchase MR Raised';
+    const alertText = `Purchase MR ${mrNo} raised for ${item.material} (Qty: ${shortageQty})`;
+
+    await db.query(
+      'UPDATE work_orders SET bom = ?, materialStatus = ?, materialAlert = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(bomItems), materialStatus, alertText, id]
+    );
+
+    // Update Quotation if linked
+    if (wo.quoteId) {
+      await db.query(
+        'UPDATE quotations SET materialStatus = ?, materialAlert = ? WHERE id = ? OR quotationNo = ?',
+        [materialStatus, alertText, wo.quoteId, wo.quoteId]
+      ).catch(() => {});
+    }
+
+    // Update Sales Order if linked
+    if (wo.orderNo) {
+      await db.query(
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
+        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+      ).catch(() => {});
+    }
+
+    // Log to approval_logs
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, metadata, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Approved', ?, NOW(), ?, ?, NOW())`,
+        [
+          'Material Request (MR)',
+          mrId,
+          mrNo,
+          wo.customer || 'Production',
+          mrItems[0].estimatedTotal,
+          requestedBy || 'Department Head',
+          `Created Material Request ${mrNo} for ${item.material} against Work Order ${wo.orderNo || id}`,
+          JSON.stringify({ workOrderId: id, mrId, mrNo })
+        ]
+      );
+    } catch (e) {}
+
+    // Alert Sales & Procurement team
+    try {
+      const folId = 'FOL-' + Date.now().toString().slice(-6);
+      await db.query('INSERT INTO followups SET ?', {
+        id: folId,
+        title: `Procurement Alert: ${mrNo} raised for Work Order ${wo.orderNo || id}`,
+        type: 'Procurement Alert',
+        priority: 'high',
+        status: 'Pending',
+        leadId: wo.quoteId || null,
+        notes: `Purchase Material Request ${mrNo} was generated for "${item.material}" (Qty: ${shortageQty}) for Work Order ${wo.orderNo || id}. Sales team please note delivery lead time may be affected.`,
+        dueDate: new Date(Date.now() + 48 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' '),
+        assignedTo: 'Procurement / Sales',
+        createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      });
+    } catch (e) {}
+
+    res.json({ success: true, mrId, mrNo, bom: bomItems });
+  } catch (error: any) {
+    console.error('Error creating MR for shortage:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.put('/api/production/work-orders/:id/status', async (req, res) => {
   try {
     const { id } = req.params;

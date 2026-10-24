@@ -4,7 +4,7 @@ import {
   DollarSign, Package, ClipboardList, Play, Pause, Scissors, FileText, 
   ChevronRight, Plus, Trash2, Edit, ShieldCheck, AlertCircle, ArrowRight, 
   ExternalLink, Printer, Download, User, Cpu, TrendingUp, Calendar, 
-  Building, Check, X, RefreshCw, BarChart3, HelpCircle, Activity, Sparkles
+  Building, Check, X, RefreshCw, BarChart3, HelpCircle, Activity, Sparkles, ArrowLeftRight, ShoppingCart
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,10 @@ import { Badge } from '@/components/ui/Badge'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { formatCurrency } from '@/lib/utils'
 import { 
+  reportMaterialShortage,
+  approveMaterialSubstitute,
+  rejectMaterialSubstitute,
+  createMRForShortage,
   updateWorkOrderStatus, 
   updateWorkOrderOperationStatus, 
   logOperationQC, 
@@ -23,6 +27,7 @@ import {
   updateWorkOrder
 } from '@/lib/api'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface WorkOrderStudioModalProps {
   isOpen: boolean
@@ -51,6 +56,7 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   onNavigateToCutStudio,
   onNavigateToMR
 }) => {
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<StudioTab>('routing')
   const [submitting, setSubmitting] = useState(false)
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
@@ -71,6 +77,33 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
     unit: 'pcs',
     unitCost: 0,
     notes: ''
+  })
+
+
+  // Edit BOM Modal State
+  const [showEditBomModal, setShowEditBomModal] = useState(false)
+  const [editingBomIndex, setEditingBomIndex] = useState<number | null>(null)
+  const [editBomForm, setEditBomForm] = useState({
+    material: '',
+    qty: 1,
+    unit: 'pcs',
+    unitCost: 0,
+    notes: ''
+  })
+
+  // Shortage & Substitute Request Modal State
+  const [showShortageModal, setShowShortageModal] = useState(false)
+  const [shortageBomIndex, setShortageBomIndex] = useState<number | null>(null)
+  const [shortageForm, setShortageForm] = useState({
+    missingMaterial: '',
+    requiredQty: 1,
+    currentStock: 0,
+    substituteMaterial: '',
+    substituteInvId: '',
+    substituteQty: 1,
+    substituteUnitCost: 0,
+    reason: '',
+    notifySales: true
   })
 
   // Add Planned BOM Form
@@ -332,6 +365,124 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
       onRefresh()
     } catch (e: any) {
       notify('error', e.message || 'Failed to save BOM to Work Order')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+
+  // Open Edit BOM Modal
+  const handleOpenEditBom = (index: number) => {
+    const item = bomItems[index]
+    if (!item) return
+    setEditingBomIndex(index)
+    setEditBomForm({
+      material: item.material || '',
+      qty: Number(item.qty || 1),
+      unit: item.unit || 'pcs',
+      unitCost: Number(item.unitCost || 0),
+      notes: item.notes || ''
+    })
+    setShowEditBomModal(true)
+  }
+
+  // Save Edited BOM Item
+  const handleSaveEditBom = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingBomIndex === null) return
+    if (!editBomForm.material.trim()) {
+      notify('error', 'Please enter a material name.')
+      return
+    }
+    const updated = [...bomItems]
+    updated[editingBomIndex] = {
+      ...updated[editingBomIndex],
+      ...editBomForm
+    }
+    await handleSaveBOMToWorkOrder(updated)
+    setShowEditBomModal(false)
+    setEditingBomIndex(null)
+  }
+
+  // Open Shortage / Substitute Modal
+  const handleOpenShortageModal = (index: number, bom: any, inStock: number) => {
+    setShortageBomIndex(index)
+    setShortageForm({
+      missingMaterial: bom.material || '',
+      requiredQty: Number(bom.qty || 1),
+      currentStock: inStock,
+      substituteMaterial: '',
+      substituteInvId: '',
+      substituteQty: Number(bom.qty || 1),
+      substituteUnitCost: Number(bom.unitCost || 0),
+      reason: inStock === 0 ? 'Item out of stock in warehouse stores' : `Insufficient stock (Available: ${inStock}, Required: ${bom.qty})`,
+      notifySales: true
+    })
+    setShowShortageModal(true)
+  }
+
+  // Submit Shortage & Substitute Request
+  const handleSubmitShortage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (shortageBomIndex === null) return
+    try {
+      setSubmitting(true)
+      await reportMaterialShortage(wo.id, {
+        bomIndex: shortageBomIndex,
+        missingMaterial: shortageForm.missingMaterial,
+        requiredQty: shortageForm.requiredQty,
+        currentStock: shortageForm.currentStock,
+        substituteMaterial: shortageForm.substituteMaterial,
+        substituteInvId: shortageForm.substituteInvId,
+        substituteQty: shortageForm.substituteQty,
+        substituteUnitCost: shortageForm.substituteUnitCost,
+        reason: shortageForm.reason,
+        requestedBy: user?.name || 'Stores Personnel',
+        notifySales: shortageForm.notifySales
+      })
+      notify('success', 'Material shortage and substitute request submitted to Department Head. Sales team informed!')
+      setShowShortageModal(false)
+      onRefresh()
+    } catch (err: any) {
+      notify('error', err.message || 'Failed to submit shortage report')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Approve Substitute Material directly from Work Order Studio
+  const handleApproveSubstitute = async (index: number) => {
+    try {
+      setSubmitting(true)
+      await approveMaterialSubstitute(wo.id, {
+        bomIndex: index,
+        approvedBy: user?.name || 'Department Head',
+        actionNotes: 'Approved substitute material for production issue'
+      })
+      notify('success', 'Substitute approved! BOM updated with alternative material and ready for stores issue.')
+      onRefresh()
+    } catch (err: any) {
+      notify('error', err.message || 'Failed to approve substitute')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Raise Purchase MR directly from Work Order Studio
+  const handleCreateMRForShortage = async (index: number) => {
+    try {
+      setSubmitting(true)
+      const res = await createMRForShortage(wo.id, {
+        bomIndex: index,
+        requestedBy: user?.name || 'Department Head',
+        department: 'Production',
+        priority: 'High',
+        notes: `Procurement request for missing material on Work Order #${wo.orderNo || wo.id}`
+      })
+      notify('success', `Purchase MR ${res.mrNo} created! Purchasing department and sales team notified.`)
+      onRefresh()
+    } catch (err: any) {
+      notify('error', err.message || 'Failed to raise Purchase MR')
     } finally {
       setSubmitting(false)
     }

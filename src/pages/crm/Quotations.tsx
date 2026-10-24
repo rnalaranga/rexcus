@@ -1499,6 +1499,22 @@ export const Quotations: React.FC = () => {
                           <span className={`inline-block text-[10px] uppercase font-semibold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
                             {status}
                           </span>
+                          {(latestMain?.materialStatus || existingWO?.materialStatus) && (
+                            <div className="mt-1">
+                              <span 
+                                title={latestMain?.materialAlert || existingWO?.materialAlert || 'Material shortage/substitute status'}
+                                className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 border ${
+                                  (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('Shortage') || (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('Pending')
+                                    ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                    : (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('MR')
+                                    ? 'bg-blue-500/10 text-blue-600 border-blue-500/30'
+                                    : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                }`}
+                              >
+                                ⚠️ {latestMain?.materialStatus || existingWO?.materialStatus}
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Traceability Dropdown with Glowing Light */}

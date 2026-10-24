@@ -883,3 +883,72 @@ export const updateUserPrefix = async (userId: string | number, prefix: string) 
 };
 
 
+
+
+// Material Shortage & Substitute Requests Workflow
+export const fetchSubstituteRequests = async () => {
+  const res = await fetch(`${API_URL}/production/substitute-requests`);
+  return res.json();
+};
+
+export const reportMaterialShortage = async (woId: string, data: {
+  bomIndex: number;
+  missingMaterial: string;
+  requiredQty: number;
+  currentStock: number;
+  substituteMaterial?: string;
+  substituteInvId?: string;
+  substituteQty?: number;
+  substituteUnitCost?: number;
+  reason?: string;
+  requestedBy?: string;
+  notifySales?: boolean;
+}) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/report-shortage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const approveMaterialSubstitute = async (woId: string, data: {
+  bomIndex: number;
+  approvedBy?: string;
+  actionNotes?: string;
+}) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/approve-substitute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const rejectMaterialSubstitute = async (woId: string, data: {
+  bomIndex: number;
+  rejectedBy?: string;
+  reason?: string;
+}) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/reject-substitute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const createMRForShortage = async (woId: string, data: {
+  bomIndex: number;
+  requestedBy?: string;
+  department?: string;
+  priority?: string;
+  notes?: string;
+}) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/create-mr-shortage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
