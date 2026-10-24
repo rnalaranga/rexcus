@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations } from '@/hooks/useData'
+import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations, useInvoices } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
@@ -52,6 +52,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: customers = [] } = useCustomers()
   const { data: leads = [] } = useLeads()
   const { data: rawQuotations = [] } = useQuotations()
+  const { data: allInvoices = [] } = useInvoices()
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -124,6 +125,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const handleInvoiceClick = (order: any) => {
+    if (order.invoiceNo || order.invoiceId) {
+      navigate(`/finance/invoices?search=${encodeURIComponent(order.invoiceNo || order.invoiceId)}`)
+      return
+    }
     const recs = getOrderReceipts(order)
     if (recs.length === 0) {
       setPreInvoicePromptOrder(order)
@@ -808,6 +813,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
                 const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
 
+                const linkedInvoice = allInvoices.find((inv: any) =>
+                  (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
+                  (order.invoiceNo && (String(inv.invoiceNo) === String(order.invoiceNo) || String(inv.id) === String(order.invoiceNo))) ||
+                  (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo))
+                );
+                const isInvoicePaid = linkedInvoice?.status === 'paid' || order.paymentStatus === 'Paid';
+                const isInvoicePartPaid = linkedInvoice?.status === 'partially_paid' || order.paymentStatus === 'Partially Paid';
+
                 return (
                   <tr key={order.id} className={`hover:bg-surface2/40 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
                     {/* Order No & Dates */}
@@ -946,12 +959,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             GP: {order.gatePassNo}
                           </span>
                         )}
-                        {order.invoiceNo && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25" title="Invoice Linked">
-                            Inv: {order.invoiceNo}
+                        {(order.invoiceNo || linkedInvoice) && (
+                          <span 
+                            onClick={() => navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`)}
+                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded-none border cursor-pointer transition-colors flex items-center gap-1 ${
+                              isInvoicePaid 
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 font-bold'
+                                : isInvoicePartPaid
+                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/25 font-bold'
+                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20'
+                            }`} 
+                            title={`Invoice ${linkedInvoice?.invoiceNo || order.invoiceNo} • ${isInvoicePaid ? 'Payment Confirmed in Full' : (isInvoicePartPaid ? `Partially Paid: ${formatCurrency(linkedInvoice?.paidAmount || 0)}` : 'Awaiting Payment')}`}
+                          >
+                            {isInvoicePaid ? <CheckCircle size={9} /> : (isInvoicePartPaid ? <Clock size={9} /> : null)}
+                            Inv: {linkedInvoice?.invoiceNo || order.invoiceNo} {isInvoicePaid ? '(Paid)' : (isInvoicePartPaid ? '(Part Paid)' : '')}
                           </span>
                         )}
-                        {!order.quotationNo && !existingWO && !order.gatePassNo && !order.invoiceNo && (
+                        {!order.quotationNo && !existingWO && !order.gatePassNo && !order.invoiceNo && !linkedInvoice && (
                           <span className="text-muted text-[11px]">-</span>
                         )}
                       </div>
@@ -1026,14 +1050,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               </button>
 
                               {/* 2. Invoice */}
-                              <button
-                                type="button"
-                                onClick={() => { handleInvoiceClick(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <FileText size={14} className="shrink-0 text-emerald-600" />
-                                <span>Generate / View Invoice</span>
-                              </button>
+                              {linkedInvoice || order.invoiceNo ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`);
+                                    setOpenActionOrderId(null);
+                                  }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <FileText size={14} className="shrink-0 text-emerald-600" />
+                                  <span>View Invoice ({linkedInvoice?.invoiceNo || order.invoiceNo})</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { handleInvoiceClick(order); setOpenActionOrderId(null); }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <FileText size={14} className="shrink-0 text-emerald-600" />
+                                  <span>Generate Invoice</span>
+                                </button>
+                              )}
 
                               {/* 3. Advance Payment Receipt */}
                               <button

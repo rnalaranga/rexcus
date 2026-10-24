@@ -4971,6 +4971,12 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     try {
       await db.query('ALTER TABLE invoices ADD COLUMN customerId VARCHAR(50) DEFAULT NULL');
     } catch (e) {}
+    try {
+      await db.query('ALTER TABLE finished_goods_orders ADD COLUMN paymentStatus VARCHAR(50) DEFAULT "Unpaid"');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE finished_goods_orders ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00');
+    } catch (e) {}
 
     // Resilient lookup: match by id or invoiceNo
     const [rows]: any = await db.query('SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1', [id, id]);
@@ -5070,6 +5076,25 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       newStatus,
       invoice.id
     ]);
+
+    // Sync payment status back to linked Finished Goods / Sales Order
+    try {
+      const orderSearch = invoice.orderNo || invoice.orderId;
+      const orderPaymentStatus = newStatus === 'paid' ? 'Paid' : (newPaidAmount > 0 ? 'Partially Paid' : 'Unpaid');
+      if (orderSearch) {
+        await db.query(
+          'UPDATE finished_goods_orders SET paymentStatus = ?, paidAmount = ? WHERE orderNo = ? OR id = ? OR invoiceNo = ? OR invoiceId = ?',
+          [orderPaymentStatus, newPaidAmount, orderSearch, orderSearch, invoice.invoiceNo || invoice.id, invoice.id]
+        );
+      } else {
+        await db.query(
+          'UPDATE finished_goods_orders SET paymentStatus = ?, paidAmount = ? WHERE invoiceNo = ? OR invoiceId = ?',
+          [orderPaymentStatus, newPaidAmount, invoice.invoiceNo || invoice.id, invoice.id]
+        );
+      }
+    } catch (orderSyncErr) {
+      console.warn('Could not sync payment status to finished_goods_orders:', orderSyncErr);
+    }
 
     // Auto GL: Ensure Accounts Receivable, Sales Account, and Cash/Bank are properly balanced
     try {
