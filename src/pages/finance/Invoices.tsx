@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
-import { useInvoices, useLeads, useCustomers, useQuotations } from '@/hooks/useData'
+import { useInvoices, useLeads, useCustomers, useQuotations, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData'
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
@@ -23,6 +24,8 @@ export const Invoices: React.FC = () => {
   const { data: leads } = useLeads()
   const { data: customers } = useCustomers()
   const { data: quotations } = useQuotations()
+  const { data: allOrders = [] } = useFinishedGoodsOrders()
+  const { data: workOrders = [] } = useWorkOrders()
   const { data: taxProfiles } = useTaxProfiles()
   const { data: accounts } = useAccounts()
   const { settings } = useSettings()
@@ -585,6 +588,111 @@ export const Invoices: React.FC = () => {
     {
       key: 'status', header: 'Status', sortable: true,
       render: (val: any) => getStatusBadge(val)
+    },
+    {
+      key: 'traceability', header: 'Traceability', align: 'center',
+      render: (_: any, item: any) => {
+        const traces: TraceNode[] = [];
+
+        // 1. Linked Sales / Customer Order
+        const linkedOrder = allOrders.find((o: any) => 
+          (item.orderNo && o.orderNo === item.orderNo) ||
+          (item.orderId && (String(o.id) === String(item.orderId) || String(o.orderNo) === String(item.orderId)))
+        );
+        if (linkedOrder || item.orderNo) {
+          const ordNo = linkedOrder?.orderNo || item.orderNo;
+          traces.push({
+            type: 'order',
+            title: 'Sales Order',
+            reference: ordNo,
+            subtitle: `Customer: ${linkedOrder?.customerName || item.customer || ''}`,
+            statusBadge: { label: linkedOrder?.status || 'Order', variant: 'info' },
+            navigateUrl: '/crm/sales-orders'
+          });
+        }
+
+        // 2. Linked Quotation
+        const quoteNo = item.quotationNo || item.quotationId || linkedOrder?.quotationNo;
+        if (quoteNo) {
+          traces.push({
+            type: 'quotation',
+            title: 'Quotation',
+            reference: quoteNo,
+            subtitle: 'Commercial Quotation',
+            statusBadge: { label: 'Quote', variant: 'info' },
+            navigateUrl: `/crm/quotations?search=${encodeURIComponent(quoteNo)}`
+          });
+        }
+
+        // 3. Linked Work Order
+        const linkedWo = workOrders.find((w: any) => 
+          (item.orderNo && (w.orderNo === item.orderNo || (w.title && w.title.includes(item.orderNo)))) ||
+          (quoteNo && ((w.quotationNo && w.quotationNo === quoteNo) || (w.sourceQuoteId && String(w.sourceQuoteId) === String(item.quotationId)))) ||
+          (linkedOrder && ((w.orderNo && w.orderNo === linkedOrder.orderNo) || (w.sourceQuoteId && String(w.sourceQuoteId) === String(linkedOrder.quoteId))))
+        );
+        if (linkedWo) {
+          traces.push({
+            type: 'work_order',
+            title: 'Work Order',
+            reference: linkedWo.orderNo || linkedWo.id,
+            subtitle: `Production Job • ${linkedWo.title || ''}`,
+            statusBadge: { 
+              label: linkedWo.status || 'Production', 
+              variant: linkedWo.status === 'Completed' ? 'success' : 'warning' 
+            },
+            navigateUrl: `/production/work-orders/${linkedWo.id}`
+          });
+        }
+
+        // 4. Dispatch / Gate Pass
+        const gpNo = item.dispatchNo || linkedOrder?.gatePassNo;
+        if (gpNo) {
+          traces.push({
+            type: 'gate_pass',
+            title: 'Security Gate Pass',
+            reference: gpNo,
+            subtitle: 'Dispatched Goods',
+            statusBadge: { label: 'Dispatched', variant: 'success' },
+            navigateUrl: '/inventory'
+          });
+        }
+
+        // 5. Purchase Order (if PO ref exists on invoice)
+        if (item.poNo) {
+          traces.push({
+            type: 'po',
+            title: 'Customer PO Ref',
+            reference: item.poNo,
+            subtitle: 'Client Purchase Order',
+            statusBadge: { label: 'Client PO', variant: 'neutral' }
+          });
+        }
+
+        // 6. Payment Status
+        const pay = getInvoicePaymentInfo(item);
+        if (pay.paid > 0) {
+          traces.push({
+            type: 'receipt',
+            title: pay.isSettled ? 'Settled Payment' : 'Partial Payment',
+            reference: `${formatCurrency(pay.paid)} Paid`,
+            subtitle: pay.isSettled ? 'Paid in Full' : `Remaining Due: ${formatCurrency(pay.due)}`,
+            statusBadge: { 
+              label: pay.isSettled ? 'Settled' : 'Part Paid', 
+              variant: pay.isSettled ? 'success' : 'warning' 
+            },
+            onClick: () => setViewInvoice(item)
+          });
+        }
+
+        return (
+          <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+            <TraceabilityDropdown
+              title={`Invoice #${item.id}`}
+              traces={traces}
+            />
+          </div>
+        );
+      }
     },
     {
       key: 'actions', header: '',

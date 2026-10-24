@@ -219,3 +219,23 @@ export function useStockRemnants(params?: { materialName?: string; status?: stri
 
   return { data, setData, loading, refetch };
 }
+
+export function useWorkOrders() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const refetch = useCallback(() => {
+    return api.fetchWorkOrders().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      setData(arr);
+      setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error("Failed to fetch work orders:", err);
+      setData([]);
+      setLoading(false);
+      return [];
+    });
+  }, []);
+  useEffect(() => { refetch(); }, [refetch]);
+  return { data, setData, loading, refetch };
+}

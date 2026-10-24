@@ -21,6 +21,7 @@ import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 import { QuotationAutocomplete } from '@/components/ui/QuotationAutocomplete'
 import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView'
 import { GatePassPrintView } from '@/components/GatePassPrintView'
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 // @ts-ignore
@@ -937,48 +938,82 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </div>
                     </td>
 
-                    {/* Traceability Badges */}
+                    {/* Traceability Dropdown with Glowing Lamp */}
                     <td className="px-3 py-2.5 text-center">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
-                        {order.quotationNo && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-secondary border border-theme-subtle" title="Linked Quotation">
-                            Ref: {order.quotationNo}
-                          </span>
-                        )}
-                        {existingWO && (
-                          <span 
-                            onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                            className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 cursor-pointer hover:bg-blue-500/20 transition-colors flex items-center gap-1" 
-                            title="Click to view linked Work Order"
-                          >
-                            <Factory size={9} /> WO: {existingWO.orderNo || existingWO.id}
-                          </span>
-                        )}
-                        {order.gatePassNo && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/25" title="Gate Pass Issued">
-                            GP: {order.gatePassNo}
-                          </span>
-                        )}
-                        {(order.invoiceNo || linkedInvoice) && (
-                          <span 
-                            onClick={() => navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`)}
-                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded-none border cursor-pointer transition-colors flex items-center gap-1 ${
-                              isInvoicePaid 
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 font-bold'
-                                : isInvoicePartPaid
-                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/25 font-bold'
-                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20'
-                            }`} 
-                            title={`Invoice ${linkedInvoice?.invoiceNo || order.invoiceNo} • ${isInvoicePaid ? 'Payment Confirmed in Full' : (isInvoicePartPaid ? `Partially Paid: ${formatCurrency(linkedInvoice?.paidAmount || 0)}` : 'Awaiting Payment')}`}
-                          >
-                            {isInvoicePaid ? <CheckCircle size={9} /> : (isInvoicePartPaid ? <Clock size={9} /> : null)}
-                            Inv: {linkedInvoice?.invoiceNo || order.invoiceNo} {isInvoicePaid ? '(Paid)' : (isInvoicePartPaid ? '(Part Paid)' : '')}
-                          </span>
-                        )}
-                        {!order.quotationNo && !existingWO && !order.gatePassNo && !order.invoiceNo && !linkedInvoice && (
-                          <span className="text-muted text-[11px]">-</span>
-                        )}
-                      </div>
+                      <TraceabilityDropdown
+                        title={`Order #${order.orderNo}`}
+                        traces={(() => {
+                          const traces: TraceNode[] = [];
+                          if (order.quotationNo) {
+                            traces.push({
+                              type: 'quotation',
+                              title: 'Quotation',
+                              reference: order.quotationNo,
+                              subtitle: 'Linked commercial quotation',
+                              statusBadge: { label: 'Quote', variant: 'info' },
+                              navigateUrl: `/crm/quotations?search=${encodeURIComponent(order.quotationNo)}`
+                            });
+                          }
+                          if (existingWO) {
+                            traces.push({
+                              type: 'work_order',
+                              title: 'Work Order',
+                              reference: existingWO.orderNo || existingWO.id,
+                              subtitle: `Production Job • ${existingWO.title || ''}`,
+                              statusBadge: { 
+                                label: existingWO.status || 'In Production', 
+                                variant: existingWO.status === 'Completed' ? 'success' : 'warning' 
+                              },
+                              navigateUrl: `/production/work-orders/${existingWO.id}`
+                            });
+                          }
+                          if (order.gatePassNo) {
+                            traces.push({
+                              type: 'gate_pass',
+                              title: 'Security Gate Pass',
+                              reference: order.gatePassNo,
+                              subtitle: order.isDispatched ? 'Dispatched from Premises' : 'Gate Pass Issued',
+                              statusBadge: { 
+                                label: order.isDispatched ? 'Dispatched' : 'Gate Pass', 
+                                variant: order.isDispatched ? 'success' : 'info' 
+                              },
+                              onClick: () => handleViewGatePass(order)
+                            });
+                          }
+                          if (order.invoiceNo || linkedInvoice) {
+                            const invNo = linkedInvoice?.invoiceNo || order.invoiceNo;
+                            traces.push({
+                              type: 'invoice',
+                              title: 'Tax Invoice',
+                              reference: invNo,
+                              subtitle: isInvoicePaid ? 'Payment Confirmed in Full' : (isInvoicePartPaid ? `Partially Paid: ${formatCurrency(linkedInvoice?.paidAmount || 0)}` : 'Awaiting Payment'),
+                              statusBadge: { 
+                                label: isInvoicePaid ? 'Paid' : isInvoicePartPaid ? 'Part Paid' : 'Unpaid', 
+                                variant: isInvoicePaid ? 'success' : isInvoicePartPaid ? 'warning' : 'danger' 
+                              },
+                              navigateUrl: `/finance/invoices?search=${encodeURIComponent(invNo)}`
+                            });
+                          }
+                          if (totalAdv > 0 && latestRec) {
+                            traces.push({
+                              type: 'receipt',
+                              title: 'Advance Payment',
+                              reference: latestRec.receiptNo || 'Payment Receipt',
+                              subtitle: `Advance Paid: ${formatCurrency(totalAdv)}`,
+                              statusBadge: { label: 'Advance Paid', variant: 'success' },
+                              onClick: () => {
+                                setActivePrintReceipt({
+                                  ...latestRec,
+                                  orderNo: order.orderNo,
+                                  totalQuoted: Number(order.totalPrice || 0)
+                                });
+                                setPrintReceiptModalOpen(true);
+                              }
+                            });
+                          }
+                          return traces;
+                        })()}
+                      />
                     </td>
 
                     {/* Status */}

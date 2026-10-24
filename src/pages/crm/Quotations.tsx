@@ -13,7 +13,8 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
-import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
+import { useQuotations, useLeads, useCustomers, useInvoices, useFinishedGoodsOrders } from '@/hooks/useData'
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
@@ -374,6 +375,8 @@ export const Quotations: React.FC = () => {
   const { data: taxProfiles } = useTaxProfiles()
   const { data: leads = [] } = useLeads()
   const { data: customers = [] } = useCustomers()
+  const { data: allInvoices = [] } = useInvoices()
+  const { data: allOrders = [] } = useFinishedGoodsOrders()
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null);
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({});
@@ -1498,33 +1501,85 @@ export const Quotations: React.FC = () => {
                           </span>
                         </td>
 
-                        {/* Traceability Badges */}
+                        {/* Traceability Dropdown with Glowing Light */}
                         <td className="px-3 py-2.5 text-center">
-                          <div className="flex items-center justify-center gap-1 flex-wrap">
-                            {existingWO && (
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                                className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center gap-1 hover:bg-blue-500/20 transition-colors"
-                                title="View Work Order"
-                              >
-                                <Factory size={9} /> WO: {existingWO.orderNo || existingWO.id}
-                              </button>
-                            )}
-                            {sampleGrns.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setPrintGrnData({ grn: sampleGrns[0], group })}
-                                className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-none bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 transition-colors"
-                                title="Print Sample GRN"
-                              >
-                                GRN ({sampleGrns.length})
-                              </button>
-                            )}
-                            {!existingWO && sampleGrns.length === 0 && (
-                              <span className="text-muted text-[11px]">-</span>
-                            )}
-                          </div>
+                          <TraceabilityDropdown
+                            title={`Quotation #${group.quoNo}`}
+                            traces={(() => {
+                              const traces: TraceNode[] = [];
+                              const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                              const linkedInvoice = allInvoices.find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latestMain?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+
+                              if (linkedOrder) {
+                                traces.push({
+                                  type: 'order',
+                                  title: 'Sales Order',
+                                  reference: linkedOrder.orderNo,
+                                  subtitle: `Customer Order • ${linkedOrder.customerName || ''}`,
+                                  statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
+                                  navigateUrl: '/crm/sales-orders'
+                                });
+                              }
+
+                              if (existingWO) {
+                                traces.push({
+                                  type: 'work_order',
+                                  title: 'Work Order',
+                                  reference: existingWO.orderNo || existingWO.id,
+                                  subtitle: `Production Job • ${existingWO.title || ''}`,
+                                  statusBadge: { 
+                                    label: existingWO.status || 'In Production', 
+                                    variant: existingWO.status === 'Completed' ? 'success' : 'warning' 
+                                  },
+                                  navigateUrl: `/production/work-orders/${existingWO.id}`
+                                });
+                              }
+
+                              if (sampleGrns.length > 0) {
+                                traces.push({
+                                  type: 'grn',
+                                  title: 'Customer Sample GRN',
+                                  reference: sampleGrns[0].grnNo || `GRN (${sampleGrns.length})`,
+                                  subtitle: `Received: ${sampleGrns[0].sampleName || 'Sample Material'}`,
+                                  statusBadge: { label: 'GRN Received', variant: 'info' },
+                                  onClick: () => setPrintGrnData({ grn: sampleGrns[0], group })
+                                });
+                              }
+
+                              if (linkedInvoice) {
+                                traces.push({
+                                  type: 'invoice',
+                                  title: 'Tax Invoice',
+                                  reference: linkedInvoice.invoiceNo || linkedInvoice.id,
+                                  subtitle: linkedInvoice.status === 'paid' ? 'Paid in Full' : 'Awaiting Payment',
+                                  statusBadge: { 
+                                    label: linkedInvoice.status === 'paid' ? 'Paid' : 'Invoice', 
+                                    variant: linkedInvoice.status === 'paid' ? 'success' : 'warning' 
+                                  },
+                                  navigateUrl: `/finance/invoices?search=${encodeURIComponent(linkedInvoice.invoiceNo || linkedInvoice.id)}`
+                                });
+                              }
+
+                              if (totalAdv > 0 && latestRec) {
+                                traces.push({
+                                  type: 'receipt',
+                                  title: 'Advance Payment',
+                                  reference: latestRec.receiptNo || 'Payment Receipt',
+                                  subtitle: `Advance: ${formatCurrency(totalAdv)}`,
+                                  statusBadge: { label: 'Advance Paid', variant: 'success' },
+                                  onClick: () => {
+                                    setActivePrintReceipt({
+                                      ...latestRec,
+                                      totalQuoted: Number(latestMain?.totalAmount || latestMain?.customAmount || 0)
+                                    });
+                                    setPrintReceiptModalOpen(true);
+                                  }
+                                });
+                              }
+
+                              return traces;
+                            })()}
+                          />
                         </td>
 
                         {/* Actions */}

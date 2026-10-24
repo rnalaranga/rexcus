@@ -13,7 +13,8 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
-import { fetchWorkOrders, deleteWorkOrder } from '@/lib/api'
+import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs } from '@/lib/api'
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
@@ -32,6 +33,9 @@ export const WorkOrders: React.FC = () => {
   const [inventory, setInventory] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [quotations, setQuotations] = useState<any[]>([])
+  const [orders, setOrders] = useState<any[]>([])
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [mrs, setMrs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filter & Search State
@@ -50,13 +54,16 @@ export const WorkOrders: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true)
     try {
-      const [wos, emps, machs, invs, custs, quotes] = await Promise.all([
+      const [wos, emps, machs, invs, custs, quotes, ords, invcs, matReqs] = await Promise.all([
         fetchWorkOrders().catch(() => []),
         fetch(`${API_URL}/hr/employees`).then(r => r.json()).catch(() => []),
         fetch(`${API_URL}/production/machineries`).then(r => r.json()).catch(() => []),
         fetch(`${API_URL}/inventory`).then(r => r.json()).catch(() => []),
         fetch(`${API_URL}/customers`).then(r => r.json()).catch(() => []),
-        fetch(`${API_URL}/quotations`).then(r => r.json()).catch(() => [])
+        fetch(`${API_URL}/quotations`).then(r => r.json()).catch(() => []),
+        fetchFinishedGoodsOrders().catch(() => []),
+        fetchInvoices().catch(() => []),
+        fetchMRs().catch(() => [])
       ])
 
       setWorkOrders(Array.isArray(wos) ? wos : [])
@@ -65,6 +72,9 @@ export const WorkOrders: React.FC = () => {
       setInventory(Array.isArray(invs) ? invs : [])
       setCustomers(Array.isArray(custs) ? custs : [])
       setQuotations(Array.isArray(quotes) ? quotes : [])
+      setOrders(Array.isArray(ords) ? ords : [])
+      setInvoices(Array.isArray(invcs) ? invcs : [])
+      setMrs(Array.isArray(matReqs) ? matReqs : [])
 
       // Update active studio WO if one is currently open
       if (activeStudioWO) {
@@ -145,6 +155,87 @@ export const WorkOrders: React.FC = () => {
 
     return { total, active, inMachining, qcRework, completed, totalWipCost }
   }, [workOrders])
+
+  // Build Traceability Nodes for a Work Order
+  const getWorkOrderTraces = (row: any): TraceNode[] => {
+    const traces: TraceNode[] = []
+
+    // 1. Linked Quotation
+    const quoteNo = row.quotationNo || (row.sourceQuoteId ? quotations.find((q: any) => String(q.id) === String(row.sourceQuoteId))?.quotationNo : null)
+    if (quoteNo) {
+      traces.push({
+        type: 'quotation',
+        title: 'Quotation',
+        reference: quoteNo,
+        subtitle: 'Source Commercial Quote',
+        statusBadge: { label: 'Quote', variant: 'info' },
+        navigateUrl: `/crm/quotations?search=${encodeURIComponent(quoteNo)}`
+      })
+    }
+
+    // 2. Linked Customer / Sales Order
+    const linkedOrder = orders.find((o: any) => 
+      (o.orderNo && (o.orderNo === row.orderNo || (row.title && row.title.includes(o.orderNo)))) ||
+      (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId))
+    )
+    if (linkedOrder) {
+      traces.push({
+        type: 'order',
+        title: 'Sales Order',
+        reference: linkedOrder.orderNo,
+        subtitle: `Customer: ${linkedOrder.customerName || ''}`,
+        statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
+        navigateUrl: '/crm/sales-orders'
+      })
+
+      if (linkedOrder.gatePassNo) {
+        traces.push({
+          type: 'gate_pass',
+          title: 'Gate Pass',
+          reference: linkedOrder.gatePassNo,
+          subtitle: linkedOrder.isDispatched ? 'Dispatched from Premises' : 'Gate Pass Issued',
+          statusBadge: { label: linkedOrder.isDispatched ? 'Dispatched' : 'Gate Pass', variant: 'info' },
+          navigateUrl: '/inventory'
+        })
+      }
+    }
+
+    // 3. Linked Invoices
+    const linkedInv = invoices.find((inv: any) => 
+      (row.quotationNo && (inv.quotationNo === row.quotationNo || inv.quotationId === row.sourceQuoteId)) ||
+      (linkedOrder && (inv.orderNo === linkedOrder.orderNo || inv.orderId === linkedOrder.id))
+    )
+    if (linkedInv) {
+      traces.push({
+        type: 'invoice',
+        title: 'Tax Invoice',
+        reference: linkedInv.invoiceNo || linkedInv.id,
+        subtitle: linkedInv.status === 'paid' ? 'Paid in Full' : 'Awaiting Payment',
+        statusBadge: { 
+          label: linkedInv.status === 'paid' ? 'Paid' : 'Invoice', 
+          variant: linkedInv.status === 'paid' ? 'success' : 'warning' 
+        },
+        navigateUrl: `/finance/invoices?search=${encodeURIComponent(linkedInv.invoiceNo || linkedInv.id)}`
+      })
+    }
+
+    // 4. Linked Material Requests
+    const linkedMrs = mrs.filter((m: any) => 
+      m.workOrderId === row.id || m.jobNo === row.orderNo || (row.orderNo && m.notes && m.notes.includes(row.orderNo))
+    )
+    if (linkedMrs.length > 0) {
+      traces.push({
+        type: 'mr',
+        title: 'Material Request',
+        reference: linkedMrs[0].mrNo || `MR (${linkedMrs.length})`,
+        subtitle: `Items: ${linkedMrs[0].items?.length || 1} material(s)`,
+        statusBadge: { label: 'MR Linked', variant: 'info' },
+        navigateUrl: '/purchasing'
+      })
+    }
+
+    return traces
+  }
 
   // Data Table Columns
   const columns: Column<any>[] = [
@@ -346,6 +437,19 @@ export const WorkOrders: React.FC = () => {
             return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
         }
       }
+    },
+    {
+      key: 'traceability',
+      header: 'Traceability',
+      align: 'center',
+      render: (_: any, row: any) => (
+        <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+          <TraceabilityDropdown
+            title={`Work Order #${row.orderNo || row.id}`}
+            traces={getWorkOrderTraces(row)}
+          />
+        </div>
+      )
     },
     {
       key: 'actions',
@@ -618,6 +722,13 @@ export const WorkOrders: React.FC = () => {
                           </div>
 
                           <div className="pt-2 border-t border-theme-subtle flex items-center justify-between text-xs font-medium">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <TraceabilityDropdown
+                                title={`Work Order #${wo.orderNo || wo.id}`}
+                                traces={getWorkOrderTraces(wo)}
+                                compact
+                              />
+                            </div>
                             <span className="text-muted font-mono">
                               {formatCurrency(cost.actualTotalCost || 0)}
                             </span>

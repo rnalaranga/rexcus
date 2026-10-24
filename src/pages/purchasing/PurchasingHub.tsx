@@ -15,6 +15,7 @@ import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hoo
 import { useSuppliers } from '@/hooks/useData';
 import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
@@ -218,6 +219,61 @@ export const PurchasingHub: React.FC = () => {
         },
         { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
         { key: 'date', header: 'Order Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
+        {
+          key: 'traceability', header: 'Traceability', align: 'center',
+          render: (_: any, row: any) => {
+            const traces: TraceNode[] = [];
+            const linkedMrList: string[] = Array.isArray(row.mrIds)
+              ? row.mrIds
+              : (typeof row.mrIds === 'string'
+                  ? (() => { try { const m = JSON.parse(row.mrIds); return Array.isArray(m) ? m : [row.mrIds]; } catch { return [row.mrIds]; } })()
+                  : (row.mrId ? [row.mrId] : []));
+            
+            linkedMrList.forEach(mrId => {
+              traces.push({
+                type: 'mr',
+                title: 'Material Request',
+                reference: mrId,
+                subtitle: 'Source Request',
+                statusBadge: { label: 'MR', variant: 'info' },
+                navigateUrl: `/purchasing/mr-builder/${mrId}`
+              });
+            });
+
+            const matchedGrns = combinedGrns.filter((g: any) => g.poId === row.id || (g.poIds && g.poIds.includes(row.id)));
+            matchedGrns.forEach((g: any) => {
+              traces.push({
+                type: 'grn',
+                title: 'Goods Receipt',
+                reference: g.id,
+                subtitle: `Received: ${g.date || g.createdAt || ''}`,
+                statusBadge: { label: g.status || 'Received', variant: 'success' },
+                navigateUrl: `/purchasing/grn-builder/${g.id}`
+              });
+            });
+
+            const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
+            matchedBills.forEach((b: any) => {
+              traces.push({
+                type: 'bill',
+                title: 'Vendor Bill',
+                reference: b.invoiceNo || b.id,
+                subtitle: `Bill: ${formatCurrency(Number(b.totalAmount || b.amount || 0))}`,
+                statusBadge: { label: b.status || 'Billed', variant: 'warning' },
+                navigateUrl: `/purchasing/bill-builder/${b.id}`
+              });
+            });
+
+            return (
+              <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+                <TraceabilityDropdown
+                  title={`Purchase Order #${row.id}`}
+                  traces={traces}
+                />
+              </div>
+            );
+          }
+        },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
           <div className="flex items-center justify-end gap-1.5">
             <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none">View</Button>
@@ -304,6 +360,54 @@ export const PurchasingHub: React.FC = () => {
         { key: 'status', header: 'Status', width: '120px', render: v => <Badge value={String(v)} size="sm" /> },
         { key: 'priority', header: 'Priority', width: '90px', render: v => <span className={`text-xs font-semibold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
         { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
+        {
+          key: 'traceability', header: 'Traceability', align: 'center',
+          render: (_: any, row: any) => {
+            const traces: TraceNode[] = [];
+            const linkedWoList: string[] = Array.isArray(row.workOrderNos)
+              ? row.workOrderNos
+              : (typeof row.workOrderNos === 'string'
+                  ? (() => { try { const w = JSON.parse(row.workOrderNos); return Array.isArray(w) ? w : [row.workOrderNos]; } catch { return [row.workOrderNos]; } })()
+                  : (row.workOrderNo ? [row.workOrderNo] : []));
+            
+            linkedWoList.forEach(woNum => {
+              traces.push({
+                type: 'work_order',
+                title: 'Production Job',
+                reference: woNum,
+                subtitle: 'Linked Work Order',
+                statusBadge: { label: 'WO Linked', variant: 'info' },
+                navigateUrl: '/production/work-orders'
+              });
+            });
+
+            const linkedPoList: string[] = Array.isArray(row.poIds) 
+              ? row.poIds 
+              : (typeof row.poIds === 'string'
+                  ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                  : (row.poId ? [row.poId] : []));
+            
+            linkedPoList.forEach(poNum => {
+              traces.push({
+                type: 'po',
+                title: 'Purchase Order',
+                reference: poNum,
+                subtitle: 'Issued PO',
+                statusBadge: { label: 'PO Created', variant: 'success' },
+                navigateUrl: `/purchasing/po-builder/${poNum}`
+              });
+            });
+
+            return (
+              <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+                <TraceabilityDropdown
+                  title={`Material Request #${row.id}`}
+                  traces={traces}
+                />
+              </div>
+            );
+          }
+        },
         { key: 'actions', header: '', align: 'right', render: (_, row) => {
           const linkedPoList: string[] = Array.isArray(row.poIds) 
             ? row.poIds 
@@ -385,6 +489,62 @@ export const PurchasingHub: React.FC = () => {
         { key: 'status', header: 'Status', width: '90px', render: (_, row) => row.isCustomerSample ? <Badge value="Sample" size="sm" /> : <Badge value={String(row.status)} size="sm" /> },
         { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-xs text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
         { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{(row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '')).split('T')[0]}</span> },
+        {
+          key: 'traceability', header: 'Traceability', align: 'center',
+          render: (_: any, row: any) => {
+            const traces: TraceNode[] = [];
+            if (row.isCustomerSample) {
+              if (row.quoNo) {
+                traces.push({
+                  type: 'quotation',
+                  title: 'Quotation',
+                  reference: row.quoNo,
+                  subtitle: 'Sample Linked Quote',
+                  statusBadge: { label: 'Quote', variant: 'info' },
+                  navigateUrl: `/crm/quotations?search=${encodeURIComponent(row.quoNo)}`
+                });
+              }
+            } else {
+              const linkedPoList: string[] = Array.isArray(row.poIds)
+                ? row.poIds
+                : (typeof row.poIds === 'string'
+                    ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                    : (row.poId ? [row.poId] : []));
+
+              linkedPoList.forEach(pNum => {
+                traces.push({
+                  type: 'po',
+                  title: 'Purchase Order',
+                  reference: pNum,
+                  subtitle: 'Inbound PO',
+                  statusBadge: { label: 'PO', variant: 'info' },
+                  navigateUrl: `/purchasing/po-builder/${pNum}`
+                });
+              });
+
+              const matchedBills = bills.filter((b: any) => b.grnId === row.id || (row.poId && b.poId === row.poId));
+              matchedBills.forEach((b: any) => {
+                traces.push({
+                  type: 'bill',
+                  title: 'Vendor Bill',
+                  reference: b.invoiceNo || b.id,
+                  subtitle: `Bill: ${formatCurrency(Number(b.totalAmount || b.amount || 0))}`,
+                  statusBadge: { label: b.status || 'Billed', variant: 'warning' },
+                  navigateUrl: `/purchasing/bill-builder/${b.id}`
+                });
+              });
+            }
+
+            return (
+              <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+                <TraceabilityDropdown
+                  title={`GRN #${row.id}`}
+                  traces={traces}
+                />
+              </div>
+            );
+          }
+        },
         { key: 'actions', header: '', align: 'right', render: (_, row) => (
           <div className="flex justify-end gap-1.5 items-center">
                {row.isCustomerSample ? (
@@ -433,6 +593,54 @@ export const PurchasingHub: React.FC = () => {
       { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
       { key: 'amount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
       { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
+      {
+        key: 'traceability', header: 'Traceability', align: 'center',
+        render: (_: any, row: any) => {
+          const traces: TraceNode[] = [];
+          if (row.poId) {
+            traces.push({
+              type: 'po',
+              title: 'Purchase Order',
+              reference: row.poId,
+              subtitle: 'Procurement Order',
+              statusBadge: { label: 'PO Linked', variant: 'info' },
+              navigateUrl: `/purchasing/po-builder/${row.poId}`
+            });
+
+            const matchedGrns = combinedGrns.filter((g: any) => g.poId === row.poId || g.id === row.grnId);
+            matchedGrns.forEach((g: any) => {
+              traces.push({
+                type: 'grn',
+                title: 'Goods Receipt',
+                reference: g.id,
+                subtitle: `Received: ${g.date || g.createdAt || ''}`,
+                statusBadge: { label: g.status || 'GRN', variant: 'success' },
+                navigateUrl: `/purchasing/grn-builder/${g.id}`
+              });
+            });
+          }
+
+          if (row.supplierId) {
+            traces.push({
+              type: 'receipt',
+              title: 'Vendor Ledger',
+              reference: getSupplierName(row.supplierId),
+              subtitle: 'Statement & Payments',
+              statusBadge: { label: 'Vendor', variant: 'neutral' },
+              navigateUrl: `/inventory/suppliers/${row.supplierId}`
+            });
+          }
+
+          return (
+            <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+              <TraceabilityDropdown
+                title={`Bill #${row.id}`}
+                traces={traces}
+              />
+            </div>
+          );
+        }
+      },
       {
         key: 'actions', header: '', align: 'right',
         render: (_, row) => (

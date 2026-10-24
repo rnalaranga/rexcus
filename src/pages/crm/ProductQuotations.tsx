@@ -16,7 +16,8 @@ import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { useQuotations, useLeads, useCustomers } from '@/hooks/useData'
+import { useQuotations, useLeads, useCustomers, useInvoices, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData'
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
@@ -38,6 +39,9 @@ export const ProductQuotations: React.FC = () => {
   const { data: taxProfiles } = useTaxProfiles()
   const { data: leads = [] } = useLeads()
   const { data: customers = [] } = useCustomers()
+  const { data: allInvoices = [] } = useInvoices()
+  const { data: allOrders = [] } = useFinishedGoodsOrders()
+  const { data: workOrders = [] } = useWorkOrders()
 
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
@@ -1091,6 +1095,85 @@ export const ProductQuotations: React.FC = () => {
                           </span>
                         </td>
 
+                        {/* Traceability Dropdown with Glowing Lamp */}
+                        <td className="px-3 py-2.5 text-center">
+                          <TraceabilityDropdown
+                            title={`Product Quote #${group.quoNo}`}
+                            traces={(() => {
+                              const traces: TraceNode[] = [];
+                              const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                              const linkedWo = workOrders.find((w: any) => 
+                                (w.sourceQuoteId && String(w.sourceQuoteId) === String(latest?.id)) || 
+                                (w.quoteId && String(w.quoteId) === String(latest?.id)) || 
+                                (w.title && group.quoNo && w.title.includes(group.quoNo)) || 
+                                (w.orderNo && group.quoNo && w.orderNo.includes(group.quoNo))
+                              );
+                              const linkedInvoice = allInvoices.find((inv: any) => 
+                                (inv.quotationId && String(inv.quotationId) === String(latest?.id)) || 
+                                (inv.quotationNo && inv.quotationNo === group.quoNo)
+                              );
+
+                              if (linkedOrder) {
+                                traces.push({
+                                  type: 'order',
+                                  title: 'Sales Order',
+                                  reference: linkedOrder.orderNo,
+                                  subtitle: `Customer Order • ${linkedOrder.customerName || ''}`,
+                                  statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
+                                  navigateUrl: '/crm/sales-orders'
+                                });
+                              }
+
+                              if (linkedWo) {
+                                traces.push({
+                                  type: 'work_order',
+                                  title: 'Work Order',
+                                  reference: linkedWo.orderNo || linkedWo.id,
+                                  subtitle: `Production Job • ${linkedWo.title || ''}`,
+                                  statusBadge: { 
+                                    label: linkedWo.status || 'In Production', 
+                                    variant: linkedWo.status === 'Completed' ? 'success' : 'warning' 
+                                  },
+                                  navigateUrl: `/production/work-orders/${linkedWo.id}`
+                                });
+                              }
+
+                              if (linkedInvoice) {
+                                traces.push({
+                                  type: 'invoice',
+                                  title: 'Tax Invoice',
+                                  reference: linkedInvoice.invoiceNo || linkedInvoice.id,
+                                  subtitle: linkedInvoice.status === 'paid' ? 'Paid in Full' : 'Awaiting Payment',
+                                  statusBadge: { 
+                                    label: linkedInvoice.status === 'paid' ? 'Paid' : 'Invoice', 
+                                    variant: linkedInvoice.status === 'paid' ? 'success' : 'warning' 
+                                  },
+                                  navigateUrl: `/finance/invoices?search=${encodeURIComponent(linkedInvoice.invoiceNo || linkedInvoice.id)}`
+                                });
+                              }
+
+                              if (totalAdv > 0 && latestRec) {
+                                traces.push({
+                                  type: 'receipt',
+                                  title: 'Advance Payment',
+                                  reference: latestRec.receiptNo || 'Payment Receipt',
+                                  subtitle: `Advance: ${formatCurrency(totalAdv)}`,
+                                  statusBadge: { label: 'Advance Paid', variant: 'success' },
+                                  onClick: () => {
+                                    setActivePrintReceipt({
+                                      ...latestRec,
+                                      totalQuoted: Number(latest.totalAmount || latest.customAmount || 0)
+                                    });
+                                    setPrintReceiptModalOpen(true);
+                                  }
+                                });
+                              }
+
+                              return traces;
+                            })()}
+                          />
+                        </td>
+
                         {/* Actions */}
                         <td className={`px-4 py-2.5 text-right ${openActionId === group.quoNo ? 'relative z-50' : 'relative z-0'}`}>
                           <div className="flex items-center justify-end gap-1.5 product-quote-action-menu-container">
@@ -1122,7 +1205,7 @@ export const ProductQuotations: React.FC = () => {
                       {/* Expandable Revisions Row in Table */}
                       {isRevisionsExpanded && group.versions.length > 1 && (
                         <tr className="bg-surface2/25">
-                          <td colSpan={7} className="px-6 py-3 border-b border-theme-subtle">
+                          <td colSpan={8} className="px-6 py-3 border-b border-theme-subtle">
                             <div className="space-y-1.5 animate-fade-in">
                               <div className="text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center gap-1.5 mb-1">
                                 <History size={11} className="text-emerald-500" />
