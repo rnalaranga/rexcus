@@ -24,6 +24,8 @@ import { GatePassPrintView } from '@/components/GatePassPrintView'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
+import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
+import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { 
@@ -82,6 +84,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
   const [activePrintReceipt, setActivePrintReceipt] = useState<any | null>(null)
   const [preInvoicePromptOrder, setPreInvoicePromptOrder] = useState<any | null>(null)
+  const [proformaModalOrder, setProformaModalOrder] = useState<any | null>(null)
+  const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
 
   const loadPaymentReceipts = useCallback(async () => {
     try {
@@ -814,10 +818,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
                 const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
 
+                const linkedProforma = allInvoices.find((inv: any) =>
+                  (inv.isProforma || inv.invoiceType === 'proforma' || inv.status === 'proforma' || inv.invoiceNo?.startsWith('PI-') || inv.id?.startsWith('PI-')) &&
+                  (
+                    (order.orderNo && inv.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
+                    (order.id && inv.orderId && String(inv.orderId) === String(order.id)) ||
+                    (order.quotationNo && inv.quotationNo && String(inv.quotationNo) === String(order.quotationNo))
+                  )
+                );
+
                 const linkedInvoice = allInvoices.find((inv: any) =>
-                  (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
-                  (order.invoiceNo && (String(inv.invoiceNo) === String(order.invoiceNo) || String(inv.id) === String(order.invoiceNo))) ||
-                  (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo))
+                  (!inv.isProforma && inv.invoiceType !== 'proforma' && !inv.invoiceNo?.startsWith('PI-') && !inv.id?.startsWith('PI-')) &&
+                  (
+                    (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
+                    (order.invoiceNo && (String(inv.invoiceNo) === String(order.invoiceNo) || String(inv.id) === String(order.invoiceNo))) ||
+                    (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo))
+                  )
                 );
                 const isInvoicePaid = linkedInvoice?.status === 'paid' || order.paymentStatus === 'Paid';
                 const isInvoicePartPaid = linkedInvoice?.status === 'partially_paid' || order.paymentStatus === 'Partially Paid';
@@ -918,6 +934,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         {Number(order.unitPrice) > 0 && (
                           <span className="text-[10px] text-muted font-mono">@ {formatCurrency(order.unitPrice)}</span>
                         )}
+                        {linkedProforma && (
+                          <button
+                            type="button"
+                            onClick={() => setActivePrintProforma(linkedProforma)}
+                            className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors flex items-center gap-0.5 mt-0.5"
+                            title={`Advance Proforma Invoice: ${linkedProforma.invoiceNo || linkedProforma.id}`}
+                          >
+                            <FileText size={9} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
+                          </button>
+                        )}
                         {totalAdv > 0 && latestRec && (
                           <button
                             type="button"
@@ -965,6 +991,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                 variant: existingWO.status === 'Completed' ? 'success' : 'warning' 
                               },
                               navigateUrl: `/production/work-orders/${existingWO.id}`
+                            });
+                          }
+                          if (linkedProforma) {
+                            traces.push({
+                              type: 'proforma',
+                              title: 'Advance Proforma Invoice',
+                              reference: linkedProforma.invoiceNo || linkedProforma.id,
+                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0))}`,
+                              statusBadge: { label: 'Proforma', variant: 'info' },
+                              onClick: () => setActivePrintProforma(linkedProforma)
                             });
                           }
                           if (order.gatePassNo) {
@@ -1105,6 +1141,27 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                 >
                                   <FileText size={14} className="shrink-0 text-emerald-600" />
                                   <span>Generate Invoice</span>
+                                </button>
+                              )}
+
+                              {/* 2.5 Advance Proforma Invoice */}
+                              {linkedProforma ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { setActivePrintProforma(linkedProforma); setOpenActionOrderId(null); }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <FileText size={14} className="shrink-0 text-blue-600" />
+                                  <span>View Proforma Invoice ({linkedProforma.invoiceNo || linkedProforma.id})</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { setProformaModalOrder(order); setOpenActionOrderId(null); }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
+                                >
+                                  <FileText size={14} className="shrink-0 text-blue-600" />
+                                  <span>Create Advance Proforma Invoice</span>
                                 </button>
                               )}
 
@@ -1902,6 +1959,29 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         settings={settings}
       />
 
+      {/* Create Advance Proforma Invoice Modal */}
+      {proformaModalOrder && (
+        <CreateAdvanceProformaModal
+          isOpen={true}
+          onClose={() => setProformaModalOrder(null)}
+          order={proformaModalOrder}
+          settings={settings}
+          onSuccess={(inv) => {
+            setActivePrintProforma(inv);
+          }}
+        />
+      )}
+
+      {/* Proforma Invoice Print / PDF View Modal */}
+      {activePrintProforma && (
+        <ProformaInvoicePrintModal
+          isOpen={true}
+          onClose={() => setActivePrintProforma(null)}
+          invoice={activePrintProforma}
+          settings={settings}
+        />
+      )}
+
       {/* Pre-Invoice Advance Payment Recommendation Modal */}
       {preInvoicePromptOrder && (
         <Modal
@@ -1955,15 +2035,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <Button
                 variant="primary"
                 size="sm"
+                icon={FileText}
+                onClick={() => {
+                  const target = preInvoicePromptOrder
+                  setPreInvoicePromptOrder(null)
+                  setProformaModalOrder(target)
+                }}
+                className="text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold w-full sm:w-auto"
+              >
+                Create Advance Proforma Invoice
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 icon={Receipt}
                 onClick={() => {
                   const target = preInvoicePromptOrder
                   setPreInvoicePromptOrder(null)
                   handleOpenReceiptModal(target)
                 }}
-                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold w-full sm:w-auto"
+                className="text-xs border-theme-subtle text-secondary hover:text-primary w-full sm:w-auto"
               >
-                Issue Advance Payment Receipt
+                Issue Advance Receipt
               </Button>
             </div>
           </div>

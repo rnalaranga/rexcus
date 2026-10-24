@@ -928,6 +928,8 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN bankDetails TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN advanceDeducted DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE invoices ADD COLUMN receiptIds TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN isProforma TINYINT(1) DEFAULT 0",
+    "ALTER TABLE invoices ADD COLUMN invoiceType VARCHAR(50) DEFAULT 'tax_invoice'",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
@@ -4757,7 +4759,8 @@ app.post('/api/invoices', async (req, res) => {
         arAcc = [{ id: arId }];
       }
 
-      if (arAcc.length > 0 && salesAcc.length > 0) {
+      const isProformaInvoice = Boolean(data.isProforma || data.invoiceType === 'proforma' || data.status === 'proforma');
+      if (!isProformaInvoice && arAcc.length > 0 && salesAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
         const invTotal = Number(data.total) || 0;
         const invSub = Number(data.subtotal) || invTotal;

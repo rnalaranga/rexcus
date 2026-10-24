@@ -15,6 +15,7 @@ export interface TraceNode {
     | 'work_order' 
     | 'gate_pass' 
     | 'invoice' 
+    | 'proforma'
     | 'receipt' 
     | 'po' 
     | 'grn' 
@@ -150,6 +151,12 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
           bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25',
           label: 'Invoice'
         }
+      case 'proforma':
+        return {
+          icon: FileText,
+          bg: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25',
+          label: 'Proforma Invoice'
+        }
       case 'receipt':
         return {
           icon: DollarSign,
@@ -206,39 +213,39 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
 
   return (
     <div className={`relative inline-block ${className}`} onClick={(e) => e.stopPropagation()}>
-      {/* Trigger Button with Glowing Light */}
+      {/* Trigger Button: Gray button with small red dot */}
       <button
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
         className={`group inline-flex items-center gap-1.5 px-2 py-1 text-xs font-mono font-medium rounded-none border transition-all duration-200 select-none ${
           hasTraces
-            ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/35 shadow-[0_0_12px_rgba(16,185,129,0.22)] hover:shadow-[0_0_16px_rgba(16,185,129,0.4)]'
-            : 'bg-surface2/40 hover:bg-surface2/70 text-muted hover:text-primary border-theme-subtle/80 opacity-70 hover:opacity-100'
+            ? 'bg-surface2/80 hover:bg-surface3 text-primary border-theme-subtle hover:border-theme shadow-xs'
+            : 'bg-surface2/40 hover:bg-surface2/70 text-muted hover:text-primary border-theme-subtle/80 opacity-60 hover:opacity-100'
         }`}
         title={hasTraces ? `${traces.length} linked trace document(s). Click to view chain.` : 'No linked documents found.'}
       >
-        {/* Lamp / Indicator Light */}
+        {/* Lamp / Indicator Light: Small Red Dot */}
         {hasTraces ? (
-          <span className="relative flex h-2.5 w-2.5 shrink-0" title="Traces Active">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_#10b981,0_0_16px_#10b981]"></span>
+          <span className="relative flex h-2 w-2 shrink-0" title="Traces Linked">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_6px_#f43f5e]"></span>
           </span>
         ) : (
-          <span className="inline-flex rounded-full h-2 w-2 bg-neutral-400/50 dark:bg-neutral-600/50 shrink-0" title="No Traces"></span>
+          <span className="inline-flex rounded-full h-1.5 w-1.5 bg-neutral-400/50 dark:bg-neutral-600/50 shrink-0" title="No Traces"></span>
         )}
 
         {/* Text Label */}
-        <span className="text-[11px] font-semibold tracking-tight">
+        <span className="text-[11px] font-semibold tracking-tight text-primary">
           {hasTraces ? (compact ? `${traces.length}` : `Traces (${traces.length})`) : (compact ? '-' : 'No Traces')}
         </span>
 
         {/* Dropdown Arrow */}
         <ChevronDown 
           size={11} 
-          className={`shrink-0 transition-transform duration-200 ${
+          className={`shrink-0 transition-transform duration-200 text-muted group-hover:text-primary ${
             isOpen ? 'rotate-180' : ''
-          } ${hasTraces ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted'}`} 
+          }`} 
         />
       </button>
 
@@ -261,11 +268,11 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                 <span className="relative flex h-2 w-2">
                   {hasTraces ? (
                     <>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_6px_#f43f5e]"></span>
                     </>
                   ) : (
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-neutral-400"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-neutral-400"></span>
                   )}
                 </span>
                 <div>
@@ -281,7 +288,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
               <div className="flex items-center gap-1.5">
                 <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-none border ${
                   hasTraces 
-                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' 
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25' 
                     : 'bg-surface2 text-muted border-theme-subtle'
                 }`}>
                   {traces.length} linked

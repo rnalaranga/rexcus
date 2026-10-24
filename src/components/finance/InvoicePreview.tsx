@@ -139,7 +139,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   taxType,
   bankDetails,
   advanceDeducted = 0,
-  receiptNos = ''
+  receiptNos = '',
+  isProforma: isProformaProp = false,
+  invoiceType = '',
+  docTitle = ''
 }) => {
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
@@ -333,8 +336,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     (isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0)) ||
     (isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0)
   );
-  const invoiceTitle = isTaxShownSeparately ? 'TAX INVOICE' : 'INVOICE';
-  const invoiceDocLabel = isTaxShownSeparately ? 'Tax Invoice No. :' : 'Invoice No. :';
+  const isProforma = Boolean(
+    isProformaProp ||
+    invoiceType === 'proforma' ||
+    docTitle?.toLowerCase().includes('proforma') ||
+    (docNo && (docNo.startsWith('PI-') || docNo.startsWith('PRO-') || docNo.includes('PROFORMA')))
+  );
+  const invoiceTitle = isProforma ? 'PROFORMA INVOICE' : (isTaxShownSeparately ? 'TAX INVOICE' : 'INVOICE');
+  const invoiceDocLabel = isProforma ? 'Proforma Invoice No. :' : (isTaxShownSeparately ? 'Tax Invoice No. :' : 'Invoice No. :');
   const logoSrc = company?.company_logo || company?.logo || company?.companyLogo;
 
   return (

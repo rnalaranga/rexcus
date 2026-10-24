@@ -410,6 +410,7 @@ export const Invoices: React.FC = () => {
     const s = (status || '').toLowerCase();
     switch (s) {
       case 'draft': return <Badge variant="default">Draft</Badge>;
+      case 'proforma': return <Badge variant="info">Proforma</Badge>;
       case 'sent': return <Badge variant="info">Sent</Badge>;
       case 'paid': return <Badge variant="success">Paid</Badge>;
       case 'overdue': return <Badge variant="error">Overdue</Badge>;
@@ -430,6 +431,11 @@ export const Invoices: React.FC = () => {
           <div>
             <div className="font-bold text-primary cursor-pointer hover:text-blue-500 flex items-center gap-1.5" onClick={() => setViewInvoice(item)}>
               <span>{val}</span>
+              {(item.isProforma || item.invoiceType === 'proforma' || String(item.id || '').startsWith('PI-')) && (
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-bold uppercase">
+                  Proforma
+                </span>
+              )}
             </div>
             {(item.quotationId || item.quotationNo) && (
               <div className="text-[10px] text-muted font-mono">
@@ -849,6 +855,8 @@ export const Invoices: React.FC = () => {
               <div className="shadow-2xl">
               <InvoicePreview 
                 template="government"
+                isProforma={Boolean(viewInvoice.isProforma || viewInvoice.invoiceType === 'proforma' || String(viewInvoice.id || '').startsWith('PI-'))}
+                invoiceType={viewInvoice.invoiceType || (viewInvoice.isProforma ? 'proforma' : 'tax_invoice')}
                 docNo={viewInvoice.id}
                 date={viewInvoice.date}
                 dueDate={viewInvoice.dueDate}
