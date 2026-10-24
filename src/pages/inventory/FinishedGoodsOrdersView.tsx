@@ -87,6 +87,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [proformaModalOrder, setProformaModalOrder] = useState<any | null>(null)
   const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
 
+  const handleOpenPrintProforma = (proforma: any, order?: any) => {
+    if (!proforma) return
+    const enriched = {
+      ...proforma,
+      customerName: proforma.customerName || order?.customerName || order?.customer || '',
+      customerCompany: proforma.customerCompany || order?.customerCompany || order?.customerName || order?.customer || '',
+      customerAddress: proforma.customerAddress || order?.deliveryAddress || order?.customerAddress || '',
+      customerPhone: proforma.customerPhone || order?.customerPhone || order?.phone || '',
+      customerEmail: proforma.customerEmail || order?.customerEmail || order?.email || '',
+      customerVat: proforma.customerVat || order?.customerVat || '',
+      orderNo: proforma.orderNo || order?.orderNo || '',
+      quotationNo: proforma.quotationNo || order?.quotationNo || '',
+      orderId: proforma.orderId || order?.id || ''
+    }
+    setActivePrintProforma(enriched)
+  }
+
   const loadPaymentReceipts = useCallback(async () => {
     try {
       const recs = await fetchPaymentReceipts()
@@ -937,7 +954,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         {linkedProforma && (
                           <button
                             type="button"
-                            onClick={() => setActivePrintProforma(linkedProforma)}
+                            onClick={() => handleOpenPrintProforma(linkedProforma, order)}
                             className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors flex items-center gap-0.5 mt-0.5"
                             title={`Advance Proforma Invoice: ${linkedProforma.invoiceNo || linkedProforma.id}`}
                           >
@@ -1000,7 +1017,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               reference: linkedProforma.invoiceNo || linkedProforma.id,
                               subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0))}`,
                               statusBadge: { label: 'Proforma', variant: 'info' },
-                              onClick: () => setActivePrintProforma(linkedProforma)
+                              onClick: () => handleOpenPrintProforma(linkedProforma, order)
                             });
                           }
                           if (order.gatePassNo) {
@@ -1164,7 +1181,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               {linkedProforma ? (
                                 <button
                                   type="button"
-                                  onClick={() => { setActivePrintProforma(linkedProforma); setOpenActionOrderId(null); }}
+                                  onClick={() => { handleOpenPrintProforma(linkedProforma, order); setOpenActionOrderId(null); }}
                                   className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
                                 >
                                   <FileText size={14} className="shrink-0 text-blue-600" />

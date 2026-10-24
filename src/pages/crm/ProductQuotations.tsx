@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { 
-  FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
+  UserCheck, Shield, Users, FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
   ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List
@@ -33,6 +33,8 @@ export const ProductQuotations: React.FC = () => {
   const { toast, showConfirm } = useDialog()
   const { user, can } = useAuth()
   const canApprove = can('approvals.quotations')
+  const canViewAll = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || (user?.permissions?.includes('*') ?? false)
+  const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all')
   const { settings } = useSettings()
 
   const { data: quotations = [], loading, refetch } = useQuotations()
@@ -140,11 +142,48 @@ export const ProductQuotations: React.FC = () => {
   }
 
   // Filter ONLY Product Quotations
+  const salesRepOptions = useMemo(() => {
+    const reps = new Set<string>();
+    quotations.forEach((q: any) => {
+      let parsed: any = {};
+      try { parsed = JSON.parse(q.data || '{}'); } catch(e){}
+      const rep = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy;
+      if (rep && typeof rep === 'string' && rep.trim()) {
+        reps.add(rep.trim());
+      }
+    });
+    return Array.from(reps);
+  }, [quotations]);
+
   const productQuotes = useMemo(() => {
     return quotations.filter((q: any) => {
       let parsed: any = {};
       try { parsed = JSON.parse(q.data || '{}'); } catch (e) {}
-      return q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product';
+      const isProduct = q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product';
+      if (!isProduct) return false;
+
+      // Access check: If not canViewAll, user can ONLY view their own quotations
+      if (!canViewAll) {
+        const uid = String(user?.id || '').trim().toLowerCase();
+        const uname = String(user?.username || '').trim().toLowerCase();
+        const uName = String(user?.name || '').trim().toLowerCase();
+        const uPrefix = String(user?.prefix || '').trim().toLowerCase();
+
+        const qCreatedBy = String(q.createdBy || parsed.createdBy || '').trim().toLowerCase();
+        const qCreatedByName = String(q.createdByName || parsed.createdByName || '').trim().toLowerCase();
+        const qCreatedByUname = String(parsed.createdByUsername || '').trim().toLowerCase();
+        const qSalesRep = String(parsed.salesRep || parsed.preparedBy || '').trim().toLowerCase();
+        const quoNoLower = String(parsed.quotationNo || q.docNo || q.id || '').trim().toLowerCase();
+
+        const isOwn = (uid && qCreatedBy && qCreatedBy === uid) ||
+                      (uname && (qCreatedBy === uname || qCreatedByUname === uname)) ||
+                      (uName && (qCreatedByName === uName || qSalesRep === uName)) ||
+                      (uPrefix && quoNoLower.startsWith(uPrefix));
+
+        if (!isOwn) return false;
+      }
+
+      return true;
     });
   }, [quotations]);
 
@@ -177,6 +216,7 @@ export const ProductQuotations: React.FC = () => {
           clientVat,
           clientSvat,
           latestDate: q.date,
+          salesRep: q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || '',
           versions: []
         };
       }
@@ -647,6 +687,17 @@ export const ProductQuotations: React.FC = () => {
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
               Finished Goods Catalog
             </span>
+            {!canViewAll ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title="Your account permissions only permit viewing quotations created by you">
+                <UserCheck size={12} />
+                My Quotations ({user?.name || user?.username})
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Full sales management visibility across all team members">
+                <Shield size={12} />
+                All Team Quotes
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted mt-0.5">
             {filteredGroups.length} product {filteredGroups.length === 1 ? 'quotation' : 'quotations'}
@@ -889,6 +940,26 @@ export const ProductQuotations: React.FC = () => {
               />
             </div>
           </div>
+
+          {canViewAll && salesRepOptions.length > 0 && (
+            <>
+              <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+              <div className="flex items-center gap-1.5">
+                <Users size={13} className="text-muted shrink-0" />
+                <span className="text-muted font-semibold uppercase tracking-wider text-xs">Sales Rep:</span>
+                <select
+                  value={salesRepFilter}
+                  onChange={e => setSalesRepFilter(e.target.value)}
+                  className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+                >
+                  <option value="all">All Reps ({salesRepOptions.length})</option>
+                  {salesRepOptions.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
 

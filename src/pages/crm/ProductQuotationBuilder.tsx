@@ -1090,7 +1090,10 @@ export const ProductQuotationBuilder: React.FC = () => {
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         productTotals: { totalCost: totalProductCost, revenue: custTotal, margin: expectedMargin, profit: expectedProfit },
         selectedProfile, custSscl, custVat, jobSscl, jobVat,
-        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+        createdBy: user?.id || user?.username || '',
+        createdByName: user?.name || user?.username || '',
+        createdByUsername: user?.username || ''
       };
       
       const sub = custItems.reduce((s, i) => s + Number(i.qty || 0) * Number(i.unitPrice || 0), 0);
@@ -1211,7 +1214,10 @@ export const ProductQuotationBuilder: React.FC = () => {
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         productTotals: { totalCost: totalProductCost, revenue: custTotal, margin: expectedMargin, profit: expectedProfit },
         taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
-        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+        createdBy: user?.id || user?.username || '',
+        createdByName: user?.name || user?.username || '',
+        createdByUsername: user?.username || ''
       };
 
       const amount = custWithSSCL;
@@ -1228,7 +1234,9 @@ export const ProductQuotationBuilder: React.FC = () => {
           taxEnabled,
           docNo,
           issueNo,
-          issueDate
+          issueDate,
+          createdBy: user?.id || user?.username || '',
+          createdByName: user?.name || user?.username || ''
         });
         if (result.success) {
           if (draftIdRef.current && draftIdRef.current !== currentId) {
@@ -1252,7 +1260,9 @@ export const ProductQuotationBuilder: React.FC = () => {
           taxEnabled,
           docNo,
           issueNo,
-          issueDate
+          issueDate,
+          createdBy: user?.id || user?.username || '',
+          createdByName: user?.name || user?.username || ''
         });
         if (result.success) {
           const newId = result.quotation?.id || null;

@@ -40,6 +40,8 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     badgeColor: 'border-amber-500/20 bg-amber-500/10 text-amber-400',
     permissions: [
       { id: 'quotations.view', label: 'View Quotations', description: 'Browse and inspect existing quotations and status' },
+      { id: 'quotations.view_all', label: 'View All Quotations (Sales Head / Management)', description: 'View all quotations created across the entire company/sales team' },
+      { id: 'quotations.view_own', label: 'View Own Quotations Only (Sales Rep)', description: 'Restricts user to only see quotations created by themselves' },
       { id: 'quotations.create', label: 'Create Quotations', description: 'Draft new quotations with line items and custom pricing' },
       { id: 'quotations.edit', label: 'Edit Quotations', description: 'Modify draft quotes, adjust quantities, and unit prices' },
       { id: 'quotations.delete', label: 'Delete Quotations', description: 'Cancel or delete unconfirmed quotations' },
@@ -166,6 +168,8 @@ export const ALL_PERMISSION_IDS: string[] = PERMISSION_MODULES.flatMap(m => m.pe
 
 // Map alias permissions for seamless backwards compatibility
 const PERMISSION_ALIASES: Record<string, string[]> = {
+  'quotations.view_all': ['quotations.view_all'],
+  'quotations.view_own': ['quotations.view_own', 'quotations.view'],
   'quotations.approve': ['approvals.quotations', 'quotations.approve'],
   'approvals.quotations': ['approvals.quotations', 'quotations.approve'],
   'quotations.discount': ['approvals.discounts', 'quotations.discount'],

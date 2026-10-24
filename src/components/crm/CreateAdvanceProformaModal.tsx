@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
 import { createInvoice } from '@/lib/api';
 import { useAccounts, useTaxProfiles } from '@/hooks/useFinance';
+import { useCustomers, useLeads } from '@/hooks/useData';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -36,9 +37,32 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const quotationNo = order?.quotationNo || '';
   const quotationId = order?.quoteId || '';
 
+  const { data: allCustomers = [] } = useCustomers();
+  const { data: allLeads = [] } = useLeads();
+
   const customerId = order?.customerId || order?.matchedCustomerId || '';
-  const customerName = order?.customerName || 'Customer';
-  const customerCompany = order?.customerCompany || order?.customerName || '';
+  
+  const matchedCustomer = useMemo(() => {
+    const cid = customerId;
+    const cname = order?.customerName || order?.customer;
+    if (cid) {
+      const found = allCustomers.find((c: any) => c.id === cid) || allLeads.find((l: any) => l.id === cid);
+      if (found) return found;
+    }
+    if (cname) {
+      const found = allCustomers.find((c: any) => c.name?.toLowerCase() === cname.toLowerCase() || c.company?.toLowerCase() === cname.toLowerCase()) ||
+                    allLeads.find((l: any) => l.name?.toLowerCase() === cname.toLowerCase() || l.company?.toLowerCase() === cname.toLowerCase());
+      if (found) return found;
+    }
+    return null;
+  }, [customerId, order, allCustomers, allLeads]);
+
+  const customerName = order?.customerName || order?.customer || matchedCustomer?.name || 'Valued Customer';
+  const customerCompany = order?.customerCompany || order?.company || matchedCustomer?.company || matchedCustomer?.name || customerName;
+  const customerAddress = order?.deliveryAddress || order?.customerAddress || matchedCustomer?.address || '';
+  const customerPhone = order?.customerPhone || order?.phone || matchedCustomer?.phone || '';
+  const customerEmail = order?.customerEmail || order?.email || matchedCustomer?.email || '';
+  const customerVat = order?.customerVat || order?.vatNo || matchedCustomer?.vat || matchedCustomer?.tin || '';
   const customerAttention = order?.attention || '';
 
   // Order total
@@ -194,8 +218,9 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
       const proformaItems = [
         {
           id: `item-${Date.now()}`,
-          description: `Advance Deposit (${advancePercent}% of Order Total) - Sales Order #${orderNo}`,
-          details: order?.productName ? `Ref Item: ${order.productName} (Total Order Value: ${formatCurrency(orderTotal)})` : `Order Value: ${formatCurrency(orderTotal)}`,
+          reference: 'ADV-1',
+          description: `Advance Payment Deposit (${advancePercent}% of Order Total) - Sales Order #${orderNo}`,
+          details: order?.productName ? `Item: ${order.productName} (Total Order: ${formatCurrency(orderTotal)})` : `Order Total: ${formatCurrency(orderTotal)}`,
           qty: 1,
           unitPrice: calculation.subtotal,
           amount: calculation.subtotal,
@@ -207,10 +232,19 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         id: cleanDocNo,
         invoiceNo: cleanDocNo,
         orderNo: orderNo,
-        customerId: customerId || 'CUST-DIRECT',
-        leadId: customerId || 'CUST-DIRECT',
+        orderId: orderId || null,
+        customerId: customerId || matchedCustomer?.id || null,
+        leadId: customerId || matchedCustomer?.id || null,
+        customerName: customerName,
+        customerCompany: customerCompany,
+        customerAddress: customerAddress,
+        customerPhone: customerPhone,
+        customerEmail: customerEmail,
+        customerVat: customerVat,
+        placeOfSupply: order?.deliveryAddress || 'Negombo, Sri Lanka',
         date: date,
         dueDate: dueDate,
+        deliveryDate: order?.targetDeliveryDate || date,
         subtotal: calculation.subtotal,
         taxAmount: calculation.totalTax,
         total: calculation.totalPayable,
@@ -242,7 +276,6 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         items: JSON.stringify(proformaItems),
         notes: notes,
         attention: customerAttention,
-        customerVat: order?.customerVat || '',
         additionalInfo: JSON.stringify({
           isProforma: true,
           orderNo: orderNo,
@@ -263,8 +296,36 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         throw new Error(res.error || res.message || 'Server rejected invoice creation');
       }
 
+      const fullInvoice = {
+        ...payload,
+        id: cleanDocNo,
+        invoiceNo: cleanDocNo,
+        customerName: customerName,
+        customerCompany: customerCompany,
+        customerAddress: customerAddress,
+        customerPhone: customerPhone,
+        customerEmail: customerEmail,
+        customerVat: customerVat,
+        customer: {
+          name: customerName,
+          company: customerCompany,
+          address: customerAddress,
+          phone: customerPhone,
+          email: customerEmail,
+          vat: customerVat
+        },
+        items: proformaItems, // Array for immediate rendering
+        bankDetails: selectedBank ? {
+          bankName: selectedBank.bankName || selectedBank.name,
+          accountNumber: selectedBank.accountNumber || selectedBank.code,
+          branch: selectedBank.branch || '',
+          accountName: selectedBank.accountName || settings?.company_name || 'Rex Industries (Pvt) Ltd',
+          swiftCode: selectedBank.swiftCode || ''
+        } : null
+      };
+
       toast(`Proforma Invoice ${cleanDocNo} created successfully!`, 'success');
-      onSuccess(res || payload);
+      onSuccess(fullInvoice);
       onClose();
     } catch (err: any) {
       console.error('Failed to create proforma invoice:', err);

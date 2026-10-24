@@ -774,6 +774,12 @@ export const TopBar: React.FC = () => {
                     if (n.type === 'invoice' || n.severity === 'error') {
                       IconComponent = AlertTriangle
                       iconColor = 'text-rose-500 bg-rose-500/10'
+                    } else if (n.type === 'material_shortage') {
+                      IconComponent = AlertTriangle
+                      iconColor = 'text-amber-500 bg-amber-500/15 ring-1 ring-amber-500/30'
+                    } else if (n.type === 'material_mr') {
+                      IconComponent = Package
+                      iconColor = 'text-cyan-500 bg-cyan-500/15 ring-1 ring-cyan-500/30'
                     } else if (n.type === 'inventory' || n.severity === 'warning') {
                       IconComponent = Package
                       iconColor = 'text-amber-500 bg-amber-500/10'

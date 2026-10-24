@@ -3,6 +3,7 @@ import { Printer, Download, X, FileText, ExternalLink, Calendar, Building2 } fro
 import { Button } from '@/components/ui/Button';
 import { InvoicePreview } from '@/components/finance/InvoicePreview';
 import { useTaxProfiles } from '@/hooks/useFinance';
+import { useCustomers, useLeads } from '@/hooks/useData';
 import { formatCurrency, formatDate } from '@/lib/utils';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -22,6 +23,8 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
   const { data: taxProfiles = [] } = useTaxProfiles();
+  const { data: allCustomers = [] } = useCustomers();
+  const { data: allLeads = [] } = useLeads();
 
   if (!isOpen || !invoice) return null;
 
@@ -41,6 +44,26 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
     html2pdf().set(opt).from(printRef.current).save();
   };
 
+  // Resolve numeric values safely
+  const invoiceSubtotal = Number(invoice.subtotal || invoice.amount || invoice.total || 0);
+  const invoiceTaxAmount = Number(invoice.taxAmount || 0);
+  const invoiceTotal = Number(invoice.total || (invoiceSubtotal + invoiceTaxAmount) || invoice.amount || 0);
+  const invoiceDate = invoice.date || invoice.createdAt || new Date().toISOString().slice(0, 10);
+  const deliveryDate = invoice.deliveryDate || invoiceDate;
+
+  // Match customer for reliable fallback
+  const matchedCust = allCustomers.find((c: any) => c.id === invoice.customerId || c.id === invoice.leadId) ||
+                      allLeads.find((l: any) => l.id === invoice.customerId || l.id === invoice.leadId);
+
+  const customerData = {
+    name: invoice.customer?.name || invoice.customerName || invoice.customer || invoice.customerCompany || matchedCust?.name || 'Valued Customer',
+    company: invoice.customer?.company || invoice.customerCompany || invoice.customerName || invoice.customer || matchedCust?.company || matchedCust?.name || '',
+    address: invoice.customer?.address || invoice.customerAddress || invoice.deliveryAddress || matchedCust?.address || '',
+    phone: invoice.customer?.phone || invoice.customerPhone || matchedCust?.phone || '',
+    email: invoice.customer?.email || invoice.customerEmail || matchedCust?.email || '',
+    vat: invoice.customer?.vat || invoice.customerVat || matchedCust?.vat || matchedCust?.tin || ''
+  };
+
   // Parse items safely
   let items: any[] = [];
   if (Array.isArray(invoice.items)) {
@@ -51,6 +74,22 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
     } catch (e) {
       items = [];
     }
+  }
+
+  // If items is empty but invoice has value, generate advance deposit line item
+  if (items.length === 0 && (invoiceSubtotal > 0 || invoiceTotal > 0)) {
+    const advLineAmount = invoiceSubtotal > 0 ? invoiceSubtotal : invoiceTotal;
+    items = [
+      {
+        id: 'item-adv-1',
+        reference: 'ADV-1',
+        description: `Advance Deposit Payment - Sales Order #${invoice.orderNo || ''}`,
+        details: invoice.notes || 'Advance payment for manufacturing commencement',
+        qty: 1,
+        unitPrice: advLineAmount,
+        amount: advLineAmount
+      }
+    ];
   }
 
   // Parse bank details safely
@@ -87,7 +126,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
                 </span>
               </div>
               <p className="text-[11px] text-muted font-mono mt-0.5">
-                Total: {formatCurrency(Number(invoice.total || invoice.amount || 0))} • Date: {formatDate(invoice.date)}
+                Total: {formatCurrency(invoiceTotal)} • Date: {formatDate(invoiceDate)}
               </p>
             </div>
           </div>
@@ -129,25 +168,18 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               invoiceType="proforma"
               docTitle="PROFORMA INVOICE"
               docNo={invoice.invoiceNo || invoice.id}
-              date={invoice.date}
-              deliveryDate={invoice.deliveryDate || invoice.date}
-              placeOfSupply={invoice.placeOfSupply || ''}
+              date={invoiceDate}
+              deliveryDate={deliveryDate}
+              placeOfSupply={invoice.placeOfSupply || 'Negombo, Sri Lanka'}
               additionalInfo={invoice.additionalInfo || ''}
               quotationNo={invoice.quotationNo || ''}
               orderNo={invoice.orderNo || ''}
-              customer={{
-                name: invoice.customerName || invoice.customer || '',
-                company: invoice.customerCompany || invoice.customerName || invoice.customer || '',
-                address: invoice.deliveryAddress || invoice.customerAddress || '',
-                phone: invoice.customerPhone || '',
-                email: invoice.customerEmail || '',
-                vat: invoice.customerVat || ''
-              }}
-              customerVat={invoice.customerVat || ''}
+              customer={customerData}
+              customerVat={customerData.vat || invoice.customerVat || ''}
               items={items}
-              subtotal={Number(invoice.subtotal || invoice.amount || invoice.total || 0)}
-              taxAmount={Number(invoice.taxAmount || 0)}
-              total={Number(invoice.total || invoice.amount || 0)}
+              subtotal={invoiceSubtotal}
+              taxAmount={invoiceTaxAmount}
+              total={invoiceTotal}
               notes={invoice.notes || ''}
               company={settings}
               modeOfPayment={invoice.modeOfPayment || 'Bank Wire / TT'}

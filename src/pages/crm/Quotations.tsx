@@ -20,7 +20,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag, Receipt } from 'lucide-react'
+import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
@@ -32,6 +32,8 @@ export const Quotations: React.FC = () => {
   const { toast, showConfirm } = useDialog();
   const { user, can } = useAuth();
   const canApprove = can('approvals.quotations');
+  const canViewAll = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || (user?.permissions?.includes('*') ?? false);
+  const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all');
 
   const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
 
@@ -482,18 +484,56 @@ export const Quotations: React.FC = () => {
     });
   }, []); // Remove groupedQuotations dependency, just run once on mount!
 
+  const salesRepOptions = useMemo(() => {
+    const reps = new Set<string>();
+    quotations.forEach((q: any) => {
+      let parsed: any = {};
+      try { parsed = JSON.parse(q.data || '{}'); } catch(e){}
+      const rep = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy;
+      if (rep && typeof rep === 'string' && rep.trim()) {
+        reps.add(rep.trim());
+      }
+    });
+    return Array.from(reps);
+  }, [quotations]);
+
   const groupedQuotations = useMemo(() => {
 
 
 
 
   
-    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadEmail?: string, leadAddress: string, leadVat: string, leadSvat: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string }> = {}
+    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadEmail?: string, leadAddress: string, leadVat: string, leadSvat: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string, salesRep?: string }> = {}
     
     quotations.forEach(q => {
        let parsed: any = {}
        try { parsed = JSON.parse(q.data || '{}') } catch(e){}
        if (q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product') return;
+
+       const repName = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || '';
+       const repId = q.createdBy || parsed.createdBy || '';
+       const repUname = parsed.createdByUsername || '';
+
+       // Access check: If not canViewAll, user can ONLY view their own quotations
+       if (!canViewAll) {
+         const uid = String(user?.id || '').trim().toLowerCase();
+         const uname = String(user?.username || '').trim().toLowerCase();
+         const uName = String(user?.name || '').trim().toLowerCase();
+         const uPrefix = String(user?.prefix || '').trim().toLowerCase();
+
+         const qCreatedBy = String(repId).trim().toLowerCase();
+         const qCreatedByName = String(repName).trim().toLowerCase();
+         const qCreatedByUname = String(repUname).trim().toLowerCase();
+         const quoNoLower = String(parsed.quotationNo || q.docNo || q.id || '').trim().toLowerCase();
+
+         const isOwn = (uid && qCreatedBy && qCreatedBy === uid) ||
+                       (uname && (qCreatedBy === uname || qCreatedByUname === uname)) ||
+                       (uName && qCreatedByName === uName) ||
+                       (uPrefix && quoNoLower.startsWith(uPrefix));
+
+         if (!isOwn) return;
+       }
+
        const quoNo = parsed.quotationNo || q.id
        
        if (!groups[quoNo]) {
@@ -505,7 +545,7 @@ export const Quotations: React.FC = () => {
           const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || (lead as any)?.address || '';
           const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || '';
           const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || (cust as any)?.tin || lead?.svat || (lead as any)?.tin || '';
-          groups[quoNo] = { quoNo, leadName, leadCompany, leadEmail, leadAddress, leadVat, leadSvat, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date };
+          groups[quoNo] = { quoNo, leadName, leadCompany, leadEmail, leadAddress, leadVat, leadSvat, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date, salesRep: repName };
         }
        
        if (q.type === 'main') groups[quoNo].main.push(q)
@@ -597,8 +637,14 @@ export const Quotations: React.FC = () => {
 
     // Search filter
     const q = search.toLowerCase();
-    const searchMatch = !search || [g.quoNo, g.leadName, g.leadCompany].some(v => v?.toLowerCase().includes(q));
+    const searchMatch = !search || [g.quoNo, g.leadName, g.leadCompany, g.salesRep].some(v => v?.toLowerCase().includes(q));
     if (!searchMatch) return false;
+
+    // Sales rep filter for management / sales head view
+    if (canViewAll && salesRepFilter !== 'all') {
+      const gRep = (g.salesRep || g.main[0]?.createdByName || '').trim().toLowerCase();
+      if (gRep !== salesRepFilter.trim().toLowerCase()) return false;
+    }
 
     // 1. Temporary autosaved drafts (type === 'draft') should only be shown if a customer is selected
     if (isAutoDraft && customerFilter === 'all') {
@@ -990,6 +1036,17 @@ export const Quotations: React.FC = () => {
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none bg-rex-500/10 text-rex-600 dark:text-rex-400 border border-rex-500/20 uppercase tracking-wider font-mono">
               BOM & Costing Engine
             </span>
+            {!canViewAll ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title="Your account permissions only permit viewing quotations created by you">
+                <UserCheck size={12} />
+                My Quotations ({user?.name || user?.username})
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20" title="Full sales management visibility across all team members">
+                <Shield size={12} />
+                All Team Quotes
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted mt-0.5">
             {filtered.length} {filtered.length === 1 ? 'quotation' : 'quotations'}
@@ -1258,6 +1315,26 @@ export const Quotations: React.FC = () => {
               />
             </div>
           </div>
+
+          {canViewAll && salesRepOptions.length > 0 && (
+            <>
+              <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
+              <div className="flex items-center gap-1.5">
+                <Users size={13} className="text-muted shrink-0" />
+                <span className="text-muted font-semibold uppercase tracking-wider text-xs">Sales Rep:</span>
+                <select
+                  value={salesRepFilter}
+                  onChange={e => setSalesRepFilter(e.target.value)}
+                  className="bg-surface border border-theme-subtle rounded-none px-2 py-1 text-primary text-xs focus:border-rex-500 outline-none"
+                >
+                  <option value="all">All Reps ({salesRepOptions.length})</option>
+                  {salesRepOptions.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
 

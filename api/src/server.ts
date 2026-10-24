@@ -648,7 +648,7 @@ async function runDatabaseSync() {
     const ALL_PERMS = [
       'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
       'crm.leads.view', 'crm.leads.create', 'crm.leads.edit', 'crm.leads.delete', 'crm.leads.manage', 'crm.deals.manage', 'crm.followups.manage',
-      'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
+      'quotations.view', 'quotations.view_all', 'quotations.view_own', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
       'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.invoices.delete', 'finance.payments.record',
       'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create',
       'finance.receivables.view', 'finance.payables.view', 'finance.tax.manage', 'finance.reports.view',
@@ -678,7 +678,21 @@ async function runDatabaseSync() {
         permissions: JSON.stringify(ALL_PERMS.filter(p => !p.startsWith('admin.database'))),
         isSystem: 1
       },
-      {
+            {
+        id: 'sales_head',
+        name: 'Head of Sales',
+        description: 'Sales leadership, full quotation overview across all reps, quotation approvals, margins, and sales operations',
+        permissions: JSON.stringify([
+          'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.customers.delete', 'crm.credit.request',
+          'crm.leads.view', 'crm.leads.create', 'crm.leads.edit', 'crm.leads.delete', 'crm.leads.manage',
+          'crm.deals.manage', 'crm.followups.manage',
+          'quotations.view', 'quotations.view_all', 'quotations.view_own', 'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.approve', 'quotations.discount', 'quotations.print',
+          'approvals.quotations', 'approvals.discounts',
+          'finance.invoices.view', 'finance.invoices.create', 'inventory.items.view', 'inventory.items.view_details'
+        ]),
+        isSystem: 1
+      },
+{
         id: 'sales',
         name: 'Sales Team (Executive)',
         description: 'Lead generation & inquiry management, customer relations, quotations generation, discounts, and sales invoicing',
@@ -686,7 +700,7 @@ async function runDatabaseSync() {
           'crm.customers.view', 'crm.customers.create', 'crm.customers.edit', 'crm.credit.request',
           'crm.leads.view', 'crm.leads.create', 'crm.leads.edit', 'crm.leads.delete', 'crm.leads.manage',
           'crm.deals.manage', 'crm.followups.manage',
-          'quotations.view', 'quotations.create', 'quotations.edit', 'quotations.discount', 'quotations.print',
+          'quotations.view', 'quotations.view_own', 'quotations.create', 'quotations.edit', 'quotations.discount', 'quotations.print',
           'finance.invoices.view', 'inventory.items.view', 'inventory.items.view_details'
         ]),
         isSystem: 1
@@ -1123,7 +1137,14 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN materialStatus VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN materialAlert TEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN materialStatus VARCHAR(100) DEFAULT NULL",
-    "ALTER TABLE finished_goods_orders ADD COLUMN materialAlert TEXT DEFAULT NULL"
+    "ALTER TABLE finished_goods_orders ADD COLUMN materialAlert TEXT DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN createdBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN createdByName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerAddress TEXT DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN customerEmail VARCHAR(255) DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -1801,7 +1822,7 @@ app.post('/api/customers', async (req, res) => {
     data.creditLimitStatus = isPending ? 'pending' : 'approved';
 
     const [result] = await db.query('INSERT INTO customers SET ?', data);
-    res.json({ success: true, id: data.id });
+    res.json({ success: true, id: data.id, invoice: safeData });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -2142,6 +2163,10 @@ app.post('/api/quotations', async (req, res) => {
     const nextVersion = isDraft ? 1 : ((rows[0]?.maxVer || 0) + 1);
     const prefix = (qType === 'product' || qType === 'product_draft') ? 'PQ' : 'QT';
     
+    const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
+    const createdBy = data.createdBy || qData.createdBy || (req.user && (req.user.id || req.user.username)) || null;
+    const createdByName = data.createdByName || qData.createdByName || (req.user && (req.user.name || req.user.username)) || null;
+
     const newQuotation = {
       id: `${prefix}-${Date.now().toString().slice(-6)}`,
       leadId: data.leadId,
@@ -2150,7 +2175,13 @@ app.post('/api/quotations', async (req, res) => {
       data: JSON.stringify(data.data),
       totalAmount: data.totalAmount,
       customAmount: data.customAmount || null,
-      type: qType
+      type: qType,
+      quotationNo: data.quotationNo || qData.quotationNo || null,
+      docNo: data.docNo || qData.docNo || null,
+      issueNo: data.issueNo || qData.issueNo || null,
+      issueDate: data.issueDate || qData.issueDate || null,
+      createdBy: createdBy,
+      createdByName: createdByName
     };
     
     await db.query('INSERT INTO quotations SET ?', newQuotation);
@@ -2180,7 +2211,9 @@ app.put('/api/quotations/update/:id', async (req, res) => {
         docNo = COALESCE(?, docNo), 
         issueNo = COALESCE(?, issueNo), 
         issueDate = COALESCE(?, issueDate),
-        quotationNo = COALESCE(?, quotationNo)
+        quotationNo = COALESCE(?, quotationNo),
+        createdBy = COALESCE(createdBy, ?),
+        createdByName = COALESCE(createdByName, ?)
       WHERE id = ?`,
       [
         JSON.stringify(data.data), 
@@ -2192,6 +2225,8 @@ app.put('/api/quotations/update/:id', async (req, res) => {
         data.issueNo || null, 
         data.issueDate || null,
         qNo,
+        data.createdBy || qData.createdBy || null,
+        data.createdByName || qData.createdByName || null,
         id
       ]
     );
@@ -4690,10 +4725,11 @@ app.get('/api/invoices', async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT i.*, 
-             COALESCE(c.name, l.name) AS customerName, 
-             COALESCE(c.company, l.company) AS customerCompany,
-             c.email AS customerEmail,
-             c.phone AS customerPhone
+             COALESCE(NULLIF(i.customerName, ''), c.name, l.name) AS customerName, 
+             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, i.customerName) AS customerCompany,
+             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address) AS customerAddress,
+             COALESCE(NULLIF(i.customerEmail, ''), c.email) AS customerEmail,
+             COALESCE(NULLIF(i.customerPhone, ''), c.phone) AS customerPhone
       FROM invoices i
       LEFT JOIN customers c ON (i.customerId = c.id OR (i.customerId IS NULL AND i.leadId = c.id))
       LEFT JOIN leads l ON (i.leadId = l.id OR (i.leadId IS NULL AND i.customerId = l.id))
@@ -8015,6 +8051,32 @@ app.get('/api/notifications', async (req, res) => {
           time: 'Pending review',
           link: `/crm/customers/${c.id}`,
           timestamp: Date.now() - 7200000
+        });
+      }
+    } catch(e) {}
+
+    // Material Shortages & Substitute Requests Alerts
+    try {
+      const [shortageWos] = await db.query(
+        `SELECT id, orderNo, title, customer, quoteId, materialStatus, materialAlert, updatedAt, createdAt 
+         FROM work_orders 
+         WHERE materialStatus IS NOT NULL 
+           AND materialStatus != 'Normal' 
+           AND materialStatus != ''
+         ORDER BY updatedAt DESC LIMIT 10`
+      ) as any[];
+
+      for (const wo of (shortageWos || [])) {
+        const isMr = wo.materialStatus === 'Purchase MR Raised';
+        list.push({
+          id: `mat-shortage-${wo.id}`,
+          type: isMr ? 'material_mr' : 'material_shortage',
+          severity: isMr ? 'info' : 'warning',
+          title: `Material Shortage: ${wo.orderNo || wo.id}`,
+          message: `${wo.materialAlert || wo.materialStatus} · WO: ${wo.orderNo || wo.id}${wo.customer ? ' (' + wo.customer + ')' : ''}`,
+          time: wo.materialStatus,
+          link: '/admin/approvals',
+          timestamp: wo.updatedAt ? new Date(wo.updatedAt).getTime() : (wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now())
         });
       }
     } catch(e) {}

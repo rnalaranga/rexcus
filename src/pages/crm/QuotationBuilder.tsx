@@ -943,7 +943,10 @@ export const QuotationBuilder: React.FC = () => {
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         selectedProfile, custSscl, custVat, jobSscl, jobVat,
-        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+        createdBy: user?.id || user?.username || '',
+        createdByName: user?.name || user?.username || '',
+        createdByUsername: user?.username || ''
       }
       
       const sub = custItems.reduce((s, i) => s + Number(i.qty) * Number(i.unitPrice), 0);
@@ -1254,7 +1257,10 @@ export const QuotationBuilder: React.FC = () => {
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
-        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName
+        customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
+        createdBy: user?.id || user?.username || '',
+        createdByName: user?.name || user?.username || '',
+        createdByUsername: user?.username || ''
       }
 
       const amount = custWithSSCL
@@ -1263,7 +1269,9 @@ export const QuotationBuilder: React.FC = () => {
       if (currentId) {
         result = await updateQuotation(currentId, {
           leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
-          totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+          totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+          createdBy: user?.id || user?.username || '',
+          createdByName: user?.name || user?.username || ''
         });
         if (result.success) {
           if (draftIdRef.current && draftIdRef.current !== currentId) {
@@ -1279,7 +1287,9 @@ export const QuotationBuilder: React.FC = () => {
       } else {
         result = await createQuotation({
           leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
-          totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+          totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+          createdBy: user?.id || user?.username || '',
+          createdByName: user?.name || user?.username || ''
         });
         if (result.success) {
           const newId = result.quotation?.id || null;
