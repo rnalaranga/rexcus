@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useTaxProfiles } from '@/hooks/useFinance';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { useMaterialRequests, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { createPO, updatePO, fetchPOs } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -41,6 +42,7 @@ export const POBuilder: React.FC = () => {
   const mrParam = searchParams.get('mr');
 
   const navigate = useNavigate();
+  const { toast } = useDialog();
   const { data: suppliers } = useSuppliers();
   const { data: inventory } = useInventory();
   const { data: mrs } = useMaterialRequests();
@@ -382,18 +384,20 @@ export const POBuilder: React.FC = () => {
         shippingMethod, 
         paymentTerms, 
         terms, 
-        status: id ? status.toLowerCase() : 'sent' 
+        status: status.toLowerCase() 
       };
 
       if (id) {
         await updatePO(id, payload);
+        toast(`Purchase Order ${docNo} updated successfully!`, 'success');
       } else {
         await createPO(payload);
+        toast(`Purchase Order ${docNo} created successfully!`, 'success');
       }
       navigate('/purchasing');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Failed to save Purchase Order');
+      toast(e?.message || 'Failed to save Purchase Order', 'error');
     } finally {
       setSaving(false);
     }
@@ -637,13 +641,18 @@ export const POBuilder: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] font-bold text-muted uppercase mb-1">Ship Via</label>
-                      <select value={shippingMethod} onChange={e => setShippingMethod(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
-                        <option>Standard Delivery</option>
-                        <option>Express Air Freight</option>
-                        <option>Sea Cargo</option>
-                        <option>Supplier Direct Fleet</option>
-                        <option>Customer Pickup</option>
+                      <label className="block text-[11px] font-bold text-muted uppercase mb-1">Workflow Status</label>
+                      <select 
+                        value={status} 
+                        onChange={e => setStatus(e.target.value)} 
+                        className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm font-semibold uppercase"
+                      >
+                        <option value="DRAFT">Draft</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="SENT">Sent to Supplier</option>
+                        <option value="PARTIALLY_RECEIVED">Partially Received</option>
+                        <option value="RECEIVED">Received (Fulfilled)</option>
+                        <option value="CANCELLED">Cancelled</option>
                       </select>
                     </div>
                     <div>
@@ -657,6 +666,16 @@ export const POBuilder: React.FC = () => {
                         <option>LC (Letter of Credit)</option>
                       </select>
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted uppercase mb-1">Ship Via</label>
+                    <select value={shippingMethod} onChange={e => setShippingMethod(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
+                      <option>Standard Delivery</option>
+                      <option>Express Air Freight</option>
+                      <option>Sea Cargo</option>
+                      <option>Supplier Direct Fleet</option>
+                      <option>Customer Pickup</option>
+                    </select>
                   </div>
                 </div>
               </GlassCard>

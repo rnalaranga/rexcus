@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext'
 export const CustomerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate  = useNavigate()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
   
   const { data: quotations } = useQuotations()
   const { data: customers, loading: cl, refetch } = useCustomers()
@@ -148,7 +148,7 @@ export const CustomerDetail: React.FC = () => {
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/approve-credit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, actionBy: user?.name || user?.username || 'Finance Approver' })
       });
       if (res.ok) {
         toast(`Customer changes ${status} successfully`, 'success');
@@ -316,7 +316,7 @@ export const CustomerDetail: React.FC = () => {
         <Button variant="primary" size="sm" icon={Briefcase} onClick={() => navigate('/crm/deals')}>New Deal</Button>
       </div>
 
-      {customer.creditLimitStatus === 'pending' && user?.role === 'admin' && (
+      {customer.creditLimitStatus === 'pending' && (user?.role === 'admin' || can('approvals.credit_limit')) && (
         <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg animate-pulse-slow">
           <div className="flex items-center justify-between">
             <div>

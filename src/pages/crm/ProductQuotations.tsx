@@ -85,6 +85,11 @@ export const ProductQuotations: React.FC = () => {
   const [activePrintReceipt, setActivePrintReceipt] = useState<any>(null)
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
 
+  // Rejection modal state
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
+  const [rejectionTarget, setRejectionTarget] = useState<any>(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+
   const loadPaymentReceipts = async () => {
     try {
       const recs = await fetchPaymentReceipts();
@@ -595,18 +600,12 @@ export const ProductQuotations: React.FC = () => {
                 {canApprove && status === 'Pending Approval' && (
                   <button
                     type="button"
-                    onClick={async () => {
+                    onClick={() => {
                       setOpenActionId(null);
                       setActionCoords(null);
-                      const reason = prompt('Enter rejection reason:');
-                      if (!reason) return;
-                      try {
-                        await rejectQuotation(latest.id, reason);
-                        toast('Quotation rejected', 'error');
-                        refetch();
-                      } catch(err: any) {
-                        toast(err?.message || 'Failed to reject', 'error');
-                      }
+                      setRejectionTarget(latest);
+                      setRejectionReason('');
+                      setRejectionModalOpen(true);
                     }}
                     className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                   >
@@ -1412,6 +1411,70 @@ export const ProductQuotations: React.FC = () => {
         receipt={activePrintReceipt}
         settings={settings}
       />
+
+      <Modal
+        isOpen={rejectionModalOpen}
+        onClose={() => {
+          setRejectionModalOpen(false);
+          setRejectionTarget(null);
+          setRejectionReason('');
+        }}
+        title="Reject Quotation"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-secondary">
+            Please enter the reason or return notes for rejecting quotation <span className="font-mono font-semibold text-primary">{rejectionTarget?.quotationNo || rejectionTarget?.docNo || rejectionTarget?.id}</span>.
+          </p>
+          <div>
+            <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+              Rejection Reason / Notes <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="e.g. Price margin requires revision / Delivery timeline unsuitable..."
+              className="w-full text-xs p-2.5 bg-surface2 border border-theme-subtle rounded-none focus:outline-none focus:border-rose-500 text-primary resize-none"
+              autoFocus
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setRejectionModalOpen(false);
+                setRejectionTarget(null);
+                setRejectionReason('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!rejectionReason.trim()}
+              onClick={async () => {
+                if (!rejectionTarget || !rejectionReason.trim()) return;
+                try {
+                  await rejectQuotation(rejectionTarget.id, rejectionReason.trim());
+                  toast('Quotation rejected with notes', 'info');
+                  setRejectionModalOpen(false);
+                  setRejectionTarget(null);
+                  setRejectionReason('');
+                  refetch();
+                } catch(err: any) {
+                  toast(err?.message || 'Failed to reject quotation', 'error');
+                }
+              }}
+              className="bg-rose-600 hover:bg-rose-500 text-white font-medium"
+            >
+              Confirm Rejection
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

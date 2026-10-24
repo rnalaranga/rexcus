@@ -64,12 +64,13 @@ export default function Approvals() {
   // --- Quotation Approvals (Pending) ---
   const pendingQuotations = useMemo(() => {
     return quotations.filter((q: any) => {
-      const isPending = q.status === 'Pending Approval' || (q.status === 'Draft' && Number(q.totalAmount) > 0)
+      let parsed: any = {}
+      try { parsed = typeof q.data === 'string' ? JSON.parse(q.data || '{}') : (q.data || {}) } catch (e) {}
+      const val = Number(q.totalAmount || parsed.custTotals?.total || parsed.total || 0)
+      const isPending = q.status === 'Pending Approval' || (q.status === 'Draft' && val > 0)
       if (!isPending) return false
       if (!search.trim()) return true
       const term = search.toLowerCase()
-      let parsed: any = {}
-      try { parsed = JSON.parse(q.data || '{}') } catch (e) {}
       const quoNo = (parsed.quotationNo || q.docNo || q.id || '').toLowerCase()
       const client = (parsed.customerCompany || parsed.customerName || q.leadId || '').toLowerCase()
       return quoNo.includes(term) || client.includes(term)
