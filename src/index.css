@@ -16,9 +16,9 @@
     --border-subtle: 224 228 235;   /* stronger subtle border */
 
     --text-primary:  15 15 20;
-    --text-secondary:70 75 90;      /* darker secondary text */
-    --text-muted:    110 115 130;   /* darker muted text */
-    --text-faint:    160 165 180;   /* darker faint text */
+    --text-secondary:55 60 75;      /* punchier secondary text */
+    --text-muted:    85 92 108;     /* darker, clearer muted text */
+    --text-faint:    130 135 150;   /* crisp faint text */
 
     --shadow-glass:  0 2px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
     --shadow-red:    0 4px 24px rgba(185,28,28,0.15);
@@ -35,10 +35,10 @@
     --border:        40 40 50;
     --border-subtle: 30 30 38;
 
-    --text-primary:  235 236 242;
-    --text-secondary:160 163 180;
-    --text-muted:    100 103 120;
-    --text-faint:    60 63 78;
+    --text-primary:  242 244 252;
+    --text-secondary:175 180 200;
+    --text-muted:    125 132 152;   /* brighter, clear dark mode muted */
+    --text-faint:    85 90 108;
 
     --shadow-glass:  0 4px 24px rgba(0,0,0,0.5);
     --shadow-red:    0 4px 32px rgba(185,28,28,0.25);
@@ -146,11 +146,20 @@
   body {
     background-color: rgb(var(--bg-base));
     color: rgb(var(--text-primary));
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     overflow: hidden;
     transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  /* Industrial Grade Tabular Monospace for Numbers, Currency & Identifiers */
+  code, kbd, samp, pre, .font-mono, [class*="font-mono"] {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-variant-numeric: tabular-nums lining-nums !important;
+    letter-spacing: -0.015em;
   }
 
   ::-webkit-scrollbar { width: 4px; height: 4px; }
