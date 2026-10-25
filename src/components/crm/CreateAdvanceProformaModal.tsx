@@ -276,15 +276,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         items: JSON.stringify(proformaItems),
         notes: notes,
         attention: customerAttention,
-        additionalInfo: JSON.stringify({
-          isProforma: true,
-          orderNo: orderNo,
-          orderId: orderId,
-          quotationNo: quotationNo,
-          advancePercent: advancePercent,
-          advanceBase: advanceBaseAmount,
-          taxOption: taxOption
-        })
+        paymentTerms: `Advance Deposit (${advancePercent}%) - ${modeOfPayment}`,
+        additionalInfo: ''
       };
 
       if (quotationNo) payload.quotationNo = quotationNo;

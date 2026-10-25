@@ -110,6 +110,7 @@ export interface InvoicePreviewProps {
   bankDetails?: any;
   advanceDeducted?: number;
   receiptNos?: string;
+  paymentTerms?: string;
   [key: string]: any;
 }
 
@@ -140,12 +141,20 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   bankDetails,
   advanceDeducted = 0,
   receiptNos = '',
+  paymentTerms,
   isProforma: isProformaProp = false,
   invoiceType = '',
   docTitle = ''
 }) => {
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
+
+  const isProforma = Boolean(
+    isProformaProp ||
+    invoiceType === 'proforma' ||
+    docTitle?.toLowerCase().includes('proforma') ||
+    (docNo && (docNo.startsWith('PI-') || docNo.startsWith('PRO-') || docNo.includes('PROFORMA')))
+  );
 
   // Parse reference and additional info items into structured boxes
   const infoItems: { label: string; value: string }[] = [];
@@ -154,30 +163,35 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
   if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
   if (dispatchNo) infoItems.push({ label: 'Dispatch No.', value: String(dispatchNo) });
-  // Determine Payment Terms value (prefer notes if given, else modeOfPayment)
-  const explicitTerms = notes && String(notes).trim();
-
-  if (explicitTerms) {
-    infoItems.push({
-      label: 'Payment Terms',
-      value: explicitTerms
-    });
+  // Determine Payment Terms value (concise string: e.g. "Advance Deposit (30%)" or "Bank Wire / TT")
+  let cleanPaymentTerms = '';
+  if (paymentTerms && String(paymentTerms).trim() && !String(paymentTerms).trim().startsWith('{')) {
+    cleanPaymentTerms = String(paymentTerms).trim();
+  } else if (isProforma || invoiceType === 'proforma') {
+    cleanPaymentTerms = modeOfPayment || 'Advance Deposit';
+  } else if (modeOfPayment && String(modeOfPayment).trim()) {
+    cleanPaymentTerms = String(modeOfPayment).trim();
+  } else {
+    cleanPaymentTerms = 'Credit';
   }
 
-  // Also parse any string in additionalInfo (e.g. from DB or user input)
-  if (additionalInfo && String(additionalInfo).trim()) {
+  infoItems.push({
+    label: 'Payment Terms',
+    value: cleanPaymentTerms
+  });
+
+  // Also parse any human-readable string in additionalInfo (strictly skip any raw JSON strings)
+  const isRawJson = additionalInfo && (String(additionalInfo).trim().startsWith('{') || String(additionalInfo).includes('"isProforma"'));
+  if (additionalInfo && String(additionalInfo).trim() && !isRawJson) {
     const rawParts = String(additionalInfo).split('|').map(p => p.trim()).filter(Boolean);
     for (const part of rawParts) {
+      if (part.startsWith('{') || part.includes('"isProforma"')) continue;
       const colonIdx = part.indexOf(':');
       if (colonIdx > -1) {
         const rawLbl = part.slice(0, colonIdx).trim();
         const rawVal = part.slice(colonIdx + 1).trim();
-        if (!rawVal) continue; // skip empty like "PO No: "
-        const isTermsLabel = /payment\s*terms/i.test(rawLbl);
-        const hasPaymentTerms = infoItems.some(it => /payment\s*terms/i.test(it.label));
-        if (isTermsLabel && hasPaymentTerms) {
-          continue;
-        }
+        if (!rawVal || rawVal.startsWith('{')) continue;
+        if (/payment\s*terms/i.test(rawLbl)) continue; // already set above
         const exists = infoItems.some(it => 
           it.label.toLowerCase() === rawLbl.toLowerCase() || 
           it.value.toLowerCase() === rawVal.toLowerCase()
@@ -186,28 +200,15 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           infoItems.push({ label: rawLbl, value: rawVal });
         }
       } else {
-        const isPaymentWord = /^(credit|cash|cheque|bank\s*transfer|advance)$/i.test(part);
-        const hasPaymentTerms = infoItems.some(it => /payment\s*terms/i.test(it.label));
-        if (isPaymentWord && hasPaymentTerms) {
-          continue;
-        }
         const exists = infoItems.some(it => it.value.toLowerCase() === part.toLowerCase());
         if (!exists) {
           infoItems.push({ 
-            label: isPaymentWord ? 'Payment Terms' : 'Remarks', 
+            label: 'Remarks', 
             value: part 
           });
         }
       }
     }
-  }
-
-  // If still no payment terms in infoItems, add the default payment terms / mode
-  if (!infoItems.some(it => /payment\s*terms/i.test(it.label))) {
-    infoItems.push({
-      label: 'Payment Terms',
-      value: modeOfPayment || 'Credit'
-    });
   }
 
   const paymentModeDisplay = modeOfPayment || 'Credit';
@@ -336,12 +337,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     (isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0)) ||
     (isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0)
   );
-  const isProforma = Boolean(
-    isProformaProp ||
-    invoiceType === 'proforma' ||
-    docTitle?.toLowerCase().includes('proforma') ||
-    (docNo && (docNo.startsWith('PI-') || docNo.startsWith('PRO-') || docNo.includes('PROFORMA')))
-  );
+
   const invoiceTitle = isProforma ? 'PROFORMA INVOICE' : (isTaxShownSeparately ? 'TAX INVOICE' : 'INVOICE');
   const invoiceDocLabel = isProforma ? 'Proforma Invoice No. :' : (isTaxShownSeparately ? 'Tax Invoice No. :' : 'Invoice No. :');
   const logoSrc = company?.company_logo || company?.logo || company?.companyLogo;
@@ -683,12 +679,22 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </tr>
 
           {/* MODE OF PAYMENT */}
-          <tr style={{ borderBottom: activeBank ? tableBorder : 'none' }}>
+          <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left' }}>
               <span style={{ fontWeight: '700' }}>Mode of Payment:*</span>{' '}
               <span>{paymentModeDisplay}</span>
             </td>
           </tr>
+
+          {/* SPECIAL INSTRUCTIONS / REMARKS */}
+          {notes && String(notes).trim() && !String(notes).trim().startsWith('{') && (
+            <tr style={{ borderBottom: activeBank ? tableBorder : 'none' }}>
+              <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left', backgroundColor: '#fcfcfc' }}>
+                <span style={{ fontWeight: '700' }}>Special Instructions / Remarks:</span>{' '}
+                <span style={{ color: '#1e293b' }}>{String(notes).trim()}</span>
+              </td>
+            </tr>
+          )}
 
           {/* BANK REMITTANCE DETAILS */}
           {activeBank && (
