@@ -86,6 +86,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
             margin: 0 !important; 
             padding: 0 !important;
             background: #ffffff !important;
+            color: #000000 !important;
           }
         }
       `}</style>

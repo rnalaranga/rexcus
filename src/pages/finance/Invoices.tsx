@@ -1070,71 +1070,37 @@ export const Invoices: React.FC = () => {
                   >
                     Email
                   </Button>
-                  <Button variant="ghost" className="h-9 text-xs border border-blue-500/30 text-blue-500 hover:bg-blue-500/10" onClick={() => {
-                      const content = document.getElementById('invoice-preview');
-                      if (!content) return;
-                      const win = window.open('', '_blank');
-                      if (!win) return;
-                      win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>${viewInvoice.id}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      background: #fff;
-      color: #000;
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', Arial, Helvetica, sans-serif;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    body {
-      display: block !important;
-      width: 100%;
-    }
-    #invoice-preview {
-      width: 210mm !important;
-      min-height: 297mm !important;
-      padding: 12mm 15mm !important;
-      margin: 0 auto !important;
-      box-sizing: border-box !important;
-      background: #fff !important;
-    }
-    @page {
-      size: A4 portrait;
-      margin: 0;
-    }
-    @media print {
-      body {
-        margin: 0 !important;
-        padding: 0 !important;
-        display: block !important;
-        background: #fff !important;
-      }
-      #invoice-preview {
-        width: 210mm !important;
-        margin: 0 auto !important;
-        padding: 12mm 15mm !important;
-        box-shadow: none !important;
-      }
-    }
-  </style>
-</head>
-<body>
-  ${content.outerHTML}
-</body>
-</html>`);
-                      win.document.close();
-                      win.focus();
-                      setTimeout(() => {
-                        win.print();
-                      }, 350);
-                  }}>
-                    Print / PDF
+                  <Button 
+                    variant="primary" 
+                    icon={Printer}
+                    className="h-9 text-xs font-bold" 
+                    onClick={() => {
+                      window.print();
+                    }}
+                  >
+                    Print Invoice
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    className="h-9 text-xs border border-blue-500/30 text-blue-500 hover:bg-blue-500/10" 
+                    onClick={() => {
+                      const el = document.getElementById('invoice-preview');
+                      if (!el) return;
+                      // @ts-ignore
+                      import('html2pdf.js').then((html2pdfModule) => {
+                        const html2pdf = html2pdfModule.default || html2pdfModule;
+                        const opt: any = {
+                          margin: [5, 5, 5, 5],
+                          filename: `Invoice_${viewInvoice.id || 'INV'}.pdf`,
+                          image: { type: 'jpeg', quality: 0.98 },
+                          html2canvas: { scale: 2, useCORS: true },
+                          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                        };
+                        html2pdf().set(opt).from(el).save();
+                      });
+                    }}
+                  >
+                    Export PDF
                   </Button>
                   <Button variant="ghost" className="h-9 text-xs border border-red-500/30 text-red-500 hover:bg-red-500/10" onClick={() => setDeleteTarget(viewInvoice.id)}>
                     Delete

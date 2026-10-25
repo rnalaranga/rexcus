@@ -343,21 +343,39 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const logoSrc = company?.company_logo || company?.logo || company?.companyLogo;
 
   return (
-    <div 
-      id="invoice-preview" 
-      style={{ 
-        fontFamily: "'Inter', Arial, Helvetica, sans-serif", 
-        background: '#ffffff', 
-        color: '#000000', 
-        fontSize: '11px', 
-        lineHeight: 1.4, 
-        padding: '12mm 15mm', 
-        width: '210mm', 
-        minHeight: '297mm', 
-        margin: '0 auto', 
-        boxSizing: 'border-box' 
-      }}
-    >
+    <>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #invoice-preview, #invoice-preview * { visibility: visible !important; }
+          #invoice-preview {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 210mm !important;
+            margin: 0 !important;
+            padding: 12mm 15mm !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
+      <div 
+        id="invoice-preview" 
+        style={{ 
+          fontFamily: "'Inter', Arial, Helvetica, sans-serif", 
+          background: '#ffffff', 
+          color: '#000000', 
+          fontSize: '11px', 
+          lineHeight: 1.4, 
+          padding: '12mm 15mm', 
+          width: '210mm', 
+          minHeight: '297mm', 
+          margin: '0 auto', 
+          boxSizing: 'border-box' 
+        }}
+      >
       {/* ── 1. HEADER: Logo on the Left, Title on the Right ── */}
       <div style={{ 
         display: 'flex', 
@@ -794,6 +812,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

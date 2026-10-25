@@ -1523,7 +1523,24 @@ export const MaterialIssueHub: React.FC = () => {
           title={`Goods Issue Note: ${printGinModal.ginNo}`} 
           size="lg"
         >
-          <div className="p-6 space-y-6 bg-white text-slate-900 font-sans print:p-0">
+          <>
+            <style>{`
+              @media print {
+                body * { visibility: hidden !important; }
+                #gin-print-section, #gin-print-section * { visibility: visible !important; }
+                #gin-print-section {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 210mm !important;
+                  margin: 0 !important;
+                  padding: 10mm !important;
+                  background: #ffffff !important;
+                  color: #000000 !important;
+                }
+              }
+            `}</style>
+            <div id="gin-print-section" className="p-6 space-y-6 bg-white text-slate-900 font-sans print:p-0">
             {/* GIN Header */}
             <div className="border-b-2 border-slate-900 pb-4 flex items-start justify-between">
               <div>
@@ -1647,6 +1664,7 @@ export const MaterialIssueHub: React.FC = () => {
               </Button>
             </div>
           </div>
+          </>
         </Modal>
       )}
     </div>

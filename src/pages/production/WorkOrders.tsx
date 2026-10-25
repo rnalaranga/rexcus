@@ -4,7 +4,7 @@ import {
   Factory, Plus, Search, Filter, Layers, Wrench, Clock, CheckCircle2, 
   AlertTriangle, RotateCcw, DollarSign, Package, ClipboardList, Play, 
   Scissors, ExternalLink, Trash2, Kanban, List, Calendar, Building, 
-  RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Eye, Sparkles
+  RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Eye, Sparkles, Printer
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -17,6 +17,7 @@ import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoic
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
+import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 
@@ -48,6 +49,7 @@ export const WorkOrders: React.FC = () => {
   // Modals
   const [activeStudioWO, setActiveStudioWO] = useState<any>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [printWo, setPrintWo] = useState<any | null>(null)
   const [deleteWoId, setDeleteWoId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -433,6 +435,16 @@ export const WorkOrders: React.FC = () => {
             <Eye size={12} className="mr-1 text-rex-600 dark:text-rex-400"/> Studio
           </Button>
 
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPrintWo(row)}
+            className="text-xs font-semibold text-secondary hover:text-primary border border-theme-subtle hover:bg-surface2 rounded-none h-7 px-2"
+            title="Print Job Traveler"
+          >
+            <Printer size={12} className="mr-1 text-muted"/> Print
+          </Button>
+
           <TraceabilityDropdown
             title={`WO #${row.orderNo || row.id}`}
             traces={getWorkOrderTraces(row)}
@@ -791,6 +803,15 @@ export const WorkOrders: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* ── WORK ORDER JOB TRAVELER PRINT MODAL ────────────────────────────────────── */}
+      {printWo && (
+        <WorkOrderPrintModal
+          isOpen={!!printWo}
+          onClose={() => setPrintWo(null)}
+          workOrder={printWo}
+        />
+      )}
     </div>
   )
 }

@@ -145,9 +145,18 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
     <>
       <style>{`
         @media print {
-          body * { visibility: hidden; }
-          #print-section, #print-section * { visibility: visible; }
-          #print-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; color: black; background: white; }
+          body * { visibility: hidden !important; }
+          #print-section, #print-section * { visibility: visible !important; }
+          #print-section { 
+            position: absolute !important; 
+            left: 0 !important; 
+            top: 0 !important; 
+            width: 210mm !important; 
+            margin: 0 !important; 
+            padding: 0 !important;
+            color: #000000 !important; 
+            background: #ffffff !important; 
+          }
         }
       `}</style>
       <div id="print-section" className="mx-auto w-full bg-white text-black leading-snug" style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: '800px', fontSize: '12px' }}>

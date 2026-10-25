@@ -364,3 +364,81 @@
     -webkit-backdrop-filter: blur(16px) saturate(150%);
   }
 }
+
+/* ── Universal Document Print Rules ──────────────────────────── */
+@media print {
+  /* 1. Hide application UI chrome, navigation, headers, sidebars, modals overlay, toasts */
+  nav,
+  aside,
+  header,
+  footer,
+  .glass-sidebar,
+  .glass-topbar,
+  .print\:hidden,
+  [data-no-print],
+  button:not(.printable-document button),
+  .bg-ice-blur,
+  .modal-ice-backdrop,
+  .toast,
+  #toast-root {
+    display: none !important;
+  }
+
+  /* 2. Reset html & body for high-precision A4 printing */
+  html, body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 3. Unconstrain scroll containers and remove backdrop filters */
+  body, #root, main, .overflow-y-auto, .overflow-hidden, .custom-scrollbar {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 4. Printable document sheet containers */
+  #print-section,
+  #invoice-preview,
+  #sales-order-print-section,
+  #gatepass-print-section,
+  #work-order-print-section,
+  #receipt-print-section,
+  #grn-print-section,
+  #gin-print-section,
+  .printable-document {
+    display: block !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  /* 5. Standard A4 page sizing */
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  /* 6. Avoid breaking tables or signatures mid-block */
+  tr, .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+

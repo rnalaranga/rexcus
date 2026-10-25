@@ -32,6 +32,7 @@ import { WorkOrderDispatchesSection } from '@/components/production/WorkOrderDis
 import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrderPartialDispatchModal'
 import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
 import { WorkOrderFullBomAdjustModal } from '@/components/production/WorkOrderFullBomAdjustModal'
+import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { Truck, ArrowLeftRight, Calculator } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
@@ -65,6 +66,7 @@ export const WorkOrderDetail: React.FC = () => {
   const [showAdjustBomModal, setShowAdjustBomModal] = useState(false)
   const [adjustBomPartIndex, setAdjustBomPartIndex] = useState(0)
   const [showPartialDispatchModal, setShowPartialDispatchModal] = useState(false)
+  const [showPrintTravelerModal, setShowPrintTravelerModal] = useState(false)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const actionsMenuRef = useRef<HTMLDivElement>(null)
 
@@ -1114,7 +1116,7 @@ export const WorkOrderDetail: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setShowActionsMenu(false)
-                    window.print()
+                    setShowPrintTravelerModal(true)
                   }}
                   className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
                 >
@@ -2682,6 +2684,15 @@ export const WorkOrderDetail: React.FC = () => {
               text: `Work Order BOM and Internal Job Costing recalculated successfully! New Target Budget: ${formatCurrency(updatedData?.estimatedCost || 0)}`
             })
           }}
+        />
+      )}
+
+      {/* ── PRODUCTION WORK ORDER & JOB TRAVELER PRINT MODAL ──────── */}
+      {showPrintTravelerModal && (
+        <WorkOrderPrintModal
+          isOpen={showPrintTravelerModal}
+          onClose={() => setShowPrintTravelerModal(false)}
+          workOrder={wo}
         />
       )}
     </div>

@@ -33,7 +33,16 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
         @media print {
           body * { visibility: hidden !important; }
           #gatepass-print-section, #gatepass-print-section * { visibility: visible !important; }
-          #gatepass-print-section { position: absolute; left: 0; top: 0; width: 210mm; margin: 0; padding: 0; }
+          #gatepass-print-section { 
+            position: absolute !important; 
+            left: 0 !important; 
+            top: 0 !important; 
+            width: 210mm !important; 
+            margin: 0 !important; 
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+          }
         }
       `}</style>
       

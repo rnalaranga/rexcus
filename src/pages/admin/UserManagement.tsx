@@ -6,9 +6,18 @@ import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   Shield, User, Plus, Trash2, KeyRound, Edit2, AlertCircle, 
-  Search, Copy, Lock, Check, Layers, Users, CheckCheck, X
+  Search, Copy, Lock, Check, Layers, Users, CheckCheck, X,
+  Table, LayoutGrid, RotateCcw, Save, Sparkles, ShoppingCart,
+  Package, Compass, DollarSign, CheckCircle2, ChevronRight
 } from 'lucide-react';
 import { PERMISSION_MODULES, ALL_PERMISSION_IDS } from '@/config/permissions';
+import { 
+  EXCEL_DEPARTMENTS, 
+  EXCEL_ROLE_PRESETS, 
+  ExcelAction, 
+  compileMatrixToPermissionIds, 
+  decompilePermissionsToMatrix 
+} from '@/config/excelPermissionsMatrix';
 
 const API = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api', '') : 'http://localhost:3000';
 
@@ -64,6 +73,25 @@ const RoleBadge = ({ roleId, label }: { roleId: string; label?: string }) => (
 const emptyUserForm = { name: '', username: '', password: '', role: 'user', prefix: '' };
 const emptyRoleForm = { id: '', name: '', description: '', permissions: [] as string[] };
 
+const EXCEL_ACTIONS_LIST: { key: ExcelAction; label: string }[] = [
+  { key: 'add', label: 'Add' },
+  { key: 'edit', label: 'Edit' },
+  { key: 'view', label: 'View' },
+  { key: 'cancel', label: 'Cancel' },
+  { key: 'delete', label: 'Delete' },
+  { key: 'approved', label: 'Approved' }
+];
+
+const getDeptIcon = (deptId: string) => {
+  switch (deptId) {
+    case 'sales': return ShoppingCart;
+    case 'stores': return Package;
+    case 'design': return Compass;
+    case 'finance': return DollarSign;
+    default: return Layers;
+  }
+};
+
 export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -109,6 +137,143 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
   const [roleForm, setRoleForm] = useState<{ id: string; name: string; description: string; permissions: string[]; isSystem?: boolean; isEdit?: boolean }>(emptyRoleForm);
   const [showDeleteRole, setShowDeleteRole] = useState<RoleRecord | null>(null);
   const [permissionSearch, setPermissionSearch] = useState('');
+
+  // Roles View Mode & Excel Matrix State
+  const [rolesViewMode, setRolesViewMode] = useState<'matrix' | 'cards'>('matrix');
+  const [selectedDeptId, setSelectedDeptId] = useState<'sales' | 'stores' | 'design' | 'finance'>('sales');
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('crm_manager');
+  const [matrixDraft, setMatrixDraft] = useState<Record<string, Partial<Record<ExcelAction, boolean>>>>({});
+  const [matrixDirty, setMatrixDirty] = useState(false);
+  const [savingMatrix, setSavingMatrix] = useState(false);
+
+  // Sync matrixDraft when selectedRoleId or roles change
+  useEffect(() => {
+    if (roles.length === 0) return;
+    const target = roles.find(r => r.id === selectedRoleId) || roles[0];
+    if (target) {
+      if (target.id !== selectedRoleId) {
+        setSelectedRoleId(target.id);
+      }
+      setMatrixDraft(decompilePermissionsToMatrix(target.permissions));
+      setMatrixDirty(false);
+    }
+  }, [selectedRoleId, roles]);
+
+  const handleSelectDept = (deptId: 'sales' | 'stores' | 'design' | 'finance') => {
+    setSelectedDeptId(deptId);
+    const deptPresets = EXCEL_ROLE_PRESETS.filter(p => p.department === deptId);
+    if (deptPresets.length > 0 && !deptPresets.some(p => p.id === selectedRoleId)) {
+      const matchingRole = roles.find(r => r.id === deptPresets[0].id);
+      if (matchingRole) {
+        setSelectedRoleId(matchingRole.id);
+      }
+    }
+  };
+
+  const toggleMatrixCell = (entityId: string, action: ExcelAction) => {
+    setMatrixDraft(prev => {
+      const row = prev[entityId] || {};
+      return {
+        ...prev,
+        [entityId]: {
+          ...row,
+          [action]: !row[action]
+        }
+      };
+    });
+    setMatrixDirty(true);
+  };
+
+  const toggleMatrixColumn = (action: ExcelAction) => {
+    const currentDept = EXCEL_DEPARTMENTS.find(d => d.id === selectedDeptId);
+    if (!currentDept) return;
+    const allActive = currentDept.entities.every(e => !!matrixDraft[e.id]?.[action]);
+    const targetState = !allActive;
+
+    setMatrixDraft(prev => {
+      const next = { ...prev };
+      for (const e of currentDept.entities) {
+        next[e.id] = {
+          ...(next[e.id] || {}),
+          [action]: targetState
+        };
+      }
+      return next;
+    });
+    setMatrixDirty(true);
+  };
+
+  const toggleMatrixRow = (entityId: string) => {
+    const actions: ExcelAction[] = ['add', 'edit', 'view', 'cancel', 'delete', 'approved'];
+    const row = matrixDraft[entityId] || {};
+    const allActive = actions.every(a => !!row[a]);
+    const targetState = !allActive;
+
+    setMatrixDraft(prev => ({
+      ...prev,
+      [entityId]: {
+        ...row,
+        add: targetState,
+        edit: targetState,
+        view: targetState,
+        cancel: targetState,
+        delete: targetState,
+        approved: targetState
+      }
+    }));
+    setMatrixDirty(true);
+  };
+
+  const handleApplyPreset = (presetId: string) => {
+    const preset = EXCEL_ROLE_PRESETS.find(p => p.id === presetId);
+    if (!preset) return;
+    setMatrixDraft(prev => ({
+      ...prev,
+      ...preset.matrix
+    }));
+    setMatrixDirty(true);
+    showToast('success', `Applied Excel template for "${preset.name}"`);
+  };
+
+  const handleResetMatrix = () => {
+    const targetRole = roles.find(r => r.id === selectedRoleId);
+    if (targetRole) {
+      setMatrixDraft(decompilePermissionsToMatrix(targetRole.permissions));
+      setMatrixDirty(false);
+      showToast('success', 'Reset changes to saved permissions');
+    }
+  };
+
+  const handleSaveMatrix = async () => {
+    const targetRole = roles.find(r => r.id === selectedRoleId);
+    if (!targetRole) return;
+    setSavingMatrix(true);
+    try {
+      const compiledPerms = compileMatrixToPermissionIds(matrixDraft);
+      const res = await fetch(`${API}/api/roles/${targetRole.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: targetRole.id,
+          name: targetRole.name,
+          description: targetRole.description,
+          permissions: compiledPerms
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      showToast('success', `Permissions for "${targetRole.name}" updated successfully!`);
+      setMatrixDirty(false);
+      await fetchRoles();
+      if (currentUser?.role === targetRole.id) {
+        await refreshUser();
+      }
+    } catch (e: any) {
+      showToast('error', e.message);
+    } finally {
+      setSavingMatrix(false);
+    }
+  };
 
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -535,21 +700,371 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
       {/* ======================= TAB: ROLES & PERMISSIONS ======================= */}
       {activeTab === 'roles' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          {/* Header & View Switcher */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-bold text-primary">System & Custom User Roles</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-primary">Departmental Roles & Permissions</h2>
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  Excel Matrix System
+                </span>
+              </div>
               <p className="text-xs text-secondary mt-0.5">
-                Every role defines which features, buttons, and modules a user can access or modify.
+                Standardized access control matrix across Sales, Stores, Design, and Finance departments.
               </p>
             </div>
-            <div className="text-xs text-muted">
-              Total Permissions Available: <span className="font-bold text-primary">{ALL_PERMISSION_IDS.length}</span> across {PERMISSION_MODULES.length} modules
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center bg-surface2 p-1 border border-theme-subtle">
+                <button
+                  type="button"
+                  onClick={() => setRolesViewMode('matrix')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all ${
+                    rolesViewMode === 'matrix'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-muted hover:text-primary'
+                  }`}
+                >
+                  <Table size={14} />
+                  Excel Matrix View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRolesViewMode('cards')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all ${
+                    rolesViewMode === 'cards'
+                      ? 'bg-rex-500 text-white shadow-sm'
+                      : 'text-muted hover:text-primary'
+                  }`}
+                >
+                  <LayoutGrid size={14} />
+                  Role Cards ({roles.length})
+                </button>
+              </div>
             </div>
           </div>
 
           {loadingRoles ? (
             <div className="p-12 text-center text-muted">Loading roles & permissions matrix...</div>
+          ) : rolesViewMode === 'matrix' ? (
+            /* ======================= EXCEL MATRIX VIEW ======================= */
+            (() => {
+              const currentDept = EXCEL_DEPARTMENTS.find(d => d.id === selectedDeptId) || EXCEL_DEPARTMENTS[0];
+              const activeRole = roles.find(r => r.id === selectedRoleId) || roles[0];
+              const totalActionsInDept = currentDept.entities.reduce((acc, entity) => {
+                const row = matrixDraft[entity.id] || {};
+                return acc + Object.values(row).filter(Boolean).length;
+              }, 0);
+              const maxActionsInDept = currentDept.entities.length * 6;
+
+              return (
+                <div className="space-y-5">
+                  {/* Department Navigation Tabs */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 border-b border-theme-subtle pb-3">
+                    {EXCEL_DEPARTMENTS.map(dept => {
+                      const isSelected = selectedDeptId === dept.id;
+                      const DeptIcon = getDeptIcon(dept.id);
+                      const deptRolesCount = EXCEL_ROLE_PRESETS.filter(p => p.department === dept.id).length;
+
+                      return (
+                        <button
+                          key={dept.id}
+                          type="button"
+                          onClick={() => handleSelectDept(dept.id)}
+                          className={`p-3 text-left border transition-all flex items-center justify-between ${
+                            isSelected
+                              ? 'bg-emerald-500/10 border-emerald-500 text-primary shadow-sm'
+                              : 'bg-surface/50 border-theme-subtle text-secondary hover:border-theme hover:bg-surface'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-2 border ${isSelected ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-surface2 text-muted border-theme-subtle'}`}>
+                              <DeptIcon size={16} />
+                            </div>
+                            <div>
+                              <div className={`text-xs font-bold uppercase tracking-wider ${isSelected ? 'text-emerald-400' : 'text-primary'}`}>
+                                {dept.title}
+                              </div>
+                              <div className="text-[11px] text-muted">
+                                {dept.entities.length} Modules &bull; {deptRolesCount} Roles
+                              </div>
+                            </div>
+                          </div>
+                          {isSelected && <ChevronRight size={16} className="text-emerald-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Role Selection & Matrix Toolbar */}
+                  <GlassCard className="p-4 border-theme space-y-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      {/* Left: Department Preset Roles */}
+                      <div className="space-y-1.5 flex-1">
+                        <div className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                          <span>{currentDept.title} Preset Roles:</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {EXCEL_ROLE_PRESETS.filter(p => p.department === selectedDeptId).map(preset => {
+                            const isSelected = selectedRoleId === preset.id;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => setSelectedRoleId(preset.id)}
+                                className={`px-3 py-1.5 text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                                  isSelected
+                                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
+                                    : 'bg-surface2 border-theme-subtle text-secondary hover:text-primary hover:border-theme'
+                                }`}
+                              >
+                                <span>{preset.name}</span>
+                              </button>
+                            );
+                          })}
+
+                          {/* Global Role Selector Dropdown */}
+                          <div className="flex items-center gap-1.5 ml-auto sm:ml-2">
+                            <span className="text-[10px] text-muted uppercase font-semibold">Other:</span>
+                            <select
+                              value={selectedRoleId}
+                              onChange={e => setSelectedRoleId(e.target.value)}
+                              className="bg-surface border border-theme-subtle px-2.5 py-1 text-xs text-primary focus:border-emerald-500 outline-none"
+                            >
+                              {roles.map(r => (
+                                <option key={r.id} value={r.id}>
+                                  {r.name} ({r.id})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Actions (Preset, Reset, Save) */}
+                      <div className="flex items-center gap-2 flex-wrap self-end lg:self-center">
+                        {EXCEL_ROLE_PRESETS.some(p => p.id === selectedRoleId) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={Sparkles}
+                            onClick={() => handleApplyPreset(selectedRoleId)}
+                            className="text-xs text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                            title="Load official Excel matrix template"
+                          >
+                            Load Template
+                          </Button>
+                        )}
+
+                        {matrixDirty && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={RotateCcw}
+                            onClick={handleResetMatrix}
+                            className="text-xs text-muted hover:text-amber-400"
+                            title="Discard unsaved changes"
+                          >
+                            Discard
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={Save}
+                          disabled={savingMatrix}
+                          onClick={handleSaveMatrix}
+                          className={`text-xs ${
+                            matrixDirty ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-500/30 animate-pulse' : ''
+                          }`}
+                        >
+                          {savingMatrix ? 'Saving Changes...' : (matrixDirty ? 'Save Changes *' : 'Saved')}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Active Role Meta Banner */}
+                    {activeRole && (
+                      <div className="p-3 bg-surface/60 border border-theme-subtle flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-primary text-sm">{activeRole.name}</span>
+                            <RoleBadge roleId={activeRole.id} label={activeRole.id} />
+                            {activeRole.isSystem ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-surface2 border border-theme-subtle text-muted">
+                                <Lock size={8} /> System
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-rex-500/10 border border-rex-500/20 text-rex-400">
+                                Custom
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-secondary mt-1">{activeRole.description || 'Configured via Excel Access Matrix.'}</p>
+                        </div>
+
+                        <div className="flex items-center gap-4 shrink-0">
+                          <div className="text-right">
+                            <div className="text-[10px] uppercase font-bold text-muted">Granted Matrix Actions</div>
+                            <div className="text-xs font-bold text-emerald-400">
+                              {totalActionsInDept} / {maxActionsInDept} in this Dept
+                            </div>
+                          </div>
+                          <div className="h-6 w-px bg-theme-subtle" />
+                          <div className="text-right">
+                            <div className="text-[10px] uppercase font-bold text-muted">Assigned Users</div>
+                            <div className="text-xs font-bold text-primary">{activeRole.userCount ?? 0} user(s)</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </GlassCard>
+
+                  {/* Excel Spreadsheet Grid */}
+                  <GlassCard className="p-0 overflow-hidden border border-theme">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        {/* Excel Header */}
+                        <thead>
+                          <tr className="bg-[#107c41] text-white border-b border-[#0e6b37]">
+                            <th className="py-2.5 px-3 font-bold w-12 text-center border-r border-[#158f4b]">
+                              #
+                            </th>
+                            <th className="py-2.5 px-4 font-bold tracking-wider uppercase text-[11px] border-r border-[#158f4b]">
+                              Entity / Module Description
+                            </th>
+                            {EXCEL_ACTIONS_LIST.map(action => (
+                              <th
+                                key={action.key}
+                                className="py-2.5 px-3 font-bold text-center uppercase tracking-wider text-[11px] border-r border-[#158f4b] last:border-r-0 min-w-[90px]"
+                              >
+                                <div className="flex items-center justify-center gap-1">
+                                  <span>{action.label}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleMatrixColumn(action.key)}
+                                    className="opacity-70 hover:opacity-100 p-0.5 rounded hover:bg-white/20 transition-colors"
+                                    title={`Toggle all ${action.label} permissions in ${currentDept.title}`}
+                                  >
+                                    <CheckCheck size={11} />
+                                  </button>
+                                </div>
+                              </th>
+                            ))}
+                            <th className="py-2.5 px-3 font-bold text-center w-20">
+                              Row
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-theme-subtle">
+                          {currentDept.entities.map((entity, idx) => {
+                            const row = matrixDraft[entity.id] || {};
+                            const isRowActive = EXCEL_ACTIONS_LIST.some(a => !!row[a.key]);
+
+                            return (
+                              <tr
+                                key={entity.id}
+                                className={`hover:bg-surface2/60 transition-colors ${
+                                  idx % 2 === 0 ? 'bg-surface/30' : 'bg-surface/10'
+                                }`}
+                              >
+                                {/* Row Number */}
+                                <td className="py-2.5 px-3 text-center text-muted font-mono border-r border-theme-subtle text-[11px]">
+                                  {idx + 1}
+                                </td>
+
+                                {/* Entity Title */}
+                                <td className="py-2.5 px-4 border-r border-theme-subtle">
+                                  <div className="font-bold text-primary">{entity.name}</div>
+                                  <div className="text-[10px] text-muted font-mono">{entity.id}</div>
+                                </td>
+
+                                {/* 6 Action Columns */}
+                                {EXCEL_ACTIONS_LIST.map(action => {
+                                  const isGranted = !!row[action.key];
+                                  const hasMapping = !!(entity.permissionMap[action.key] && entity.permissionMap[action.key]!.length > 0);
+
+                                  return (
+                                    <td
+                                      key={action.key}
+                                      className="p-1 border-r border-theme-subtle last:border-r-0 text-center"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleMatrixCell(entity.id, action.key)}
+                                        className={`w-full py-2 px-1 text-[11px] font-bold rounded flex items-center justify-center gap-1 transition-all ${
+                                          isGranted
+                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
+                                            : 'text-muted/30 hover:bg-surface2 hover:text-muted border border-transparent'
+                                        }`}
+                                        title={hasMapping ? `Grants: ${entity.permissionMap[action.key]!.join(', ')}` : 'Toggle permission'}
+                                      >
+                                        {isGranted ? (
+                                          <>
+                                            <Check size={13} className="stroke-[3] text-emerald-400" />
+                                            <span>YES</span>
+                                          </>
+                                        ) : (
+                                          <span className="font-mono text-muted/30">—</span>
+                                        )}
+                                      </button>
+                                    </td>
+                                  );
+                                })}
+
+                                {/* Row Toggle */}
+                                <td className="py-1 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleMatrixRow(entity.id)}
+                                    className="px-2 py-1 text-[10px] font-semibold text-muted hover:text-primary hover:bg-surface2 border border-theme-subtle rounded transition-colors"
+                                    title="Toggle all actions for this entity"
+                                  >
+                                    {isRowActive ? 'Clear' : 'All'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-3 bg-surface/80 border-t border-theme-subtle flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                        <span>
+                          Click any cell to toggle. Green <strong className="text-emerald-400">&quot;YES&quot;</strong> indicates granted authority.
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {matrixDirty && (
+                          <span className="text-amber-400 font-bold flex items-center gap-1">
+                            <AlertCircle size={13} /> Unsaved changes
+                          </span>
+                        )}
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={Save}
+                          disabled={savingMatrix}
+                          onClick={handleSaveMatrix}
+                          className="text-xs"
+                        >
+                          {savingMatrix ? 'Saving...' : 'Save Matrix'}
+                        </Button>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </div>
+              );
+            })()
           ) : (
+            /* ======================= ROLE CARDS VIEW ======================= */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {roles.map(r => {
                 const permCount = Array.isArray(r.permissions) ? r.permissions.length : 0;
