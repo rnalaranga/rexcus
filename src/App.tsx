@@ -132,6 +132,7 @@ function AppRoutes() {
 
           {/* Production */}
           <Route path="/production" element={<WorkOrders />} />
+          <Route path="/production/work-orders" element={<WorkOrders />} />
           <Route path="/production/work-orders/:id" element={<WorkOrderDetail />} />
           <Route path="/production/:id" element={<WorkOrderDetail />} />
           <Route path="/production/machinery" element={<Machinery />} />

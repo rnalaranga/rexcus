@@ -23,6 +23,7 @@ import {
 } from '@/lib/api'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 
 type TabType = 'requisitions' | 'direct_issue' | 'history'
 
@@ -660,48 +661,8 @@ export const MaterialIssueHub: React.FC = () => {
         </div>
       )}
 
-      {/* ── TOP ROLE WORKFLOW GUIDE ──────────────────────────────────────────────── */}
-      <div className="bg-surface2/60 border border-theme-subtle p-3 rounded-none flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="font-bold uppercase tracking-wider text-muted text-[10px] shrink-0">Factory Workflow:</span>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="px-2 py-0.5 rounded-none bg-surface border border-theme-subtle text-muted flex items-center gap-1">
-              1. Quotation <span className="text-[10px] text-muted">(Sales / Estimator)</span>
-            </span>
-            <ChevronRight size={12} className="text-muted"/>
-            <span className="px-2 py-0.5 rounded-none bg-surface border border-theme-subtle text-muted flex items-center gap-1">
-              2. Work Order <span className="text-[10px] text-muted">(Production Planner)</span>
-            </span>
-            <ChevronRight size={12} className="text-muted"/>
-            <span className="px-2.5 py-0.5 rounded-none bg-rex-500/15 border border-rex-500/40 text-rex-600 dark:text-rex-400 font-bold flex items-center gap-1">
-              3. Material Issue <span className="text-[10px] font-bold text-rex-600 dark:text-rex-400">(Storekeeper)</span>
-            </span>
-            <ChevronRight size={12} className="text-muted"/>
-            <span className="px-2 py-0.5 rounded-none bg-surface border border-theme-subtle text-muted flex items-center gap-1">
-              4. Operations Routing <span className="text-[10px] text-muted">(Shopfloor Machinists)</span>
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate('/inventory')} 
-            className="rounded-none text-xs border-theme hover:bg-surface2"
-          >
-            <Boxes size={13} className="mr-1 text-secondary"/> Main Inventory
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate('/production')} 
-            className="rounded-none text-xs border-theme hover:bg-surface2"
-          >
-            <Factory size={13} className="mr-1 text-secondary"/> Production Jobs
-          </Button>
-        </div>
-      </div>
+      {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
+      <WorkflowPipelineBanner activeStage={5} />
 
       {/* ── HEADER BANNER ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -25,6 +25,7 @@ import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModa
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 
@@ -728,6 +729,9 @@ export const ProductQuotations: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
+      <WorkflowPipelineBanner activeStage={1} />
 
       {/* KPI Stats Ribbon */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

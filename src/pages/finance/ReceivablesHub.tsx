@@ -20,6 +20,7 @@ import { addInvoicePayment, fetchPaymentReceipts } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
+import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner';
 
 type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
@@ -372,6 +373,9 @@ export const ReceivablesHub: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
+      <WorkflowPipelineBanner activeStage={activeTab === 'proformas' ? 3 : 6} />
 
       {/* KPI METRICS OVERVIEW */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

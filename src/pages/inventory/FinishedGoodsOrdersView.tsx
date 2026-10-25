@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   ShoppingCart, ArrowRight, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
@@ -27,6 +27,7 @@ import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModa
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
+import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { 
@@ -58,8 +59,20 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: rawQuotations = [] } = useQuotations()
   const { data: allInvoices = [] } = useInvoices()
 
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
-  const [activeViewTab, setActiveViewTab] = useState<'orders' | 'proformas'>('orders')
+  const [activeViewTab, setActiveViewTab] = useState<'orders' | 'proformas'>(() => {
+    return searchParams.get('tab') === 'proformas' ? 'proformas' : 'orders'
+  })
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'proformas' && activeViewTab !== 'proformas') {
+      setActiveViewTab('proformas')
+    } else if (!tab && activeViewTab !== 'orders') {
+      setActiveViewTab('orders')
+    }
+  }, [searchParams])
   // Order Actions Dropdown state
   const [openActionOrderId, setOpenActionOrderId] = useState<string | null>(null)
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
@@ -1058,44 +1071,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       </div>
 
       {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
-      <div className="bg-surface border border-theme-subtle p-3 flex items-center justify-between overflow-x-auto text-xs font-semibold gap-2 shadow-2xs">
-        <div className="flex items-center gap-1.5 text-muted shrink-0">
-          <span className="w-5 h-5 rounded-full bg-surface2 border border-theme-subtle flex items-center justify-center font-mono text-[10px]">1</span>
-          <span>Quotation</span>
-        </div>
-        <ArrowRight size={12} className="text-muted shrink-0" />
-        <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold shrink-0">
-          <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-600 border border-blue-500/30 flex items-center justify-center font-mono text-[10px]">2</span>
-          <span>Sales Order (SO)</span>
-        </div>
-        <ArrowRight size={12} className="text-muted shrink-0" />
-        <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 shrink-0">
-          <span className="w-5 h-5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20 flex items-center justify-center font-mono text-[10px]">3</span>
-          <span>Advance Proforma (Advance)</span>
-        </div>
-        <ArrowRight size={12} className="text-muted shrink-0" />
-        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 shrink-0">
-          <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-mono text-[10px]">4</span>
-          <span>Work Order (BOM & Routing)</span>
-        </div>
-        <ArrowRight size={12} className="text-muted shrink-0" />
-        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 shrink-0">
-          <span className="w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center font-mono text-[10px]">5</span>
-          <span>Partial / Full Dispatch (DN)</span>
-        </div>
-        <ArrowRight size={12} className="text-muted shrink-0" />
-        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
-          <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 flex items-center justify-center font-mono text-[10px]">6</span>
-          <span>Final Tax Invoice</span>
-        </div>
-      </div>
+      <WorkflowPipelineBanner activeStage={activeViewTab === 'proformas' ? 3 : 2} className="my-1" />
 
       {/* ── TOP VIEW SWITCHER TABS: ORDERS vs PROFORMAS ────────────────────── */}
       <div className="flex items-center justify-between border-b border-theme-subtle gap-2 overflow-x-auto">
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setActiveViewTab('orders')}
+            onClick={() => {
+              setActiveViewTab('orders')
+              setSearchParams({})
+            }}
             className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
               activeViewTab === 'orders'
                 ? 'border-rex-600 text-rex-600 dark:text-rex-400 bg-rex-500/10'
@@ -1108,7 +1094,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
           <button
             type="button"
-            onClick={() => setActiveViewTab('proformas')}
+            onClick={() => {
+              setActiveViewTab('proformas')
+              setSearchParams({ tab: 'proformas' })
+            }}
             className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
               activeViewTab === 'proformas'
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-500/10'

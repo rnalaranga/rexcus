@@ -18,6 +18,7 @@ import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdo
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
@@ -520,6 +521,9 @@ export const WorkOrders: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
+      <WorkflowPipelineBanner activeStage={4} />
 
       {/* ── TOP 5 KPI METRICS (STANDARD THEME CARDS) ───────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

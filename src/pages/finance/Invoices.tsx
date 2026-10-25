@@ -17,6 +17,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -743,6 +744,9 @@ export const Invoices: React.FC = () => {
           <Button variant="primary" icon={Plus} onClick={() => navigate('/finance/invoices/new')}>Create Invoice</Button>
         </div>
       </div>
+
+      {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
+      <WorkflowPipelineBanner activeStage={6} />
 
       {/* Comprehensive Filter Toolbar */}
       <GlassCard className="p-3 space-y-3">
