@@ -317,7 +317,7 @@
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: none; }
   }
   @keyframes slideInLeft {
     from { opacity: 0; transform: translateX(-10px); }
@@ -354,14 +354,14 @@
   .bg-ice-blur,
   .modal-ice-backdrop {
     background-color: rgba(255, 255, 255, 0.55);
-    backdrop-filter: blur(14px) saturate(160%);
-    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
   }
   .dark .bg-ice-blur,
   .dark .modal-ice-backdrop {
     background-color: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
   }
 }
 

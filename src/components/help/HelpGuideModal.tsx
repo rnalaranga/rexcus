@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom'
 import {
   HelpCircle, X, Search, ChevronRight, ArrowRight, CheckCircle2,
@@ -79,7 +80,7 @@ export const HelpGuideModal: React.FC<HelpGuideModalProps> = ({
 
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
       <div 
         className="w-full max-w-5xl h-[88vh] bg-surface border border-theme shadow-2xl flex flex-col rounded-none overflow-hidden text-primary animate-scale-in"
@@ -486,5 +487,5 @@ export const HelpGuideModal: React.FC<HelpGuideModalProps> = ({
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }

@@ -1,4 +1,5 @@
 import React, { useRef } from 'react'
+import { createPortal } from 'react-dom';
 import { Printer, Download, X, ShieldCheck, CheckCircle2, AlertTriangle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -38,8 +39,8 @@ export const WorkOrderQCInspectionReportModal: React.FC<WorkOrderQCInspectionRep
       ? 'INSPECTION IN PROGRESS' 
       : 'CONFORMS TO SPECIFICATIONS (ACCEPTED)'
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
       {/* Container */}
       <div className="relative bg-surface border border-theme-subtle w-full max-w-5xl shadow-2xl rounded-none flex flex-col max-h-[92vh]">
         
@@ -301,5 +302,5 @@ export const WorkOrderQCInspectionReportModal: React.FC<WorkOrderQCInspectionRep
 
       </div>
     </div>
-  )
+  , document.body)
 }

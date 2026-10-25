@@ -751,11 +751,11 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
             (() => {
               const currentDept = EXCEL_DEPARTMENTS.find(d => d.id === selectedDeptId) || EXCEL_DEPARTMENTS[0];
               const activeRole = roles.find(r => r.id === selectedRoleId) || roles[0];
-              const totalActionsInDept = currentDept.entities.reduce((acc, entity) => {
+              const totalActionsInDept = (currentDept?.entities || []).reduce((acc, entity) => {
                 const row = matrixDraft[entity.id] || {};
                 return acc + Object.values(row).filter(Boolean).length;
               }, 0);
-              const maxActionsInDept = currentDept.entities.length * 6;
+              const maxActionsInDept = (currentDept?.entities?.length || 1) * 6;
 
               return (
                 <div className="space-y-5">
@@ -802,7 +802,7 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                       {/* Left: Department Preset Roles */}
                       <div className="space-y-1.5 flex-1">
                         <div className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                          <span>{currentDept.title} Preset Roles:</span>
+                          <span>{currentDept?.title || 'Department'} Preset Roles:</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           {EXCEL_ROLE_PRESETS.filter(p => p.department === selectedDeptId).map(preset => {
@@ -945,7 +945,7 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                                     type="button"
                                     onClick={() => toggleMatrixColumn(action.key)}
                                     className="opacity-70 hover:opacity-100 p-0.5 rounded hover:bg-white/20 transition-colors"
-                                    title={`Toggle all ${action.label} permissions in ${currentDept.title}`}
+                                    title={`Toggle all ${action.label} permissions in ${currentDept?.title || 'Department'}`}
                                   >
                                     <CheckCheck size={11} />
                                   </button>

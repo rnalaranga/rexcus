@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, Plus, Trash2, Layers, Wrench, Package, DollarSign, Clock, 
   Sparkles, Check, AlertCircle, RefreshCw, Calculator, ArrowRight,
@@ -542,7 +543,7 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
     partHours: 0
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] w-screen h-screen flex flex-col bg-surface text-primary animate-fade-in overflow-hidden select-none">
       
       {/* ── 1. TOP STUDIO HEADER (FULL SCREEN WORKSPACE) ────────────────────── */}
@@ -1449,5 +1450,7 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
       </footer>
 
     </div>
+  ,
+    document.body
   );
 };

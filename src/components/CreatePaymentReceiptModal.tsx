@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from 'react-dom';
 import {
   X,
   Receipt,
@@ -290,8 +291,8 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-4 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-4 overflow-y-auto">
       <div className="bg-surface border border-theme-subtle rounded-none max-w-5xl w-full flex flex-col shadow-2xl overflow-hidden animate-fade-in my-6 max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-theme-subtle bg-surface2/70 shrink-0">
@@ -756,5 +757,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
         </form>
       </div>
     </div>
+  ,
+    document.body
   );
 };

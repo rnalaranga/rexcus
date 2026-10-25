@@ -1,4 +1,5 @@
 import React, { useRef } from "react";
+import { createPortal } from 'react-dom';
 import {
   Printer,
   Download,
@@ -169,7 +170,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
     }, 350);
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
       <style>{`
         @page {
@@ -540,5 +541,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
         </div>
       </div>
     </div>
+  ,
+    document.body
   );
 };

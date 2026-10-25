@@ -1567,8 +1567,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       </GlassCard>
 
       {/* CREATE / EDIT ORDER MODAL */}
-      {showOrderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
+      {showOrderModal && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
           <div className="relative w-full max-w-2xl bg-surface border border-theme-subtle rounded-none shadow-2xl p-6 overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-theme-subtle">
               <h3 className="text-base font-bold text-primary flex items-center gap-2">
@@ -1946,7 +1946,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* DISPATCH WITH GATE PASS MODAL */}
       {dispatchModalOrder && (

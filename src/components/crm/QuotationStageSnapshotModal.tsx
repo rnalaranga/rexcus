@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { 
   X, CheckCircle2, Clock, AlertTriangle, ArrowRight, ExternalLink, 
@@ -133,8 +134,8 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
     currentStageTitle = `Stage 1: Quotation (${stage1Status})`;
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
       <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-surface border border-theme-subtle shadow-2xl rounded-none overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
         
         {/* MODAL HEADER */}
@@ -629,6 +630,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

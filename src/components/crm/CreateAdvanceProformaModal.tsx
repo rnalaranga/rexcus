@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, FileText, CheckCircle, Percent, DollarSign, Calendar, 
   Building2, User, Receipt, ShieldCheck, CreditCard, Sparkles, AlertCircle 
@@ -392,7 +393,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-y-auto">
       <div 
         className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-xl overflow-hidden flex flex-col my-6"
@@ -780,5 +781,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         </form>
       </div>
     </div>
+  ,
+    document.body
   );
 };

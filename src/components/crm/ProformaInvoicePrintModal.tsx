@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Printer, Download, X, FileText, ExternalLink, Calendar, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { InvoicePreview } from '@/components/finance/InvoicePreview';
@@ -107,7 +108,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-y-auto">
       <div 
         className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col my-auto overflow-hidden"
@@ -198,5 +199,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
         </div>
       </div>
     </div>
+  ,
+    document.body
   );
 };
