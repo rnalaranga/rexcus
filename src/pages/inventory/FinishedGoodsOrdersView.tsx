@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
-  ShoppingCart, Package, Plus, Search, Filter, CheckCircle, 
+  ShoppingCart, ArrowRight, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
@@ -58,6 +58,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: allInvoices = [] } = useInvoices()
 
   const [search, setSearch] = useState('')
+  const [activeViewTab, setActiveViewTab] = useState<'orders' | 'proformas'>('orders')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
@@ -69,6 +70,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [printGatePass, setPrintGatePass] = useState<any | null>(null)
   const [dispatchModalOrder, setDispatchModalOrder] = useState<any | null>(null)
   const [dispatchForm, setDispatchForm] = useState({
+    dispatchQty: 1,
     carrier: 'REX Transport',
     vehicleNo: '',
     driverName: '',
@@ -151,18 +153,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       navigate(`/finance/invoices?search=${encodeURIComponent(order.invoiceNo || order.invoiceId)}`)
       return
     }
-    const recs = getOrderReceipts(order)
-    if (recs.length === 0) {
-      setPreInvoicePromptOrder(order)
-    } else {
-      navigate(`/finance/invoices/new?orderId=${order.id}`)
-    }
+    // Direct navigation to final tax invoice without intrusive receipt prompt
+    navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}`)
   }
 
   // Filter only ready-made finished products from inventory
   const finishedProducts = useMemo(() => {
     return inventory.filter(item => item.type === 'finished_product' || item.type === 'product')
   }, [inventory])
+
+  // Dedicated list of Proforma Invoices generated against Sales Orders
+  const proformaInvoicesList = useMemo(() => {
+    return (allInvoices || []).filter((inv: any) => 
+      Boolean(inv.isProforma || inv.invoiceType === 'proforma' || inv.status === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-'))
+    )
+  }, [allInvoices])
 
   // Normalized list of all quotations (Engineering + Product) for order conversion
   const availableQuotations = useMemo(() => {
@@ -536,8 +541,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const handleOpenDispatchModal = (order: any) => {
+    const totalOrderQty = Math.max(1, Number(order.qty || 1))
+    const prevDispatched = Number(order.dispatchedQty || (order.isDispatched ? totalOrderQty : 0))
+    const remainingToDispatch = Math.max(0, totalOrderQty - prevDispatched)
+
     setDispatchModalOrder(order)
     setDispatchForm({
+      dispatchQty: remainingToDispatch > 0 ? remainingToDispatch : 1,
       carrier: order.carrier || 'REX Transport',
       vehicleNo: order.vehicleNo || '',
       driverName: order.driverName || '',
@@ -754,6 +764,70 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         </GlassCard>
       </div>
 
+      {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
+      <div className="bg-surface border border-theme-subtle p-3 flex items-center justify-between overflow-x-auto text-xs font-semibold gap-2 shadow-2xs">
+        <div className="flex items-center gap-1.5 text-muted shrink-0">
+          <span className="w-5 h-5 rounded-full bg-surface2 border border-theme-subtle flex items-center justify-center font-mono text-[10px]">1</span>
+          <span>Quotation</span>
+        </div>
+        <ArrowRight size={12} className="text-muted shrink-0" />
+        <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold shrink-0">
+          <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-600 border border-blue-500/30 flex items-center justify-center font-mono text-[10px]">2</span>
+          <span>Sales Order (SO)</span>
+        </div>
+        <ArrowRight size={12} className="text-muted shrink-0" />
+        <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 shrink-0">
+          <span className="w-5 h-5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20 flex items-center justify-center font-mono text-[10px]">3</span>
+          <span>Advance Proforma (Advance)</span>
+        </div>
+        <ArrowRight size={12} className="text-muted shrink-0" />
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 shrink-0">
+          <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-mono text-[10px]">4</span>
+          <span>Work Order (BOM & Routing)</span>
+        </div>
+        <ArrowRight size={12} className="text-muted shrink-0" />
+        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 shrink-0">
+          <span className="w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center font-mono text-[10px]">5</span>
+          <span>Partial / Full Dispatch (DN)</span>
+        </div>
+        <ArrowRight size={12} className="text-muted shrink-0" />
+        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
+          <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 flex items-center justify-center font-mono text-[10px]">6</span>
+          <span>Final Tax Invoice</span>
+        </div>
+      </div>
+
+      {/* ── TOP VIEW SWITCHER TABS: ORDERS vs PROFORMAS ────────────────────── */}
+      <div className="flex items-center justify-between border-b border-theme-subtle gap-2 overflow-x-auto">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveViewTab('orders')}
+            className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+              activeViewTab === 'orders'
+                ? 'border-rex-600 text-rex-600 dark:text-rex-400 bg-rex-500/10'
+                : 'border-transparent text-secondary hover:text-primary hover:bg-surface2/40'
+            }`}
+          >
+            <ShoppingCart size={14} />
+            <span>Sales Orders ({orders.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewTab('proformas')}
+            className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+              activeViewTab === 'proformas'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-500/10'
+                : 'border-transparent text-secondary hover:text-primary hover:bg-surface2/40'
+            }`}
+          >
+            <FileText size={14} />
+            <span>Advance Proforma Invoices ({proformaInvoicesList.length})</span>
+          </button>
+        </div>
+      </div>
+
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
@@ -794,6 +868,97 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       {/* Orders Table */}
       <GlassCard className="p-0 border border-theme-subtle">
+        {activeViewTab === 'proformas' ? (
+          <div className="overflow-x-auto min-h-[380px] custom-scrollbar">
+            <table className="w-full text-left text-xs min-w-[850px]">
+              <thead className="bg-surface2/60 border-b border-theme-subtle font-bold text-muted uppercase tracking-wider text-[11px]">
+                <tr>
+                  <th className="px-3.5 py-3">Proforma # & Date</th>
+                  <th className="px-3.5 py-3">Customer</th>
+                  <th className="px-3.5 py-3">Linked Sales Order</th>
+                  <th className="px-3.5 py-3 text-right">Advance Amount</th>
+                  <th className="px-3.5 py-3 text-center">Tax Profile</th>
+                  <th className="px-3.5 py-3 text-center">Advance Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-theme-subtle/40">
+                {proformaInvoicesList.map((pi: any, idx: number) => {
+                  const linkedSO = orders.find(o => o.orderNo === pi.orderNo || o.id === pi.orderId);
+
+                  return (
+                    <tr key={pi.id || idx} className="hover:bg-surface2/30 transition-colors">
+                      <td className="px-3.5 py-2.5">
+                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400 block text-xs">
+                          {pi.invoiceNo || pi.id}
+                        </span>
+                        <span className="text-[10px] text-muted font-mono">{formatDate(pi.date || pi.createdAt)}</span>
+                      </td>
+
+                      <td className="px-3.5 py-2.5">
+                        <span className="font-bold text-primary block">{pi.customerName || pi.customerCompany || 'Customer'}</span>
+                        {pi.customerPhone && <span className="text-[10px] text-muted font-mono">{pi.customerPhone}</span>}
+                      </td>
+
+                      <td className="px-3.5 py-2.5">
+                        <span className="font-mono font-bold text-primary">
+                          {pi.orderNo || linkedSO?.orderNo || '-'}
+                        </span>
+                        {pi.quotationNo && (
+                          <span className="block text-[10px] text-muted font-mono">Quote: {pi.quotationNo}</span>
+                        )}
+                      </td>
+
+                      <td className="px-3.5 py-2.5 text-right font-mono">
+                        <span className="font-bold text-primary block text-xs">{formatCurrency(pi.total || 0)}</span>
+                        {pi.advancePercent && (
+                          <span className="text-[10px] text-muted">({pi.advancePercent}% advance deposit)</span>
+                        )}
+                      </td>
+
+                      <td className="px-3.5 py-2.5 text-center">
+                        <span className="text-[10px] px-2 py-0.5 bg-surface2 border border-theme-subtle font-mono">
+                          {pi.taxOption === 'opt1' ? 'VAT & SSCL Absorbed' : pi.taxOption === 'opt2' ? 'SSCL Absorbed + VAT Sep' : 'SSCL & VAT Separate'}
+                        </span>
+                      </td>
+
+                      <td className="px-3.5 py-2.5 text-center">
+                        <Badge variant={pi.paymentStatus === 'paid' ? 'success' : 'info'} size="sm">
+                          {pi.paymentStatus === 'paid' ? 'Advance Paid' : 'Awaiting Advance'}
+                        </Badge>
+                      </td>
+
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleOpenPrintProforma(pi, linkedSO)}
+                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded-none flex items-center gap-1"
+                          >
+                            <Printer size={12} /> View / Print Proforma
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {proformaInvoicesList.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-muted">
+                      <FileText size={28} className="mx-auto mb-2 opacity-30 text-blue-500" />
+                      <p className="text-sm font-bold text-primary">No Advance Proforma Invoices Issued</p>
+                      <p className="text-xs text-muted mt-0.5">
+                        Click "+ Proforma" on any active Sales Order to generate a clean Advance Proforma Invoice with tax options.
+                      </p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
         <div className="overflow-x-auto min-h-[380px] pb-28 custom-scrollbar">
           <table className="w-full text-left min-w-[980px]">
             <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
@@ -920,62 +1085,46 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </div>
                     </td>
 
-                    {/* Qty & Stock */}
+                    {/* Qty & Incremental Dispatch Progress */}
                     <td className="px-3 py-2.5 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="font-mono font-bold text-xs text-primary">
-                          {order.qty} pcs
-                        </span>
-                        {order.isDispatched ? (
-                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
-                            Dispatched
-                          </span>
-                        ) : isShort ? (
-                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-none bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 flex items-center gap-0.5" title={`Shortage: only ${inStockNow} in stock`}>
-                            <AlertTriangle size={9} /> Shortage ({inStockNow})
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-none bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
-                            In Stock ({inStockNow})
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const totalQty = Math.max(1, Number(order.qty || 1));
+                        const dispatchedQty = Number(order.dispatchedQty || (order.isDispatched ? totalQty : 0));
+                        const pct = Math.min(100, Math.round((dispatchedQty / totalQty) * 100));
+
+                        return (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-mono font-bold text-xs text-primary">
+                              {order.qty} pcs
+                            </span>
+                            <div className="w-20 h-1.5 bg-surface2 border border-theme-subtle overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 transition-all duration-300"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono text-muted">
+                              {dispatchedQty} / {totalQty} dispatched
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </td>
 
-                    {/* Value & Advance */}
+                    {/* Value & Advance Proforma */}
                     <td className="px-3.5 py-2.5 text-right">
-                      <div className="flex flex-col items-end">
+                      <div className="flex flex-col items-end gap-1">
                         <span className="font-mono font-bold text-xs text-primary">
                           {formatCurrency(order.totalPrice)}
                         </span>
-                        {Number(order.unitPrice) > 0 && (
-                          <span className="text-[10px] text-muted font-mono">@ {formatCurrency(order.unitPrice)}</span>
-                        )}
                         {linkedProforma && (
                           <button
                             type="button"
                             onClick={() => handleOpenPrintProforma(linkedProforma, order)}
-                            className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors flex items-center gap-0.5 mt-0.5"
-                            title={`Advance Proforma Invoice: ${linkedProforma.invoiceNo || linkedProforma.id}`}
+                            className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors"
+                            title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
                           >
-                            <FileText size={9} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
-                          </button>
-                        )}
-                        {totalAdv > 0 && latestRec && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActivePrintReceipt({
-                                ...latestRec,
-                                orderNo: order.orderNo,
-                                totalQuoted: Number(order.totalPrice || 0)
-                              });
-                              setPrintReceiptModalOpen(true);
-                            }}
-                            className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors flex items-center gap-0.5 mt-0.5"
-                            title={`Advance Paid: ${formatCurrency(totalAdv)}`}
-                          >
-                            <Receipt size={9} /> Adv: {formatCurrency(totalAdv)}
+                            <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
                           </button>
                         )}
                       </div>
@@ -1099,190 +1248,129 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       )}
                     </td>
 
-                    {/* Actions */}
-                    <td className={`px-4 py-2.5 text-right ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
-                      <div className={`flex items-center justify-end gap-1.5 order-action-menu-container ${openActionOrderId === order.id ? 'relative z-50' : 'relative z-0'}`}>
-                        {/* Quick 1-click Print PDF */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={Printer}
-                          onClick={() => setPrintOrder(order)}
-                          className="h-7 text-xs px-2 border border-theme-subtle text-primary hover:bg-surface2 rounded-none"
-                          title="View / Print Sales Order PDF"
-                        >
-                          PDF
-                        </Button>
+                    {/* Streamlined Sequential Production Flow Actions */}
+                    <td className="px-4 py-2.5 text-right">
+                      {(() => {
+                        const totalOrdQty = Math.max(1, Number(order.qty || 1));
+                        const dispatchedQty = Number(order.dispatchedQty || (order.isDispatched ? totalOrdQty : 0));
+                        const remainingToDispatch = Math.max(0, totalOrdQty - dispatchedQty);
 
-                        {/* Actions Dropdown Button */}
-                        <div className={`relative inline-block text-left ${openActionOrderId === order.id ? 'z-50' : ''}`}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenActionOrderId(openActionOrderId === order.id ? null : order.id);
-                            }}
-                            className={`h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none ${
-                              openActionOrderId === order.id
-                                ? 'bg-rex-600 text-white border-rex-600'
-                                : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
-                            }`}
-                          >
-                            Actions
-                            <ChevronDown size={11} className={`transition-transform duration-150 ${openActionOrderId === order.id ? 'rotate-180' : ''}`} />
-                          </button>
+                        return (
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {/* 1. Advance Proforma Button */}
+                            {linkedProforma ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenPrintProforma(linkedProforma, order)}
+                                className="h-7 text-[10px] px-2 text-blue-600 dark:text-blue-400 border-blue-500/40 hover:bg-blue-500/10 font-bold rounded-none"
+                                title="View / Print Advance Proforma Invoice"
+                              >
+                                <FileText size={11} className="mr-1" /> PI View
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setProformaModalOrder(order)}
+                                className="h-7 text-[10px] px-2 text-secondary hover:text-blue-600 border border-theme-subtle rounded-none font-semibold"
+                                title="Create Advance Proforma Invoice"
+                              >
+                                <FileText size={11} className="mr-1" /> + Proforma
+                              </Button>
+                            )}
 
-                          {openActionOrderId === order.id && (
-                            <div 
-                              onClick={(e) => e.stopPropagation()}
-                              className={`absolute right-0 ${
-                                idx >= filteredOrders.length - 2 && filteredOrders.length > 2 ? 'bottom-full mb-1' : 'top-full mt-1'
-                              } w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[9999] max-h-[75vh] overflow-y-auto custom-scrollbar py-1.5 text-left rounded-none animate-fade-in`}
+                            {/* 2. Work Order Button */}
+                            {existingWO ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
+                                className="h-7 text-[10px] px-2 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10 font-bold rounded-none"
+                                title={`Jump to Work Order (${existingWO.status || 'Active'})`}
+                              >
+                                <Factory size={11} className="mr-1" /> WO (${existingWO.status || 'Active'})
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleCreateWorkOrder(order, orderItems)}
+                                className="h-7 text-[10px] px-2 text-secondary hover:text-amber-600 border border-theme-subtle rounded-none font-semibold"
+                                title="Send order into production Work Order"
+                              >
+                                <Factory size={11} className="mr-1" /> + WO
+                              </Button>
+                            )}
+
+                            {/* 3. Partial Dispatch / Gate Pass Button */}
+                            {remainingToDispatch > 0 && !order.isDispatched ? (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleOpenDispatchModal(order)}
+                                className="h-7 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none"
+                                title="Record Partial Dispatch & Security Gate Pass"
+                              >
+                                <Truck size={11} className="mr-1" /> Dispatch ({remainingToDispatch})
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewGatePass(order)}
+                                className="h-7 text-[10px] px-2 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 font-bold rounded-none"
+                                title="View Delivery Gate Pass"
+                              >
+                                <Truck size={11} className="mr-1" /> Gate Pass
+                              </Button>
+                            )}
+
+                            {/* 4. Final Commercial Invoice Button */}
+                            {linkedInvoice || order.invoiceNo ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`)}
+                                className="h-7 text-[10px] px-2 text-primary border-theme-subtle font-bold rounded-none"
+                                title="View Final Commercial Invoice"
+                              >
+                                <FileText size={11} className="mr-1" /> Inv
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleInvoiceClick(order)}
+                                className="h-7 text-[10px] px-2 text-secondary hover:text-primary border-theme-subtle rounded-none font-semibold"
+                                title="Generate Final Commercial Tax Invoice"
+                              >
+                                <FileText size={11} className="mr-1" /> + Final Inv
+                              </Button>
+                            )}
+
+                            {/* 5. Print PDF */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Printer}
+                              onClick={() => setPrintOrder(order)}
+                              className="h-7 w-7 p-0 text-muted hover:text-primary border border-theme-subtle rounded-none"
+                              title="Print Sales Order PDF"
+                            />
+
+                            {/* 6. Edit Order */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(order)}
+                              className="p-1 text-muted hover:text-primary transition-colors"
+                              title="Edit Sales Order"
                             >
-                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
-                                Order Documents
-                              </div>
-
-                              {/* 1. View / Print PDF */}
-                              <button
-                                type="button"
-                                onClick={() => { setPrintOrder(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <Printer size={14} className="text-zinc-500 shrink-0" />
-                                <span>Print Sales Order PDF</span>
-                              </button>
-
-                              {/* 2. Invoice */}
-                              {linkedInvoice || order.invoiceNo ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`);
-                                    setOpenActionOrderId(null);
-                                  }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <FileText size={14} className="shrink-0 text-emerald-600" />
-                                  <span>View Invoice ({linkedInvoice?.invoiceNo || order.invoiceNo})</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => { handleInvoiceClick(order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <FileText size={14} className="shrink-0 text-emerald-600" />
-                                  <span>Generate Invoice</span>
-                                </button>
-                              )}
-
-                              {/* 2.5 Advance Proforma Invoice */}
-                              {linkedProforma ? (
-                                <button
-                                  type="button"
-                                  onClick={() => { handleOpenPrintProforma(linkedProforma, order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <FileText size={14} className="shrink-0 text-blue-600" />
-                                  <span>View Proforma Invoice ({linkedProforma.invoiceNo || linkedProforma.id})</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => { setProformaModalOrder(order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <FileText size={14} className="shrink-0 text-blue-600" />
-                                  <span>Create Advance Proforma Invoice</span>
-                                </button>
-                              )}
-
-                              {/* 3. Advance Payment Receipt */}
-                              <button
-                                type="button"
-                                onClick={() => { handleOpenReceiptModal(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <Receipt size={14} className="shrink-0 text-emerald-600" />
-                                <span>Issue Advance Receipt</span>
-                              </button>
-
-                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
-                                Operations & Dispatch
-                              </div>
-
-                              {/* 4. Work Order */}
-                              {existingWO ? (
-                                <button
-                                  type="button"
-                                  onClick={() => { navigate(`/production/work-orders/${existingWO.id}`); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <Factory size={14} className="shrink-0 text-blue-600" />
-                                  <span className="truncate">View Work Order ({existingWO.orderNo || existingWO.id})</span>
-                                </button>
-                              ) : !order.isDispatched ? (
-                                <button
-                                  type="button"
-                                  onClick={() => { handleCreateWorkOrder(order, orderItems); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <Factory size={14} className="shrink-0 text-blue-600" />
-                                  <span>Create Work Order</span>
-                                </button>
-                              ) : null}
-
-                              {/* 5. Dispatch / Gate Pass */}
-                              {!order.isDispatched && order.status !== 'Dispatched' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => { handleOpenDispatchModal(order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <Truck size={14} className="text-emerald-500 shrink-0" />
-                                  <span>Dispatch & Gate Pass</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => { handleViewGatePass(order); setOpenActionOrderId(null); }}
-                                  className="w-full px-3.5 py-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2.5 transition-colors text-left"
-                                >
-                                  <Shield size={14} className="shrink-0 text-purple-600" />
-                                  <span>View Gate Pass ({order.gatePassNo || 'Issued'})</span>
-                                </button>
-                              )}
-
-                              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-                              <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
-                                Order Management
-                              </div>
-
-                              {/* 6. Edit Order */}
-                              <button
-                                type="button"
-                                onClick={() => { handleOpenEditModal(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <Edit size={14} className="text-zinc-500 shrink-0" />
-                                <span>Edit Order</span>
-                              </button>
-
-                              {/* 7. Delete Order */}
-                              <button
-                                type="button"
-                                onClick={() => { setDeleteTarget(order); setOpenActionOrderId(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left"
-                              >
-                                <Trash2 size={14} className="shrink-0 text-rose-500" />
-                                <span>Delete Order</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                              <Edit size={13} />
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 )
@@ -1313,6 +1401,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </tbody>
           </table>
         </div>
+        )}
       </GlassCard>
 
       {/* CREATE / EDIT ORDER MODAL */}
@@ -1732,6 +1821,57 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               )}
             </div>
 
+            {/* Partial Dispatch Qty Selector */}
+            {(() => {
+              const totalOrdQty = Math.max(1, Number(dispatchModalOrder.qty || 1));
+              const prevDispatchedQty = Number(dispatchModalOrder.dispatchedQty || (dispatchModalOrder.isDispatched ? totalOrdQty : 0));
+              const remainingToDispatch = Math.max(0, totalOrdQty - prevDispatchedQty);
+
+              return (
+                <div className="p-3 bg-surface border border-theme-subtle space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-secondary uppercase tracking-wider">Dispatch Batch Quantity</span>
+                    <span className="font-mono text-muted">
+                      Previously Dispatched: <strong className="text-emerald-500">{prevDispatchedQty} / {totalOrdQty} pcs</strong>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-muted mb-1">Quantity to Handover in this Batch:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max={remainingToDispatch > 0 ? remainingToDispatch : totalOrdQty}
+                        value={dispatchForm.dispatchQty}
+                        onChange={e => setDispatchForm({ ...dispatchForm, dispatchQty: Math.max(1, Number(e.target.value)) })}
+                        className="w-full input-base text-sm font-mono font-bold"
+                        required
+                      />
+                    </div>
+                    {remainingToDispatch > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDispatchForm({ ...dispatchForm, dispatchQty: remainingToDispatch })}
+                        className="text-xs font-bold text-rex-600 dark:text-rex-400 hover:underline pt-4"
+                      >
+                        All Remaining ({remainingToDispatch} pcs)
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] text-muted font-mono">
+                    After this dispatch: {prevDispatchedQty + Number(dispatchForm.dispatchQty || 0)} / {totalOrdQty} pcs dispatched.
+                    {prevDispatchedQty + Number(dispatchForm.dispatchQty || 0) >= totalOrdQty ? (
+                      <span className="ml-1 text-emerald-500 font-bold">100% Complete (Final Dispatch)!</span>
+                    ) : (
+                      <span className="ml-1 text-amber-500 font-bold">({Math.max(0, totalOrdQty - (prevDispatchedQty + Number(dispatchForm.dispatchQty || 0)))} pcs will remain)</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -2015,86 +2155,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         />
       )}
 
-      {/* Pre-Invoice Advance Payment Recommendation Modal */}
-      {preInvoicePromptOrder && (
-        <Modal
-          isOpen={true}
-          onClose={() => setPreInvoicePromptOrder(null)}
-          title="Advance Payment Receipt Recommendation"
-        >
-          <div className="space-y-4">
-            <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-none flex items-start gap-3">
-              <div className="w-9 h-9 rounded-none bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Receipt size={18} />
-              </div>
-              <div className="text-xs space-y-1">
-                <div className="font-bold text-amber-900 dark:text-amber-200">
-                  No Advance Payment Receipt Found for {preInvoicePromptOrder.orderNo}
-                </div>
-                <p className="text-muted leading-relaxed">
-                  In Rex ERP and Sri Lanka tax accounting, customer advance payments received prior to final dispatch should be acknowledged via an official <strong>Advance Payment Receipt</strong> before issuing the final tax invoice. The advance will then be automatically credited and deducted on the final invoice.
-                </p>
-              </div>
-            </div>
 
-            <div className="bg-surface2/40 border border-theme-subtle rounded-none p-3 text-xs flex justify-between items-center">
-              <div>
-                <div className="text-muted text-xs font-medium">Sales Order</div>
-                <div className="font-mono font-bold text-primary">{preInvoicePromptOrder.orderNo}</div>
-              </div>
-              <div>
-                <div className="text-muted text-xs font-medium">Customer</div>
-                <div className="font-semibold text-primary">{preInvoicePromptOrder.customerName}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-muted text-xs font-medium">Total Consideration</div>
-                <div className="font-mono font-bold text-emerald-600">{formatCurrency(preInvoicePromptOrder.totalPrice || 0)}</div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const target = preInvoicePromptOrder
-                  setPreInvoicePromptOrder(null)
-                  navigate(`/finance/invoices/new?orderId=${target.id}`)
-                }}
-                className="text-xs text-muted hover:text-primary w-full sm:w-auto"
-              >
-                Skip & Proceed to Final Invoice
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={FileText}
-                onClick={() => {
-                  const target = preInvoicePromptOrder
-                  setPreInvoicePromptOrder(null)
-                  setProformaModalOrder(target)
-                }}
-                className="text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold w-full sm:w-auto"
-              >
-                Create Advance Proforma Invoice
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                icon={Receipt}
-                onClick={() => {
-                  const target = preInvoicePromptOrder
-                  setPreInvoicePromptOrder(null)
-                  handleOpenReceiptModal(target)
-                }}
-                className="text-xs border-theme-subtle text-secondary hover:text-primary w-full sm:w-auto"
-              >
-                Issue Advance Receipt
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

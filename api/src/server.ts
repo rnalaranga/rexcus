@@ -1145,7 +1145,11 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN customerAddress TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerEmail VARCHAR(255) DEFAULT NULL",
-    "ALTER TABLE work_orders ADD COLUMN qcCheckpoints LONGTEXT DEFAULT NULL"
+    "ALTER TABLE work_orders ADD COLUMN qcCheckpoints LONGTEXT DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
+    "ALTER TABLE work_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
+    "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -3465,9 +3469,18 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
     const order = orders[0];
-    if (order.isDispatched) {
-      return res.status(400).json({ error: 'Order is already dispatched' });
+    const totalOrderQty = Math.max(1, Number(order.qty || 1));
+    const prevDispatched = Number(order.dispatchedQty || 0);
+    if (order.isDispatched || (prevDispatched >= totalOrderQty)) {
+      return res.status(400).json({ error: 'Order is already fully dispatched' });
     }
+    const currentDispatchQty = Math.max(1, Math.min(
+      totalOrderQty - prevDispatched,
+      Number(dispatchDetails.dispatchQty || (totalOrderQty - prevDispatched))
+    ));
+    const newCumulative = prevDispatched + currentDispatchQty;
+    const remainingQty = Math.max(0, totalOrderQty - newCumulative);
+    const isFinal = remainingQty === 0;
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
@@ -3489,15 +3502,15 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
     const gatePassItemsList = parsedItems.length > 0
       ? parsedItems.map(it => ({
           description: it.description || it.productName || order.productName,
-          qty: Number(it.qty) || 1,
+          qty: currentDispatchQty,
           unit: it.uom || 'Nos',
-          remarks: it.remarks || `Order ${order.orderNo}`
+          remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
         }))
       : [{
           description: order.productName || 'Finished Goods',
-          qty: Number(order.qty) || 1,
+          qty: currentDispatchQty,
           unit: 'Nos',
-          remarks: `Order ${order.orderNo}`
+          remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
         }];
 
     // 2. Insert Gate Pass
@@ -3592,11 +3605,42 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       }
     }
 
-    // 4. Update Sales Order
+    // 4. Update Sales Order with Partial / Full Dispatch
+    let existingDispatches: any[] = [];
+    try {
+      existingDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || []);
+    } catch (e) {
+      existingDispatches = [];
+    }
+
+    const dnId = 'DN-' + nextNum.toString().padStart(4, '0');
+    const newDispatchRecord = {
+      id: dnId,
+      dispatchNo: dnId,
+      gatePassId: gpId,
+      date: now,
+      dispatchedQty: currentDispatchQty,
+      cumulativeQty: newCumulative,
+      remainingQty: remainingQty,
+      totalJobQty: totalOrderQty,
+      isFinalDispatch: isFinal,
+      carrier: dispatchDetails.carrier || order.carrier || 'REX Transport',
+      vehicleNo: resolvedVehicleNo,
+      driverName: dispatchDetails.driverName || order.driverName || '',
+      receivedBy: dispatchDetails.attention || order.attention || '',
+      destination: dispatchDetails.destination || order.deliveryAddress || '',
+      notes: dispatchDetails.notes || order.notes || '',
+      items: gatePassItemsList,
+      dispatchedBy: dispatchDetails.issuedBy || 'Store Keeper'
+    };
+    existingDispatches.push(newDispatchRecord);
+
     const updateOrder: any = {
-      status: 'Dispatched',
-      isDispatched: 1,
-      dispatchedAt: now,
+      status: isFinal ? 'Dispatched' : 'Partially Dispatched',
+      isDispatched: isFinal ? 1 : 0,
+      dispatchedQty: newCumulative,
+      dispatches: JSON.stringify(existingDispatches),
+      dispatchedAt: isFinal ? now : (order.dispatchedAt || now),
       gatePassId: gpId,
       gatePassNo: gpId,
       carrier: dispatchDetails.carrier || order.carrier || 'REX Transport',
@@ -3604,6 +3648,30 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       driverName: dispatchDetails.driverName || order.driverName || null,
       updatedAt: now
     };
+
+    // Also sync to linked work order if exists
+    if (order.orderNo) {
+      try {
+        const [woRows]: any = await db.query('SELECT id, jobQty, dispatchedQty, dispatches FROM work_orders WHERE orderNo = ?', [order.orderNo]);
+        if (woRows.length > 0) {
+          const wo = woRows[0];
+          let woDispatches: any[] = [];
+          try {
+            woDispatches = typeof wo.dispatches === 'string' ? JSON.parse(wo.dispatches || '[]') : (wo.dispatches || []);
+          } catch (e) {
+            woDispatches = [];
+          }
+          woDispatches.push(newDispatchRecord);
+          const woStatus = isFinal ? 'Completed' : 'Partially Dispatched';
+          await db.query(
+            'UPDATE work_orders SET dispatchedQty = ?, dispatches = ?, status = ?, completedQty = GREATEST(completedQty, ?), updatedAt = NOW() WHERE id = ?',
+            [newCumulative, JSON.stringify(woDispatches), woStatus, newCumulative, wo.id]
+          );
+        }
+      } catch (err) {
+        console.error('Error syncing dispatch to work order:', err);
+      }
+    }
 
     let validFgoCols = new Set<string>();
     try {
@@ -6728,9 +6796,19 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
       }
     }
 
+    let parsedDispatches: any[] = [];
+    if (wo.dispatches) {
+      try {
+        parsedDispatches = typeof wo.dispatches === 'string' ? JSON.parse(wo.dispatches) : wo.dispatches;
+      } catch (e) {
+        parsedDispatches = [];
+      }
+    }
+
     res.json({
       ...wo,
       qcCheckpoints: parsedQcCheckpoints,
+      dispatches: parsedDispatches,
       operations: ops.map((o: any) => {
         const emp = empRows.find((e: any) => e.id === o.employeeId);
         const mac = machRows.find((m: any) => m.id === o.machineId);
@@ -6912,30 +6990,41 @@ app.post('/api/production/work-orders/:id/report-shortage', async (req, res) => 
     const reqIdx = Number(bomIndex);
     const shortageQty = Math.max(0, Number(requiredQty || 1) - Number(currentStock || 0));
     const subReqId = 'SUB-' + Date.now().toString().slice(-6);
+    const isAvailable = Number(currentStock || 0) >= Number(requiredQty || 1);
 
     const subReq = {
       id: subReqId,
       requestedAt: new Date().toISOString(),
-      requestedBy: requestedBy || 'Stores Personnel',
+      requestedBy: requestedBy || 'Production Team',
       missingMaterial: missingMaterial || (bomItems[reqIdx]?.material) || 'Material',
       requiredQty: Number(requiredQty || 1),
       currentStock: Number(currentStock || 0),
       shortageQty,
+      isAvailable,
       substituteMaterial: substituteMaterial || null,
       substituteInvId: substituteInvId || null,
       substituteQty: Number(substituteQty || requiredQty || 1),
       substituteUnitCost: Number(substituteUnitCost || 0),
-      reason: reason || 'Material not in stock in stores',
+      reason: reason || (isAvailable ? 'Alternative material requested by workshop' : 'Material not in stock in stores'),
       status: 'pending_approval',
       notifySales: !!notifySales
     };
 
     if (bomItems[reqIdx]) {
       bomItems[reqIdx].substituteRequest = subReq;
+    } else {
+      bomItems.push({
+        material: missingMaterial || 'Raw Material',
+        qty: Number(requiredQty || 1),
+        notes: 'Original BOM item',
+        substituteRequest: subReq
+      });
     }
 
-    const materialStatus = 'Shortage / Substitute Pending';
-    const alertText = `Shortage: ${subReq.missingMaterial} (Qty: ${shortageQty}). Proposed Substitute: ${substituteMaterial || 'None'}.`;
+    const materialStatus = isAvailable ? 'Substitute Proposed (Stock Available)' : 'Shortage / Substitute Pending';
+    const alertText = isAvailable
+      ? `Material Substitute Proposed: ${substituteMaterial || 'Alternative'} (replaces ${subReq.missingMaterial}). Reason: ${reason || 'Workshop adjustment'}.`
+      : `Shortage: ${subReq.missingMaterial} (Qty: ${shortageQty}). Proposed Substitute: ${substituteMaterial || 'None'}.`;
 
     await db.query(
       'UPDATE work_orders SET bom = ?, materialStatus = ?, materialAlert = ?, updatedAt = NOW() WHERE id = ?',
@@ -7181,6 +7270,135 @@ app.post('/api/production/work-orders/:id/reject-substitute', async (req, res) =
     res.json({ success: true, bom: bomItems });
   } catch (error: any) {
     console.error('Error rejecting substitute:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Direct Change BOM Material & Store Requisition
+app.post('/api/production/work-orders/:id/change-bom-material', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      bomIndex, originalMaterial, newMaterial, newInventoryId, 
+      newQty, newUnit, newUnitCost, spec, reason, changedBy, requestFromStores,
+      partTitle
+    } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    let bomItems: any[] = [];
+    try {
+      bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+    } catch (e) { bomItems = []; }
+
+    const reqIdx = Number(bomIndex ?? 0);
+    const dateStr = new Date().toLocaleDateString();
+    const origName = originalMaterial || (bomItems[reqIdx]?.material) || 'Original Material';
+    const targetMaterial = newMaterial || origName;
+
+    // Build or update target BOM item
+    let targetItem = bomItems[reqIdx];
+    if (!targetItem) {
+      targetItem = {
+        material: targetMaterial,
+        originalMaterial: origName,
+        inventoryId: newInventoryId || null,
+        qty: Number(newQty || 1),
+        unit: newUnit || 'pcs',
+        unitCost: Number(newUnitCost || 0),
+        notes: `[Substituted for ${origName} on ${dateStr}: ${reason || 'Workshop adjustment'}]`
+      };
+      bomItems.push(targetItem);
+    } else {
+      targetItem.originalMaterial = targetItem.originalMaterial || origName;
+      targetItem.material = targetMaterial;
+      if (newInventoryId) targetItem.inventoryId = newInventoryId;
+      targetItem.qty = Number(newQty || targetItem.qty || 1);
+      if (newUnit) targetItem.unit = newUnit;
+      if (newUnitCost !== undefined) targetItem.unitCost = Number(newUnitCost);
+      targetItem.notes = `${targetItem.notes || ''} [Substituted for ${origName} on ${dateStr}: ${reason || 'Workshop adjustment'}]`.trim();
+    }
+
+    targetItem.isSubstituted = true;
+    targetItem.substitutionDetails = {
+      originalMaterial: origName,
+      newMaterial: targetMaterial,
+      spec: spec || '',
+      reason: reason || 'Alternative material selected by workshop',
+      changedBy: changedBy || 'Production Team',
+      changedAt: new Date().toISOString()
+    };
+
+    const materialStatus = 'Material Substituted';
+    const alertText = `Material Changed: ${targetMaterial} (replaces ${origName}). Stores requisition logged.`;
+
+    await db.query(
+      'UPDATE work_orders SET bom = ?, materialStatus = ?, materialAlert = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(bomItems), materialStatus, alertText, id]
+    );
+
+    // Update Quotation if linked
+    if (wo.quoteId) {
+      await db.query(
+        'UPDATE quotations SET materialStatus = ?, materialAlert = ? WHERE id = ? OR quotationNo = ?',
+        [materialStatus, alertText, wo.quoteId, wo.quoteId]
+      ).catch(() => {});
+    }
+
+    // Update Sales Order if linked
+    if (wo.orderNo) {
+      await db.query(
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
+        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+      ).catch(() => {});
+    }
+
+    // Log in approval_logs / audit
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, metadata, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Approved', ?, NOW(), ?, ?, NOW())`,
+        [
+          'Material Substitute',
+          id,
+          wo.orderNo || id,
+          wo.customer || 'Customer Job',
+          0,
+          changedBy || 'Production Team',
+          `Direct Material Substitution: ${targetMaterial} for ${origName}. Reason: ${reason || 'Technical preference'}. Part: ${partTitle || 'BOM'}`,
+          JSON.stringify(targetItem.substitutionDetails)
+        ]
+      );
+    } catch (e) {}
+
+    // Alert Stores
+    if (requestFromStores) {
+      try {
+        const folId = 'FOL-' + Date.now().toString().slice(-6);
+        await db.query('INSERT INTO followups SET ?', {
+          id: folId,
+          title: `Stores Requisition: ${targetMaterial} for ${wo.orderNo || id}`,
+          type: 'Stores Requisition',
+          priority: 'high',
+          status: 'Pending',
+          leadId: wo.quoteId || null,
+          notes: `Workshop changed BOM material to "${targetMaterial}" (replaces "${origName}") for Job #${wo.orderNo || id}. Reason: ${reason || 'Alternative grade/remnant requested'}. Stores to issue ${newQty || targetItem.qty} ${newUnit || targetItem.unit}.`,
+          dueDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          assignedTo: 'Stores / Storekeeper',
+          createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        });
+      } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      message: `Material changed to ${targetMaterial} and Store Requisition logged for Work Order #${wo.orderNo || id}.`,
+      bom: bomItems
+    });
+  } catch (error: any) {
+    console.error('Error changing BOM material:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -7882,6 +8100,163 @@ app.post('/api/production/work-orders/:id/qc-measurement', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error logging QC measurement:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PARTIAL DISPATCH / DELIVERY HANDOVER FOR WORK ORDER
+app.post('/api/production/work-orders/:id/partial-dispatch', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      dispatchQty, 
+      carrier, 
+      vehicleNo, 
+      driverName, 
+      destination, 
+      receivedBy, 
+      notes, 
+      items, 
+      issuedBy 
+    } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    const totalJobQty = Math.max(1, Number(wo.jobQty || 1));
+    const prevDispatched = Number(wo.dispatchedQty || 0);
+    const qtyToDispatch = Math.max(1, Number(dispatchQty || (totalJobQty - prevDispatched)));
+    const newCumulative = prevDispatched + qtyToDispatch;
+    const remaining = Math.max(0, totalJobQty - newCumulative);
+    const isFinal = remaining === 0;
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // 1. Generate Gate Pass ID (GP-XXXX) and Delivery Note ID (DN-XXXX)
+    const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM gate_passes');
+    const nextNum = (countResult[0]?.c || 0) + 1;
+    const gpId = 'GP-' + nextNum.toString().padStart(4, '0');
+    const dnId = 'DN-' + nextNum.toString().padStart(4, '0');
+
+    // Items list for gate pass & delivery note
+    const dispatchItemsList = (items && items.length > 0)
+      ? items
+      : [{
+          description: wo.title || `Work Order ${wo.orderNo || wo.id} Finished Units`,
+          qty: qtyToDispatch,
+          unit: 'Nos',
+          remarks: `Partial Dispatch (${newCumulative}/${totalJobQty} pcs)`
+        }];
+
+    // 2. Insert into gate_passes table
+    const gatePassData: any = {
+      id: gpId,
+      type: 'goods_delivery',
+      orderId: wo.id,
+      orderNo: wo.orderNo || wo.id,
+      quoteId: wo.quoteId || null,
+      customerId: wo.customerId || null,
+      customerName: wo.customer || 'Customer',
+      customerCompany: wo.customer || 'Customer',
+      attention: receivedBy || wo.customer,
+      address: destination || null,
+      carrier: carrier || 'REX Transport',
+      vehicleNo: vehicleNo || null,
+      driverName: driverName || null,
+      reason: `Finished Goods Delivery for WO ${wo.orderNo || wo.id} (${qtyToDispatch} pcs)`,
+      items: JSON.stringify(dispatchItemsList),
+      issuedBy: issuedBy || 'Store Keeper',
+      issuedDate: now,
+      status: 'Dispatched',
+      notes: notes || '',
+      createdAt: now
+    };
+
+    let validGpCols = new Set<string>();
+    try {
+      const [gpCols]: any = await db.query('SHOW COLUMNS FROM gate_passes');
+      validGpCols = new Set(gpCols.map((c: any) => c.Field));
+    } catch (e) {}
+
+    const safeGatePassData: any = {};
+    for (const [k, v] of Object.entries(gatePassData)) {
+      if (validGpCols.size === 0 || validGpCols.has(k)) {
+        safeGatePassData[k] = v;
+      }
+    }
+    await db.query('INSERT INTO gate_passes SET ?', safeGatePassData);
+
+    // 3. Append to work order dispatches array
+    let existingDispatches: any[] = [];
+    try {
+      existingDispatches = typeof wo.dispatches === 'string' ? JSON.parse(wo.dispatches || '[]') : (wo.dispatches || []);
+    } catch (e) {
+      existingDispatches = [];
+    }
+
+    const newDispatchRecord = {
+      id: dnId,
+      dispatchNo: dnId,
+      gatePassId: gpId,
+      date: now,
+      dispatchedQty: qtyToDispatch,
+      cumulativeQty: newCumulative,
+      remainingQty: remaining,
+      totalJobQty,
+      isFinalDispatch: isFinal,
+      carrier: carrier || 'REX Transport',
+      vehicleNo: vehicleNo || '',
+      driverName: driverName || '',
+      receivedBy: receivedBy || '',
+      destination: destination || '',
+      notes: notes || '',
+      items: dispatchItemsList,
+      dispatchedBy: issuedBy || 'Store Keeper'
+    };
+
+    existingDispatches.push(newDispatchRecord);
+
+    const nextWoStatus = isFinal ? 'Completed' : 'Partially Dispatched';
+    await db.query(
+      `UPDATE work_orders 
+       SET dispatchedQty = ?, dispatches = ?, status = ?, completedQty = GREATEST(completedQty, ?), updatedAt = NOW() 
+       WHERE id = ?`,
+      [newCumulative, JSON.stringify(existingDispatches), nextWoStatus, newCumulative, id]
+    );
+
+    // 4. Sync with linked finished_goods_orders if exists
+    if (wo.orderNo) {
+      const [fgoRows]: any = await db.query('SELECT * FROM finished_goods_orders WHERE orderNo = ? OR id = ?', [wo.orderNo, wo.orderNo]);
+      if (fgoRows.length > 0) {
+        const fgo = fgoRows[0];
+        let fgoDispatches: any[] = [];
+        try {
+          fgoDispatches = typeof fgo.dispatches === 'string' ? JSON.parse(fgo.dispatches || '[]') : (fgo.dispatches || []);
+        } catch (e) {
+          fgoDispatches = [];
+        }
+        fgoDispatches.push(newDispatchRecord);
+        const fgoStatus = isFinal ? 'Dispatched' : 'Partially Dispatched';
+        await db.query(
+          `UPDATE finished_goods_orders 
+           SET dispatchedQty = ?, dispatches = ?, status = ?, isDispatched = ?, gatePassId = ?, gatePassNo = ?, updatedAt = NOW() 
+           WHERE id = ?`,
+          [newCumulative, JSON.stringify(fgoDispatches), fgoStatus, isFinal ? 1 : 0, gpId, gpId, fgo.id]
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      dispatch: newDispatchRecord,
+      gatePass: safeGatePassData,
+      status: nextWoStatus,
+      dispatchedQty: newCumulative,
+      remainingQty: remaining
+    });
+  } catch (error: any) {
+    console.error('Error recording partial dispatch:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -37,6 +37,10 @@ interface PlannedBomItem {
   priority?: string
   partTitle: string
   material: string
+  originalMaterial?: string
+  isSubstituted?: boolean
+  substitutionDetails?: any
+  substituteRequest?: any
   spec: string
   profile: string
   dia?: number
@@ -208,6 +212,10 @@ export const MaterialIssueHub: React.FC = () => {
             priority: wo.priority || 'Normal',
             partTitle: b.partTitle || `Part BOM ${bIdx + 1}`,
             material: matName,
+            originalMaterial: b.originalMaterial,
+            isSubstituted: b.isSubstituted || Boolean(b.substitutionDetails),
+            substitutionDetails: b.substitutionDetails,
+            substituteRequest: b.substituteRequest,
             spec: b.notes || b.dimensions || b.spec || '',
             profile: b.profile || 'Raw Stock',
             requiredQty: reqQty,
@@ -1022,7 +1030,19 @@ export const MaterialIssueHub: React.FC = () => {
                             <tr key={item.id} className="hover:bg-surface2/20">
                               <td className="py-2 px-3 text-muted font-mono">{idx + 1}</td>
                               <td className="py-2 px-3">
-                                <span className="font-bold text-primary block">{item.material}</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-primary block">{item.material}</span>
+                                  {item.isSubstituted && (
+                                    <span className="px-1.5 py-0.2 text-[9px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 uppercase" title={`Substituted for ${item.originalMaterial || 'Original'}`}>
+                                      Substituted
+                                    </span>
+                                  )}
+                                </div>
+                                {item.originalMaterial && item.originalMaterial !== item.material && (
+                                  <span className="text-[10px] text-purple-600 dark:text-purple-400 block font-mono">
+                                    Replaces: {item.originalMaterial} {item.substitutionDetails?.reason ? `(${item.substitutionDetails.reason})` : ''}
+                                  </span>
+                                )}
                                 {item.spec && (
                                   <span className="text-[10px] text-muted block font-mono">{item.spec}</span>
                                 )}

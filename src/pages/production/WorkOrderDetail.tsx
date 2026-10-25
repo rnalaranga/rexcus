@@ -28,10 +28,14 @@ import {
 } from '@/lib/api'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 import { WorkOrderQCHub } from '@/components/production/WorkOrderQCHub'
+import { WorkOrderDispatchesSection } from '@/components/production/WorkOrderDispatchesSection'
+import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrderPartialDispatchModal'
+import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
+import { Truck, ArrowLeftRight } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
-type DetailTab = 'bom' | 'routing' | 'materials' | 'qc_rework' | 'costing'
+type DetailTab = 'bom' | 'routing' | 'materials' | 'qc_rework' | 'dispatches' | 'costing'
 
 export const WorkOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -46,6 +50,7 @@ export const WorkOrderDetail: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState<DetailTab>('bom')
+  const [substituteModalMat, setSubstituteModalMat] = useState<any | null>(null)
   const [targetQcOp, setTargetQcOp] = useState<{ partTitle?: string; opName?: string } | null>(null)
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
 
@@ -56,6 +61,7 @@ export const WorkOrderDetail: React.FC = () => {
   const [showReworkModal, setShowReworkModal] = useState<any | null>(null)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
   const [showAddBomModal, setShowAddBomModal] = useState(false)
+  const [showPartialDispatchModal, setShowPartialDispatchModal] = useState(false)
 
   // Issue Material Form
   const [issueForm, setIssueForm] = useState({
@@ -264,21 +270,40 @@ export const WorkOrderDetail: React.FC = () => {
             const unitPrice = Number(m.unitPrice || 0)
             const totalPrice = Number(m.shaftPrice || (reqQty * unitPrice))
 
-            // Check inventory match
+            // Correlate with directBomItems (wo.bom) if material was substituted or changed
+            const directMatch = directBomItems.find((d: any) => 
+              (d.id && d.id === (m.id || `auto-${bIdx}-${mIdx}`)) ||
+              (d.originalMaterial && d.originalMaterial.toLowerCase() === (m.material || '').toLowerCase()) ||
+              (d.material && d.material.toLowerCase() === (m.material || '').toLowerCase())
+            )
+
+            const activeMatName = directMatch?.material || m.material || 'Raw Stock'
+            const activeQty = Number(directMatch?.qty || reqQty)
+            const activeUnitCost = Number(directMatch?.unitCost || unitPrice)
+            const activeTotalPrice = Number(m.shaftPrice || (activeQty * activeUnitCost))
+            const activeUnit = directMatch?.unit || (m.dia ? 'rods' : (m.thick ? 'plates' : 'pcs'))
+
+            // Check inventory match for active material
             const invMatch = inventory.find(inv => 
-              (inv.name || '').toLowerCase() === (m.material || '').toLowerCase() ||
-              (inv.sku || '').toLowerCase() === (m.material || '').toLowerCase()
+              (inv.name || '').toLowerCase() === activeMatName.toLowerCase() ||
+              (inv.sku || '').toLowerCase() === activeMatName.toLowerCase() ||
+              (directMatch?.inventoryId && inv.id === directMatch.inventoryId)
             )
 
             // Check if already issued in stock ledger
             const alreadyIssued = issuedMaterials.some((im: any) => 
-              (im.itemName && (im.itemName.toLowerCase() === (m.material || '').toLowerCase())) ||
-              (im.notes && im.notes.toLowerCase().includes((m.material || '').toLowerCase()))
+              (im.itemName && (im.itemName.toLowerCase() === activeMatName.toLowerCase())) ||
+              (im.notes && im.notes.toLowerCase().includes(activeMatName.toLowerCase())) ||
+              (invMatch && im.inventoryId === invMatch.id)
             )
 
             return {
               id: m.id || `auto-${bIdx}-${mIdx}`,
-              material: m.material || 'Raw Stock',
+              material: activeMatName,
+              originalMaterial: directMatch?.originalMaterial || m.material,
+              isSubstituted: directMatch?.isSubstituted || Boolean(directMatch?.substitutionDetails),
+              substitutionDetails: directMatch?.substitutionDetails,
+              substituteRequest: directMatch?.substituteRequest,
               spec: specNotes,
               profile,
               dia: m.dia,
@@ -286,13 +311,13 @@ export const WorkOrderDetail: React.FC = () => {
               thick: m.thick,
               width: m.width,
               density: m.density,
-              qty: reqQty,
-              unit: m.dia ? 'rods' : (m.thick ? 'plates' : 'pcs'),
-              unitPrice,
-              totalPrice,
+              qty: activeQty,
+              unit: activeUnit,
+              unitPrice: activeUnitCost,
+              totalPrice: activeTotalPrice,
               invMatch,
               alreadyIssued,
-              notes: m.notes || ''
+              notes: directMatch?.notes || m.notes || ''
             }
           })
 
@@ -302,28 +327,45 @@ export const WorkOrderDetail: React.FC = () => {
             const unitPrice = Number(m.unitPrice || 0)
             const totalPrice = reqQty * unitPrice
 
+            const directMatch = directBomItems.find((d: any) => 
+              (d.id && d.id === (m.id || `manual-${bIdx}-${mIdx}`)) ||
+              (d.originalMaterial && d.originalMaterial.toLowerCase() === (m.material || '').toLowerCase()) ||
+              (d.material && d.material.toLowerCase() === (m.material || '').toLowerCase())
+            )
+
+            const activeMatName = directMatch?.material || m.material || 'Bought-out Component'
+            const activeQty = Number(directMatch?.qty || reqQty)
+            const activeUnitCost = Number(directMatch?.unitCost || unitPrice)
+            const activeTotalPrice = activeQty * activeUnitCost
+
             const invMatch = inventory.find(inv => 
-              (inv.name || '').toLowerCase() === (m.material || '').toLowerCase() ||
-              (inv.sku || '').toLowerCase() === (m.material || '').toLowerCase()
+              (inv.name || '').toLowerCase() === activeMatName.toLowerCase() ||
+              (inv.sku || '').toLowerCase() === activeMatName.toLowerCase() ||
+              (directMatch?.inventoryId && inv.id === directMatch.inventoryId)
             )
 
             const alreadyIssued = issuedMaterials.some((im: any) => 
-              (im.itemName && (im.itemName.toLowerCase() === (m.material || '').toLowerCase())) ||
-              (im.notes && im.notes.toLowerCase().includes((m.material || '').toLowerCase()))
+              (im.itemName && (im.itemName.toLowerCase() === activeMatName.toLowerCase())) ||
+              (im.notes && im.notes.toLowerCase().includes(activeMatName.toLowerCase())) ||
+              (invMatch && im.inventoryId === invMatch.id)
             )
 
             return {
               id: m.id || `manual-${bIdx}-${mIdx}`,
-              material: m.material || 'Bought-out Component',
+              material: activeMatName,
+              originalMaterial: directMatch?.originalMaterial || m.material,
+              isSubstituted: directMatch?.isSubstituted || Boolean(directMatch?.substitutionDetails),
+              substitutionDetails: directMatch?.substitutionDetails,
+              substituteRequest: directMatch?.substituteRequest,
               spec: m.supplier ? `Supplier: ${m.supplier}` : 'Standard Hardware',
               profile: 'Bought-out',
-              qty: reqQty,
-              unit: 'pcs',
-              unitPrice,
-              totalPrice,
+              qty: activeQty,
+              unit: directMatch?.unit || 'pcs',
+              unitPrice: activeUnitCost,
+              totalPrice: activeTotalPrice,
               invMatch,
               alreadyIssued,
-              notes: m.supplier || m.notes || ''
+              notes: directMatch?.notes || m.supplier || m.notes || ''
             }
           })
 
@@ -854,9 +896,19 @@ export const WorkOrderDetail: React.FC = () => {
 
             <span className="flex items-center gap-1.5 text-xs text-secondary font-mono ml-2">
               <Package size={14} className="text-amber-500"/> Target: <strong className="text-primary">{wo.jobQty || 1}</strong> pcs
-              {Number(wo.completedQty || 0) > 0 && <span className="text-emerald-600 font-bold ml-1">({wo.completedQty} done)</span>}
+              {Number(wo.completedQty || 0) > 0 && <span className="text-blue-500 font-bold ml-1">({wo.completedQty} machined)</span>}
+              {Number(wo.dispatchedQty || 0) > 0 && <span className="text-emerald-600 font-bold ml-1">({wo.dispatchedQty} dispatched)</span>}
               {Number(wo.scrapQty || 0) > 0 && <span className="text-rose-500 font-bold ml-1">({wo.scrapQty} scrap)</span>}
             </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPartialDispatchModal(true)}
+              className="text-xs py-1 px-2.5 h-auto text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/10 rounded-none font-bold ml-2 shadow-xs"
+              title="Record partial delivery / dispatch"
+            >
+              <Truck size={13} className="mr-1.5" /> Partial Dispatch ({wo.dispatchedQty || 0}/{wo.jobQty || 1} pcs)
+            </Button>
 
             {wo.deadline && (
               <span className="flex items-center gap-1.5 text-xs text-secondary ml-2">
@@ -939,8 +991,9 @@ export const WorkOrderDetail: React.FC = () => {
           { id: 'bom', label: '1. BOM & Machining Plan', icon: ClipboardList, count: parsedBoms.length },
           { id: 'routing', label: '2. Shop Floor Routing & Timers', icon: Layers, count: operations.length },
           { id: 'materials', label: '3. Material Issuance Ledger', icon: Package, count: issuedMaterials.length },
-          { id: 'qc_rework', label: '4. QC & Rework Loop', icon: ShieldCheck, count: reworkLogs.filter(r => r.status !== 'Resolved').length },
-          { id: 'costing', label: '5. Job Costing & Financials', icon: DollarSign }
+          { id: 'qc_rework', label: '4. QC & Inspection Hub', icon: ShieldCheck, count: reworkLogs.filter(r => r.status !== 'Resolved').length },
+          { id: 'dispatches', label: '5. Partial Dispatches & Delivery Notes', icon: Truck, count: Array.isArray(wo.dispatches) ? wo.dispatches.length : (wo.dispatches ? 1 : 0) },
+          { id: 'costing', label: '6. Job Costing & Financials', icon: DollarSign }
         ].map(tab => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
@@ -1134,10 +1187,27 @@ export const WorkOrderDetail: React.FC = () => {
                                   <tr key={mat.id || mIdx} className="hover:bg-surface2/30">
                                     <td className="py-2 px-3 text-muted font-mono">{mIdx + 1}</td>
                                     <td className="py-2 px-3 font-semibold text-primary">
-                                      {mat.material}
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span>{mat.material}</span>
+                                        {mat.isSubstituted && (
+                                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 uppercase" title={`Substituted for ${mat.originalMaterial || 'Original'}`}>
+                                            Substituted
+                                          </span>
+                                        )}
+                                        {mat.substituteRequest?.status === 'pending_approval' && (
+                                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 uppercase" title={`Proposed: ${mat.substituteRequest.substituteMaterial}`}>
+                                            Sub Pending Approval
+                                          </span>
+                                        )}
+                                      </div>
                                       {mat.spec && (
                                         <span className="block text-[10px] text-muted font-mono font-normal">
                                           {mat.spec}
+                                        </span>
+                                      )}
+                                      {mat.substitutionDetails && (
+                                        <span className="block text-[9.5px] text-purple-600 dark:text-purple-400 font-mono">
+                                          Replaced: {mat.substitutionDetails.originalMaterial} ({mat.substitutionDetails.reason})
                                         </span>
                                       )}
                                     </td>
@@ -1180,7 +1250,34 @@ export const WorkOrderDetail: React.FC = () => {
                                       )}
                                     </td>
                                     <td className="py-2 px-3 text-right">
-                                      <div className="flex items-center justify-end gap-1.5">
+                                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            const flatIdx = parsedBoms.flatMap(b => b.allMaterials).findIndex(m => m.id === mat.id || (m.material === mat.material && m.spec === mat.spec))
+                                            setSubstituteModalMat({
+                                              partIndex: bIdx,
+                                              materialIndex: mIdx,
+                                              flatIndex: flatIdx >= 0 ? flatIdx : mIdx,
+                                              material: mat.material,
+                                              spec: mat.spec,
+                                              qty: mat.qty,
+                                              unit: mat.unit,
+                                              unitPrice: mat.unitPrice,
+                                              inStock,
+                                              hasStock,
+                                              invMatch: mat.invMatch,
+                                              partTitle: bom.title,
+                                              substituteRequest: mat.substituteRequest
+                                            })
+                                          }}
+                                          className="text-[11px] py-1 px-2 h-auto text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10 rounded-none font-bold inline-flex items-center"
+                                          title="Change material or request alternative grade/size from stores (available even if in stock)"
+                                        >
+                                          <ArrowLeftRight size={11} className="mr-1 text-indigo-500"/> Change / Alt Material
+                                        </Button>
+
                                         <Button
                                           variant="outline"
                                           size="sm"
@@ -1832,7 +1929,15 @@ export const WorkOrderDetail: React.FC = () => {
         />
       )}
 
-      {/* ── TAB 5: JOB COSTING & FINANCIALS ───────────────────────────────────────── */}
+      {/* ── TAB 5: PARTIAL DISPATCHES & DELIVERY NOTES ─────────────────────────────── */}
+      {activeTab === 'dispatches' && (
+        <WorkOrderDispatchesSection
+          workOrder={wo}
+          onOpenDispatchModal={() => setShowPartialDispatchModal(true)}
+        />
+      )}
+
+      {/* ── TAB 6: JOB COSTING & FINANCIALS ───────────────────────────────────────── */}
       {activeTab === 'costing' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2250,6 +2355,13 @@ export const WorkOrderDetail: React.FC = () => {
       </Modal>
 
       {/* ── SUB-MODAL: COMPLETE WORK ORDER ───────────────────────────────────────── */}
+      <WorkOrderPartialDispatchModal
+        isOpen={showPartialDispatchModal}
+        onClose={() => setShowPartialDispatchModal(false)}
+        workOrder={wo}
+        onSuccess={loadData}
+      />
+
       <Modal isOpen={showCompleteModal} onClose={() => setShowCompleteModal(false)} title={`Complete Work Order #${wo.id}`} size="md">
         <form onSubmit={handleCompleteSubmit} className="p-4 space-y-4">
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-none text-xs text-secondary">
@@ -2311,6 +2423,31 @@ export const WorkOrderDetail: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Change / Request Substitute Material Modal */}
+      {substituteModalMat && (
+        <WorkOrderMaterialSubstituteModal
+          isOpen={true}
+          onClose={() => setSubstituteModalMat(null)}
+          workOrder={wo}
+          item={substituteModalMat}
+          inventory={inventory}
+          onSuccess={() => {
+            loadData()
+          }}
+          onOpenDirectIssue={(subDetails: any) => {
+            setIssueForm({
+              inventoryId: subDetails.inventoryId || '',
+              materialName: subDetails.materialName,
+              qty: subDetails.qty,
+              unit: subDetails.unit || 'pcs',
+              unitCost: Number(subDetails.unitCost || 0),
+              notes: subDetails.notes
+            })
+            setShowIssueModal(true)
+          }}
+        />
+      )}
 
       {/* ── SUB-MODAL: ADD MANUAL BOM REQUIREMENT ─────────────────────────────────── */}
       <Modal isOpen={showAddBomModal} onClose={() => setShowAddBomModal(false)} title="Add BOM Material Requirement" size="md">

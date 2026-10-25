@@ -76,6 +76,8 @@ export const InvoiceBuilder: React.FC = () => {
   const [selectedTermsPresetId, setSelectedTermsPresetId] = useState<string>('');
   const [items, setItems] = useState([{ id: crypto.randomUUID(), inventoryId: '', description: '', qty: 1, unitPrice: 0, taxRateId: '' }]);
   const [advanceReceipts, setAdvanceReceipts] = useState<any[]>([]);
+  const [linkedProformaInvoice, setLinkedProformaInvoice] = useState<any | null>(null);
+  const [loadedOrderPaidAmount, setLoadedOrderPaidAmount] = useState<number>(0);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [loadedSourceOrder, setLoadedSourceOrder] = useState<any | null>(null);
   const [loadedSourceQuote, setLoadedSourceQuote] = useState<any | null>(null);
@@ -143,6 +145,7 @@ export const InvoiceBuilder: React.FC = () => {
               setCustomerId(custId);
             }
 
+            if (ord.paidAmount) setLoadedOrderPaidAmount(Number(ord.paidAmount) || 0);
             if (ord.orderNo) setOrderNo(ord.orderNo);
             if (ord.quotationNo) setQuotationNo(ord.quotationNo);
             if (ord.attention) setAttention(ord.attention);
@@ -432,6 +435,31 @@ export const InvoiceBuilder: React.FC = () => {
     }).catch(err => {
       console.warn('Failed to fetch linked advance payment receipts:', err);
     });
+
+    // Check for linked Advance Proforma Invoice
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices`)
+      .then(res => res.json())
+      .then((invs: any[]) => {
+        if (!Array.isArray(invs)) return;
+        const matchedPi = invs.find((inv: any) => {
+          const isProf = Boolean(
+            inv.isProforma || 
+            inv.invoiceType === 'proforma' || 
+            inv.status === 'proforma' || 
+            String(inv.id || inv.invoiceNo || '').startsWith('PI-')
+          );
+          if (!isProf) return false;
+          const matchOrder = (oNo && (inv.orderNo === oNo || inv.orderId === oNo)) ||
+                             (paramOrderId && (inv.orderId === paramOrderId || inv.orderNo === paramOrderId));
+          const matchQuote = (qNo && inv.quotationNo === qNo) ||
+                             (paramQuoteId && inv.quotationNo === paramQuoteId);
+          return matchOrder || matchQuote;
+        });
+        if (matchedPi) {
+          setLinkedProformaInvoice(matchedPi);
+        }
+      })
+      .catch(() => {});
   }, [quotationNo, orderNo, paramQuoteId, paramOrderId]);
 
   useEffect(() => {
@@ -439,12 +467,22 @@ export const InvoiceBuilder: React.FC = () => {
   }, [refreshAdvanceReceipts]);
 
   const advanceDeducted = useMemo(() => {
-    return advanceReceipts.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-  }, [advanceReceipts]);
+    const receiptsSum = advanceReceipts.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const proformaPaid = Number(linkedProformaInvoice?.paidAmount || 0);
+    const orderPaid = Number(loadedOrderPaidAmount || 0);
+    return Math.max(receiptsSum, proformaPaid, orderPaid);
+  }, [advanceReceipts, linkedProformaInvoice, loadedOrderPaidAmount]);
 
   const receiptNos = useMemo(() => {
-    return advanceReceipts.map(r => r.receiptNo).filter(Boolean).join(', ');
-  }, [advanceReceipts]);
+    const nos = advanceReceipts.map(r => r.receiptNo).filter(Boolean);
+    if (linkedProformaInvoice?.paidAmount > 0 && (linkedProformaInvoice.invoiceNo || linkedProformaInvoice.id)) {
+      const pDoc = linkedProformaInvoice.invoiceNo || linkedProformaInvoice.id;
+      if (!nos.includes(pDoc)) {
+        nos.push(pDoc);
+      }
+    }
+    return nos.join(', ');
+  }, [advanceReceipts, linkedProformaInvoice]);
 
   const selectedCustomer = 
     customers.find(c => c.id === customerId) ||
@@ -896,7 +934,7 @@ export const InvoiceBuilder: React.FC = () => {
                     </span>
                   </div>
                   <div className="text-[11px] text-muted mt-0.5">
-                    Found {advanceReceipts.length} advance payment receipt(s). This advance will be credited against the total consideration on the official final tax invoice. Net balance due: <strong className="text-primary">{formatCurrency(Math.max(0, total - advanceDeducted))}</strong>.
+                    Found {advanceReceipts.length > 0 ? `${advanceReceipts.length} advance payment receipt(s)` : (linkedProformaInvoice ? `Advance Proforma #${linkedProformaInvoice.invoiceNo || linkedProformaInvoice.id}` : 'advance settlement')}. This advance will be credited against the total consideration on the official final tax invoice. Net balance due: <strong className="text-primary">{formatCurrency(Math.max(0, total - advanceDeducted))}</strong>.
                   </div>
                 </div>
               </div>

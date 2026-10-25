@@ -685,6 +685,15 @@ export const logWorkOrderQcMeasurement = async (workOrderId: string, data: any) 
   return res.json();
 };
 
+export const partialDispatchWorkOrder = async (workOrderId: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${workOrderId}/partial-dispatch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
 export const logOperationQC = async (opId: string, data: any) => {
   const res = await fetch(`${API_URL}/production/operations/${opId}/qc`, {
     method: 'POST',
@@ -964,6 +973,28 @@ export const createMRForShortage = async (woId: string, data: {
   notes?: string;
 }) => {
   const res = await fetch(`${API_URL}/production/work-orders/${woId}/create-mr-shortage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const changeBomMaterial = async (woId: string, data: {
+  bomIndex?: number;
+  originalMaterial: string;
+  newMaterial: string;
+  newInventoryId?: string;
+  newQty: number;
+  newUnit: string;
+  newUnitCost?: number;
+  spec?: string;
+  reason: string;
+  changedBy?: string;
+  requestFromStores?: boolean;
+  partTitle?: string;
+}) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/change-bom-material`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)

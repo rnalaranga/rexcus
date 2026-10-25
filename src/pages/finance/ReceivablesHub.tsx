@@ -19,8 +19,9 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { addInvoicePayment, fetchPaymentReceipts } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
+import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
 
-type ActiveTab = 'aging' | 'invoices' | 'receipts';
+type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
 export const ReceivablesHub: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +38,9 @@ export const ReceivablesHub: React.FC = () => {
   const [loadingAging, setLoadingAging] = useState(true);
   const [paymentReceipts, setPaymentReceipts] = useState<any[]>([]);
   const [loadingReceipts, setLoadingReceipts] = useState(true);
+
+  // Proforma Invoice Print Modal State
+  const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null);
 
   // Payment Recording Modal State
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<any | null>(null);
@@ -90,15 +94,47 @@ export const ReceivablesHub: React.FC = () => {
     loadReceipts();
   }, [loadAging, loadReceipts]);
 
-  // Outstanding / Unpaid Invoices
+  // Outstanding / Unpaid Commercial Invoices (excluding proformas)
   const openInvoices = useMemo(() => {
     return allInvoices.filter((inv: any) => {
+      const isProf = Boolean(
+        inv.isProforma ||
+        inv.invoiceType === 'proforma' ||
+        inv.status === 'proforma' ||
+        String(inv.id || inv.invoiceNo || '').startsWith('PI-')
+      );
+      if (isProf) return false;
       const tot = Number(inv.total || inv.amount || 0);
       const paid = Number(inv.paidAmount || 0);
       const isPaid = inv.status === 'paid' || (tot > 0 && paid >= tot);
       return !isPaid && inv.status !== 'draft';
     });
   }, [allInvoices]);
+
+  // Advance Proforma Invoices
+  const proformaInvoices = useMemo(() => {
+    return allInvoices.filter((inv: any) => {
+      return Boolean(
+        inv.isProforma ||
+        inv.invoiceType === 'proforma' ||
+        inv.status === 'proforma' ||
+        String(inv.id || inv.invoiceNo || '').startsWith('PI-')
+      );
+    });
+  }, [allInvoices]);
+
+  // Proforma Summary Metrics
+  const proformaMetrics = useMemo(() => {
+    const totalExpected = proformaInvoices.reduce((s, pi) => s + (Number(pi.total || pi.amount || 0)), 0);
+    const totalCollected = proformaInvoices.reduce((s, pi) => s + (Number(pi.paidAmount || 0)), 0);
+    const totalPending = Math.max(0, totalExpected - totalCollected);
+    const pendingCount = proformaInvoices.filter((pi: any) => {
+      const tot = Number(pi.total || pi.amount || 0);
+      const paid = Number(pi.paidAmount || 0);
+      return !(pi.status === 'paid' || (tot > 0 && paid >= tot));
+    }).length;
+    return { totalExpected, totalCollected, totalPending, pendingCount };
+  }, [proformaInvoices]);
 
   // Summary Metrics
   const metrics = useMemo(() => {
@@ -117,7 +153,7 @@ export const ReceivablesHub: React.FC = () => {
     return list;
   }, [agingData, search, filterType]);
 
-  // Invoices Filtering
+  // Commercial Invoices Filtering
   const filteredInvoices = useMemo(() => {
     const q = search.toLowerCase();
     return openInvoices.filter((inv: any) => {
@@ -126,6 +162,18 @@ export const ReceivablesHub: React.FC = () => {
       return !q || invNo.includes(q) || party.includes(q);
     });
   }, [openInvoices, search]);
+
+  // Advance Proformas Filtering
+  const filteredProformas = useMemo(() => {
+    const q = search.toLowerCase();
+    return proformaInvoices.filter((pi: any) => {
+      const piNo = (pi.invoiceNo || pi.id || '').toLowerCase();
+      const cust = (pi.customerName || pi.customerCompany || pi.customerId || '').toLowerCase();
+      const ord = (pi.orderNo || '').toLowerCase();
+      const quo = (pi.quotationNo || '').toLowerCase();
+      return !q || piNo.includes(q) || cust.includes(q) || ord.includes(q) || quo.includes(q);
+    });
+  }, [proformaInvoices, search]);
 
   // Receipts Filtering
   const filteredReceipts = useMemo(() => {
@@ -138,6 +186,26 @@ export const ReceivablesHub: React.FC = () => {
       return !q || recNo.includes(q) || cust.includes(q) || ord.includes(q) || quo.includes(q);
     });
   }, [paymentReceipts, search]);
+
+  // Enriched Proforma Preview Handler
+  const handleOpenPrintProforma = (proforma: any) => {
+    if (!proforma) return;
+    const matchedCustomer = customers.find((c: any) => 
+      c.id === proforma.customerId || 
+      c.id === proforma.leadId || 
+      (c.name && c.name.toLowerCase() === (proforma.customerName || '').toLowerCase())
+    );
+    const enriched = {
+      ...proforma,
+      customerName: proforma.customerName || matchedCustomer?.name || 'Customer',
+      customerCompany: proforma.customerCompany || matchedCustomer?.company || proforma.customerName || 'Customer',
+      customerAddress: proforma.customerAddress || matchedCustomer?.address || '',
+      customerPhone: proforma.customerPhone || matchedCustomer?.phone || '',
+      customerEmail: proforma.customerEmail || matchedCustomer?.email || '',
+      customerVat: proforma.customerVat || matchedCustomer?.taxNumber || matchedCustomer?.vatNumber || ''
+    };
+    setActivePrintProforma(enriched);
+  };
 
   // Open Direct Payment Modal for an Invoice
   const handleOpenPaymentModal = (invoice: any) => {
@@ -306,41 +374,50 @@ export const ReceivablesHub: React.FC = () => {
       </div>
 
       {/* KPI METRICS OVERVIEW */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <GlassCard className="p-4 border-l-4 border-l-emerald-500">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <GlassCard className="p-3.5 border-l-4 border-l-emerald-500">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Total AR Outstanding</span>
             <DollarSign size={16} className="text-emerald-500" />
           </div>
-          <p className="text-2xl font-black text-emerald-600 font-mono mt-1">{formatCurrency(metrics.totalDue)}</p>
-          <p className="text-[10px] text-muted mt-0.5">{openInvoices.length} outstanding customer invoices</p>
+          <p className="text-xl font-black text-emerald-600 font-mono mt-1">{formatCurrency(metrics.totalDue)}</p>
+          <p className="text-[10px] text-muted mt-0.5">{openInvoices.length} outstanding invoices</p>
         </GlassCard>
 
-        <GlassCard className="p-4 border-l-4 border-l-blue-500">
+        <GlassCard className="p-3.5 border-l-4 border-l-blue-500">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Current (0 - 30 Days)</span>
             <Clock size={16} className="text-blue-500" />
           </div>
-          <p className="text-2xl font-black text-blue-500 font-mono mt-1">{formatCurrency(metrics.current30)}</p>
+          <p className="text-xl font-black text-blue-500 font-mono mt-1">{formatCurrency(metrics.current30)}</p>
           <p className="text-[10px] text-muted mt-0.5">Within standard trade terms</p>
         </GlassCard>
 
-        <GlassCard className="p-4 border-l-4 border-l-red-500">
+        <GlassCard className="p-3.5 border-l-4 border-l-red-500">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Overdue (90+ Days)</span>
             <AlertTriangle size={16} className="text-red-500" />
           </div>
-          <p className="text-2xl font-black text-red-500 font-mono mt-1">{formatCurrency(metrics.overdue90)}</p>
-          <p className="text-[10px] text-muted mt-0.5">High priority collection follow-up</p>
+          <p className="text-xl font-black text-red-500 font-mono mt-1">{formatCurrency(metrics.overdue90)}</p>
+          <p className="text-[10px] text-muted mt-0.5">High priority follow-up</p>
         </GlassCard>
 
-        <GlassCard className="p-4 border-l-4 border-l-amber-500">
+        <GlassCard className="p-3.5 border-l-4 border-l-indigo-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Advance Proformas</span>
+            <FileText size={16} className="text-indigo-500" />
+          </div>
+          <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono mt-1">{formatCurrency(proformaMetrics.totalPending)}</p>
+          <p className="text-[10px] text-muted mt-0.5">{proformaMetrics.pendingCount} awaiting advance payment</p>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-amber-500">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Total Advances Collected</span>
             <Receipt size={16} className="text-amber-500" />
           </div>
-          <p className="text-2xl font-black text-amber-500 font-mono mt-1">{formatCurrency(metrics.totalAdvances)}</p>
-          <p className="text-[10px] text-muted mt-0.5">{paymentReceipts.length} official advance vouchers issued</p>
+          <p className="text-xl font-black text-amber-500 font-mono mt-1">{formatCurrency(metrics.totalAdvances)}</p>
+          <p className="text-[10px] text-muted mt-0.5">{paymentReceipts.length} official vouchers issued</p>
         </GlassCard>
       </div>
 
@@ -367,6 +444,17 @@ export const ReceivablesHub: React.FC = () => {
           >
             <FileText size={13} />
             Outstanding Invoices ({openInvoices.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('proformas')}
+            className={`px-4 py-2 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
+              activeTab === 'proformas'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5'
+                : 'border-transparent text-secondary hover:text-primary hover:bg-surface2/50'
+            }`}
+          >
+            <FileText size={13} className="text-indigo-500" />
+            Advance Proformas ({proformaInvoices.length})
           </button>
           <button
             onClick={() => setActiveTab('receipts')}
@@ -511,7 +599,141 @@ export const ReceivablesHub: React.FC = () => {
         </GlassCard>
       )}
 
-      {/* TAB 3: CUSTOMER PAYMENT RECEIPTS (ADVANCE VOUCHERS) */}
+      {/* TAB 3: ADVANCE PROFORMA INVOICES */}
+      {activeTab === 'proformas' && (
+        <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
+          {loadingInvoices ? (
+            <div className="p-12 text-center text-muted animate-pulse">Loading advance proformas...</div>
+          ) : filteredProformas.length === 0 ? (
+            <div className="p-12 text-center">
+              <FileText size={36} className="text-indigo-500 mx-auto mb-2 opacity-60" />
+              <p className="text-sm font-semibold text-primary">No Advance Proformas Found</p>
+              <p className="text-xs text-muted mt-1">Advance proforma invoices created against Sales Orders will appear here for collection tracking.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 text-xs"
+                onClick={() => navigate('/inventory/finished-goods')}
+              >
+                Go to Sales Orders Hub
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-theme-subtle bg-surface2/50 text-[10.5px] uppercase tracking-wider text-muted font-bold">
+                    <th className="px-4 py-3">Proforma No</th>
+                    <th className="px-4 py-3">Customer</th>
+                    <th className="px-4 py-3">Linked Sales Order</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Due Date</th>
+                    <th className="px-4 py-3 text-right">Advance Amount</th>
+                    <th className="px-4 py-3 text-right">Received</th>
+                    <th className="px-4 py-3 text-right">Balance Due</th>
+                    <th className="px-4 py-3 text-center">Advance Status</th>
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle text-xs">
+                  {filteredProformas.map((pi: any) => {
+                    const tot = Number(pi.total || pi.amount || 0);
+                    const paid = Number(pi.paidAmount || 0);
+                    const due = Math.max(0, tot - paid);
+                    const isFullyPaid = pi.status === 'paid' || (tot > 0 && paid >= tot);
+                    const isPartiallyPaid = !isFullyPaid && paid > 0;
+
+                    return (
+                      <tr key={pi.id} className="hover:bg-surface2/30 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          <div className="flex items-center gap-1.5">
+                            <span>{pi.invoiceNo || pi.id}</span>
+                            <span className="px-1 py-0.2 text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 uppercase">
+                              Proforma
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-primary">
+                          <div>
+                            {pi.customerName || pi.customerId || 'Customer'}
+                            {pi.customerCompany && pi.customerCompany !== pi.customerName && (
+                              <p className="text-[10px] text-muted font-normal">{pi.customerCompany}</p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {pi.orderNo ? (
+                            <button
+                              onClick={() => navigate(`/inventory/finished-goods?search=${encodeURIComponent(pi.orderNo)}`)}
+                              className="inline-flex items-center gap-1 font-mono text-xs text-secondary hover:text-primary hover:underline"
+                              title="Click to view Sales Order in Orders Hub"
+                            >
+                              <span className="px-1.5 py-0.5 bg-surface2 border border-theme-subtle">
+                                {pi.orderNo}
+                              </span>
+                              <ExternalLink size={10} className="opacity-50" />
+                            </button>
+                          ) : (
+                            <span className="text-muted font-mono text-[11px]">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-muted font-mono">
+                          {formatDate(pi.date)}
+                        </td>
+                        <td className="px-4 py-3 text-muted font-mono">
+                          {pi.dueDate ? formatDate(pi.dueDate) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                          {formatCurrency(tot)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-emerald-600">
+                          {paid > 0 ? formatCurrency(paid) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-black text-rose-600 dark:text-rose-400">
+                          {formatCurrency(due)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge
+                            variant={isFullyPaid ? 'success' : isPartiallyPaid ? 'warning' : 'default'}
+                            size="sm"
+                          >
+                            {isFullyPaid ? 'Advance Paid' : isPartiallyPaid ? 'Partially Paid' : 'Awaiting Advance'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={FileText}
+                              className="text-xs border border-theme-subtle hover:bg-surface2 text-indigo-600 dark:text-indigo-400"
+                              onClick={() => handleOpenPrintProforma(pi)}
+                            >
+                              View / PDF
+                            </Button>
+                            {!isFullyPaid && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                                onClick={() => handleOpenPaymentModal(pi)}
+                              >
+                                Record Advance
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </GlassCard>
+      )}
+
+      {/* TAB 4: CUSTOMER PAYMENT RECEIPTS (ADVANCE VOUCHERS) */}
       {activeTab === 'receipts' && (
         <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
           {loadingReceipts ? (
@@ -748,6 +970,16 @@ export const ReceivablesHub: React.FC = () => {
         receipt={printReceipt}
         settings={settings}
       />
+
+      {/* PRINT / VIEW PROFORMA INVOICE MODAL */}
+      {activePrintProforma && (
+        <ProformaInvoicePrintModal
+          isOpen={true}
+          onClose={() => setActivePrintProforma(null)}
+          invoice={activePrintProforma}
+          settings={settings}
+        />
+      )}
     </div>
   );
 };
