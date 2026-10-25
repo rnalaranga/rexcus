@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { 
   ShoppingCart, ArrowRight, Package, Plus, Search, Filter, CheckCircle, 
@@ -59,6 +60,31 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const [search, setSearch] = useState('')
   const [activeViewTab, setActiveViewTab] = useState<'orders' | 'proformas'>('orders')
+  // Order Actions Dropdown state
+  const [openActionOrderId, setOpenActionOrderId] = useState<string | null>(null)
+  const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.order-action-trigger-btn') && !target.closest('.order-action-menu-dropdown')) {
+        setOpenActionOrderId(null)
+        setActionCoords(null)
+      }
+    }
+    const handleScrollOrResize = () => {
+      setOpenActionOrderId(null)
+      setActionCoords(null)
+    }
+    document.addEventListener('click', handleClickOutside)
+    window.addEventListener('resize', handleScrollOrResize)
+    window.addEventListener('scroll', handleScrollOrResize, true)
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+      window.removeEventListener('resize', handleScrollOrResize)
+      window.removeEventListener('scroll', handleScrollOrResize, true)
+    }
+  }, [])
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
@@ -597,18 +623,6 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
-  const [openActionOrderId, setOpenActionOrderId] = useState<string | number | null>(null)
-
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('.order-action-menu-container')) {
-        setOpenActionOrderId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [])
-
   const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
 
   const loadWorkOrders = useCallback(async () => {
@@ -718,6 +732,285 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     return { total, pending, inProd, readyOrDispatched, totalRev }
   }, [orders])
+
+  const renderOrderActions = (
+    order: any, 
+    orderItems: any[], 
+    existingWO: any, 
+    linkedInvoice: any, 
+    linkedProforma: any
+  ) => {
+    const totalOrdQty = Math.max(1, Number(order.qty || 1))
+    const dispatchedQty = Number(order.dispatchedQty || (order.isDispatched ? totalOrdQty : 0))
+    const remainingToDispatch = Math.max(0, totalOrdQty - dispatchedQty)
+    const isOpen = openActionOrderId === order.id
+
+    let menuStyle: React.CSSProperties = {}
+    if (isOpen && actionCoords) {
+      const PADDING = 8
+      const MENU_WIDTH = 260
+
+      let left = actionCoords.right - MENU_WIDTH
+      if (left < PADDING) left = PADDING
+      if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+        left = window.innerWidth - MENU_WIDTH - PADDING
+      }
+
+      const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING
+      const spaceAbove = actionCoords.top - PADDING
+      const openUpwards = spaceBelow < 340 && spaceAbove > spaceBelow
+
+      menuStyle = {
+        position: 'fixed',
+        left: `${left}px`,
+        width: `${MENU_WIDTH}px`,
+        zIndex: 99999,
+        maxHeight: openUpwards ? `${Math.min(480, spaceAbove)}px` : `${Math.min(480, spaceBelow)}px`,
+        ...(openUpwards 
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
+        )
+      }
+    }
+
+    return (
+      <div className="flex items-center justify-end gap-1.5">
+        {/* Quick Contextual Action */}
+        {remainingToDispatch > 0 && !order.isDispatched ? (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => handleOpenDispatchModal(order)}
+            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none"
+            title="Quick Dispatch Remaining Goods & Generate Gate Pass"
+          >
+            <Truck size={12} className="mr-1" /> Dispatch ({remainingToDispatch})
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Printer}
+            onClick={() => setPrintOrder(order)}
+            className="h-7 px-2 text-muted hover:text-primary border border-theme-subtle rounded-none text-xs"
+            title="Print Sales Order PDF"
+          >
+            Print
+          </Button>
+        )}
+
+        {/* Dropdown Menu Trigger */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (openActionOrderId === order.id) {
+              setOpenActionOrderId(null)
+              setActionCoords(null)
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setOpenActionOrderId(order.id)
+              setActionCoords({
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height
+              })
+            }
+          }}
+          className={`order-action-trigger-btn h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
+            isOpen
+              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+              : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+          }`}
+        >
+          Actions
+          <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Portal Dropdown Menu */}
+        {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={menuStyle}
+            className="order-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1 text-left rounded-none overflow-y-auto custom-scrollbar"
+          >
+            <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider font-mono border-b border-theme-subtle mb-1 flex items-center justify-between">
+              <span>Order #{order.orderNo || order.id}</span>
+              <span className="text-secondary">{order.status || 'Active'}</span>
+            </div>
+
+            {/* 1. Advance Proforma Invoice */}
+            {linkedProforma ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  handleOpenPrintProforma(linkedProforma, order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-blue-600 dark:text-blue-400 font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <FileText size={13} /> View Advance Proforma
+                </span>
+                <span className="text-[10px] font-mono px-1 py-0.2 bg-blue-500/10 border border-blue-500/20">PI</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  setProformaModalOrder(order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <FileText size={13} className="text-blue-500" /> Create Advance Proforma
+                </span>
+                <span className="text-[10px] text-muted font-mono">+Proforma</span>
+              </button>
+            )}
+
+            {/* 2. Work Order in Factory */}
+            {existingWO ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  navigate(`/production/work-orders/${existingWO.id}`)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-amber-600 dark:text-amber-400 font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <Factory size={13} /> View Work Order ({existingWO.status || 'Active'})
+                </span>
+                <span className="text-[10px] font-mono px-1 py-0.2 bg-amber-500/10 border border-amber-500/20">WO</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  handleCreateWorkOrder(order, orderItems)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <Factory size={13} className="text-amber-500" /> Send to Production (Work Order)
+                </span>
+                <span className="text-[10px] text-muted font-mono">+WO</span>
+              </button>
+            )}
+
+            {/* 3. Dispatch & Gate Pass */}
+            {remainingToDispatch > 0 && !order.isDispatched ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  handleOpenDispatchModal(order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-emerald-600 dark:text-emerald-400 font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <Truck size={13} /> Record Partial Dispatch
+                </span>
+                <span className="text-[10px] font-mono px-1 py-0.2 bg-emerald-500/10 border border-emerald-500/20">{remainingToDispatch} left</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  handleViewGatePass(order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <Truck size={13} className="text-emerald-500" /> View Delivery Gate Pass
+                </span>
+                <span className="text-[10px] text-muted font-mono">DN/GP</span>
+              </button>
+            )}
+
+            {/* 4. Final Commercial Invoice */}
+            {linkedInvoice || order.invoiceNo ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <FileText size={13} className="text-purple-500" /> View Commercial Invoice
+                </span>
+                <span className="text-[10px] font-mono px-1 py-0.2 bg-purple-500/10 border border-purple-500/20">Tax Inv</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  handleInvoiceClick(order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <FileText size={13} className="text-indigo-500" /> Create Final Tax Invoice
+                </span>
+                <span className="text-[10px] text-muted font-mono">+Invoice</span>
+              </button>
+            )}
+
+            <div className="my-1 border-t border-theme-subtle" />
+
+            {/* 5. Print Order PDF */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                setPrintOrder(order)
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-secondary hover:text-primary font-medium"
+            >
+              <Printer size={13} /> Print Sales Order Document
+            </button>
+
+            {/* 6. Edit Order */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                handleOpenEditModal(order)
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-secondary hover:text-primary font-medium"
+            >
+              <Edit size={13} /> Edit Sales Order Details
+            </button>
+
+            {/* 7. Delete Order (if draft / unpaid) */}
+            {order.status !== 'Dispatched' && !order.isDispatched && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  setDeleteTarget(order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-rose-500/10 transition-colors text-rose-600 font-medium"
+              >
+                <Trash2 size={13} /> Delete Sales Order
+              </button>
+            )}
+          </div>,
+          document.body
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -1248,129 +1541,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       )}
                     </td>
 
-                    {/* Streamlined Sequential Production Flow Actions */}
+                    {/* Compact Dropdown Actions */}
                     <td className="px-4 py-2.5 text-right">
-                      {(() => {
-                        const totalOrdQty = Math.max(1, Number(order.qty || 1));
-                        const dispatchedQty = Number(order.dispatchedQty || (order.isDispatched ? totalOrdQty : 0));
-                        const remainingToDispatch = Math.max(0, totalOrdQty - dispatchedQty);
-
-                        return (
-                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {/* 1. Advance Proforma Button */}
-                            {linkedProforma ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenPrintProforma(linkedProforma, order)}
-                                className="h-7 text-[10px] px-2 text-blue-600 dark:text-blue-400 border-blue-500/40 hover:bg-blue-500/10 font-bold rounded-none"
-                                title="View / Print Advance Proforma Invoice"
-                              >
-                                <FileText size={11} className="mr-1" /> PI View
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setProformaModalOrder(order)}
-                                className="h-7 text-[10px] px-2 text-secondary hover:text-blue-600 border border-theme-subtle rounded-none font-semibold"
-                                title="Create Advance Proforma Invoice"
-                              >
-                                <FileText size={11} className="mr-1" /> + Proforma
-                              </Button>
-                            )}
-
-                            {/* 2. Work Order Button */}
-                            {existingWO ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => navigate(`/production/work-orders/${existingWO.id}`)}
-                                className="h-7 text-[10px] px-2 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10 font-bold rounded-none"
-                                title={`Jump to Work Order (${existingWO.status || 'Active'})`}
-                              >
-                                <Factory size={11} className="mr-1" /> WO (${existingWO.status || 'Active'})
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleCreateWorkOrder(order, orderItems)}
-                                className="h-7 text-[10px] px-2 text-secondary hover:text-amber-600 border border-theme-subtle rounded-none font-semibold"
-                                title="Send order into production Work Order"
-                              >
-                                <Factory size={11} className="mr-1" /> + WO
-                              </Button>
-                            )}
-
-                            {/* 3. Partial Dispatch / Gate Pass Button */}
-                            {remainingToDispatch > 0 && !order.isDispatched ? (
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleOpenDispatchModal(order)}
-                                className="h-7 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none"
-                                title="Record Partial Dispatch & Security Gate Pass"
-                              >
-                                <Truck size={11} className="mr-1" /> Dispatch ({remainingToDispatch})
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewGatePass(order)}
-                                className="h-7 text-[10px] px-2 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 font-bold rounded-none"
-                                title="View Delivery Gate Pass"
-                              >
-                                <Truck size={11} className="mr-1" /> Gate Pass
-                              </Button>
-                            )}
-
-                            {/* 4. Final Commercial Invoice Button */}
-                            {linkedInvoice || order.invoiceNo ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`)}
-                                className="h-7 text-[10px] px-2 text-primary border-theme-subtle font-bold rounded-none"
-                                title="View Final Commercial Invoice"
-                              >
-                                <FileText size={11} className="mr-1" /> Inv
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleInvoiceClick(order)}
-                                className="h-7 text-[10px] px-2 text-secondary hover:text-primary border-theme-subtle rounded-none font-semibold"
-                                title="Generate Final Commercial Tax Invoice"
-                              >
-                                <FileText size={11} className="mr-1" /> + Final Inv
-                              </Button>
-                            )}
-
-                            {/* 5. Print PDF */}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              icon={Printer}
-                              onClick={() => setPrintOrder(order)}
-                              className="h-7 w-7 p-0 text-muted hover:text-primary border border-theme-subtle rounded-none"
-                              title="Print Sales Order PDF"
-                            />
-
-                            {/* 6. Edit Order */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditModal(order)}
-                              className="p-1 text-muted hover:text-primary transition-colors"
-                              title="Edit Sales Order"
-                            >
-                              <Edit size={13} />
-                            </button>
-                          </div>
-                        );
-                      })()}
+                      {renderOrderActions(order, orderItems, existingWO, linkedInvoice, linkedProforma)}
                     </td>
                   </tr>
                 )
