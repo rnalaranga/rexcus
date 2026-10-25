@@ -8073,6 +8073,37 @@ app.put('/api/production/operations/:id/assign', async (req, res) => {
   }
 });
 
+// BATCH ASSIGN MULTIPLE OPERATIONS TO MACHINE / OPERATOR / DATE
+app.post('/api/production/operations/batch-assign', async (req, res) => {
+  try {
+    const { operationIds, employeeId, machineId, scheduledDate, scheduledStart, scheduledEnd } = req.body;
+    if (!Array.isArray(operationIds) || operationIds.length === 0) {
+      return res.status(400).json({ error: 'operationIds array is required' });
+    }
+
+    const toMysqlDt = (iso: string) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+    };
+
+    let startDt = scheduledStart ? toMysqlDt(scheduledStart) : (scheduledDate ? `${scheduledDate} 08:00:00` : null);
+    let endDt = scheduledEnd ? toMysqlDt(scheduledEnd) : (scheduledDate ? `${scheduledDate} 17:00:00` : null);
+
+    const [result]: any = await db.query(
+      `UPDATE work_order_operations 
+       SET employeeId = ?, machineId = ?, scheduledStart = IFNULL(?, scheduledStart), scheduledEnd = IFNULL(?, scheduledEnd)
+       WHERE id IN (?)`,
+      [employeeId || null, machineId || null, startDt, endDt, operationIds]
+    );
+
+    res.json({ success: true, affectedRows: result.affectedRows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // OPERATION STATUS & LIVE TIMER (START / PAUSE / COMPLETE)
 app.put('/api/production/operations/:id/status', async (req, res) => {
   try {
