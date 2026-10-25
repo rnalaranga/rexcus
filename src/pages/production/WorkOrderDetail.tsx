@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Factory, Plus, Search, Layers, Wrench, Clock, CheckCircle2, 
@@ -62,6 +62,18 @@ export const WorkOrderDetail: React.FC = () => {
   const [showCompleteModal, setShowCompleteModal] = useState(false)
   const [showAddBomModal, setShowAddBomModal] = useState(false)
   const [showPartialDispatchModal, setShowPartialDispatchModal] = useState(false)
+  const [showActionsMenu, setShowActionsMenu] = useState(false)
+  const actionsMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
+        setShowActionsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Issue Material Form
   const [issueForm, setIssueForm] = useState({
@@ -787,12 +799,12 @@ export const WorkOrderDetail: React.FC = () => {
       )}
 
       {/* ── BREADCRUMBS & TOP NAVIGATION BAR ─────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-1">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs text-muted">
             <button 
               onClick={() => navigate('/production')}
-              className="hover:text-primary transition-colors flex items-center gap-1 font-semibold"
+              className="hover:text-primary transition-colors flex items-center gap-1 font-semibold cursor-pointer"
             >
               <ArrowLeft size={13}/> Work Orders
             </button>
@@ -807,193 +819,343 @@ export const WorkOrderDetail: React.FC = () => {
               </>
             )}
           </div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight flex items-center gap-2.5">
-            {wo.title || 'Precision Machining Job'}
-          </h1>
-        </div>
-
-        {/* Header Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <select 
-            value={wo.status || 'Pending'} 
-            onChange={(e) => handleStatusChange(e.target.value)}
-            disabled={submitting}
-            className="input-base text-xs py-1.5 px-3 bg-surface2 text-primary border-theme-subtle rounded-none font-bold cursor-pointer hover:border-theme transition-colors"
-            title="Change Work Order Status"
-          >
-            <option value="Draft">Draft</option>
-            <option value="Released">Released</option>
-            <option value="In Progress">In Production</option>
-            <option value="QC Pending">QC Inspection</option>
-            <option value="Rework">Rework Required</option>
-            <option value="Completed">Completed</option>
-            <option value="Closed">Closed</option>
-          </select>
-
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setShowIssueModal(true)}
-            className="text-xs rounded-none border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 font-bold"
-          >
-            <Plus size={13} className="mr-1"/> Issue Material
-          </Button>
-
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => navigate('/inventory', { state: { openCutStudioWithJobRef: wo.orderNo || wo.id, tab: 'linear_remnants' } })}
-            className="text-xs rounded-none border border-theme text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-semibold"
-            title="Cut raw bars or use offcuts in Cut Studio"
-          >
-            <Scissors size={13} className="mr-1 text-amber-500"/> Cut Studio
-          </Button>
-
-          {wo.status !== 'Completed' && (
-            <Button 
-              size="sm" 
-              onClick={() => setShowCompleteModal(true)}
-              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none border-none"
-            >
-              <CheckCircle2 size={13} className="mr-1"/> Complete Job
-            </Button>
-          )}
-
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => window.print()} 
-            className="text-xs text-muted hover:text-primary rounded-none border border-theme-subtle"
-            title="Print Job Sheet / Traveler"
-          >
-            <Printer size={14}/>
-          </Button>
-        </div>
-      </div>
-
-      {/* ── TOP HERO SUMMARY BANNER (FULL WIDTH THEMED) ─────────────────────────── */}
-      <GlassCard className="p-4 rounded-none border-theme-subtle space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="font-mono text-xs font-bold tracking-wider bg-rex-500/10 text-rex-600 dark:text-rex-400 px-3 py-1 rounded-none border border-rex-500/30">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
+              {wo.title || 'Precision Machining Job'}
+            </h1>
+            <span className="font-mono text-xs font-bold tracking-wider bg-rex-500/10 text-rex-600 dark:text-rex-400 px-2.5 py-0.5 rounded-none border border-rex-500/30">
               {wo.orderNo || wo.id}
             </span>
-            <span className="font-mono text-[11px] text-muted bg-surface2 px-2 py-0.5 rounded-none border border-theme-subtle">
-              ID: {wo.id}
-            </span>
-            <Badge 
-              value={wo.priority || 'Normal'} 
-              variant={wo.priority === 'Urgent' ? 'error' : wo.priority === 'High' ? 'warning' : 'default'} 
-              className="rounded-none"
-            />
-            {getStatusBadge(wo.status)}
+          </div>
+        </div>
 
-            {wo.customerName && (
-              <span className="flex items-center gap-1.5 text-xs text-secondary font-medium ml-2">
-                <Building size={14} className="text-secondary"/> {wo.customerName}
-              </span>
-            )}
+        {/* Header Action Controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Status Selector Pill */}
+          <div className="flex items-center border border-theme-subtle bg-surface px-2.5 py-1 rounded-none shadow-2xs">
+            <span className="text-[10px] text-muted uppercase font-bold tracking-wider mr-1.5 hidden sm:inline">Status:</span>
+            <select 
+              value={wo.status || 'Pending'} 
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={submitting}
+              className="text-xs bg-transparent text-primary font-bold cursor-pointer outline-none border-none py-0.5 pr-2 focus:ring-0"
+              title="Change Work Order Status"
+            >
+              <option value="Draft">Draft</option>
+              <option value="Released">Released</option>
+              <option value="In Progress">In Production</option>
+              <option value="QC Pending">QC Inspection</option>
+              <option value="Rework">Rework Required</option>
+              <option value="Completed">Completed</option>
+              <option value="Closed">Closed</option>
+            </select>
+          </div>
 
-            <span className="flex items-center gap-1.5 text-xs text-secondary font-mono ml-2">
-              <Package size={14} className="text-amber-500"/> Target: <strong className="text-primary">{wo.jobQty || 1}</strong> pcs
-              {Number(wo.completedQty || 0) > 0 && <span className="text-blue-500 font-bold ml-1">({wo.completedQty} machined)</span>}
-              {Number(wo.dispatchedQty || 0) > 0 && <span className="text-emerald-600 font-bold ml-1">({wo.dispatchedQty} dispatched)</span>}
-              {Number(wo.scrapQty || 0) > 0 && <span className="text-rose-500 font-bold ml-1">({wo.scrapQty} scrap)</span>}
-            </span>
+          {/* Primary Action Button */}
+          <Button 
+            variant="primary" 
+            size="sm" 
+            onClick={() => setShowIssueModal(true)}
+            className="text-xs rounded-none font-bold bg-rex-600 hover:bg-rex-700 text-white shadow-xs"
+          >
+            <Plus size={13} className="mr-1.5"/> Issue Material
+          </Button>
+
+          {/* Smart Actions Dropdown */}
+          <div className="relative" ref={actionsMenuRef}>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowPartialDispatchModal(true)}
-              className="text-xs py-1 px-2.5 h-auto text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/10 rounded-none font-bold ml-2 shadow-xs"
-              title="Record partial delivery / dispatch"
+              onClick={() => setShowActionsMenu(!showActionsMenu)}
+              className="text-xs rounded-none border-theme hover:bg-surface2 font-bold flex items-center gap-1.5 shadow-2xs"
             >
-              <Truck size={13} className="mr-1.5" /> Partial Dispatch ({wo.dispatchedQty || 0}/{wo.jobQty || 1} pcs)
+              <span>Actions</span>
+              <ChevronDown size={13} className={`transition-transform duration-200 ${showActionsMenu ? 'rotate-180' : ''}`} />
             </Button>
 
-            {wo.deadline && (
-              <span className="flex items-center gap-1.5 text-xs text-secondary ml-2">
-                <Calendar size={14} className="text-secondary"/> Due: {new Date(wo.deadline).toLocaleDateString()}
-              </span>
+            {showActionsMenu && (
+              <div className="absolute right-0 mt-1 w-64 bg-surface border border-theme shadow-xl z-50 py-1.5 text-xs animate-in fade-in-50 zoom-in-95">
+                <div className="px-3 py-1.5 text-[10px] font-mono uppercase text-muted tracking-wider border-b border-theme-subtle">
+                  Work Order Actions
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false)
+                    setShowPartialDispatchModal(true)
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
+                >
+                  <Truck size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="font-semibold block">Record Partial Dispatch</span>
+                    <span className="text-[10px] text-muted">Generate Delivery Note (DN)</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false)
+                    navigate('/inventory', { state: { openCutStudioWithJobRef: wo.orderNo || wo.id, tab: 'linear_remnants' } })
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
+                >
+                  <Scissors size={14} className="text-amber-500 shrink-0" />
+                  <div>
+                    <span className="font-semibold block">Open in Cut Studio</span>
+                    <span className="text-[10px] text-muted">Linear raw stock & offcut optimizer</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false)
+                    setActiveTab('qc_rework')
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
+                >
+                  <ShieldCheck size={14} className="text-blue-500 shrink-0" />
+                  <div>
+                    <span className="font-semibold block">QC Inspection & Rework</span>
+                    <span className="text-[10px] text-muted">View inspection checkpoints</span>
+                  </div>
+                </button>
+
+                {operations.length === 0 && grandTotalQuotedMachiningHours > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActionsMenu(false)
+                      handleSyncAllBomsToFloor()
+                    }}
+                    className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
+                  >
+                    <Sparkles size={14} className="text-purple-500 shrink-0" />
+                    <div>
+                      <span className="font-semibold block">Sync BOM Steps to Floor</span>
+                      <span className="text-[10px] text-muted">Create floor routing operations</span>
+                    </div>
+                  </button>
+                )}
+
+                <div className="my-1 border-t border-theme-subtle" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false)
+                    window.print()
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
+                >
+                  <Printer size={14} className="text-muted shrink-0" />
+                  <div>
+                    <span className="font-semibold block">Print Job Traveler</span>
+                    <span className="text-[10px] text-muted">Shop floor routing traveler sheet</span>
+                  </div>
+                </button>
+
+                {wo.status !== 'Completed' && wo.status !== 'Closed' && (
+                  <>
+                    <div className="my-1 border-t border-theme-subtle" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActionsMenu(false)
+                        setShowCompleteModal(true)
+                      }}
+                      className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 cursor-pointer transition-colors font-bold"
+                    >
+                      <CheckCircle2 size={14} className="shrink-0" />
+                      <span>Complete Work Order</span>
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <span className="text-[10px] text-muted uppercase tracking-wider block font-bold">Planned BOM Breakdown</span>
-              <span className="text-xs font-bold text-primary">
-                {parsedBoms.length} Part{parsedBoms.length !== 1 ? 's' : ''} | {grandTotalPlannedMaterials} Materials | {grandTotalQuotedMachiningHours.toFixed(1)} Quoted Hrs
+      {/* ── 3-COLUMN COMMAND CENTER SUMMARY CARD ─────────────────────────────────── */}
+      <GlassCard className="p-4 rounded-none border-theme-subtle">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6 divide-y md:divide-y-0 md:divide-x divide-theme-subtle">
+          {/* Column 1: Job & Customer Details */}
+          <div className="space-y-2.5 pr-0 md:pr-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+                Job & Customer Profile
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Badge 
+                  value={wo.priority || 'Normal'} 
+                  variant={wo.priority === 'Urgent' ? 'error' : wo.priority === 'High' ? 'warning' : 'default'} 
+                  className="rounded-none text-[10px] py-0 px-1.5"
+                />
+                {getStatusBadge(wo.status)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Building size={14} className="text-secondary shrink-0"/>
+                <span className="text-sm font-bold text-primary truncate">
+                  {wo.customerName || 'Internal Production'}
+                </span>
+              </div>
+              {linkedQuote && (
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <FileText size={13} className="text-muted shrink-0"/>
+                  <span>Quotation:</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/crm/quotations')}
+                    className="font-mono font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    {linkedQuote.data?.quotationNo || linkedQuote.docNo || linkedQuote.id}
+                  </button>
+                </div>
+              )}
+              {wo.deadline && (
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Calendar size={13} className="text-muted shrink-0"/>
+                  <span>Due Date:</span>
+                  <span className="font-semibold text-secondary">
+                    {new Date(wo.deadline).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="text-[11px] text-muted pt-1 border-t border-theme-subtle/60 flex items-center justify-between">
+              <span>Planned BOM Parts:</span>
+              <span className="font-mono font-bold text-primary">
+                {parsedBoms.length} Part{parsedBoms.length !== 1 ? 's' : ''} ({grandTotalPlannedMaterials} Materials)
               </span>
             </div>
           </div>
-        </div>
 
-        {/* KPI Strip */}
-        <div className="pt-3 border-t border-theme-subtle grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-          <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
-            <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Floor Progress</span>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 bg-surface2 border border-theme-subtle rounded-none overflow-hidden">
+          {/* Column 2: Production & Dispatch Pipeline */}
+          <div className="space-y-2.5 pt-3 md:pt-0 px-0 md:px-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+                Production & Delivery Tracking
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPartialDispatchModal(true)}
+                className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={11}/> New Dispatch
+              </button>
+            </div>
+
+            <div className="flex items-baseline justify-between">
+              <div>
+                <span className="text-xs text-muted">Target Quantity</span>
+                <div className="text-2xl font-mono font-extrabold text-primary">
+                  {wo.jobQty || 1} <span className="text-xs font-sans font-normal text-muted">pcs</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-muted">Floor Machined</span>
+                <div className="text-base font-mono font-bold text-blue-600 dark:text-blue-400">
+                  {wo.completedQty || 0} / {wo.jobQty || 1}
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Multi-Segment Progress Bar */}
+            <div className="space-y-1">
+              <div className="h-2.5 w-full bg-surface2 border border-theme-subtle rounded-none flex overflow-hidden">
                 <div 
-                  className="h-full bg-blue-600 transition-all duration-500"
-                  style={{ width: `${cost.progress || 0}%` }}
+                  className="bg-emerald-600 h-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, ((Number(wo.dispatchedQty) || 0) / (Number(wo.jobQty) || 1)) * 100)}%` }}
+                  title={`Dispatched: ${wo.dispatchedQty || 0} pcs`}
+                />
+                <div 
+                  className="bg-blue-600 h-full transition-all duration-300"
+                  style={{ width: `${Math.max(0, Math.min(100, (((Number(wo.completedQty) || 0) - (Number(wo.dispatchedQty) || 0)) / (Number(wo.jobQty) || 1)) * 100))}%` }}
+                  title={`Machined (In Stores): ${Math.max(0, (Number(wo.completedQty) || 0) - (Number(wo.dispatchedQty) || 0))} pcs`}
                 />
               </div>
-              <span className="font-mono font-bold text-primary text-xs">{cost.progress || 0}%</span>
+
+              {/* Status breakdown pills */}
+              <div className="flex items-center justify-between text-[11px] pt-1">
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
+                  <Truck size={12}/> {wo.dispatchedQty || 0} Dispatched
+                </span>
+                <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-semibold font-mono">
+                  <CheckCircle2 size={12}/> {wo.completedQty || 0} Machined
+                </span>
+                {Number(wo.scrapQty || 0) > 0 && (
+                  <span className="text-rose-500 font-mono font-semibold">
+                    {wo.scrapQty} Scrap
+                  </span>
+                )}
+              </div>
             </div>
-            <span className="text-[10px] text-muted mt-0.5 block">
-              {cost.completedSteps || 0} / {cost.totalSteps || operations.length} Steps Done
-            </span>
           </div>
 
-          <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
-            <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Direct Material Cost</span>
-            <p className="text-sm font-mono font-bold text-primary">
-              {formatCurrency(cost.materialCost || 0)}
-            </p>
-            <span className="text-[10px] text-muted mt-0.5 block">{issuedMaterials.length} items logged</span>
-          </div>
+          {/* Column 3: Machining Hours & Financials */}
+          <div className="space-y-2.5 pt-3 md:pt-0 pl-0 md:pl-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+                Hours & Job Financials
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTab('costing')}
+                className="text-[11px] text-rex-600 dark:text-rex-400 font-bold hover:underline cursor-pointer"
+              >
+                Costing Details →
+              </button>
+            </div>
 
-          <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
-            <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Labor + Machining</span>
-            <p className="text-sm font-mono font-bold text-primary">
-              {formatCurrency((cost.laborCost || 0) + (cost.machineCost || 0))}
-            </p>
-            <span className="text-[10px] text-muted mt-0.5 block">
-              Lab: {formatCurrency(cost.laborCost || 0)} | Mac: {formatCurrency(cost.machineCost || 0)}
-            </span>
-          </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-surface2/60 p-2 border border-theme-subtle">
+                <span className="text-[10px] text-muted uppercase font-bold block">Quoted Machining</span>
+                <span className="font-mono font-bold text-primary text-sm">
+                  {grandTotalQuotedMachiningHours.toFixed(1)} <span className="text-[10px] text-muted">hrs</span>
+                </span>
+                <span className="text-[10px] text-muted block mt-0.5">
+                  {operations.reduce((s, o) => s + Number(o.actualHours || 0), 0).toFixed(1)} hrs logged
+                </span>
+              </div>
 
-          <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
-            <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Actual Total Cost</span>
-            <p className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
-              {formatCurrency(cost.actualTotalCost || 0)}
-            </p>
-            <span className="text-[10px] text-muted mt-0.5 block">
-              Target: {formatCurrency(cost.estimatedCost || 0)}
-            </span>
-          </div>
+              <div className="bg-surface2/60 p-2 border border-theme-subtle">
+                <span className="text-[10px] text-muted uppercase font-bold block">Actual Total Cost</span>
+                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                  {formatCurrency(cost.actualTotalCost || 0)}
+                </span>
+                <span className="text-[10px] text-muted block mt-0.5">
+                  Est: {formatCurrency(cost.estimatedCost || 0)}
+                </span>
+              </div>
+            </div>
 
-          <div className="bg-surface2/50 p-2.5 border border-theme-subtle rounded-none">
-            <span className="text-[10px] text-muted uppercase tracking-wider block font-bold mb-1">Quoted Machining</span>
-            <p className="text-sm font-mono font-bold text-primary">
-              {grandTotalQuotedMachiningHours.toFixed(1)} hrs
-            </p>
-            <span className="text-[10px] text-muted mt-0.5 block">
-              {operations.reduce((s: number, o: any) => s + Number(o.actualHours || 0), 0).toFixed(1)} hrs logged
-            </span>
+            <div className="flex items-center justify-between text-[11px] text-muted pt-1 border-t border-theme-subtle/60">
+              <span>Floor Progress:</span>
+              <span className="font-mono font-bold text-primary">
+                {cost.progress || 0}% ({cost.completedSteps || 0}/{cost.totalSteps || operations.length} steps)
+              </span>
+            </div>
           </div>
         </div>
       </GlassCard>
 
       {/* ── MAIN NAVIGATION TABS (SHARP EDGES, FLAT THEME) ───────────────────────── */}
-      <div className="flex items-center gap-1 border-b border-theme-subtle pb-0 overflow-x-auto">
+      <div className="flex items-center gap-1 border-b border-theme-subtle pb-0 overflow-x-auto scrollbar-none">
         {[
-          { id: 'bom', label: '1. BOM & Machining Plan', icon: ClipboardList, count: parsedBoms.length },
-          { id: 'routing', label: '2. Shop Floor Routing & Timers', icon: Layers, count: operations.length },
-          { id: 'materials', label: '3. Material Issuance Ledger', icon: Package, count: issuedMaterials.length },
-          { id: 'qc_rework', label: '4. QC & Inspection Hub', icon: ShieldCheck, count: reworkLogs.filter(r => r.status !== 'Resolved').length },
-          { id: 'dispatches', label: '5. Partial Dispatches & Delivery Notes', icon: Truck, count: Array.isArray(wo.dispatches) ? wo.dispatches.length : (wo.dispatches ? 1 : 0) },
-          { id: 'costing', label: '6. Job Costing & Financials', icon: DollarSign }
+          { id: 'bom', label: '1. BOM & Spec', icon: ClipboardList, count: parsedBoms.length },
+          { id: 'routing', label: '2. Routing & Timers', icon: Layers, count: operations.length },
+          { id: 'materials', label: '3. Material Ledger', icon: Package, count: issuedMaterials.length },
+          { id: 'qc_rework', label: '4. QC Hub', icon: ShieldCheck, count: reworkLogs.filter(r => r.status !== 'Resolved').length },
+          { id: 'dispatches', label: '5. Partial Dispatches', icon: Truck, count: Array.isArray(wo.dispatches) ? wo.dispatches.length : (wo.dispatches ? 1 : 0) },
+          { id: 'costing', label: '6. Job Costing', icon: DollarSign }
         ].map(tab => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
@@ -1001,13 +1163,13 @@ export const WorkOrderDetail: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as DetailTab)}
-              className={`px-4 py-2.5 rounded-none text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border-b-2 ${
+              className={`px-3.5 py-2.5 rounded-none text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border-b-2 ${
                 isActive 
                   ? 'border-rex-600 text-rex-600 dark:text-rex-400 font-bold bg-rex-500/10' 
                   : 'border-transparent text-muted hover:text-primary hover:bg-surface2/30'
               }`}
             >
-              <Icon size={14} className={isActive ? 'text-rex-600' : 'text-muted'}/>
+              <Icon size={14} className={isActive ? 'text-rex-600 dark:text-rex-400' : 'text-muted'}/>
               <span>{tab.label}</span>
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono font-bold ${
