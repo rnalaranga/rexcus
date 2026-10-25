@@ -80,7 +80,7 @@ export const HelpGuideModal: React.FC<HelpGuideModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
       <div 
         className="w-full max-w-5xl h-[88vh] bg-surface border border-theme shadow-2xl flex flex-col rounded-none overflow-hidden text-primary animate-scale-in"
         onClick={e => e.stopPropagation()}

@@ -393,7 +393,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-y-auto">
       <div 
         className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-xl overflow-hidden flex flex-col my-6"
         onClick={(e) => e.stopPropagation()}

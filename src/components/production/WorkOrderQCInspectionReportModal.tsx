@@ -39,7 +39,7 @@ export const WorkOrderQCInspectionReportModal: React.FC<WorkOrderQCInspectionRep
       : 'CONFORMS TO SPECIFICATIONS (ACCEPTED)'
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
       {/* Container */}
       <div className="relative bg-surface border border-theme-subtle w-full max-w-5xl shadow-2xl rounded-none flex flex-col max-h-[92vh]">
         

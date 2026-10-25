@@ -349,4 +349,18 @@
   .duration-200 { animation-duration: 0.2s; }
   .duration-300 { animation-duration: 0.3s; }
   [class*="animate-\\[shrink"] { animation: shrink 3s linear forwards; }
+
+  /* ── White Ice Glass Modal Backdrop ──────────────────────────── */
+  .bg-ice-blur,
+  .modal-ice-backdrop {
+    background-color: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+  }
+  .dark .bg-ice-blur,
+  .dark .modal-ice-backdrop {
+    background-color: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+  }
 }

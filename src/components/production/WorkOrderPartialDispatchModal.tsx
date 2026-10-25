@@ -88,7 +88,7 @@ export const WorkOrderPartialDispatchModal: React.FC<WorkOrderPartialDispatchMod
   // If gate pass was created and ready for printing
   if (createdGatePass) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md">
         <div className="bg-surface border border-theme-subtle w-full max-w-4xl p-6 shadow-2xl rounded-none max-h-[95vh] overflow-y-auto space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-theme-subtle print:hidden">
             <div className="flex items-center gap-2">
@@ -130,7 +130,7 @@ export const WorkOrderPartialDispatchModal: React.FC<WorkOrderPartialDispatchMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md">
       <div className="bg-surface border border-theme-subtle w-full max-w-2xl shadow-2xl rounded-none flex flex-col max-h-[92vh]">
         
         {/* Header */}

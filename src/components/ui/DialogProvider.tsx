@@ -95,7 +95,7 @@ const DialogRenderer: React.FC<{ dialogs: DialogConfig[]; onResolve: (id: string
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 animate-in fade-in duration-150" />
+      <div className="absolute inset-0 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-in fade-in duration-150" />
 
       {/* Dialog */}
       <div className="relative w-full max-w-md animate-in zoom-in-95 fade-in duration-200">

@@ -664,7 +664,7 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
   if (!isOpen) return null
 
   const modalBody = (
-    <div className={isPage ? "w-full min-h-[calc(100vh-100px)] flex flex-col animate-fade-in pb-12" : "fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-fade-in overflow-hidden"}>
+    <div className={isPage ? "w-full min-h-[calc(100vh-100px)] flex flex-col animate-fade-in pb-12" : "fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-hidden"}>
       <div 
         className={isPage ? "relative w-full flex-1 bg-surface border border-theme-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden" : "relative w-full max-w-6xl h-[92vh] max-h-[92vh] bg-surface border border-theme-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden"}
         onClick={e => e.stopPropagation()}
