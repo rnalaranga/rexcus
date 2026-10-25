@@ -23,7 +23,9 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
+import { QuotationStageSnapshotModal } from '@/components/crm/QuotationStageSnapshotModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { GitBranch } from 'lucide-react'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 // @ts-ignore
@@ -58,6 +60,7 @@ export const ProductQuotations: React.FC = () => {
   const [openActionId, setOpenActionId] = useState<string | null>(null)
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
+  const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -443,6 +446,26 @@ export const ProductQuotations: React.FC = () => {
   const renderActionsDropdown = (group: any, latest: any, status: string, idx: number) => {
     const isOpen = openActionId === group.quoNo;
 
+    const linkedWo = workOrders.find((w: any) => 
+      (w.quoteId && (String(w.quoteId) === String(latest?.id) || String(w.quoteId) === String(group.quoNo))) ||
+      (w.orderNo && group.quoNo && w.orderNo.includes(group.quoNo))
+    );
+
+    const hasMaterialChange = Boolean(
+      (latest?.materialStatus && (
+        latest.materialStatus.toLowerCase().includes('substitut') ||
+        latest.materialStatus.toLowerCase().includes('change') ||
+        latest.materialStatus.toLowerCase().includes('shortage')
+      )) ||
+      (linkedWo?.materialStatus && (
+        linkedWo.materialStatus.toLowerCase().includes('substitut') ||
+        linkedWo.materialStatus.toLowerCase().includes('change') ||
+        linkedWo.materialStatus.toLowerCase().includes('shortage')
+      )) ||
+      latest?.materialAlert ||
+      linkedWo?.materialAlert
+    );
+
     let menuStyle: React.CSSProperties = {};
     if (isOpen && actionCoords) {
       const PADDING = 8;
@@ -493,14 +516,24 @@ export const ProductQuotations: React.FC = () => {
               });
             }
           }}
-          className={`product-quote-action-btn h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
+          className={`product-quote-action-btn relative h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
             isOpen
               ? 'bg-emerald-600 text-white border-emerald-600'
               : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
           }`}
+          title={hasMaterialChange ? `⚠️ Material Substituted/Changed: ${linkedWo?.materialAlert || latest?.materialAlert || 'Workshop substituted material'}` : 'Actions'}
         >
-          Actions
+          <span>Actions</span>
           <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+          {hasMaterialChange && (
+            <span 
+              className="absolute -top-1 -right-1 flex h-2.5 w-2.5" 
+              title={linkedWo?.materialAlert || latest?.materialAlert || "⚠️ Material Substituted / Changed in Workshop"}
+            >
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 ring-2 ring-surface"></span>
+            </span>
+          )}
         </button>
 
         {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
@@ -512,6 +545,50 @@ export const ProductQuotations: React.FC = () => {
             <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
               Product Quote Actions
             </div>
+
+            {hasMaterialChange && (
+              <div className="mx-2 my-1 p-2 bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-none text-[11px] flex items-start gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0 mt-0.5 animate-pulse" />
+                <div>
+                  <strong className="block font-bold">Material Changed / Substituted</strong>
+                  <span className="text-[10px] text-rose-700 dark:text-rose-300 block line-clamp-2">
+                    {linkedWo?.materialAlert || latest?.materialAlert || linkedWo?.materialStatus || 'Alternative material selected on shopfloor'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Lifecycle Stage Snapshot */}
+            <button
+              type="button"
+              onClick={() => {
+                const linkedOrder = (allOrders || []).find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                const linkedInvoice = (allInvoices || []).find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latest?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+                const allRecs = paymentReceiptsList.filter((r: any) => (r.quoteId && String(r.quoteId) === String(latest?.id)) || (r.quotationNo && r.quotationNo === group.quoNo));
+                const totalAdv = allRecs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                const latestRec = allRecs[0] || null;
+
+                setSnapshotModalData({
+                  group,
+                  quotation: latest,
+                  linkedOrder,
+                  linkedWorkOrder: linkedWo,
+                  linkedInvoice,
+                  totalAdvance: totalAdv,
+                  latestReceipt: latestRec
+                });
+                setOpenActionId(null);
+              }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+            >
+              <GitBranch size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <div>
+                <span className="font-bold block">Stage Snapshot</span>
+                <span className="text-[10px] text-muted block">View 6-stage core workflow progress</span>
+              </div>
+            </button>
+
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
 
             {/* 1. Preview Document */}
             <button
@@ -1272,6 +1349,52 @@ export const ProductQuotations: React.FC = () => {
                             >
                               Edit
                             </Button>
+
+                            {/* STAGE SNAPSHOT BUTTON */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const linkedWo = workOrders.find((w: any) => 
+                                  (w.quoteId && (String(w.quoteId) === String(latest?.id) || String(w.quoteId) === String(group.quoNo))) ||
+                                  (w.orderNo && group.quoNo && w.orderNo.includes(group.quoNo))
+                                );
+                                const linkedOrder = (allOrders || []).find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                                const linkedInvoice = (allInvoices || []).find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latest?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+                                const allRecs = paymentReceiptsList.filter((r: any) => (r.quoteId && String(r.quoteId) === String(latest?.id)) || (r.quotationNo && r.quotationNo === group.quoNo));
+                                const totalAdv = allRecs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                                const latestRec = allRecs[0] || null;
+
+                                setSnapshotModalData({
+                                  group,
+                                  quotation: latest,
+                                  linkedOrder,
+                                  linkedWorkOrder: linkedWo,
+                                  linkedInvoice,
+                                  totalAdvance: totalAdv,
+                                  latestReceipt: latestRec
+                                });
+                              }}
+                              className="relative h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 flex items-center gap-1 text-secondary hover:text-primary font-medium"
+                              title="View Lifecycle Stage Snapshot"
+                            >
+                              <GitBranch size={13} className="text-secondary shrink-0" />
+                              <span className="hidden xl:inline">Stage</span>
+                              {Boolean(
+                                (latest?.materialStatus && (
+                                  latest.materialStatus.toLowerCase().includes('substitut') ||
+                                  latest.materialStatus.toLowerCase().includes('change') ||
+                                  latest.materialStatus.toLowerCase().includes('shortage')
+                                )) ||
+                                latest?.materialAlert
+                              ) && (
+                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 ring-1 ring-surface"></span>
+                                </span>
+                              )}
+                            </Button>
+
                             {renderActionsDropdown(group, latest, status, idx)}
                           </div>
                         </td>
@@ -1460,6 +1583,51 @@ export const ProductQuotations: React.FC = () => {
                     >
                       Edit
                     </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const linkedWo = workOrders.find((w: any) => 
+                          (w.quoteId && (String(w.quoteId) === String(latest?.id) || String(w.quoteId) === String(group.quoNo))) ||
+                          (w.orderNo && group.quoNo && w.orderNo.includes(group.quoNo))
+                        );
+                        const linkedOrder = (allOrders || []).find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                        const linkedInvoice = (allInvoices || []).find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latest?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+                        const allRecs = paymentReceiptsList.filter((r: any) => (r.quoteId && String(r.quoteId) === String(latest?.id)) || (r.quotationNo && r.quotationNo === group.quoNo));
+                        const totalAdv = allRecs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                        const latestRec = allRecs[0] || null;
+
+                        setSnapshotModalData({
+                          group,
+                          quotation: latest,
+                          linkedOrder,
+                          linkedWorkOrder: linkedWo,
+                          linkedInvoice,
+                          totalAdvance: totalAdv,
+                          latestReceipt: latestRec
+                        });
+                      }}
+                      className="relative h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 flex items-center gap-1 text-secondary hover:text-primary font-medium"
+                      title="View Lifecycle Stage Snapshot"
+                    >
+                      <GitBranch size={13} className="text-secondary shrink-0" />
+                      <span>Stage</span>
+                      {Boolean(
+                        (latest?.materialStatus && (
+                          latest.materialStatus.toLowerCase().includes('substitut') ||
+                          latest.materialStatus.toLowerCase().includes('change') ||
+                          latest.materialStatus.toLowerCase().includes('shortage')
+                        )) ||
+                        latest?.materialAlert
+                      ) && (
+                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 ring-1 ring-surface"></span>
+                        </span>
+                      )}
+                    </Button>
+
                     {renderActionsDropdown(group, latest, status, idx)}
                   </div>
                 </div>
@@ -1633,6 +1801,26 @@ export const ProductQuotations: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* ── PRODUCT QUOTATION LIFECYCLE STAGE SNAPSHOT MODAL ─────────────── */}
+      {snapshotModalData && (
+        <QuotationStageSnapshotModal
+          isOpen={!!snapshotModalData}
+          onClose={() => setSnapshotModalData(null)}
+          group={snapshotModalData.group}
+          quotation={snapshotModalData.quotation}
+          linkedOrder={snapshotModalData.linkedOrder}
+          linkedWorkOrder={snapshotModalData.linkedWorkOrder}
+          linkedInvoice={snapshotModalData.linkedInvoice}
+          totalAdvance={snapshotModalData.totalAdvance}
+          latestReceipt={snapshotModalData.latestReceipt}
+          onCreateSalesOrder={() => handleCreateSalesOrder(snapshotModalData.group, snapshotModalData.quotation)}
+          onPreviewPdf={() => setPreviewData({
+            quotation: snapshotModalData.quotation,
+            lead: snapshotModalData.group
+          })}
+        />
+      )}
     </div>
   )
 }

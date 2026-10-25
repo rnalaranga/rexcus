@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail } from 'lucide-react'
+import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { Modal } from '@/components/ui/Modal'
 import { InvoicePreview } from "@/pages/finance/InvoiceBuilder";
+import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { useInvoices, useLeads, useCustomers, useQuotations, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
@@ -38,6 +39,7 @@ export const Invoices: React.FC = () => {
   const [endDate, setEndDate] = useState('')
   const [viewInvoice, setViewInvoice] = useState<any>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
+  const [printReceiptData, setPrintReceiptData] = useState<any | null>(null)
   
   const [toast, setToast] = useState<{type: 'success'|'error', msg: string} | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -136,6 +138,9 @@ export const Invoices: React.FC = () => {
       showToast('success', 'Payment recorded successfully');
       setShowPaymentModal(false);
       setPaymentData({ amount: '', method: 'Cash', accountId: '', reference: '' });
+      if (res && res.receipt) {
+        setPrintReceiptData(res.receipt);
+      }
     } catch (e: any) {
       console.error('Record payment error:', e);
       showToast('error', e.message || 'Failed to record payment');
@@ -741,6 +746,9 @@ export const Invoices: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <PageHelpButton moduleId="finance-invoices" />
+          <Button variant="outline" icon={Receipt} onClick={() => navigate('/finance/receivables?tab=receipts')}>
+            Receipts Monitor
+          </Button>
           <Button variant="primary" icon={Plus} onClick={() => navigate('/finance/invoices/new')}>Create Invoice</Button>
         </div>
       </div>
@@ -967,15 +975,52 @@ export const Invoices: React.FC = () => {
 
                       {paymentList.length > 0 ? (
                         <div className="space-y-2">
-                          {paymentList.map((p: any, i: number) => (
-                            <div key={p.id || i} className="bg-surface2 p-3 rounded-xl border border-theme-subtle">
-                              <div className="flex justify-between items-start mb-1">
-                                <p className="text-xs font-bold">{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</p>
-                                <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0)}</span>
+                          {paymentList.map((p: any, i: number) => {
+                            const cust = getCustomerInfo(viewInvoice);
+                            return (
+                              <div key={p.id || i} className="bg-surface2 p-3 rounded-xl border border-theme-subtle flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <p className="text-xs font-bold">{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</p>
+                                    <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0)}</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted uppercase">{p.method || 'Cash'} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
+                                  {p.receiptNo && (
+                                    <p className="text-[10px] font-mono font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                      Receipt: {p.receiptNo}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  icon={Printer}
+                                  className="h-7 text-[11px] px-2 py-0 shrink-0 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                  onClick={() => {
+                                    setPrintReceiptData({
+                                      receiptNo: p.receiptNo || `REC-${(viewInvoice.invoiceNo || viewInvoice.id).replace(/^INV-/, '')}-${i + 1}`,
+                                      invoiceId: viewInvoice.id,
+                                      invoiceNo: viewInvoice.invoiceNo || viewInvoice.id,
+                                      date: p.date || new Date().toISOString(),
+                                      amount: Number(p.amount) || 0,
+                                      paymentMethod: p.method || 'Cash',
+                                      reference: p.reference || '',
+                                      customerId: viewInvoice.customerId || viewInvoice.leadId || '',
+                                      customerName: cust.company || cust.name || 'Customer',
+                                      customerCompany: cust.company || '',
+                                      customerAddress: (cust as any)?.address || '',
+                                      customerPhone: cust.phone || '',
+                                      customerEmail: cust.email || '',
+                                      balanceDue: invBalance
+                                    });
+                                  }}
+                                  title="Print Official Payment Receipt"
+                                >
+                                  Receipt
+                                </Button>
                               </div>
-                              <p className="text-[10px] text-muted uppercase">{p.method || 'Cash'} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="p-4 bg-surface2/50 rounded-xl border border-dashed border-theme-subtle text-center">
@@ -1317,6 +1362,14 @@ export const Invoices: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Official Payment Receipt Modal */}
+      <PaymentReceiptPrintModal
+        isOpen={!!printReceiptData}
+        onClose={() => setPrintReceiptData(null)}
+        receipt={printReceiptData}
+        settings={settings}
+      />
     </div>
   )
 }

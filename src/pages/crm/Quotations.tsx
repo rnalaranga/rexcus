@@ -20,10 +20,11 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users } from 'lucide-react'
+import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
+import { QuotationStageSnapshotModal } from '@/components/crm/QuotationStageSnapshotModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
@@ -54,6 +55,7 @@ export const Quotations: React.FC = () => {
   const [selectedQuoteForReceipt, setSelectedQuoteForReceipt] = useState<any>(null)
   const [activePrintReceipt, setActivePrintReceipt] = useState<any>(null)
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
+  const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
 
   // Rejection modal state
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
@@ -691,6 +693,21 @@ export const Quotations: React.FC = () => {
   ) => {
     const isOpen = openActionId === group.quoNo;
 
+    const hasMaterialChange = Boolean(
+      (latestMain?.materialStatus && (
+        latestMain.materialStatus.toLowerCase().includes('substitut') ||
+        latestMain.materialStatus.toLowerCase().includes('change') ||
+        latestMain.materialStatus.toLowerCase().includes('shortage')
+      )) ||
+      (existingWO?.materialStatus && (
+        existingWO.materialStatus.toLowerCase().includes('substitut') ||
+        existingWO.materialStatus.toLowerCase().includes('change') ||
+        existingWO.materialStatus.toLowerCase().includes('shortage')
+      )) ||
+      latestMain?.materialAlert ||
+      existingWO?.materialAlert
+    );
+
     let menuStyle: React.CSSProperties = {};
     if (isOpen && actionCoords) {
       const PADDING = 8;
@@ -741,14 +758,24 @@ export const Quotations: React.FC = () => {
               });
             }
           }}
-          className={`quotation-action-trigger-btn h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
+          className={`quotation-action-trigger-btn relative h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
             isOpen
               ? 'bg-rex-600 text-white border-rex-600'
               : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
           }`}
+          title={hasMaterialChange ? `⚠️ Material Substituted/Changed: ${existingWO?.materialAlert || latestMain?.materialAlert || 'Workshop substituted material'}` : 'Actions'}
         >
-          Actions
+          <span>Actions</span>
           <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+          {hasMaterialChange && (
+            <span 
+              className="absolute -top-1 -right-1 flex h-2.5 w-2.5" 
+              title={existingWO?.materialAlert || latestMain?.materialAlert || "⚠️ Material Substituted / Changed in Workshop"}
+            >
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 ring-2 ring-surface"></span>
+            </span>
+          )}
         </button>
 
         {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
@@ -760,6 +787,51 @@ export const Quotations: React.FC = () => {
             <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
               Quotation Actions
             </div>
+
+            {hasMaterialChange && (
+              <div className="mx-2 my-1 p-2 bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-none text-[11px] flex items-start gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0 mt-0.5 animate-pulse" />
+                <div>
+                  <strong className="block font-bold">Material Changed / Substituted</strong>
+                  <span className="text-[10px] text-rose-700 dark:text-rose-300 block line-clamp-2">
+                    {existingWO?.materialAlert || latestMain?.materialAlert || existingWO?.materialStatus || 'Alternative material selected on shopfloor'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Lifecycle Stage Snapshot */}
+            <button
+              type="button"
+              onClick={() => {
+                const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                const linkedInvoice = allInvoices.find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latestMain?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+                const quoteReceipts = getQuoteReceipts(group, latestMain);
+                const totalAdv = quoteReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+                const latestRec = quoteReceipts[0] || null;
+
+                setSnapshotModalData({
+                  group,
+                  quotation: latestMain || displayQ,
+                  linkedOrder,
+                  linkedWorkOrder: existingWO,
+                  linkedInvoice,
+                  sampleGrns,
+                  totalAdvance: totalAdv,
+                  latestReceipt: latestRec
+                });
+                setOpenActionId(null);
+              }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+            >
+              <GitBranch size={14} className="text-rex-600 dark:text-rex-400 shrink-0" />
+              <div>
+                <span className="font-bold block">Stage Snapshot</span>
+                <span className="text-[10px] text-muted block">View 6-stage core workflow progress</span>
+              </div>
+            </button>
+
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
 
             {/* 1. Preview Document */}
             <button
@@ -1702,6 +1774,51 @@ export const Quotations: React.FC = () => {
                             >
                               Edit
                             </Button>
+
+                            {/* STAGE SNAPSHOT BUTTON */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                                const linkedInvoice = allInvoices.find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latestMain?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+                                setSnapshotModalData({
+                                  group,
+                                  quotation: latestMain || displayQ,
+                                  linkedOrder,
+                                  linkedWorkOrder: existingWO,
+                                  linkedInvoice,
+                                  sampleGrns,
+                                  totalAdvance: totalAdv,
+                                  latestReceipt: latestRec
+                                });
+                              }}
+                              className="relative h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 flex items-center gap-1 text-secondary hover:text-primary font-medium"
+                              title="View Lifecycle Stage Snapshot"
+                            >
+                              <GitBranch size={13} className="text-secondary shrink-0" />
+                              <span className="hidden xl:inline">Stage</span>
+                              {Boolean(
+                                (latestMain?.materialStatus && (
+                                  latestMain.materialStatus.toLowerCase().includes('substitut') ||
+                                  latestMain.materialStatus.toLowerCase().includes('change') ||
+                                  latestMain.materialStatus.toLowerCase().includes('shortage')
+                                )) ||
+                                (existingWO?.materialStatus && (
+                                  existingWO.materialStatus.toLowerCase().includes('substitut') ||
+                                  existingWO.materialStatus.toLowerCase().includes('change') ||
+                                  existingWO.materialStatus.toLowerCase().includes('shortage')
+                                )) ||
+                                latestMain?.materialAlert ||
+                                existingWO?.materialAlert
+                              ) && (
+                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 ring-1 ring-surface"></span>
+                                </span>
+                              )}
+                            </Button>
+
                             {renderActionsDropdown(group, latestMain, displayQ, parsed, existingWO, sampleGrns, idx)}
                           </div>
                         </td>
@@ -1920,6 +2037,50 @@ export const Quotations: React.FC = () => {
                     >
                       Edit
                     </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                        const linkedInvoice = allInvoices.find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latestMain?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
+                        setSnapshotModalData({
+                          group,
+                          quotation: latestMain || displayQ,
+                          linkedOrder,
+                          linkedWorkOrder: existingWO,
+                          linkedInvoice,
+                          sampleGrns,
+                          totalAdvance: totalAdv,
+                          latestReceipt: latestRec
+                        });
+                      }}
+                      className="relative h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 flex items-center gap-1 text-secondary hover:text-primary font-medium"
+                      title="View Lifecycle Stage Snapshot"
+                    >
+                      <GitBranch size={13} className="text-secondary shrink-0" />
+                      <span>Stage</span>
+                      {Boolean(
+                        (latestMain?.materialStatus && (
+                          latestMain.materialStatus.toLowerCase().includes('substitut') ||
+                          latestMain.materialStatus.toLowerCase().includes('change') ||
+                          latestMain.materialStatus.toLowerCase().includes('shortage')
+                        )) ||
+                        (existingWO?.materialStatus && (
+                          existingWO.materialStatus.toLowerCase().includes('substitut') ||
+                          existingWO.materialStatus.toLowerCase().includes('change') ||
+                          existingWO.materialStatus.toLowerCase().includes('shortage')
+                        )) ||
+                        latestMain?.materialAlert ||
+                        existingWO?.materialAlert
+                      ) && (
+                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 ring-1 ring-surface"></span>
+                        </span>
+                      )}
+                    </Button>
+
                     {renderActionsDropdown(group, latestMain, displayQ, parsed, existingWO, sampleGrns, idx)}
                   </div>
                 </div>
@@ -2686,6 +2847,38 @@ export const Quotations: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* ── QUOTATION LIFECYCLE STAGE SNAPSHOT MODAL ───────────────────────── */}
+      {snapshotModalData && (
+        <QuotationStageSnapshotModal
+          isOpen={!!snapshotModalData}
+          onClose={() => setSnapshotModalData(null)}
+          group={snapshotModalData.group}
+          quotation={snapshotModalData.quotation}
+          linkedOrder={snapshotModalData.linkedOrder}
+          linkedWorkOrder={snapshotModalData.linkedWorkOrder}
+          linkedInvoice={snapshotModalData.linkedInvoice}
+          sampleGrns={snapshotModalData.sampleGrns}
+          totalAdvance={snapshotModalData.totalAdvance}
+          latestReceipt={snapshotModalData.latestReceipt}
+          onCreateSalesOrder={() => handleCreateSalesOrder(snapshotModalData.group, snapshotModalData.quotation)}
+          onCreateWorkOrder={() => handleCreateWO(snapshotModalData.group, snapshotModalData.quotation)}
+          onCreateInvoice={() => handlePaymentRequest(snapshotModalData.group, snapshotModalData.quotation)}
+          onIssueReceipt={() => handleOpenReceiptModal(snapshotModalData.group, snapshotModalData.quotation)}
+          onPreviewPdf={() => setPreviewData({
+            quotation: snapshotModalData.quotation,
+            type: 'main',
+            lead: {
+              name: snapshotModalData.group.leadName,
+              company: snapshotModalData.group.leadCompany,
+              email: snapshotModalData.group.leadEmail,
+              address: snapshotModalData.group.leadAddress,
+              vat: snapshotModalData.group.leadVat,
+              svat: snapshotModalData.group.leadSvat
+            }
+          })}
+        />
+      )}
     </div>
   )
 }

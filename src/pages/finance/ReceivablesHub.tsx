@@ -184,7 +184,8 @@ export const ReceivablesHub: React.FC = () => {
       const cust = (rec.customerName || rec.customerCompany || '').toLowerCase();
       const ord = (rec.orderNo || '').toLowerCase();
       const quo = (rec.quotationNo || '').toLowerCase();
-      return !q || recNo.includes(q) || cust.includes(q) || ord.includes(q) || quo.includes(q);
+      const inv = (rec.invoiceNo || '').toLowerCase();
+      return !q || recNo.includes(q) || cust.includes(q) || ord.includes(q) || quo.includes(q) || inv.includes(q);
     });
   }, [paymentReceipts, search]);
 
@@ -251,9 +252,13 @@ export const ReceivablesHub: React.FC = () => {
       }
 
       toast(`Payment of ${formatCurrency(amt)} recorded successfully for Invoice ${paymentModalInvoice.invoiceNo || paymentModalInvoice.id}!`, 'success');
+      if (res && res.receipt) {
+        setPrintReceipt(res.receipt);
+      }
       setPaymentModalInvoice(null);
       refetchInvoices();
       loadAging();
+      loadReceipts();
     } catch (err: any) {
       toast(err?.message || 'Failed to record payment', 'error');
     } finally {
@@ -787,6 +792,11 @@ export const ReceivablesHub: React.FC = () => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 flex-wrap">
+                          {rec.invoiceNo && (
+                            <span className="font-mono text-[10.5px] px-1.5 py-0.2 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-bold">
+                              Inv: {rec.invoiceNo}
+                            </span>
+                          )}
                           {rec.orderNo && (
                             <span className="font-mono text-[10.5px] px-1.5 py-0.2 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
                               Order: {rec.orderNo}
@@ -797,7 +807,7 @@ export const ReceivablesHub: React.FC = () => {
                               Quote: {rec.quotationNo}
                             </span>
                           )}
-                          {!rec.orderNo && !rec.quotationNo && <span className="text-muted">-</span>}
+                          {!rec.invoiceNo && !rec.orderNo && !rec.quotationNo && <span className="text-muted">-</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">

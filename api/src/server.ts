@@ -5284,9 +5284,46 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       console.error('Auto GL Payment Error:', e);
     }
     
+    // Generate and record official Payment Receipt in payment_receipts
+    const receiptNum = payment.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+    const receiptPayload: any = {
+      id: receiptNum,
+      receiptNo: receiptNum,
+      date: pDate,
+      invoiceId: invoice.id,
+      invoiceNo: invoice.invoiceNo || invoice.id,
+      quoteId: invoice.quotationId || null,
+      quotationNo: invoice.quotationNo || null,
+      orderId: invoice.orderId || null,
+      orderNo: invoice.orderNo || null,
+      customerId: invoice.customerId || invoice.leadId || null,
+      customerName: invoice.customerName || invoice.customerCompany || 'Customer',
+      customerCompany: invoice.customerCompany || null,
+      totalQuotedAmount: invoiceTotal,
+      amount: paymentAmount,
+      balanceDue: Math.max(0, invoiceTotal - newPaidAmount),
+      paymentMethod: payment.method || 'Cash',
+      accountId: depositAccountId,
+      accountName: depositAccountName,
+      reference: payment.reference || `Payment for Invoice #${invoice.invoiceNo || invoice.id}`,
+      receivedBy: payment.receivedBy || 'Accounts Officer',
+      notes: payment.notes || `Payment received for Invoice #${invoice.invoiceNo || invoice.id}`,
+      status: 'Received',
+      journalEntryId: `JE-${newPayment.id}`,
+      createdAt: defaultMysqlDate,
+      updatedAt: defaultMysqlDate
+    };
+
+    try {
+      await db.query('INSERT INTO payment_receipts SET ?', receiptPayload);
+    } catch (recErr) {
+      console.warn('Could not insert payment_receipts entry:', recErr);
+    }
+
     res.json({
       success: true,
       payment: newPayment,
+      receipt: receiptPayload,
       newStatus,
       newPaidAmount,
       payments: existingPayments
@@ -5894,7 +5931,7 @@ app.post('/api/finance/journals', async (req, res) => {
 // ==========================================
 app.get('/api/finance/payment-receipts', async (req, res) => {
   try {
-    const { quoteId, quotationNo, orderId, orderNo, customerId } = req.query;
+    const { quoteId, quotationNo, orderId, orderNo, customerId, invoiceId, invoiceNo, search } = req.query;
     let query = 'SELECT * FROM payment_receipts WHERE 1=1';
     const params: any[] = [];
 
@@ -5917,6 +5954,14 @@ app.get('/api/finance/payment-receipts', async (req, res) => {
       idFilters.push('(orderNo = ? OR orderId = ?)');
       idParams.push(orderNo, orderNo);
     }
+    if (invoiceId) {
+      idFilters.push('(invoiceId = ? OR invoiceNo = ?)');
+      idParams.push(invoiceId, invoiceId);
+    }
+    if (invoiceNo && invoiceNo !== invoiceId) {
+      idFilters.push('(invoiceNo = ? OR invoiceId = ?)');
+      idParams.push(invoiceNo, invoiceNo);
+    }
 
     if (idFilters.length > 0) {
       query += ` AND (${idFilters.join(' OR ')})`;
@@ -5926,6 +5971,12 @@ app.get('/api/finance/payment-receipts', async (req, res) => {
     if (customerId) {
       query += ' AND customerId = ?';
       params.push(customerId);
+    }
+
+    if (search) {
+      query += ' AND (receiptNo LIKE ? OR invoiceNo LIKE ? OR orderNo LIKE ? OR quotationNo LIKE ? OR customerName LIKE ? OR customerCompany LIKE ? OR reference LIKE ?)';
+      const s = `%${search}%`;
+      params.push(s, s, s, s, s, s, s);
     }
 
     query += ' ORDER BY date DESC, createdAt DESC';
@@ -6805,24 +6856,88 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
       }
     }
 
+    const enrichedOps = ops.map((o: any) => {
+      const emp = empRows.find((e: any) => e.id === o.employeeId);
+      const mac = machRows.find((m: any) => m.id === o.machineId);
+      return {
+        ...o,
+        employeeName: emp?.name || null,
+        machineName: mac?.name || null,
+        machineHourlyCost: mac?.hourlyCost || 1200,
+        employeeHourlyRate: emp?.hourlyRate || 750
+      };
+    });
+
+    // Compute Cost Rollup & Job Costing for Single Work Order
+    const materialCost = materials.reduce((acc: number, m: any) => {
+      const cost = Number(m.totalCost || (Number(m.qty || 0) * Number(m.unitCost || m.itemUnitCost || 0)));
+      return acc + cost;
+    }, 0);
+
+    const laborCost = enrichedOps.reduce((acc: number, o: any) => acc + (o.actualLaborCost || 0), 0);
+    const machineCost = enrichedOps.reduce((acc: number, o: any) => acc + (o.actualMachineCost || 0), 0);
+    const reworkCost = reworks.reduce((acc: number, r: any) => {
+      const directCost = Number(r.cost || 0);
+      const laborRwk = Number(r.hours || 0) * 800;
+      return acc + directCost + laborRwk;
+    }, 0);
+
+    const overheadPct = Number(wo.overheadPct !== undefined && wo.overheadPct !== null ? wo.overheadPct : 15);
+    const overheadCost = (laborCost + machineCost) * (overheadPct / 100);
+    const actualTotalCost = materialCost + laborCost + machineCost + reworkCost + overheadCost;
+
+    let bomItems: any[] = [];
+    try {
+      bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
+    } catch (e) {}
+
+    let estBomCost = 0;
+    if (Array.isArray(bomItems)) {
+      bomItems.forEach((b: any) => {
+        if (b.allMaterials || b.autoMats || b.manualMats) {
+          const mats = b.allMaterials || [...(b.autoMats || []), ...(b.manualMats || [])];
+          estBomCost += mats.reduce((s: number, m: any) => s + Number(m.totalPrice || (Number(m.qty || 1) * Number(m.unitPrice || m.unitCost || 0))), 0);
+        } else {
+          estBomCost += Number(b.qty || 1) * Number(b.unitCost || b.unitPrice || 0);
+        }
+      });
+    }
+
+    const estMachLabor = enrichedOps.reduce((acc: number, o: any) => {
+      const hrs = Number(o.plannedHours || 0);
+      const empRate = Number(o.employeeHourlyRate || 750);
+      const macRate = Number(o.machineHourlyCost || 1200);
+      return acc + (hrs * empRate) + (hrs * macRate);
+    }, 0);
+    const estimatedCost = Number(wo.estimatedCost || (estBomCost + estMachLabor));
+
+    const validOps = enrichedOps.filter((o: any) => Number(o.plannedHours || 0) > 0 || o.status === 'Completed');
+    const totalSteps = validOps.length || enrichedOps.length;
+    const completedSteps = enrichedOps.filter((o: any) => o.status === 'Completed').length;
+    const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
+
     res.json({
       ...wo,
       qcCheckpoints: parsedQcCheckpoints,
       dispatches: parsedDispatches,
-      operations: ops.map((o: any) => {
-        const emp = empRows.find((e: any) => e.id === o.employeeId);
-        const mac = machRows.find((m: any) => m.id === o.machineId);
-        return {
-          ...o,
-          employeeName: emp?.name || null,
-          machineName: mac?.name || null,
-          machineHourlyCost: mac?.hourlyCost || 1200,
-          employeeHourlyRate: emp?.hourlyRate || 750
-        };
-      }),
+      operations: enrichedOps,
       qcInspections: qcs,
       reworkLogs: reworks,
-      issuedMaterials: materials || []
+      issuedMaterials: materials || [],
+      progress,
+      costSummary: {
+        materialCost,
+        laborCost,
+        machineCost,
+        reworkCost,
+        overheadPct,
+        overheadCost,
+        actualTotalCost,
+        estimatedCost,
+        variance: actualTotalCost - estimatedCost,
+        completedSteps,
+        totalSteps
+      }
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -7399,6 +7514,205 @@ app.post('/api/production/work-orders/:id/change-bom-material', async (req, res)
     });
   } catch (error: any) {
     console.error('Error changing BOM material:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Full BOM Adjustment & Dynamic Internal Job Costing Recalculation
+app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { boms, overheadPct = 15, syncRouting = true } = req.body;
+
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    if (!Array.isArray(boms)) {
+      return res.status(400).json({ error: 'BOMs array is required' });
+    }
+
+    let grandMaterialCost = 0;
+    let grandMachiningLaborCost = 0;
+    let grandQuotedHours = 0;
+
+    // Process and enrich each BOM part
+    const processedBoms = boms.map((b: any, bIdx: number) => {
+      const autoMats = (b.autoMats || []).map((m: any, mIdx: number) => {
+        const qty = Number(m.qty || 1);
+        const unitPrice = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0));
+        const totalPrice = Number(m.totalPrice !== undefined ? m.totalPrice : (qty * unitPrice));
+        return {
+          ...m,
+          id: m.id || `auto-${bIdx}-${mIdx}`,
+          material: m.material || 'Raw Stock Material',
+          spec: m.spec || '',
+          profile: m.profile || (m.dia ? 'Round Bar' : 'Plate / Sheet'),
+          qty,
+          unit: m.unit || 'pcs',
+          unitPrice,
+          totalPrice
+        };
+      });
+
+      const manualMats = (b.manualMats || []).map((m: any, mIdx: number) => {
+        const qty = Number(m.qty || 1);
+        const unitPrice = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0));
+        const totalPrice = Number(m.totalPrice !== undefined ? m.totalPrice : (qty * unitPrice));
+        return {
+          ...m,
+          id: m.id || `manual-${bIdx}-${mIdx}`,
+          material: m.material || 'Bought-out Component',
+          spec: m.spec || 'Standard Hardware',
+          profile: m.profile || 'Bought-out',
+          qty,
+          unit: m.unit || 'pcs',
+          unitPrice,
+          totalPrice
+        };
+      });
+
+      const machiningOps = (b.machiningOps || []).map((op: any, oIdx: number) => {
+        const quoHr = Number(op.quoHr || op.plannedHours || 0);
+        const estHr = Number(op.estHr !== undefined ? op.estHr : quoHr);
+        const setTime = Number(op.setTime || 0);
+        const hrRate = Number(op.hrRate || op.hourlyLaborRate || 750);
+        const machineRate = Number(op.machineRate || op.hourlyMachineRate || 1200);
+        const setTimeRate = Number(op.setTimeRate || hrRate);
+        const effectiveHours = estHr > 0 ? estHr : quoHr;
+        const opCost = Number(op.cost !== undefined ? op.cost : ((effectiveHours * (hrRate + machineRate)) + (setTime * setTimeRate)));
+
+        return {
+          ...op,
+          id: op.id || `proc-${bIdx}-${oIdx}`,
+          procName: op.procName || op.operationName || `Operation ${oIdx + 1}`,
+          quoHr,
+          estHr,
+          setTime,
+          hrRate,
+          machineRate,
+          setTimeRate,
+          cost: Math.round(opCost)
+        };
+      });
+
+      const matTotal = autoMats.reduce((s: number, m: any) => s + m.totalPrice, 0) +
+                       manualMats.reduce((s: number, m: any) => s + m.totalPrice, 0);
+      const machTotal = machiningOps.reduce((s: number, op: any) => s + op.cost, 0);
+      const totalQuotedHours = machiningOps.reduce((s: number, op: any) => s + op.quoHr, 0);
+
+      grandMaterialCost += matTotal;
+      grandMachiningLaborCost += machTotal;
+      grandQuotedHours += totalQuotedHours;
+
+      return {
+        ...b,
+        bIdx,
+        partId: b.partId || b.id || (bIdx + 1),
+        title: b.title || `Part ${bIdx + 1}`,
+        description: b.description || '',
+        drawingNo: b.drawingNo || '',
+        partNo: b.partNo || '',
+        autoMats,
+        manualMats,
+        allMaterials: [...autoMats, ...manualMats],
+        machiningOps,
+        matTotal,
+        machTotal,
+        bomTotal: matTotal + machTotal,
+        totalQuotedHours
+      };
+    });
+
+    const numOverheadPct = Number(overheadPct !== undefined ? overheadPct : (wo.overheadPct || 15));
+    const overheadCost = Math.round((grandMaterialCost + grandMachiningLaborCost) * (numOverheadPct / 100));
+    const totalEstimatedCost = Math.round(grandMaterialCost + grandMachiningLaborCost + overheadCost);
+
+    // Save to database
+    await db.query(
+      'UPDATE work_orders SET bom = ?, estimatedCost = ?, overheadPct = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(processedBoms), totalEstimatedCost, numOverheadPct, id]
+    );
+
+    // Sync operations to floor table if requested
+    if (syncRouting) {
+      const allOps: any[] = [];
+      processedBoms.forEach((b: any) => {
+        (b.machiningOps || []).forEach((op: any) => {
+          allOps.push({
+            partTitle: b.title,
+            ...op
+          });
+        });
+      });
+
+      if (allOps.length > 0) {
+        const [existingOps]: any = await db.query(
+          'SELECT * FROM work_order_operations WHERE workOrderId = ? ORDER BY stepNumber ASC',
+          [id]
+        );
+
+        let stepNum = 1;
+        for (const op of allOps) {
+          const matched = existingOps.find((ex: any) => 
+            (op.id && ex.id === op.id) ||
+            ex.operationName.toLowerCase() === op.procName.toLowerCase() ||
+            ex.operationName.toLowerCase().includes(op.procName.toLowerCase()) ||
+            op.procName.toLowerCase().includes(ex.operationName.toLowerCase())
+          );
+
+          if (matched) {
+            await db.query(
+              `UPDATE work_order_operations 
+               SET plannedHours = ?, hourlyLaborRate = ?, hourlyMachineRate = ?, notes = ? 
+               WHERE id = ?`,
+              [
+                op.estHr || op.quoHr || 1,
+                op.hrRate || 750,
+                op.machineRate || 1200,
+                `Adjusted from BOM: ${op.partTitle || ''}`,
+                matched.id
+              ]
+            );
+          } else {
+            const newOpId = `op-${Date.now()}-${stepNum}`;
+            const opName = processedBoms.length > 1 ? `${op.partTitle}: ${op.procName}` : op.procName;
+            await db.query(
+              `INSERT INTO work_order_operations 
+               (id, workOrderId, stepNumber, operationName, plannedHours, actualHours, status, hourlyLaborRate, hourlyMachineRate, notes)
+               VALUES (?, ?, ?, ?, ?, 0, 'Pending', ?, ?, ?)`,
+              [
+                newOpId,
+                id,
+                existingOps.length + stepNum,
+                opName,
+                op.estHr || op.quoHr || 1,
+                op.hrRate || 750,
+                op.machineRate || 1200,
+                `Added from Adjusted BOM: ${op.partTitle || ''}`
+              ]
+            );
+            stepNum++;
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Work Order Full BOM and Internal Job Costing updated successfully',
+      boms: processedBoms,
+      estimatedCost: totalEstimatedCost,
+      costSummary: {
+        materialCost: grandMaterialCost,
+        machiningLaborCost: grandMachiningLaborCost,
+        overheadPct: numOverheadPct,
+        overheadCost,
+        estimatedCost: totalEstimatedCost
+      }
+    });
+  } catch (error: any) {
+    console.error('Error adjusting full BOM:', error);
     res.status(500).json({ error: error.message });
   }
 });

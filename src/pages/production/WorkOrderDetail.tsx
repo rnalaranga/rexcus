@@ -31,7 +31,8 @@ import { WorkOrderQCHub } from '@/components/production/WorkOrderQCHub'
 import { WorkOrderDispatchesSection } from '@/components/production/WorkOrderDispatchesSection'
 import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrderPartialDispatchModal'
 import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
-import { Truck, ArrowLeftRight } from 'lucide-react'
+import { WorkOrderFullBomAdjustModal } from '@/components/production/WorkOrderFullBomAdjustModal'
+import { Truck, ArrowLeftRight, Calculator } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
@@ -61,6 +62,8 @@ export const WorkOrderDetail: React.FC = () => {
   const [showReworkModal, setShowReworkModal] = useState<any | null>(null)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
   const [showAddBomModal, setShowAddBomModal] = useState(false)
+  const [showAdjustBomModal, setShowAdjustBomModal] = useState(false)
+  const [adjustBomPartIndex, setAdjustBomPartIndex] = useState(0)
   const [showPartialDispatchModal, setShowPartialDispatchModal] = useState(false)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const actionsMenuRef = useRef<HTMLDivElement>(null)
@@ -256,6 +259,154 @@ export const WorkOrderDetail: React.FC = () => {
   // Extracts BOMs, raw materials (autoMats), bought-out (manualMats), and machining operations (procState)
   const parsedBoms = useMemo(() => {
     const list: any[] = []
+
+    // 0. If Work Order has its own adjusted multi-part BOM stored in wo.bom
+    if (
+      Array.isArray(directBomItems) && 
+      directBomItems.length > 0 && 
+      (directBomItems[0]?.autoMats || directBomItems[0]?.manualMats || directBomItems[0]?.machiningOps || directBomItems[0]?.isCustomAdjusted)
+    ) {
+      directBomItems.forEach((b: any, bIdx: number) => {
+        const partTitle = b.title || `BOM Part ${bIdx + 1}`
+        const partDesc = b.description || b.partNo || ''
+
+        const autoMats = (b.autoMats || []).map((m: any, mIdx: number) => {
+          const activeMatName = m.material || 'Raw Stock'
+          const activeQty = Number(m.qty || 1)
+          const activeUnitCost = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0))
+          const activeTotalPrice = Number(m.totalPrice !== undefined ? m.totalPrice : (activeQty * activeUnitCost))
+          const activeUnit = m.unit || 'pcs'
+
+          const invMatch = inventory.find(inv => 
+            (inv.name || '').toLowerCase() === activeMatName.toLowerCase() ||
+            (inv.sku || '').toLowerCase() === activeMatName.toLowerCase() ||
+            (m.inventoryId && inv.id === m.inventoryId)
+          )
+
+          const alreadyIssued = issuedMaterials.some((im: any) => 
+            (im.itemName && (im.itemName.toLowerCase() === activeMatName.toLowerCase())) ||
+            (im.notes && im.notes.toLowerCase().includes(activeMatName.toLowerCase())) ||
+            (invMatch && im.inventoryId === invMatch.id)
+          )
+
+          return {
+            id: m.id || `auto-${bIdx}-${mIdx}`,
+            material: activeMatName,
+            originalMaterial: m.originalMaterial || activeMatName,
+            isSubstituted: m.isSubstituted || Boolean(m.substitutionDetails),
+            substitutionDetails: m.substitutionDetails,
+            substituteRequest: m.substituteRequest,
+            spec: m.spec || '',
+            profile: m.profile || 'Raw Stock',
+            qty: activeQty,
+            unit: activeUnit,
+            unitPrice: activeUnitCost,
+            totalPrice: activeTotalPrice,
+            invMatch,
+            alreadyIssued,
+            notes: m.notes || ''
+          }
+        })
+
+        const manualMats = (b.manualMats || []).map((m: any, mIdx: number) => {
+          const activeMatName = m.material || 'Bought-out Component'
+          const activeQty = Number(m.qty || 1)
+          const activeUnitCost = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0))
+          const activeTotalPrice = Number(m.totalPrice !== undefined ? m.totalPrice : (activeQty * activeUnitCost))
+
+          const invMatch = inventory.find(inv => 
+            (inv.name || '').toLowerCase() === activeMatName.toLowerCase() ||
+            (inv.sku || '').toLowerCase() === activeMatName.toLowerCase() ||
+            (m.inventoryId && inv.id === m.inventoryId)
+          )
+
+          const alreadyIssued = issuedMaterials.some((im: any) => 
+            (im.itemName && (im.itemName.toLowerCase() === activeMatName.toLowerCase())) ||
+            (im.notes && im.notes.toLowerCase().includes(activeMatName.toLowerCase())) ||
+            (invMatch && im.inventoryId === invMatch.id)
+          )
+
+          return {
+            id: m.id || `manual-${bIdx}-${mIdx}`,
+            material: activeMatName,
+            originalMaterial: m.originalMaterial || activeMatName,
+            isSubstituted: m.isSubstituted || Boolean(m.substitutionDetails),
+            substitutionDetails: m.substitutionDetails,
+            substituteRequest: m.substituteRequest,
+            spec: m.spec || 'Standard Hardware',
+            profile: m.profile || 'Bought-out',
+            qty: activeQty,
+            unit: m.unit || 'pcs',
+            unitPrice: activeUnitCost,
+            totalPrice: activeTotalPrice,
+            invMatch,
+            alreadyIssued,
+            notes: m.notes || ''
+          }
+        })
+
+        const machiningOps = (b.machiningOps || []).map((op: any, pIdx: number) => {
+          const procName = op.procName || op.operationName || `Operation ${pIdx + 1}`
+          const quoHr = Number(op.quoHr || op.plannedHours || 0)
+          const estHr = Number(op.estHr !== undefined ? op.estHr : quoHr)
+          const setTime = Number(op.setTime || 0)
+          const hrRate = Number(op.hrRate || op.hourlyLaborRate || 750)
+          const machineRate = Number(op.machineRate || op.hourlyMachineRate || 1200)
+          const setTimeRate = Number(op.setTimeRate || hrRate)
+          const opCost = Number(op.cost !== undefined ? op.cost : (((estHr > 0 ? estHr : quoHr) * (hrRate + machineRate)) + (setTime * setTimeRate)))
+
+          const matchedOp = operations.find((o: any) => {
+            const opNameLower = (o.operationName || '').toLowerCase()
+            const procLower = procName.toLowerCase()
+            const partLower = partTitle.toLowerCase()
+            return (o.id && op.id === o.id) ||
+                   (opNameLower.includes(procLower) && (opNameLower.includes(partLower) || opNameLower.includes(`part ${bIdx + 1}`))) ||
+                   opNameLower === procLower
+          })
+
+          return {
+            id: op.id || `proc-${bIdx}-${pIdx}`,
+            procName,
+            partPrefix: b.title ? `${b.title}: ` : '',
+            quoHr,
+            estHr,
+            setTime,
+            hrRate,
+            machineRate,
+            setTimeRate,
+            cost: Math.round(opCost),
+            matchedOp
+          }
+        })
+
+        const matTotal = autoMats.reduce((s: number, m: any) => s + m.totalPrice, 0) +
+                         manualMats.reduce((s: number, m: any) => s + m.totalPrice, 0)
+        const machTotal = machiningOps.reduce((s: number, p: any) => s + p.cost, 0)
+        const totalQuotedHours = machiningOps.reduce((s: number, p: any) => s + p.quoHr, 0)
+        const totalEstHours = machiningOps.reduce((s: number, p: any) => s + p.estHr, 0)
+
+        list.push({
+          bIdx,
+          partId: b.partId || b.id || bIdx + 1,
+          title: partTitle,
+          description: partDesc,
+          drawingNo: b.drawingNo,
+          partNo: b.partNo,
+          isCustomAdjusted: true,
+          autoMats,
+          manualMats,
+          allMaterials: [...autoMats, ...manualMats],
+          machiningOps,
+          matTotal,
+          machTotal,
+          bomTotal: matTotal + machTotal,
+          totalQuotedHours,
+          totalEstHours
+        })
+      })
+
+      return list
+    }
 
     if (linkedQuote) {
       const data = typeof linkedQuote.data === 'string'
@@ -898,6 +1049,22 @@ export const WorkOrderDetail: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setShowActionsMenu(false)
+                    setAdjustBomPartIndex(0)
+                    setShowAdjustBomModal(true)
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
+                >
+                  <Calculator size={14} className="text-primary shrink-0" />
+                  <div>
+                    <span className="font-semibold block">Adjust Full BOM & Costing</span>
+                    <span className="text-[10px] text-muted">Edit materials, ops & live recalculate costing</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false)
                     navigate('/inventory', { state: { openCutStudioWithJobRef: wo.orderNo || wo.id, tab: 'linear_remnants' } })
                   }}
                   className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
@@ -1299,6 +1466,19 @@ export const WorkOrderDetail: React.FC = () => {
               )}
 
               <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setAdjustBomPartIndex(0)
+                  setShowAdjustBomModal(true)
+                }}
+                className="rounded-none text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs flex items-center gap-1.5"
+              >
+                <Calculator size={13} />
+                <span>Adjust Full BOM & Costing</span>
+              </Button>
+
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowAddBomModal(true)}
@@ -1367,15 +1547,27 @@ export const WorkOrderDetail: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-4 text-xs font-mono">
+                    <div className="flex items-center gap-3 text-xs font-mono flex-wrap">
                       <div className="text-right">
                         <span className="text-[10px] text-muted uppercase block">Quoted Machining</span>
                         <strong className="text-primary font-bold">{bom.totalQuotedHours.toFixed(1)} hrs</strong>
                       </div>
-                      <div className="text-right border-l border-theme-subtle pl-4">
+                      <div className="text-right border-l border-theme-subtle pl-3">
                         <span className="text-[10px] text-muted uppercase block">Part Est. Total</span>
                         <strong className="text-emerald-600 font-bold">{formatCurrency(bom.bomTotal)}</strong>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setAdjustBomPartIndex(bIdx)
+                          setShowAdjustBomModal(true)
+                        }}
+                        className="h-7 px-2.5 text-xs font-bold flex items-center gap-1.5 border-theme-subtle text-primary hover:bg-surface rounded-none shadow-2xs ml-1"
+                      >
+                        <Calculator size={13} className="text-primary" />
+                        <span>Adjust Part BOM</span>
+                      </Button>
                     </div>
                   </div>
 
@@ -1891,6 +2083,19 @@ export const WorkOrderDetail: React.FC = () => {
                 Material + Labor + Machine + Rework cost analysis against estimated target.
               </p>
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAdjustBomPartIndex(0)
+                setShowAdjustBomModal(true)
+              }}
+              className="rounded-none text-xs font-bold border-theme flex items-center gap-1.5 text-primary hover:bg-surface2 shrink-0"
+            >
+              <Calculator size={13} className="text-primary" />
+              <span>Adjust Full BOM & Costing</span>
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2461,6 +2666,24 @@ export const WorkOrderDetail: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* ── FULL BOM ADJUSTMENT & DYNAMIC INTERNAL JOB COSTING ENGINE MODAL ──────── */}
+      {showAdjustBomModal && (
+        <WorkOrderFullBomAdjustModal
+          isOpen={showAdjustBomModal}
+          onClose={() => setShowAdjustBomModal(false)}
+          workOrder={wo}
+          initialBoms={parsedBoms}
+          initialPartIndex={adjustBomPartIndex}
+          onSuccess={(updatedData) => {
+            loadData()
+            setToastMsg({
+              type: 'success',
+              text: `Work Order BOM and Internal Job Costing recalculated successfully! New Target Budget: ${formatCurrency(updatedData?.estimatedCost || 0)}`
+            })
+          }}
+        />
+      )}
     </div>
   )
 }

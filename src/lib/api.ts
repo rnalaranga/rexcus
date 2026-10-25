@@ -1001,3 +1001,19 @@ export const changeBomMaterial = async (woId: string, data: {
   });
   return res.json();
 };
+
+export const adjustWorkOrderFullBom = async (
+  woId: string,
+  payload: {
+    boms: any[];
+    overheadPct?: number;
+    syncRouting?: boolean;
+  }
+) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${woId}/adjust-full-bom`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+};

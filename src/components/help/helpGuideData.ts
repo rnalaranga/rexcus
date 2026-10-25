@@ -1398,90 +1398,146 @@ export const HELP_GUIDES: HelpGuideItem[] = [
   // 12. General Accounting & Finance
   {
     id: 'finance-accounting',
-    routePatterns: ['/finance', '/finance/accounting', '/finance/banking', '/finance/reports'],
-    title: 'Finance, Banking & General Accounting',
+    routePatterns: ['/finance', '/finance/accounting', '/finance/banking', '/finance/reports', '/finance/receivables'],
+    title: 'Finance, Banking, Double-Entry GL & Receipts Audit',
     category: 'Finance & Accounts',
     iconName: 'DollarSign',
-    summary: 'Double-entry bookkeeping, Chart of Accounts, manual journal entries, bank statement feeds, Profit & Loss, Balance Sheet, and tax reporting.',
+    summary: 'Comprehensive double-entry bookkeeping, Chart of Accounts (COA), Sri Lankan VAT (18%) and SSCL (2.5%) taxation, Advance Proforma billing, commercial tax invoicing, and official customer payment receipts audit.',
     workflowDiagram: {
-      title: 'Financial Accounting Workflow',
-      subtitle: 'From transactions to ledger posting and financial reports',
+      title: 'Manufacturing & Commercial Double-Entry Accounting Pipeline',
+      subtitle: 'From Advance Proforma deposit to Work Order WIP, Final Tax Invoice, and Payment Receipt settlement',
       steps: [
         {
           stepNumber: 1,
-          title: 'Operational Transactions',
-          description: 'Sales invoices, supplier bills, and payment receipts post automated journal entries to GL.',
-          actor: 'Operational Sub-ledgers',
-          statusBadge: 'Posted',
-          nextSteps: ['Bank Reconciliation']
+          title: 'Stage 3: Advance Proforma Deposit',
+          description: 'Client pays advance against Proforma Invoice. Post Dr Bank/Cash (1010/1020) and Cr 2150 Customer Advance / Proforma Deposits (Liability). Revenue and Tax are NOT recognized yet.',
+          actor: 'Accounts Officer',
+          statusBadge: 'Advance Receipt Issued',
+          nextSteps: ['Work Order Release']
         },
         {
           stepNumber: 2,
-          title: 'Bank Statement Reconciliation',
-          description: 'Bank statements matched against company payment receipts and disbursements.',
-          actor: 'Accountant',
-          statusBadge: 'Reconciled',
-          nextSteps: ['Month-End Closing']
+          title: 'Stage 4: Material Issue to Work Order',
+          description: 'Raw materials are issued from store to factory floor. Post Dr 1620 Work-in-Progress (WIP) and Cr 1600 Raw Materials Inventory.',
+          actor: 'Storekeeper / Cost Accountant',
+          statusBadge: 'WIP Active',
+          nextSteps: ['Machining & Quality Inspection']
         },
         {
           stepNumber: 3,
-          title: 'Financial Reporting',
-          description: 'Automated generation of Trial Balance, Profit & Loss Statement, and Balance Sheet.',
-          actor: 'Chief Accountant',
-          statusBadge: 'Finalized',
-          nextSteps: []
+          title: 'Stage 5: Work Order Completion & Transfer',
+          description: 'Machining finished. Job costs transferred from WIP to Finished Goods. Post Dr 1610 Finished Goods Inventory and Cr 1620 Work-in-Progress (WIP).',
+          actor: 'Production Supervisor',
+          statusBadge: 'Goods Ready',
+          nextSteps: ['Commercial Dispatch']
+        },
+        {
+          stepNumber: 4,
+          title: 'Stage 6: Final Commercial Tax Invoice',
+          description: 'Dispatched goods billed legally. Recognizes Revenue (4000) and Output Taxes (2210 VAT 18%, 2220 SSCL 2.5%), offsets Customer Advance (2150), and books net balance to Dr 1200 Accounts Receivable.',
+          actor: 'Billing Executive',
+          statusBadge: 'Tax Invoice Posted',
+          nextSteps: ['Payment Collection']
+        },
+        {
+          stepNumber: 5,
+          title: 'Final Invoice Settlement & Official Receipt',
+          description: 'Customer settles remaining balance. Post Dr Bank/Cash (1010/1020) and Cr 1200 Accounts Receivable. Issue official signed Payment Receipt Voucher (REC-XXXX) monitored in Receipts Hub.',
+          actor: 'Credit Controller',
+          statusBadge: 'Settled & Audited',
+          nextSteps: ['Bank Reconciliation']
         }
       ]
     },
     howToSteps: [
       {
-        title: 'Step 1: Chart of Accounts & GL Setup',
+        title: 'Golden Rules of Double-Entry Accounting (හර / බැර මූලික නීති)',
         instructions: [
-          'Review the Standard Chart of Accounts (Assets, Liabilities, Equity, Revenue, Cost of Goods, Expenses).',
-          'Link company bank accounts (HNB, Commercial Bank, Sampath) to their corresponding ledger accounts.'
+          '1. Real Accounts (වත්කම් ගිණුම් / Assets): "Debit what comes in, Credit what goes out" (ආයතනයට ලැබෙන/වැඩිවන දේ හර (Dr), ආයතනයෙන් පිටවන/අඩුවන දේ බැර (Cr) කරන්න). උදා: මුදල් හෝ බැංකු ලැබීම් හර (Dr Bank), මුදල් ගෙවීම් බැර (Cr Bank).',
+          '2. Personal Accounts (පුද්ගල හා ආයතනික ගිණුම් / Debtors & Creditors): "Debit the receiver, Credit the giver" (ප්‍රතිලාභය ලබන්නා හර (Dr), ලබාදෙන්නා බැර (Cr) කරන්න). උදා: ණයට භාණ්ඩ විකිණූ විට පාරිභෝගිකයා හර (Dr Customer AR), ණයට අමුද්‍රව්‍ය ගත් විට සැපයුම්කරු බැර (Cr Supplier AP).',
+          '3. Nominal Accounts (ආදායම් සහ වියදම් ගිණුම් / Revenue & Expenses): "Debit all expenses and losses, Credit all income and gains" (සියලු වියදම් හා අලාභ හර (Dr), සියලු ආදායම් හා ලාභ බැර (Cr) කරන්න). උදා: විදුලි බිල හෝ යන්ත්‍ර නඩත්තුව හර (Dr Expense), විකුණුම් ආදායම බැර (Cr Sales Revenue).'
+        ],
+        importantNote: 'සැමවිටම Total Debits = Total Credits විය යුතුය. අසමතුලිත ජර්නල් සටහන් (Unbalanced Entries) පද්ධතිය මගින් සුරැකීමට ඉඩ නොදේ.'
+      },
+      {
+        title: 'Advance Proforma Invoice vs. Final Tax Invoice (පෙරගෙවුම් හා අවසන් බදු ඉන්වොයිසි වෙනස)',
+        instructions: [
+          'Advance Proforma Invoice (Stage 3): මෙය පෙරගෙවුම් මුදල් ඉල්ලීමක් පමණි (Demand for Advance Deposit). මෙහිදී Sales Revenue හෝ VAT/SSCL වගකීම් පොත්වලට ඇතුළත් නොවේ. ලැබෙන පෙරගෙවුම් "2150 Customer Advance / Proforma Deposits" නම් වගකීම් (Liability) ගිණුමට බැර කෙරේ.',
+          'Final Tax Invoice (Stage 6): භාණ්ඩ නිෂ්පාදනය කර ඩිස්පැච් කළ පසු නිකුත් කෙරේ. මෙහිදී පමණක් සැබෑ විකුණුම් ආදායම (4000 Sales Revenue) බැර කර, රජයට ගෙවිය යුතු 18% Output VAT (2210) සහ 2.5% SSCL (2220) බැර කෙරේ. කලින් ලබාගත් Advance මුදල 2150 ගිණුම හර (Debit) කිරීමෙන් අඩු කර ඉතිරි මුදල Accounts Receivable (1200) හර කෙරේ.'
         ]
       },
       {
-        title: 'Step 2: Posting Journal Vouchers',
+        title: 'Payment Receipts Generation & Audit Monitoring (ගෙවීම් රිසිට්පත් නිකුත් කිරීම හා නිරීක්ෂණය)',
         instructions: [
-          'Click "New Journal Entry" for manual adjustments, depreciation, or accruals.',
-          'Ensure debits equal credits before saving.'
+          'ඉන්වොයිසියකට හෝ පෙරගෙවුමකට මුදල් ලැබුණු විට Invoices හෝ Receivables Hub වෙතින් "Record Payment" ක්ලික් කරන්න.',
+          'ගෙවීම වාර්තා වූ සැණින් පද්ධතිය මගින් නිල "Payment Receipt Voucher" (REC-YYYYMMDD-XXXX) එකක් ස්වයංක්‍රීයව ජනනය වේ.',
+          'A4 ආකෘතියෙන් PDF බාගත කිරීමට හෝ වහාම Print කිරීමට Print Window එක විවෘත වේ.',
+          'සියලුම නිකුත් කරන ලද රිසිට්පත් Finance > Receivables Hub > "Payment Receipts" ටැබ් එක යටතේ හෝ Invoices පිටුවේ "Receipts Monitor" බොත්තමෙන් ඕනෑම මොහොතක විගණනය (Audit) කළ හැක.'
         ]
       },
       {
-        title: 'Step 3: Generating Financial Reports',
+        title: 'Chart of Accounts (COA) Audit & Best Practices',
         instructions: [
-          'Select custom date ranges to run the Profit & Loss statement, Balance Sheet, and Trial Balance.',
-          'Export reports to PDF or Excel for management reviews.'
+          'Chart of Accounts හි අංකනය: 1000-1999 වත්කම් (Assets), 2000-2999 වගකීම් (Liabilities), 3000-3999 හිමිකම (Equity), 4000-4999 ආදායම් (Revenue), 5000-5999 නිෂ්පාදන හා මෙහෙයුම් වියදම් (Cost of Goods & Expenses).',
+          'අනවශ්‍ය නැවත නැවත යෙදුණු (Duplicate/Redundant) ගිණුම් ඉවත් කර ඇත. කාර්මික අමතර කොටස් සඳහා "5003 Factory Electrical Consumables & Spares" සහ නිෂ්පාදන පිරිවැය සඳහා "5100 Direct Manufacturing Cost" භාවිතා වේ.',
+          'බදු ගිණුම්: Output VAT 18% සඳහා 2210 ද, SSCL 2.5% සඳහා 2220 ද, මිලදී ගැනීමේ Input VAT සඳහා 1300 ද වෙන් කර ඇත.'
         ]
       }
     ],
     actions: [
       {
-        name: 'Journal Builder',
+        name: 'Payment Receipts Monitor',
+        badge: 'Receipt',
+        description: 'Track, search, and reprint all issued customer payment vouchers against invoices, sales orders, and quotations.',
+        howTo: 'Click "Receipts Monitor" in Invoices ribbon or open Receivables Hub > Tab 4.'
+      },
+      {
+        name: 'Commercial Tax Invoicing',
+        badge: 'FileText',
+        description: 'Issue official final tax invoices with VAT/SSCL profiles and advance deductions.',
+        howTo: 'Navigate to Invoices > Create Invoice or convert from Dispatched Sales Order.'
+      },
+      {
+        name: 'General Journal Builder',
         badge: 'Plus',
-        description: 'Create multi-line manual debits and credits journal vouchers.',
+        description: 'Create multi-line manual debits and credits journal vouchers with balance verification.',
         howTo: 'Click "New Journal Entry" in the Accounting Hub.'
       },
       {
         name: 'Financial Reports',
         badge: 'BarChart',
-        description: 'Generate P&L, Balance Sheet, and Trial Balance with custom date ranges.',
-        howTo: 'Navigate to Reports tab.'
+        description: 'Generate real-time Trial Balance, Profit & Loss, Balance Sheet, and AR Aging summaries.',
+        howTo: 'Navigate to Finance > Reports tab.'
       }
     ],
     tips: [
-      'All automated invoice and receipt postings maintain debit-credit parity automatically.'
+      'නීත්‍යානුකූල බදු වාර්තාකරණය සඳහා කිසිවිටෙකත් Stage 3 Advance එකකදී Final Sales Tax Invoice නිකුත් නොකරන්න. ඒ සඳහා Advance Proforma Invoice සහ Payment Receipt පමණක් භාවිතා කරන්න.',
+      'අවසන් Tax Invoice එකේදී කලින් ගත් Advance මුදල සම්පූර්ණයෙන්ම අඩු වී ඉතිරි ශේෂය (Balance Due) නිවැරදිව පාරිභෝගිකයාගේ AR වෙත බැර වේ.',
+      'පාරිභෝගිකයෙකු මුදල් ගෙවූ වහාම නිකුත් කරන Payment Receipt එක පාරිභෝගිකයාට Email කිරීමට හෝ මුද්‍රණය කර ලබා දීමට හැකියාව ඇත.'
     ],
     faq: [
       {
-        question: 'Where can I find the VAT and SSCL report for tax filing?',
-        answer: 'Navigate to Finance > Tax Reports to view the exact breakdown of input vs output VAT and SSCL liabilities.'
+        question: 'Advance Proforma Invoice එකක් දැමූ විට එය P&L හි විකුණුම් ආදායමට (Sales Revenue) එකතු වෙනවාද?',
+        answer: 'නැත. Advance Proforma Invoice එකකින් විකුණුම් ආදායමක් හෝ බදු වගකීමක් ජනනය නොවේ. එයින් ලැබෙන මුදල "2150 Customer Advance / Proforma Deposits" නම් වගකීම් ගිණුමට පමණක් බැර වේ. විකුණුම් ආදායම හඳුනාගන්නේ Stage 6 Final Tax Invoice එක නිකුත් කළ විට පමණි.'
+      },
+      {
+        question: 'VAT (18%) සහ SSCL (2.5%) ගණනය වන්නේ කෙසේද?',
+        answer: 'ශ්‍රී ලංකා බදු ප්‍රතිපත්තිය අනුව, අදාළ Tax Profile සක්‍රීය කළ විට පාදක එකතුව (Base Amount) මත SSCL 2.5% ගණනය වන අතර, SSCL එකතු කළ අගය මත VAT 18% ගණනය කෙරේ (Compound VAT calculation). මෙම බදු ස්වයංක්‍රීයව 2210 Output VAT Payable සහ 2220 SSCL Payable ගිණුම්වලට බැර වේ.'
+      },
+      {
+        question: 'ඉන්වොයිසියකට ගෙවූ මුදලක Payment Receipt එක නැවත ලබාගන්නේ කෙසේද?',
+        answer: 'Invoices පිටුවේ අදාළ ඉන්වොයිසිය "View" කළ විට එහි දකුණු පස ඇති Payment History කොටසේ සෑම ගෙවීමක් ඉදිරියෙන්ම ඇති "[Receipt]" බොත්තම ක්ලික් කිරීමෙන් හෝ Receivables Hub හි "Payment Receipts" ටැබ් එකෙන් ඕනෑම වේලාවක නිල රිසිට්පත බලාගත හැක.'
+      },
+      {
+        question: 'Debit සහ Credit සමතුලිත බව (Balance) පරීක්ෂා කරන්නේ කෙසේද?',
+        answer: 'Finance > Accounting > Trial Balance වාර්තාව විවෘත කරන්න. එහි සියලුම ගිණුම්වල Total Debits සහ Total Credits එකිනෙකට හරියටම සමාන විය යුතුය.'
       }
     ],
     relatedModules: [
-      { title: 'Invoices', route: '/finance/invoices' },
-      { title: 'Banking Hub', route: '/finance/banking' }
+      { title: 'Invoices & Billing', route: '/finance/invoices' },
+      { title: 'Receivables & Receipts Hub', route: '/finance/receivables' },
+      { title: 'General Ledger & COA', route: '/finance/accounting' },
+      { title: 'Banking & Cash Flow', route: '/finance/banking' }
     ]
   }
 ];

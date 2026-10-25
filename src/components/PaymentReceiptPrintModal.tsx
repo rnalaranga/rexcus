@@ -30,6 +30,8 @@ export interface PaymentReceiptData {
   quotationNo?: string;
   orderId?: string;
   orderNo?: string;
+  invoiceId?: string;
+  invoiceNo?: string;
   amount: number;
   paymentMethod: string;
   depositAccountId?: string;
@@ -370,6 +372,12 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                       <span className="text-slate-500 font-medium">Date:</span>
                       <span className="font-semibold text-slate-900">{formatDate(receipt.date)}</span>
                     </div>
+                    {receipt.invoiceNo && (
+                      <div className="flex justify-between py-0.5 border-b border-slate-200/80">
+                        <span className="text-slate-500 font-medium">Final Invoice Ref:</span>
+                        <span className="font-mono font-bold text-slate-900">{receipt.invoiceNo}</span>
+                      </div>
+                    )}
                     {receipt.orderNo && (
                       <div className="flex justify-between py-0.5 border-b border-slate-200/80">
                         <span className="text-slate-500 font-medium">Sales Order Ref:</span>
@@ -404,15 +412,18 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                       <td className="p-2.5 border-r border-slate-300 align-top">
                         <div className="font-bold text-slate-900 text-xs">
                           {receipt.notes ||
-                            (receipt.orderNo
+                            (receipt.invoiceNo
+                              ? `Payment received against Commercial / Tax Invoice ${receipt.invoiceNo}`
+                              : receipt.orderNo
                               ? `Advance consideration received against Sales Order ${receipt.orderNo}`
                               : receipt.quotationNo
                               ? `Advance consideration received against Quotation ${receipt.quotationNo}`
-                              : "Advance payment received on account")}
+                              : "Payment received on account")}
                         </div>
                         <div className="text-[10.5px] text-slate-600 mt-1 leading-normal">
-                          Official acknowledgement of advance consideration deposited prior to manufacturing / dispatch.
-                          Credited in full against final tax invoice.
+                          {receipt.invoiceNo
+                            ? "Official payment acknowledgement for settlement of commercial tax invoice."
+                            : "Official acknowledgement of advance consideration deposited prior to manufacturing / dispatch. Credited in full against final tax invoice."}
                         </div>
                       </td>
                       <td className="p-2.5 text-right font-black text-sm align-top text-slate-900">
