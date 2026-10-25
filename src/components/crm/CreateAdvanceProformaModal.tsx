@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
 import { createInvoice } from '@/lib/api';
 import { useAccounts, useTaxProfiles } from '@/hooks/useFinance';
-import { useCustomers, useLeads } from '@/hooks/useData';
+import { useCustomers, useLeads, useQuotations } from '@/hooks/useData';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -39,6 +39,15 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
   const { data: allCustomers = [] } = useCustomers();
   const { data: allLeads = [] } = useLeads();
+  const { data: allQuotations = [] } = useQuotations();
+
+  const linkedQuotation = useMemo(() => {
+    if (!order?.quoteId && !order?.quotationNo) return null;
+    return allQuotations.find((q: any) => 
+      (order.quoteId && String(q.id) === String(order.quoteId)) ||
+      (order.quotationNo && (String(q.quotationNo) === String(order.quotationNo) || String(q.docNo) === String(order.quotationNo)))
+    );
+  }, [order, allQuotations]);
 
   const customerId = order?.customerId || order?.matchedCustomerId || '';
   
@@ -79,6 +88,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   
   // Tax Options: 'opt1' (Absorbed) | 'opt2' (SSCL Absorbed + VAT 18%) | 'opt3' (SSCL + VAT 2 Lines) | 'none'
   const [taxOption, setTaxOption] = useState<'opt1' | 'opt2' | 'opt3' | 'none'>('opt2');
+  const [itemDescription, setItemDescription] = useState<string>('');
+  const [itemSpecification, setItemSpecification] = useState<string>('');
 
   const [modeOfPayment, setModeOfPayment] = useState('Bank Wire / TT');
   const [selectedBankId, setSelectedBankId] = useState('');
@@ -120,7 +131,54 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
       `Proforma Invoice for advance payment against Sales Order #${orderNo}. ` +
       `Kindly arrange payment to the bank account stated below to commence manufacturing.`
     );
-  }, [order, orderTotal, orderNo]);
+
+    // Auto-extract item description and technical specifications from order or linked quotation
+    let itemsList: any[] = [];
+    if (order?.items) {
+      try {
+        itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      } catch(e) {}
+    }
+
+    if ((!itemsList || itemsList.length === 0) && linkedQuotation?.data) {
+      try {
+        const qData = typeof linkedQuotation.data === 'string' ? JSON.parse(linkedQuotation.data) : linkedQuotation.data;
+        itemsList = qData.custItems || qData.items || [];
+      } catch(e) {}
+    }
+
+    if (Array.isArray(itemsList) && itemsList.length > 0) {
+      if (itemsList.length === 1) {
+        const single = itemsList[0];
+        const name = single.desc || single.description || single.productName || single.name || order?.productName || 'Quoted Product';
+        const spec = single.specs || single.specifications || single.details || single.sku || single.productSku || order?.productSku || '';
+        const qtyStr = `Qty: ${single.qty || order?.qty || 1} ${single.uom || single.unit || 'Nos'}`;
+        setItemDescription(name);
+        setItemSpecification([spec, qtyStr].filter(Boolean).join(' | '));
+      } else {
+        const mainTitle = order?.productName || (linkedQuotation?.data ? (typeof linkedQuotation.data === 'string' ? JSON.parse(linkedQuotation.data).subject : linkedQuotation.data.subject) : '') || `Order Items (${itemsList.length} Products / Parts)`;
+        setItemDescription(mainTitle);
+        const specLines = itemsList.map((it: any, idx: number) => {
+          const itName = it.desc || it.description || it.productName || it.name || `Item #${idx+1}`;
+          const itQty = `${it.qty || 1} ${it.uom || it.unit || 'Nos'}`;
+          const itSpec = it.specs || it.specifications || it.details || it.sku || '';
+          return `${idx + 1}. ${itName} - ${itQty}${itSpec ? ` (${itSpec})` : ''}`;
+        }).join('\n');
+        setItemSpecification(specLines);
+      }
+    } else if (order?.productName) {
+      setItemDescription(order.productName);
+      const specs = [
+        order.productSku ? `SKU: ${order.productSku}` : '',
+        order.qty ? `Order Qty: ${order.qty} ${order.uom || 'Nos'}` : '',
+        order.notes ? `Scope: ${order.notes}` : ''
+      ].filter(Boolean).join(' | ');
+      setItemSpecification(specs);
+    } else {
+      setItemDescription(`Sales Order #${orderNo} Goods & Manufacturing Services`);
+      setItemSpecification(order?.notes || 'Custom engineering fabrication and machining as per agreed specifications.');
+    }
+  }, [order, orderTotal, orderNo, linkedQuotation]);
 
   // Handle bank accounts filter
   const bankAccounts = useMemo(() => {
@@ -214,13 +272,17 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     try {
       const cleanDocNo = proformaNo.trim();
 
-      // Build line item for proforma invoice
+      // Build line item for proforma invoice with explicit Item Description & Specifications
+      const finalItemDesc = itemDescription.trim() || order?.productName || `Sales Order #${orderNo} Products`;
+      const finalItemSpecs = itemSpecification.trim();
+      
       const proformaItems = [
         {
           id: `item-${Date.now()}`,
           reference: 'ADV-1',
-          description: `Advance Payment Deposit (${advancePercent}% of Order Total) - Sales Order #${orderNo}`,
-          details: order?.productName ? `Item: ${order.productName} (Total Order: ${formatCurrency(orderTotal)})` : `Order Total: ${formatCurrency(orderTotal)}`,
+          description: `Advance Payment Deposit (${advancePercent}%) - ${finalItemDesc}`,
+          details: finalItemSpecs ? `Item Specification & Scope:\n${finalItemSpecs}` : (order?.productName ? `Item: ${order.productName} (Total Order: ${formatCurrency(orderTotal)})` : `Sales Order #${orderNo}`),
+          specifications: finalItemSpecs,
           qty: 1,
           unitPrice: calculation.subtotal,
           amount: calculation.subtotal,
@@ -428,7 +490,46 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Section 2: Advance Amount & Percentage */}
+          {/* Section 2: Item Description & Technical Specifications */}
+          <div className="p-3 bg-surface2/50 border border-theme-subtle rounded-none space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
+                <FileText size={13} className="text-amber-500" /> Item Description & Specifications
+              </span>
+              <span className="text-[10px] text-muted">
+                Will be printed in the goods description column
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Item / Product Description *
+              </label>
+              <input
+                type="text"
+                required
+                value={itemDescription}
+                onChange={(e) => setItemDescription(e.target.value)}
+                placeholder="e.g. Rex Heavy-Duty Hydraulic Cylinder 50x300mm"
+                className="w-full h-8 px-2.5 font-semibold bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Technical Specifications & Scope of Work
+              </label>
+              <textarea
+                rows={2}
+                value={itemSpecification}
+                onChange={(e) => setItemSpecification(e.target.value)}
+                placeholder="e.g. SKU: REX-CYL-50300 | Material: Hardened Steel C45 | Bore 50mm, Stroke 300mm | Working Pressure: 250 Bar"
+                className="w-full p-2 text-xs font-mono bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 custom-scrollbar"
+              />
+            </div>
+          </div>
+
+          {/* Section 3: Advance Amount & Percentage */}
           <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-none space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">

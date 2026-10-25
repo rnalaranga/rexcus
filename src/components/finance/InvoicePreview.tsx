@@ -572,7 +572,19 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                   {item.reference || (idx + 1)}
                 </td>
                 <td style={{ padding: '8px 10px', borderRight: tableBorder, verticalAlign: 'top', whiteSpace: 'pre-wrap' }}>
-                  {item.description}
+                  <div style={{ fontWeight: '700', fontSize: '11px', color: '#0f172a' }}>
+                    {item.description || item.productName || item.name}
+                  </div>
+                  {item.details && (
+                    <div style={{ fontSize: '10px', color: '#334155', marginTop: '3px', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                      {item.details}
+                    </div>
+                  )}
+                  {item.specifications && (!item.details || !item.details.includes(item.specifications)) && (
+                    <div style={{ fontSize: '9.5px', color: '#475569', marginTop: '2px', whiteSpace: 'pre-wrap', lineHeight: '1.3' }}>
+                      <span style={{ fontWeight: '600' }}>Specifications:</span> {item.specifications}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '8px 6px', textAlign: 'center', borderRight: tableBorder, verticalAlign: 'top' }}>
                   {Number(item.qty).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}

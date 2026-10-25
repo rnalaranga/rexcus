@@ -79,12 +79,15 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   // If items is empty but invoice has value, generate advance deposit line item
   if (items.length === 0 && (invoiceSubtotal > 0 || invoiceTotal > 0)) {
     const advLineAmount = invoiceSubtotal > 0 ? invoiceSubtotal : invoiceTotal;
+    const desc = invoice.productName ? `Advance Deposit Payment - ${invoice.productName}` : `Advance Deposit Payment - Sales Order #${invoice.orderNo || ''}`;
+    const spec = invoice.productSku ? `SKU: ${invoice.productSku}` : (invoice.notes || 'Advance payment for manufacturing commencement');
     items = [
       {
         id: 'item-adv-1',
         reference: 'ADV-1',
-        description: `Advance Deposit Payment - Sales Order #${invoice.orderNo || ''}`,
-        details: invoice.notes || 'Advance payment for manufacturing commencement',
+        description: desc,
+        details: spec ? `Item Specification & Scope:\n${spec}` : '',
+        specifications: spec,
         qty: 1,
         unitPrice: advLineAmount,
         amount: advLineAmount
