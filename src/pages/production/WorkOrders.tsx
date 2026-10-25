@@ -238,56 +238,37 @@ export const WorkOrders: React.FC = () => {
     return traces
   }
 
-  // Data Table Columns
+  // Data Table Columns (Optimized for 100% viewport width without horizontal scroll)
   const columns: Column<any>[] = [
     {
       key: 'orderNo',
-      header: 'Job # & Scope',
+      header: 'Job & Customer',
       sortable: true,
       render: (_: any, row: any) => (
-        <div className="py-1 min-w-[200px]">
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-sm text-primary tracking-tight">
+        <div className="py-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-mono font-bold text-xs text-primary">
               {row.orderNo || row.id}
             </span>
             {row.quotationNo && (
-              <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 bg-rex-500/10 text-rex-600 dark:text-rex-400 border border-rex-500/20 rounded-none">
+              <span className="text-[9.5px] font-mono font-semibold px-1 py-0.2 bg-rex-500/10 text-rex-600 dark:text-rex-400 border border-rex-500/20 rounded-none">
                 {row.quotationNo}
               </span>
             )}
           </div>
-          <p className="text-xs font-semibold text-secondary truncate mt-0.5 max-w-xs" title={row.title}>
-            {row.title || 'Untitled Job'}
+          <p className="text-xs font-semibold text-secondary truncate max-w-[200px]" title={row.title}>
+            {row.title || 'Precision Machining Job'}
           </p>
-          {row.drawingNo && (
-            <span className="text-[10px] text-muted font-mono block mt-0.5">
-              DWG: {row.drawingNo}
-            </span>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'customerName',
-      header: 'Customer',
-      sortable: true,
-      render: (_: any, row: any) => (
-        <div className="py-1 min-w-[150px]">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-primary truncate max-w-[180px]" title={row.customerName || 'Standard / Internal Job'}>
-            <Building size={13} className="text-secondary shrink-0" />
+          <div className="flex items-center gap-1 text-[11px] text-muted truncate max-w-[200px]" title={row.customerName}>
+            <Building size={11} className="text-muted shrink-0" />
             <span className="truncate">{row.customerName || 'Standard / Internal Job'}</span>
           </div>
-          {row.id && (
-            <span className="text-[10px] text-muted font-mono block mt-0.5 truncate">
-              ID: {row.id}
-            </span>
-          )}
         </div>
       )
     },
     {
       key: 'currentStep',
-      header: 'Current Step & Machine',
+      header: 'Step & Machine',
       render: (_: any, row: any) => {
         const ops = row.operations || []
         const currentOp = ops.find((o: any) => o.status === 'In Progress') || ops.find((o: any) => o.status === 'Pending')
@@ -303,7 +284,7 @@ export const WorkOrders: React.FC = () => {
         const isInProgress = currentOp.status === 'In Progress'
 
         return (
-          <div className="py-1 min-w-[160px]">
+          <div className="py-1">
             <div className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-none ${isInProgress ? 'bg-blue-500 animate-pulse' : 'bg-surface3'}`} />
               <span className="text-xs font-bold text-primary truncate max-w-[140px]" title={currentOp.operationName}>
@@ -328,7 +309,7 @@ export const WorkOrders: React.FC = () => {
       header: 'Batch Qty',
       sortable: true,
       render: (_: any, row: any) => (
-        <div className="space-y-0.5 min-w-[90px]">
+        <div className="space-y-0.5">
           <div className="flex items-center gap-1 font-mono font-bold text-xs text-primary">
             <Package size={12} className="text-secondary shrink-0" />
             <span>{row.jobQty || 1} pcs</span>
@@ -352,7 +333,7 @@ export const WorkOrders: React.FC = () => {
         const pct = row.progress !== undefined ? row.progress : (total > 0 ? Math.round((completed / total) * 100) : 0)
 
         return (
-          <div className="w-28 space-y-1">
+          <div className="w-24 space-y-1">
             <div className="flex justify-between text-[11px] font-mono">
               <span className="text-muted">{completed}/{total}</span>
               <span className="font-bold text-primary">{pct}%</span>
@@ -376,7 +357,7 @@ export const WorkOrders: React.FC = () => {
         const budget = Number(cost.estimatedCost || 0)
 
         return (
-          <div className="space-y-0.5 min-w-[95px]">
+          <div className="space-y-0.5">
             <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 block">
               {formatCurrency(actual)}
             </span>
@@ -390,67 +371,52 @@ export const WorkOrders: React.FC = () => {
       }
     },
     {
-      key: 'priority',
-      header: 'Priority & Due',
+      key: 'status',
+      header: 'Status & Priority',
       sortable: true,
-      render: (_: any, row: any) => {
+      render: (v: any, row: any) => {
         const isUrgent = row.priority === 'Urgent'
         const isHigh = row.priority === 'High'
         const deadlineDate = row.deadline ? new Date(row.deadline) : null
         const isOverdue = deadlineDate && deadlineDate < new Date() && row.status !== 'Completed'
 
+        const renderStatus = () => {
+          switch (v) {
+            case 'Completed':
+            case 'Closed':
+              return <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Done</span>
+            case 'In Progress':
+              return <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> Running</span>
+            case 'QC Pending':
+              return <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Hold</span>
+            case 'Rework':
+            case 'Rework Required':
+              return <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
+            case 'Released':
+              return <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
+            default:
+              return <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
+          }
+        }
+
         return (
-          <div className="space-y-1 min-w-[95px]">
-            <Badge 
-              value={row.priority || 'Normal'} 
-              variant={isUrgent ? 'error' : isHigh ? 'warning' : 'default'} 
-            />
-            {deadlineDate && (
-              <span className={`text-[10px] block font-mono ${
-                isOverdue ? 'text-rose-500 font-bold' : 'text-muted'
-              }`}>
-                {deadlineDate.toLocaleDateString()} {isOverdue ? '⚠️' : ''}
-              </span>
-            )}
+          <div className="space-y-1">
+            {renderStatus()}
+            <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted">
+              <Badge 
+                value={row.priority || 'Normal'} 
+                variant={isUrgent ? 'error' : isHigh ? 'warning' : 'default'} 
+                className="py-0 px-1 text-[9px] rounded-none"
+              />
+              {deadlineDate && (
+                <span className={isOverdue ? 'text-rose-500 font-bold' : ''}>
+                  {deadlineDate.toLocaleDateString()} {isOverdue ? '⚠️' : ''}
+                </span>
+              )}
+            </div>
           </div>
         )
       }
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      sortable: true,
-      render: (v: any) => {
-        switch (v) {
-          case 'Completed':
-          case 'Closed':
-            return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-green-500/10 text-green-600 border border-green-500/20"><CheckCircle2 size={11}/> Done</span>
-          case 'In Progress':
-            return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse"><Play size={10} className="fill-blue-500"/> Running</span>
-          case 'QC Pending':
-            return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20"><ShieldCheck size={11}/> QC Hold</span>
-          case 'Rework':
-          case 'Rework Required':
-            return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-rose-500/10 text-rose-600 border border-rose-500/20 animate-pulse"><RotateCcw size={11}/> Rework</span>
-          case 'Released':
-            return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20"><ArrowRight size={11}/> Released</span>
-          default:
-            return <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider bg-surface2 text-muted border border-theme-subtle"><Clock size={11}/> {v || 'Draft'}</span>
-        }
-      }
-    },
-    {
-      key: 'traceability',
-      header: 'Traceability',
-      align: 'center',
-      render: (_: any, row: any) => (
-        <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
-          <TraceabilityDropdown
-            title={`Work Order #${row.orderNo || row.id}`}
-            traces={getWorkOrderTraces(row)}
-          />
-        </div>
-      )
     },
     {
       key: 'actions',
@@ -467,10 +433,15 @@ export const WorkOrders: React.FC = () => {
             <Eye size={12} className="mr-1 text-rex-600 dark:text-rex-400"/> Studio
           </Button>
 
+          <TraceabilityDropdown
+            title={`WO #${row.orderNo || row.id}`}
+            traces={getWorkOrderTraces(row)}
+          />
+
           <button 
             type="button" 
             onClick={() => setDeleteWoId(row.id)}
-            className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-colors border border-transparent hover:border-rose-500/20"
+            className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
             title="Delete Work Order"
           >
             <Trash2 size={13}/>
@@ -480,7 +451,7 @@ export const WorkOrders: React.FC = () => {
     }
   ]
 
-  // Kanban Columns
+    // Kanban Columns
   const kanbanStages = [
     { id: 'planned', label: '1. Planned / Released', statuses: ['Draft', 'Pending', 'Released'], color: 'border-purple-500/40 text-purple-600' },
     { id: 'in_progress', label: '2. In Floor Machining', statuses: ['In Progress'], color: 'border-blue-500/40 text-blue-600' },

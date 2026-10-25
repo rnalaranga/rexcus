@@ -163,9 +163,9 @@
   }
 
   ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: rgb(var(--bg-base)); }
-  ::-webkit-scrollbar-thumb { background: #991b1b; }
-  ::-webkit-scrollbar-thumb:hover { background: #b91c1c; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(140, 145, 160, 0.28); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(140, 145, 160, 0.5); }
   ::selection { background: rgba(185,28,28,0.35); color: inherit; }
 }
 

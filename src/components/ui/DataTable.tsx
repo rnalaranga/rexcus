@@ -52,7 +52,7 @@ export function DataTable<T>({
   return (
     <div className={cn('flex flex-col', className)}>
       <div className="overflow-auto flex-1">
-        <table className="w-full min-w-max border-collapse">
+        <table className="w-full min-w-full border-collapse">
           <thead>
             <tr className="border-b border-theme-subtle">
               {columns.map(col => (

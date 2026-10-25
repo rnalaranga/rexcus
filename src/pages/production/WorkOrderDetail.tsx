@@ -820,7 +820,7 @@ export const WorkOrderDetail: React.FC = () => {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <h1 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-primary tracking-tight">
               {wo.title || 'Precision Machining Job'}
             </h1>
             <span className="font-mono text-xs font-bold tracking-wider bg-rex-500/10 text-rex-600 dark:text-rex-400 px-2.5 py-0.5 rounded-none border border-rex-500/30">
@@ -980,190 +980,275 @@ export const WorkOrderDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* ── 3-COLUMN COMMAND CENTER SUMMARY CARD ─────────────────────────────────── */}
-      <GlassCard className="p-4 rounded-none border-theme-subtle">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6 divide-y md:divide-y-0 md:divide-x divide-theme-subtle">
-          {/* Column 1: Job & Customer Details */}
-          <div className="space-y-2.5 pr-0 md:pr-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
-                Job & Customer Profile
-              </span>
-              <div className="flex items-center gap-1.5">
-                <Badge 
-                  value={wo.priority || 'Normal'} 
-                  variant={wo.priority === 'Urgent' ? 'error' : wo.priority === 'High' ? 'warning' : 'default'} 
-                  className="rounded-none text-[10px] py-0 px-1.5"
-                />
-                {getStatusBadge(wo.status)}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Building size={14} className="text-secondary shrink-0"/>
-                <span className="text-sm font-bold text-primary truncate">
-                  {wo.customerName || 'Internal Production'}
-                </span>
-              </div>
-              {linkedQuote && (
-                <div className="flex items-center gap-2 text-xs text-muted">
-                  <FileText size={13} className="text-muted shrink-0"/>
-                  <span>Quotation:</span>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/crm/quotations')}
-                    className="font-mono font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                  >
-                    {linkedQuote.data?.quotationNo || linkedQuote.docNo || linkedQuote.id}
-                  </button>
-                </div>
-              )}
-              {wo.deadline && (
-                <div className="flex items-center gap-2 text-xs text-muted">
-                  <Calendar size={13} className="text-muted shrink-0"/>
-                  <span>Due Date:</span>
-                  <span className="font-semibold text-secondary">
-                    {new Date(wo.deadline).toLocaleDateString()}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="text-[11px] text-muted pt-1 border-t border-theme-subtle/60 flex items-center justify-between">
-              <span>Planned BOM Parts:</span>
-              <span className="font-mono font-bold text-primary">
-                {parsedBoms.length} Part{parsedBoms.length !== 1 ? 's' : ''} ({grandTotalPlannedMaterials} Materials)
-              </span>
-            </div>
-          </div>
-
-          {/* Column 2: Production & Dispatch Pipeline */}
-          <div className="space-y-2.5 pt-3 md:pt-0 px-0 md:px-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
-                Production & Delivery Tracking
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowPartialDispatchModal(true)}
-                className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Plus size={11}/> New Dispatch
-              </button>
-            </div>
-
-            <div className="flex items-baseline justify-between">
-              <div>
-                <span className="text-xs text-muted">Target Quantity</span>
-                <div className="text-2xl font-mono font-extrabold text-primary">
-                  {wo.jobQty || 1} <span className="text-xs font-sans font-normal text-muted">pcs</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-xs text-muted">Floor Machined</span>
-                <div className="text-base font-mono font-bold text-blue-600 dark:text-blue-400">
-                  {wo.completedQty || 0} / {wo.jobQty || 1}
-                </div>
-              </div>
-            </div>
-
-            {/* Visual Multi-Segment Progress Bar */}
-            <div className="space-y-1">
-              <div className="h-2.5 w-full bg-surface2 border border-theme-subtle rounded-none flex overflow-hidden">
-                <div 
-                  className="bg-emerald-600 h-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, ((Number(wo.dispatchedQty) || 0) / (Number(wo.jobQty) || 1)) * 100)}%` }}
-                  title={`Dispatched: ${wo.dispatchedQty || 0} pcs`}
-                />
-                <div 
-                  className="bg-blue-600 h-full transition-all duration-300"
-                  style={{ width: `${Math.max(0, Math.min(100, (((Number(wo.completedQty) || 0) - (Number(wo.dispatchedQty) || 0)) / (Number(wo.jobQty) || 1)) * 100))}%` }}
-                  title={`Machined (In Stores): ${Math.max(0, (Number(wo.completedQty) || 0) - (Number(wo.dispatchedQty) || 0))} pcs`}
-                />
-              </div>
-
-              {/* Status breakdown pills */}
-              <div className="flex items-center justify-between text-[11px] pt-1">
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
-                  <Truck size={12}/> {wo.dispatchedQty || 0} Dispatched
-                </span>
-                <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-semibold font-mono">
-                  <CheckCircle2 size={12}/> {wo.completedQty || 0} Machined
-                </span>
-                {Number(wo.scrapQty || 0) > 0 && (
-                  <span className="text-rose-500 font-mono font-semibold">
-                    {wo.scrapQty} Scrap
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Column 3: Machining Hours & Financials */}
-          <div className="space-y-2.5 pt-3 md:pt-0 pl-0 md:pl-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
-                Hours & Job Financials
-              </span>
-              <button
-                type="button"
-                onClick={() => setActiveTab('costing')}
-                className="text-[11px] text-rex-600 dark:text-rex-400 font-bold hover:underline cursor-pointer"
-              >
-                Costing Details →
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-surface2/60 p-2 border border-theme-subtle">
-                <span className="text-[10px] text-muted uppercase font-bold block">Quoted Machining</span>
-                <span className="font-mono font-bold text-primary text-sm">
-                  {grandTotalQuotedMachiningHours.toFixed(1)} <span className="text-[10px] text-muted">hrs</span>
-                </span>
-                <span className="text-[10px] text-muted block mt-0.5">
-                  {operations.reduce((s, o) => s + Number(o.actualHours || 0), 0).toFixed(1)} hrs logged
-                </span>
-              </div>
-
-              <div className="bg-surface2/60 p-2 border border-theme-subtle">
-                <span className="text-[10px] text-muted uppercase font-bold block">Actual Total Cost</span>
-                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                  {formatCurrency(cost.actualTotalCost || 0)}
-                </span>
-                <span className="text-[10px] text-muted block mt-0.5">
-                  Est: {formatCurrency(cost.estimatedCost || 0)}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-[11px] text-muted pt-1 border-t border-theme-subtle/60">
-              <span>Floor Progress:</span>
-              <span className="font-mono font-bold text-primary">
-                {cost.progress || 0}% ({cost.completedSteps || 0}/{cost.totalSteps || operations.length} steps)
-              </span>
-            </div>
-          </div>
+      {/* ── WORK ORDER PRODUCTION LIFECYCLE STEPPER ─────────────────────────────────── */}
+      <div className="w-full bg-surface border border-theme-subtle p-2.5 shadow-2xs">
+        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-theme-subtle/50 text-[10px] font-mono uppercase tracking-wider text-muted">
+          <span className="flex items-center gap-1.5 font-semibold text-secondary">
+            <span className="w-2 h-2 rounded-full bg-rex-500 animate-pulse inline-block" />
+            Manufacturing Lifecycle Stepper
+          </span>
+          <span className="text-secondary font-sans font-medium hidden sm:inline-block">
+            Target: <strong className="text-primary font-mono">{wo.jobQty || 1} pcs</strong> · Customer: <strong className="text-primary font-sans">{wo.customerName || 'Standard Order'}</strong>
+          </span>
         </div>
-      </GlassCard>
 
-      {/* ── MAIN NAVIGATION TABS (SHARP EDGES, FLAT THEME) ───────────────────────── */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {[
+            {
+              step: 1,
+              label: '1. BOM & Spec',
+              sub: `${parsedBoms.length} Parts Loaded`,
+              isDone: parsedBoms.length > 0,
+              isActive: wo.status === 'Draft' || wo.status === 'Pending' || wo.status === 'Released'
+            },
+            {
+              step: 2,
+              label: '2. Stores Issuance',
+              sub: `${issuedMaterials.length}/${grandTotalPlannedMaterials} Items Issued`,
+              isDone: issuedMaterials.length >= grandTotalPlannedMaterials && grandTotalPlannedMaterials > 0,
+              isActive: issuedMaterials.length > 0 && issuedMaterials.length < grandTotalPlannedMaterials
+            },
+            {
+              step: 3,
+              label: '3. Floor Machining',
+              sub: `${operations.filter(o => o.status === 'Completed').length}/${operations.length} Ops Done`,
+              isDone: operations.length > 0 && operations.every(o => o.status === 'Completed'),
+              isActive: wo.status === 'In Progress' || operations.some(o => o.status === 'In Progress')
+            },
+            {
+              step: 4,
+              label: '4. QC Inspection',
+              sub: reworkLogs.filter(r => r.status !== 'Resolved').length > 0 ? `${reworkLogs.filter(r => r.status !== 'Resolved').length} Reworks` : 'Inspection Clear',
+              isDone: wo.status === 'Completed' || (operations.length > 0 && operations.every(o => o.status === 'Completed')),
+              isActive: wo.status === 'QC Pending' || wo.status === 'Rework' || wo.status === 'Rework Required'
+            },
+            {
+              step: 5,
+              label: '5. Partial Dispatch',
+              sub: `${wo.dispatchedQty || 0}/${wo.jobQty || 1} pcs Delivered`,
+              isDone: Number(wo.dispatchedQty || 0) >= Number(wo.jobQty || 1) && Number(wo.jobQty || 1) > 0,
+              isActive: Number(wo.dispatchedQty || 0) > 0 && Number(wo.dispatchedQty || 0) < Number(wo.jobQty || 1)
+            },
+            {
+              step: 6,
+              label: '6. Job Completion',
+              sub: wo.status === 'Completed' || wo.status === 'Closed' ? 'Fully Closed' : 'In Progress',
+              isDone: wo.status === 'Completed' || wo.status === 'Closed',
+              isActive: wo.status === 'Completed'
+            }
+          ].map((st) => (
+            <div 
+              key={st.step}
+              className={`p-2 border transition-all rounded-none ${
+                st.isActive 
+                  ? 'bg-rex-500/10 border-rex-500/50 shadow-2xs ring-1 ring-rex-500/20' 
+                  : st.isDone 
+                  ? 'bg-emerald-500/5 border-emerald-500/30' 
+                  : 'bg-surface2/40 border-theme-subtle text-muted'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className={`w-4 h-4 rounded-none flex items-center justify-center font-mono text-[9px] font-bold ${
+                  st.isDone 
+                    ? 'bg-emerald-600 text-white' 
+                    : st.isActive 
+                    ? 'bg-rex-600 text-white' 
+                    : 'bg-surface2 text-muted border border-theme-subtle'
+                }`}>
+                  {st.isDone ? <Check size={10}/> : st.step}
+                </span>
+                <span className={`text-xs font-bold truncate ${st.isActive ? 'text-rex-600 dark:text-rex-400' : st.isDone ? 'text-primary' : 'text-muted'}`}>
+                  {st.label}
+                </span>
+              </div>
+              <span className="text-[10px] text-muted block truncate font-mono">
+                {st.sub}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 4 EXECUTIVE COMMAND COCKPIT CARDS ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Card 1: Production Output & Yield */}
+        <GlassCard className="p-3.5 rounded-none border-theme-subtle flex flex-col justify-between space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+              Target Quantity & Yield
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPartialDispatchModal(true)}
+              className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+            >
+              <Plus size={10}/> Dispatch
+            </button>
+          </div>
+
+          <div className="flex items-baseline justify-between">
+            <div className="text-2xl font-mono font-extrabold text-primary">
+              {wo.jobQty || 1} <span className="text-xs font-sans font-normal text-muted">pcs target</span>
+            </div>
+            <div className="text-right font-mono text-xs">
+              <span className="text-blue-600 font-bold">{wo.completedQty || 0}</span>
+              <span className="text-muted"> / </span>
+              <span className="text-emerald-600 font-bold">{wo.dispatchedQty || 0} DN</span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="h-2 w-full bg-surface2 border border-theme-subtle rounded-none flex overflow-hidden">
+              <div 
+                className="bg-emerald-600 h-full transition-all duration-300"
+                style={{ width: `${Math.min(100, ((Number(wo.dispatchedQty) || 0) / (Number(wo.jobQty) || 1)) * 100)}%` }}
+                title={`Dispatched: ${wo.dispatchedQty || 0} pcs`}
+              />
+              <div 
+                className="bg-blue-600 h-full transition-all duration-300"
+                style={{ width: `${Math.max(0, Math.min(100, (((Number(wo.completedQty) || 0) - (Number(wo.dispatchedQty) || 0)) / (Number(wo.jobQty) || 1)) * 100))}%` }}
+                title={`In Stores: ${Math.max(0, (Number(wo.completedQty) || 0) - (Number(wo.dispatchedQty) || 0))} pcs`}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-muted font-mono">
+              <span className="text-emerald-600 font-bold">{wo.dispatchedQty || 0} Dispatched</span>
+              <span className="text-blue-600 font-bold">{wo.completedQty || 0} Machined</span>
+              <span>{Math.max(0, (Number(wo.jobQty) || 1) - (Number(wo.completedQty) || 0))} Bal</span>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* Card 2: Materials & Stock Readiness */}
+        <GlassCard className="p-3.5 rounded-none border-theme-subtle flex flex-col justify-between space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+              Raw Materials Readiness
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowIssueModal(true)}
+              className="text-[10px] text-rex-600 dark:text-rex-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+            >
+              <Plus size={10}/> Issue Stock
+            </button>
+          </div>
+
+          <div className="flex items-baseline justify-between">
+            <div className="text-2xl font-mono font-extrabold text-primary">
+              {issuedMaterials.length} <span className="text-xs font-sans font-normal text-muted">/ {grandTotalPlannedMaterials} issued</span>
+            </div>
+            <span className={`text-[10px] px-1.5 py-0.5 font-bold uppercase rounded-none ${
+              issuedMaterials.length >= grandTotalPlannedMaterials && grandTotalPlannedMaterials > 0
+                ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+            }`}>
+              {issuedMaterials.length >= grandTotalPlannedMaterials && grandTotalPlannedMaterials > 0 ? '100% Ready' : 'Pending Stores'}
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="h-2 w-full bg-surface2 border border-theme-subtle rounded-none overflow-hidden">
+              <div 
+                className="bg-indigo-600 h-full transition-all duration-300"
+                style={{ width: `${grandTotalPlannedMaterials > 0 ? Math.min(100, (issuedMaterials.length / grandTotalPlannedMaterials) * 100) : 0}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-muted font-mono">
+              <span>Cost: {formatCurrency(cost.materialCost || 0)}</span>
+              <span>{parsedBoms.length} BOM Part{parsedBoms.length !== 1 ? 's' : ''}</span>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* Card 3: Shopfloor Machining Hours */}
+        <GlassCard className="p-3.5 rounded-none border-theme-subtle flex flex-col justify-between space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+              Machining Cycle Hours
+            </span>
+            <span className="text-[10px] font-mono text-muted">
+              {cost.progress || 0}% Steps Done
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between">
+            <div className="text-2xl font-mono font-extrabold text-primary">
+              {operations.reduce((s, o) => s + Number(o.actualHours || 0), 0).toFixed(1)} <span className="text-xs font-sans font-normal text-muted">/ {grandTotalQuotedMachiningHours.toFixed(1)} hrs</span>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">
+              {operations.filter(o => o.status === 'Completed').length}/{operations.length} Done
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="h-2 w-full bg-surface2 border border-theme-subtle rounded-none overflow-hidden">
+              <div 
+                className="bg-blue-600 h-full transition-all duration-300"
+                style={{ width: `${cost.progress || 0}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-muted font-mono">
+              <span>{operations.filter(o => o.status === 'In Progress').length} Machining Now</span>
+              <span>{reworkLogs.filter(r => r.status !== 'Resolved').length} Rework Pending</span>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* Card 4: Financial Cost Rollup & Budget */}
+        <GlassCard className="p-3.5 rounded-none border-theme-subtle flex flex-col justify-between space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted">
+              Actual Cost & Target
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveTab('costing')}
+              className="text-[10px] text-rex-600 dark:text-rex-400 font-bold hover:underline cursor-pointer"
+            >
+              Costing →
+            </button>
+          </div>
+
+          <div className="flex items-baseline justify-between">
+            <div className="text-2xl font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+              {formatCurrency(cost.actualTotalCost || 0)}
+            </div>
+            <span className="text-[10px] font-mono text-muted">
+              Target: {formatCurrency(cost.estimatedCost || 0)}
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="h-2 w-full bg-surface2 border border-theme-subtle rounded-none overflow-hidden">
+              <div 
+                className="bg-emerald-600 h-full transition-all duration-300"
+                style={{ width: `${cost.estimatedCost > 0 ? Math.min(100, (Number(cost.actualTotalCost || 0) / Number(cost.estimatedCost)) * 100) : 0}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="text-secondary">Lab+Mac: {formatCurrency((cost.laborCost || 0) + (cost.machineCost || 0))}</span>
+              <span className="text-emerald-600 font-bold">Within Budget</span>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
+
+      {/* ── MAIN NAVIGATION TABS ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b border-theme-subtle pb-0 overflow-x-auto scrollbar-none">
         {[
-          { id: 'bom', label: '1. BOM & Spec', icon: ClipboardList, count: parsedBoms.length },
-          { id: 'routing', label: '2. Routing & Timers', icon: Layers, count: operations.length },
-          { id: 'materials', label: '3. Material Ledger', icon: Package, count: issuedMaterials.length },
-          { id: 'qc_rework', label: '4. QC Hub', icon: ShieldCheck, count: reworkLogs.filter(r => r.status !== 'Resolved').length },
-          { id: 'dispatches', label: '5. Partial Dispatches', icon: Truck, count: Array.isArray(wo.dispatches) ? wo.dispatches.length : (wo.dispatches ? 1 : 0) },
-          { id: 'costing', label: '6. Job Costing', icon: DollarSign }
+          { id: 'bom', label: '1. Shop Floor Cockpit (BOM & Routing)', icon: ClipboardList, count: parsedBoms.length },
+          { id: 'materials', label: '2. Material Ledger', icon: Package, count: issuedMaterials.length },
+          { id: 'qc_rework', label: '3. QC Hub', icon: ShieldCheck, count: reworkLogs.filter(r => r.status !== 'Resolved').length },
+          { id: 'dispatches', label: '4. Partial Dispatches', icon: Truck, count: Array.isArray(wo.dispatches) ? wo.dispatches.length : (wo.dispatches ? 1 : 0) },
+          { id: 'costing', label: '5. Job Costing & Profit', icon: DollarSign }
         ].map(tab => {
           const Icon = tab.icon
-          const isActive = activeTab === tab.id
+          const isActive = activeTab === tab.id || (tab.id === 'bom' && activeTab === 'routing')
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as DetailTab)}
-              className={`px-3.5 py-2.5 rounded-none text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border-b-2 ${
+              className={`px-4 py-2.5 rounded-none text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border-b-2 ${
                 isActive 
                   ? 'border-rex-600 text-rex-600 dark:text-rex-400 font-bold bg-rex-500/10' 
                   : 'border-transparent text-muted hover:text-primary hover:bg-surface2/30'
@@ -1183,28 +1268,31 @@ export const WorkOrderDetail: React.FC = () => {
         })}
       </div>
 
-      {/* ── TAB 1: BOM BY BOM BREAKDOWN (MATERIALS & MACHINING HOURS) ─────────────── */}
-      {activeTab === 'bom' && (
-        <div className="space-y-6 pt-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
-                <ClipboardList size={16} className="text-rex-600"/>
-                Engineering Bill of Materials & Quoted Machining Hours (BOM by BOM)
-              </h3>
-              <p className="text-xs text-muted">
-                Structured multi-part quotation specifications, raw materials, cutting parameters, and machining operations.
-              </p>
+      {/* ── TAB 1: SHOP FLOOR COCKPIT (BOM & SHOP FLOOR ROUTING) ───────────────────── */}
+      {(activeTab === 'bom' || activeTab === 'routing') && (
+        <div className="space-y-6 pt-1">
+          {/* Action Ribbon & Sync */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface2/40 p-3 border border-theme-subtle">
+            <div className="flex items-center gap-2">
+              <ClipboardList size={18} className="text-rex-600 shrink-0"/>
+              <div>
+                <h3 className="text-xs sm:text-sm font-bold text-primary">
+                  Engineering Bill of Materials & Sequential Shop Floor Routing
+                </h3>
+                <p className="text-[11px] text-muted">
+                  Interactive job card: track raw stock allocation, material substitutions, and live machining step timers.
+                </p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               {operations.length === 0 && grandTotalQuotedMachiningHours > 0 && (
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={handleSyncAllBomsToFloor}
                   disabled={submitting}
-                  className="rounded-none text-xs font-bold bg-rex-600 hover:bg-rex-700 text-white inline-flex items-center shadow-xs"
+                  className="rounded-none text-xs font-bold bg-rex-600 hover:bg-rex-700 text-white shadow-xs"
                 >
                   <Sparkles size={13} className="mr-1.5"/> Sync All BOM Steps to Shopfloor
                 </Button>
@@ -1214,37 +1302,21 @@ export const WorkOrderDetail: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowAddBomModal(true)}
-                className="rounded-none text-xs border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 font-bold inline-flex items-center"
+                className="rounded-none text-xs border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 font-bold"
               >
-                <Plus size={13} className="mr-1"/> Add Material / Component
+                <Plus size={13} className="mr-1"/> Add Material
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAddOpModal(true)}
+                className="rounded-none text-xs border-theme hover:bg-surface2 font-bold"
+              >
+                <Plus size={13} className="mr-1"/> Add Operation
               </Button>
             </div>
           </div>
-
-          {/* Quotation Link Callout Banner */}
-          {linkedQuote && (
-            <div className="p-3 bg-surface2/60 border border-theme-subtle rounded-none flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <Sparkles size={16} className="text-amber-500 shrink-0"/>
-                <div>
-                  <strong className="text-primary font-bold">Linked Quotation ({linkedQuote?.data?.quotationNo || linkedQuote?.docNo || linkedQuote?.id}):</strong>
-                  <span className="text-secondary ml-1.5">
-                    Loaded {parsedBoms.length} BOM part(s) with {grandTotalPlannedMaterials} materials and {grandTotalQuotedMachiningHours.toFixed(1)} quoted machining hours.
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate(`/crm/quotations`)}
-                  className="rounded-none text-xs border border-theme text-primary hover:bg-surface2"
-                >
-                  <ExternalLink size={12} className="mr-1"/> View Quotation
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* BOM BY BOM CARDS LOOP */}
           {parsedBoms.length === 0 ? (
@@ -1268,9 +1340,9 @@ export const WorkOrderDetail: React.FC = () => {
           ) : (
             parsedBoms.map((bom, bIdx) => {
               return (
-                <GlassCard key={bom.partId || bIdx} className="p-0 border-theme-subtle rounded-none overflow-hidden space-y-0">
+                <GlassCard key={bom.partId || bIdx} className="p-0 border-theme-subtle rounded-none overflow-hidden space-y-0 shadow-2xs">
                   {/* Part Header */}
-                  <div className="p-4 bg-surface2/70 border-b border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="p-3.5 bg-surface2/70 border-b border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-xs font-bold bg-surface text-secondary px-2.5 py-0.5 rounded-none border border-theme-subtle">
@@ -1297,7 +1369,7 @@ export const WorkOrderDetail: React.FC = () => {
 
                     <div className="flex items-center gap-4 text-xs font-mono">
                       <div className="text-right">
-                        <span className="text-[10px] text-muted uppercase block">Part Quoted Hours</span>
+                        <span className="text-[10px] text-muted uppercase block">Quoted Machining</span>
                         <strong className="text-primary font-bold">{bom.totalQuotedHours.toFixed(1)} hrs</strong>
                       </div>
                       <div className="text-right border-l border-theme-subtle pl-4">
@@ -1313,7 +1385,7 @@ export const WorkOrderDetail: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <h5 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5">
                           <Package size={13} className="text-secondary"/>
-                          Planned Materials & Stock Requirements ({bom.allMaterials.length})
+                          Raw Materials & Components ({bom.allMaterials.length})
                         </h5>
                         <span className="text-xs font-mono text-muted">
                           Subtotal: <strong className="text-primary">{formatCurrency(bom.matTotal)}</strong>
@@ -1329,15 +1401,15 @@ export const WorkOrderDetail: React.FC = () => {
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="bg-surface2/60 border-b border-theme-subtle text-left text-muted font-bold">
-                                <th className="py-2 px-3">#</th>
-                                <th className="py-2 px-3">Material Name & Dimensions</th>
-                                <th className="py-2 px-3">Type</th>
-                                <th className="py-2 px-3 text-right">Required Qty</th>
-                                <th className="py-2 px-3 text-right">Est. Unit Cost</th>
-                                <th className="py-2 px-3 text-right">Total Cost</th>
-                                <th className="py-2 px-3 text-center">Stock Level</th>
-                                <th className="py-2 px-3 text-center">Status</th>
-                                <th className="py-2 px-3 text-right">Action</th>
+                                <th className="py-2.5 px-3">#</th>
+                                <th className="py-2.5 px-3">Material Name & Dimensions</th>
+                                <th className="py-2.5 px-3">Type</th>
+                                <th className="py-2.5 px-3 text-right">Required Qty</th>
+                                <th className="py-2.5 px-3 text-right">Unit Price</th>
+                                <th className="py-2.5 px-3 text-right">Subtotal</th>
+                                <th className="py-2.5 px-3 text-center">Stock Level</th>
+                                <th className="py-2.5 px-3 text-center">Status</th>
+                                <th className="py-2.5 px-3 text-right">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-theme-subtle">
@@ -1346,9 +1418,9 @@ export const WorkOrderDetail: React.FC = () => {
                                 const hasStock = inStock >= mat.qty
 
                                 return (
-                                  <tr key={mat.id || mIdx} className="hover:bg-surface2/30">
-                                    <td className="py-2 px-3 text-muted font-mono">{mIdx + 1}</td>
-                                    <td className="py-2 px-3 font-semibold text-primary">
+                                  <tr key={mat.id || mIdx} className="hover:bg-surface2/30 transition-colors">
+                                    <td className="py-2.5 px-3 text-muted font-mono">{mIdx + 1}</td>
+                                    <td className="py-2.5 px-3 font-semibold text-primary">
                                       <div className="flex items-center gap-1.5 flex-wrap">
                                         <span>{mat.material}</span>
                                         {mat.isSubstituted && (
@@ -1357,8 +1429,8 @@ export const WorkOrderDetail: React.FC = () => {
                                           </span>
                                         )}
                                         {mat.substituteRequest?.status === 'pending_approval' && (
-                                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 uppercase" title={`Proposed: ${mat.substituteRequest.substituteMaterial}`}>
-                                            Sub Pending Approval
+                                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 uppercase">
+                                            Sub Pending
                                           </span>
                                         )}
                                       </div>
@@ -1373,19 +1445,19 @@ export const WorkOrderDetail: React.FC = () => {
                                         </span>
                                       )}
                                     </td>
-                                    <td className="py-2 px-3 text-muted font-mono text-[11px]">
+                                    <td className="py-2.5 px-3 text-muted font-mono text-[11px]">
                                       {mat.profile || 'Raw Stock'}
                                     </td>
-                                    <td className="py-2 px-3 text-right font-mono font-bold">
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
                                       {mat.qty} {mat.unit || 'pcs'}
                                     </td>
-                                    <td className="py-2 px-3 text-right font-mono text-muted">
+                                    <td className="py-2.5 px-3 text-right font-mono text-muted">
                                       {formatCurrency(mat.unitPrice || 0)}
                                     </td>
-                                    <td className="py-2 px-3 text-right font-mono font-bold text-primary">
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
                                       {formatCurrency(mat.totalPrice || 0)}
                                     </td>
-                                    <td className="py-2 px-3 text-center">
+                                    <td className="py-2.5 px-3 text-center">
                                       {mat.invMatch ? (
                                         hasStock ? (
                                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
@@ -1400,7 +1472,7 @@ export const WorkOrderDetail: React.FC = () => {
                                         <span className="text-[10px] text-muted italic">Non-catalog</span>
                                       )}
                                     </td>
-                                    <td className="py-2 px-3 text-center">
+                                    <td className="py-2.5 px-3 text-center">
                                       {mat.alreadyIssued ? (
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 border border-blue-500/20">
                                           <CheckCircle2 size={10}/> Issued
@@ -1411,8 +1483,27 @@ export const WorkOrderDetail: React.FC = () => {
                                         </span>
                                       )}
                                     </td>
-                                    <td className="py-2 px-3 text-right">
+                                    <td className="py-2.5 px-3 text-right">
                                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                        <Button
+                                          variant="primary"
+                                          size="sm"
+                                          onClick={() => {
+                                            setIssueForm({
+                                              inventoryId: mat.invMatch ? mat.invMatch.id : '',
+                                              materialName: mat.material,
+                                              qty: mat.qty,
+                                              unit: mat.unit || 'pcs',
+                                              unitCost: Number(mat.unitPrice || mat.invMatch?.unitCost || 0),
+                                              notes: `Issued against ${bom.title}: ${mat.material}`
+                                            })
+                                            setShowIssueModal(true)
+                                          }}
+                                          className="text-[11px] py-1 px-2.5 h-auto bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold inline-flex items-center shadow-xs"
+                                        >
+                                          <Package size={11} className="mr-1"/> Issue Stock
+                                        </Button>
+
                                         <Button
                                           variant="outline"
                                           size="sm"
@@ -1435,29 +1526,9 @@ export const WorkOrderDetail: React.FC = () => {
                                             })
                                           }}
                                           className="text-[11px] py-1 px-2 h-auto text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10 rounded-none font-bold inline-flex items-center"
-                                          title="Change material or request alternative grade/size from stores (available even if in stock)"
+                                          title="Change material or request alternative grade/size from stores"
                                         >
-                                          <ArrowLeftRight size={11} className="mr-1 text-indigo-500"/> Change / Alt Material
-                                        </Button>
-
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            setIssueForm({
-                                              inventoryId: mat.invMatch ? mat.invMatch.id : '',
-                                              materialName: mat.material,
-                                              qty: mat.qty,
-                                              unit: mat.unit || 'pcs',
-                                              unitCost: Number(mat.unitPrice || mat.invMatch?.unitCost || 0),
-                                              notes: `Issued against ${bom.title}: ${mat.material}`
-                                            })
-                                            setShowIssueModal(true)
-                                          }}
-                                          className="text-[11px] py-1 px-2.5 h-auto border border-rex-500/40 text-rex-600 dark:text-rex-400 hover:bg-rex-500/10 rounded-none font-bold inline-flex items-center"
-                                          title="Issue this material directly to this job"
-                                        >
-                                          <Package size={11} className="mr-1"/> Issue Material
+                                          <ArrowLeftRight size={11} className="mr-1 text-indigo-500"/> Alt Material
                                         </Button>
 
                                         <Button
@@ -1477,7 +1548,7 @@ export const WorkOrderDetail: React.FC = () => {
                                           className="text-[11px] py-1 px-2 h-auto text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10 rounded-none font-semibold inline-flex items-center"
                                           title="Cut raw bars or use offcuts in Cut Studio"
                                         >
-                                          <Scissors size={11} className="mr-1 text-amber-500"/> Cut & Issue
+                                          <Scissors size={11} className="mr-1 text-amber-500"/> Cut Studio
                                         </Button>
                                       </div>
                                     </td>
@@ -1490,15 +1561,15 @@ export const WorkOrderDetail: React.FC = () => {
                       )}
                     </div>
 
-                    {/* 2. QUOTATION MACHINING HOURS & PROCESSES FOR THIS BOM */}
+                    {/* 2. SEQUENTIAL OPERATIONS & SHOP FLOOR ROUTING EXECUTION */}
                     <div className="space-y-2.5 pt-2 border-t border-theme-subtle">
                       <div className="flex items-center justify-between">
                         <h5 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5">
                           <Wrench size={13} className="text-secondary"/>
-                          Quoted Machining Operations & Cycle Times ({bom.machiningOps.length})
+                          Sequential Machining Operations & Cycle Timers ({bom.machiningOps.length})
                         </h5>
                         <span className="text-xs font-mono text-muted">
-                          Machining Hours: <strong className="text-primary font-bold">{bom.totalQuotedHours.toFixed(1)} hrs</strong> | Subtotal: <strong className="text-primary">{formatCurrency(bom.machTotal)}</strong>
+                          Total Quoted: <strong className="text-primary font-bold">{bom.totalQuotedHours.toFixed(1)} hrs</strong> | Subtotal: <strong className="text-primary">{formatCurrency(bom.machTotal)}</strong>
                         </span>
                       </div>
 
@@ -1507,195 +1578,152 @@ export const WorkOrderDetail: React.FC = () => {
                           No machining hours allocated for this part in quotation.
                         </div>
                       ) : (
-                        <div className="overflow-x-auto border border-theme-subtle rounded-none">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="bg-surface2/60 border-b border-theme-subtle text-left text-muted font-bold">
-                                <th className="py-2 px-3">Process / Operation</th>
-                                <th className="py-2 px-3 text-right">Quoted Machining Hours</th>
-                                <th className="py-2 px-3 text-right">Est. Floor Hours</th>
-                                <th className="py-2 px-3 text-right">Setup Time</th>
-                                <th className="py-2 px-3 text-right">Hourly Rate</th>
-                                <th className="py-2 px-3 text-right">Subtotal Cost</th>
-                                <th className="py-2 px-3 text-center">Floor Status</th>
-                                <th className="py-2 px-3">Assigned Machine / Tech</th>
-                                <th className="py-2 px-3 text-right">Floor Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-theme-subtle">
-                              {bom.machiningOps.map((proc: any, pIdx: number) => {
-                                const matchedOp = proc.matchedOp
-                                const isRunning = matchedOp?.status === 'In Progress'
-                                const isDone = matchedOp?.status === 'Completed'
-                                const isPaused = matchedOp?.status === 'Paused'
+                        <div className="space-y-2">
+                          {bom.machiningOps.map((proc: any, pIdx: number) => {
+                            const matchedOp = proc.matchedOp
+                            const isRunning = matchedOp?.status === 'In Progress'
+                            const isDone = matchedOp?.status === 'Completed'
+                            const isPaused = matchedOp?.status === 'Paused'
+                            const isQcPending = matchedOp?.status === 'QC Pending'
+                            const isRework = matchedOp?.status === 'Rework Required'
 
-                                return (
-                                  <tr key={proc.id || pIdx} className={`hover:bg-surface2/30 ${isRunning ? 'bg-blue-500/5' : ''}`}>
-                                    <td className="py-2.5 px-3 font-bold text-primary flex items-center gap-1.5">
-                                      <Wrench size={12} className="text-secondary shrink-0"/>
-                                      <span>{proc.procName}</span>
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
-                                      {proc.quoHr.toFixed(1)} hrs
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right font-mono text-muted">
-                                      {proc.estHr > 0 ? `${proc.estHr.toFixed(1)} hrs` : '-'}
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right font-mono text-muted">
-                                      {proc.setTime > 0 ? `${proc.setTime.toFixed(1)} hrs` : '-'}
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right font-mono text-muted">
-                                      {formatCurrency(proc.hrRate)}/hr
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
-                                      {formatCurrency(proc.cost)}
-                                    </td>
-                                    <td className="py-2.5 px-3 text-center">
-                                      {matchedOp ? (
-                                        isDone ? (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-green-500/10 text-green-600 border border-green-500/20">
-                                            <Check size={10}/> Done
-                                          </span>
-                                        ) : isRunning ? (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse">
-                                            <Play size={9} className="fill-blue-500"/> Machining Now ({matchedOp.actualHours}h)
-                                          </span>
-                                        ) : isPaused ? (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                                            <Pause size={9}/> Paused
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-surface2 text-muted border border-theme-subtle">
-                                            <Clock size={9}/> Pending
-                                          </span>
-                                        )
-                                      ) : (
-                                        <span className="text-[10px] text-muted italic">Not in routing</span>
-                                      )}
-                                    </td>
-                                    <td className="py-2.5 px-3 text-secondary text-[11px]">
-                                      {matchedOp ? (
-                                        <div className="space-y-0.5">
-                                          <span className="block truncate font-medium text-primary">
-                                            {matchedOp.machineName || 'Any Machine'}
-                                          </span>
-                                          <span className="block text-[10px] text-muted truncate">
-                                            {matchedOp.employeeName || 'Unassigned Tech'}
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <span className="text-muted text-[10px]">Unscheduled</span>
-                                      )}
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right">
-                                      {matchedOp ? (
-                                        <div className="flex items-center justify-end gap-1.5">
-                                          {!isDone && (
-                                            <>
-                                              {!isRunning ? (
-                                                <Button
-                                                  variant="primary"
-                                                  size="sm"
-                                                  onClick={() => handleOpTimerAction(matchedOp.id, 'In Progress')}
-                                                  disabled={submitting}
-                                                  className="text-[11px] py-1 px-2 h-auto bg-blue-600 hover:bg-blue-700 text-white rounded-none border-none"
-                                                  title="Start floor timer"
-                                                >
-                                                  <Play size={10} className="mr-1 fill-white"/> Start
-                                                </Button>
-                                              ) : (
-                                                <Button
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  onClick={() => handleOpTimerAction(matchedOp.id, 'Paused')}
-                                                  disabled={submitting}
-                                                  className="text-[11px] py-1 px-2 h-auto text-amber-600 border border-amber-500/30 hover:bg-amber-500/10 rounded-none"
-                                                  title="Pause timer"
-                                                >
-                                                  <Pause size={10} className="mr-1"/> Pause
-                                                </Button>
-                                              )}
+                            return (
+                              <div
+                                key={proc.id || pIdx}
+                                className={`p-3 border rounded-none transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                  isRunning 
+                                    ? 'bg-blue-500/10 border-blue-500/60 shadow-xs ring-1 ring-blue-500/30' 
+                                    : isDone 
+                                    ? 'bg-emerald-500/5 border-emerald-500/30' 
+                                    : isRework 
+                                    ? 'bg-rose-500/5 border-rose-500/40' 
+                                    : isQcPending 
+                                    ? 'bg-amber-500/5 border-amber-500/40' 
+                                    : 'bg-surface border-theme-subtle hover:border-theme'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className={`w-7 h-7 rounded-none flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
+                                    isDone 
+                                      ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' 
+                                      : isRunning 
+                                      ? 'bg-blue-500/20 text-blue-600 border border-blue-500/40 animate-pulse' 
+                                      : 'bg-surface2 text-muted border border-theme-subtle'
+                                  }`}>
+                                    {isDone ? <Check size={13}/> : pIdx + 1}
+                                  </div>
 
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleOpTimerAction(matchedOp.id, 'Completed')}
-                                                disabled={submitting}
-                                                className="text-[11px] py-1 px-2 h-auto text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/10 rounded-none font-semibold"
-                                                title="Complete operation"
-                                              >
-                                                <Check size={10} className="mr-1"/> Complete
-                                              </Button>
-                                            </>
+                                  <div className="space-y-0.5 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-primary text-xs sm:text-sm">
+                                        {proc.procName}
+                                      </span>
+                                      {isRunning && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-blue-500/20 text-blue-600 border border-blue-500/30 animate-pulse">
+                                          <Play size={9} className="fill-blue-500"/> Machining Now (${matchedOp.actualHours || 0}h)
+                                        </span>
+                                      )}
+                                      {isDone && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                          <Check size={9}/> Done (${matchedOp.actualHours || 0}h)
+                                        </span>
+                                      )}
+                                      {isPaused && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                          <Pause size={9}/> Paused
+                                        </span>
+                                      )}
+                                      {isQcPending && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                          <ShieldCheck size={9}/> QC Inspection
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-3 text-[11px] text-muted font-mono flex-wrap">
+                                      <span>Quoted: <strong className="text-primary">{proc.quoHr.toFixed(1)}h</strong></span>
+                                      {proc.setTime > 0 && <span>Setup: {proc.setTime.toFixed(1)}h</span>}
+                                      <span>Rate: {formatCurrency(proc.hrRate)}/h</span>
+                                      <span>Subtotal: <strong className="text-primary">{formatCurrency(proc.cost)}</strong></span>
+                                      {matchedOp && (
+                                        <span className="text-secondary font-sans font-medium">
+                                          (${matchedOp.machineName || 'Machine'} · ${matchedOp.employeeName || 'Tech'})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Live Operation Controls */}
+                                <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                                  {matchedOp ? (
+                                    <>
+                                      {!isDone && (
+                                        <>
+                                          {!isRunning ? (
+                                            <Button
+                                              variant="primary"
+                                              size="sm"
+                                              onClick={() => handleOpTimerAction(matchedOp.id, 'In Progress')}
+                                              disabled={submitting}
+                                              className="text-[11px] py-1 px-2.5 h-auto bg-blue-600 hover:bg-blue-700 text-white rounded-none font-bold inline-flex items-center"
+                                            >
+                                              <Play size={11} className="mr-1 fill-white"/> Start Timer
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleOpTimerAction(matchedOp.id, 'Paused')}
+                                              disabled={submitting}
+                                              className="text-[11px] py-1 px-2 h-auto text-amber-600 border-amber-500/30 hover:bg-amber-500/10 rounded-none font-bold inline-flex items-center"
+                                            >
+                                              <Pause size={11} className="mr-1"/> Pause
+                                            </Button>
                                           )}
 
                                           <Button
-                                            variant="ghost"
+                                            variant="outline"
                                             size="sm"
-                                            onClick={() => {
-                                              setShowQcModal(matchedOp)
-                                              setQcForm({
-                                                inspectedBy: 'QA Inspector',
-                                                status: 'Pass',
-                                                defectReason: 'Tolerance/Dimensions',
-                                                notes: '',
-                                                sampleQty: 1,
-                                                defectQty: 0,
-                                                severity: 'Normal'
-                                              })
-                                            }}
-                                            className="text-[11px] py-1 px-2 h-auto text-secondary border border-theme hover:bg-surface2 rounded-none"
-                                            title="Quick QC status check"
+                                            onClick={() => handleOpTimerAction(matchedOp.id, 'Completed')}
+                                            disabled={submitting}
+                                            className="text-[11px] py-1 px-2.5 h-auto text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 rounded-none font-bold inline-flex items-center"
                                           >
-                                            <ShieldCheck size={10}/>
+                                            <Check size={11} className="mr-1"/> Finish Step
                                           </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                              setTargetQcOp({ partTitle: bom.title, opName: proc.procName })
-                                              setActiveTab('qc_rework')
-                                            }}
-                                            className="text-[10px] py-1 px-2 h-auto text-rex-600 dark:text-rex-400 border border-rex-500/30 hover:bg-rex-500/10 rounded-none font-bold"
-                                            title="Define & inspect QC points for this machining operation"
-                                          >
-                                            <ShieldCheck size={10} className="mr-1"/> QC Points
-                                          </Button>
-                                        </div>
-                                      ) : (
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleSyncSingleOpToFloor(proc)}
-                                          disabled={submitting}
-                                          className="text-[11px] py-1 px-2.5 h-auto bg-rex-500/10 hover:bg-rex-500/20 text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:border-rex-500/60 rounded-none font-bold inline-flex items-center shadow-xs"
-                                          title="Add this quotation machining process to active shop floor routing"
-                                        >
-                                          <Plus size={10} className="mr-1 text-rex-600 dark:text-rex-400"/> Add to Routing
-                                        </Button>
+                                        </>
                                       )}
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
+
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setTargetQcOp({ partTitle: bom.title, opName: proc.procName })
+                                          setActiveTab('qc_rework')
+                                        }}
+                                        className="text-[11px] py-1 px-2 h-auto text-muted hover:text-primary border border-theme-subtle rounded-none font-semibold inline-flex items-center"
+                                        title="View or record QC inspection checkpoints"
+                                      >
+                                        <ShieldCheck size={11} className="mr-1 text-blue-500"/> QC
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleSyncSingleOpToFloor(proc)}
+                                      disabled={submitting}
+                                      className="text-[11px] py-1 px-2.5 h-auto text-purple-600 border-purple-500/30 hover:bg-purple-500/10 rounded-none font-bold inline-flex items-center"
+                                    >
+                                      <Plus size={11} className="mr-1"/> Add to Routing
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
-                    </div>
-                  </div>
-
-                  {/* Part Summary Footer */}
-                  <div className="p-3 bg-surface2/40 border-t border-theme-subtle flex items-center justify-between text-xs">
-                    <span className="text-muted">
-                      Part Total: <strong className="text-primary">{bom.allMaterials.length} Materials</strong> | <strong className="text-primary">{bom.machiningOps.length} Operations</strong>
-                    </span>
-                    <div className="flex items-center gap-4 font-mono font-bold">
-                      <span className="text-muted">Materials: {formatCurrency(bom.matTotal)}</span>
-                      <span className="text-secondary">Machining: {formatCurrency(bom.machTotal)}</span>
-                      <span className="text-emerald-600 font-black pl-3 border-l border-theme-subtle">
-                        Part Total: {formatCurrency(bom.bomTotal)}
-                      </span>
                     </div>
                   </div>
                 </GlassCard>
@@ -1705,256 +1733,7 @@ export const WorkOrderDetail: React.FC = () => {
         </div>
       )}
 
-
-      {/* ── TAB 2: SHOP FLOOR ROUTING & TIMERS ─────────────────────────────────────── */}
-      {activeTab === 'routing' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
-                <Layers size={16} className="text-secondary"/>
-                Manufacturing Routing & Step-by-Step Operations
-              </h3>
-              <p className="text-xs text-muted">
-                Sequential workshop processes with real-time timers, machine scheduling, and operator logging.
-              </p>
-            </div>
-
-            <Button 
-              variant="primary" 
-              size="sm" 
-              onClick={() => setShowAddOpModal(true)}
-              className="text-xs bg-rex-600 hover:bg-rex-700 text-white rounded-none font-bold shadow-xs"
-            >
-              <Plus size={13} className="mr-1"/> Add Operation Step
-            </Button>
-          </div>
-
-          {operations.length === 0 ? (
-            <GlassCard className="p-12 text-center border-dashed border-theme-subtle rounded-none space-y-3">
-              <Layers size={36} className="mx-auto text-muted/60" />
-              <div>
-                <p className="text-sm font-bold text-primary">No routing steps defined for this job yet.</p>
-                <p className="text-xs text-muted mt-0.5">
-                  Load operations from quotation BOM or add manual steps.
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
-                {grandTotalQuotedMachiningHours > 0 && (
-                  <Button 
-                    variant="primary" 
-                    size="sm" 
-                    onClick={handleSyncAllBomsToFloor} 
-                    disabled={submitting}
-                    className="bg-rex-600 hover:bg-rex-700 text-white font-bold rounded-none shadow-xs"
-                  >
-                    <Sparkles size={13} className="mr-1.5"/> Load Steps from Quotation BOM
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={() => setShowAddOpModal(true)} className="rounded-none font-semibold">
-                  <Plus size={13} className="mr-1"/> Add Operation Manually
-                </Button>
-              </div>
-            </GlassCard>
-          ) : (
-            <div className="space-y-3">
-              {operations.map((op, idx) => {
-                const isRunning = op.status === 'In Progress'
-                const isDone = op.status === 'Completed'
-                const isQcPending = op.status === 'QC Pending'
-                const isRework = op.status === 'Rework Required'
-                const isPaused = op.status === 'Paused'
-
-                const plannedHrs = Number(op.plannedHours || 1)
-                const actualHrs = Number(op.actualHours || 0)
-                const timePct = plannedHrs > 0 ? Math.min(100, Math.round((actualHrs / plannedHrs) * 100)) : 0
-
-                return (
-                  <GlassCard 
-                    key={op.id || idx} 
-                    className={`p-4 border rounded-none transition-all ${
-                      isRunning ? 'border-blue-500/50 bg-blue-500/5 shadow-md shadow-blue-500/5' :
-                      isDone ? 'border-green-500/30 bg-green-500/5' :
-                      isRework ? 'border-rose-500/40 bg-rose-500/5' :
-                      isQcPending ? 'border-amber-500/40 bg-amber-500/5' :
-                      'border-theme-subtle'
-                    }`}
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      {/* Step Sequence & Operation Details */}
-                      <div className="flex items-start gap-3 min-w-0 flex-1">
-                        <div className={`w-8 h-8 rounded-none flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
-                          isDone ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30' :
-                          isRunning ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 animate-pulse' :
-                          isRework ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
-                          'bg-surface2 text-muted border border-theme-subtle'
-                        }`}>
-                          {op.stepNumber || idx + 1}
-                        </div>
-
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="text-sm font-bold text-primary truncate">
-                              {op.operationName}
-                            </h4>
-                            <span className="text-[10px] text-muted font-mono">{op.id}</span>
-                            {isDone && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-green-500/10 text-green-600 border border-green-500/20">
-                                <Check size={10}/> Done
-                              </span>
-                            )}
-                            {isRunning && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-500/10 text-blue-600 border border-blue-500/20 animate-pulse">
-                                <Play size={10} className="fill-blue-500"/> Machining Now
-                              </span>
-                            )}
-                            {isPaused && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                                <Pause size={10}/> Paused
-                              </span>
-                            )}
-                            {isQcPending && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                                <ShieldCheck size={10}/> QC Inspection Ready
-                              </span>
-                            )}
-                            {isRework && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-none bg-rose-500/10 text-rose-600 border border-rose-500/20">
-                                <RotateCcw size={10}/> Rework Required
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Assigned Machine & Operator */}
-                          <div className="flex items-center gap-4 text-xs text-secondary flex-wrap pt-0.5">
-                            <span className="inline-flex items-center gap-1.5">
-                              <Cpu size={13} className="text-secondary"/>
-                              <span>{op.machineName || 'Any Available Machine'}</span>
-                              {op.machineHourlyCost > 0 && (
-                                <span className="text-[10px] text-muted font-mono">({formatCurrency(op.machineHourlyCost)}/hr)</span>
-                              )}
-                            </span>
-
-                            <span className="inline-flex items-center gap-1.5">
-                              <User size={13} className="text-emerald-600"/>
-                              <span>{op.employeeName || 'Unassigned Operator'}</span>
-                              {op.employeeHourlyRate > 0 && (
-                                <span className="text-[10px] text-muted font-mono">({formatCurrency(op.employeeHourlyRate)}/hr)</span>
-                              )}
-                            </span>
-                          </div>
-
-                          {op.notes && (
-                            <p className="text-[11px] text-muted bg-surface2/40 px-2 py-1 rounded-none border border-theme-subtle inline-block mt-1">
-                              {op.notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Planned vs Actual Hours Progress */}
-                      <div className="w-full lg:w-48 space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-muted">Actual / Plan</span>
-                          <span className="font-mono font-bold text-primary">
-                            {actualHrs.toFixed(1)}h / {plannedHrs.toFixed(1)}h
-                          </span>
-                        </div>
-                        <div className="h-1.5 bg-surface2 rounded-none overflow-hidden border border-theme-subtle">
-                          <div 
-                            className={`h-full rounded-none transition-all ${
-                              actualHrs > plannedHrs ? 'bg-rose-500' : 'bg-blue-600'
-                            }`}
-                            style={{ width: `${timePct}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-muted font-mono">
-                          <span>Cost: {formatCurrency((op.actualLaborCost || 0) + (op.actualMachineCost || 0))}</span>
-                          <span>{timePct}%</span>
-                        </div>
-                      </div>
-
-                      {/* Live Timer Controls & Actions */}
-                      <div className="flex items-center gap-1.5 self-end lg:self-center shrink-0">
-                        {!isDone && (
-                          <>
-                            {!isRunning ? (
-                              <Button 
-                                variant="primary" 
-                                size="sm" 
-                                onClick={() => handleOpTimerAction(op.id, 'In Progress')}
-                                disabled={submitting}
-                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-none font-bold"
-                                title="Start live shopfloor timer"
-                              >
-                                <Play size={12} className="mr-1 fill-white"/> Start
-                              </Button>
-                            ) : (
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleOpTimerAction(op.id, 'Paused')}
-                                disabled={submitting}
-                                className="text-xs text-amber-500 border-amber-500/30 hover:bg-amber-500/10 rounded-none font-bold"
-                                title="Pause timer"
-                              >
-                                <Pause size={12} className="mr-1"/> Pause
-                              </Button>
-                            )}
-
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handleOpTimerAction(op.id, 'Completed')}
-                              disabled={submitting}
-                              className="text-xs text-green-600 border-green-500/30 hover:bg-green-500/10 rounded-none font-bold"
-                              title="Mark operation completed"
-                            >
-                              <Check size={12} className="mr-1"/> Complete
-                            </Button>
-                          </>
-                        )}
-
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => {
-                            setShowQcModal(op)
-                            setQcForm({
-                              inspectedBy: 'QA Inspector',
-                              status: 'Pass',
-                              defectReason: 'Tolerance/Dimensions',
-                              notes: '',
-                              sampleQty: 1,
-                              defectQty: 0,
-                              severity: 'Normal'
-                            })
-                          }}
-                          className="text-xs text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none font-bold"
-                          title="Inspect quality and record pass/rework/scrap"
-                        >
-                          <ShieldCheck size={12} className="mr-1"/> QC
-                        </Button>
-
-                        <button 
-                          type="button" 
-                          onClick={() => handleDeleteOp(op.id, op.operationName)}
-                          className="p-1.5 text-muted hover:text-rose-500 rounded-none hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
-                          title="Delete operation"
-                        >
-                          <Trash2 size={13}/>
-                        </button>
-                      </div>
-                    </div>
-                  </GlassCard>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 3: MATERIAL ISSUANCE & STOCK LEDGER ──────────────────────────────── */}
+      {/* ── TAB 2: MATERIAL ALLOCATION & STOCK LEDGER ─────────────────────────────── */}
       {activeTab === 'materials' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2032,7 +1811,7 @@ export const WorkOrderDetail: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle">
-                  {issuedMaterials.map((mat: any, i: number) => (
+                  {issuedMaterials.map((mat, i) => (
                     <tr key={mat.id || i} className="hover:bg-surface2/30">
                       <td className="py-2.5 px-3 font-mono text-muted">
                         {mat.date ? new Date(mat.date).toLocaleDateString() : '-'}

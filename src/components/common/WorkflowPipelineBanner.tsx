@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowRight, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
+import { CheckCircle2, ChevronRight } from 'lucide-react'
 
 export interface WorkflowPipelineBannerProps {
   activeStage: 1 | 2 | 3 | 4 | 5 | 6
@@ -10,6 +10,7 @@ export interface WorkflowPipelineBannerProps {
 interface StageConfig {
   id: 1 | 2 | 3 | 4 | 5 | 6
   label: string
+  shortLabel: string
   subtitle: string
   path: string
   color: {
@@ -26,6 +27,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: 1,
     label: 'Quotation',
+    shortLabel: 'Quotation',
     subtitle: 'Costing & Estimates',
     path: '/crm/quotations',
     color: {
@@ -40,6 +42,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: 2,
     label: 'Sales Order (SO)',
+    shortLabel: 'Sales Order',
     subtitle: 'Confirmed Commercial Orders',
     path: '/crm/sales-orders',
     color: {
@@ -53,7 +56,8 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   },
   {
     id: 3,
-    label: 'Advance Proforma (Advance)',
+    label: 'Advance Proforma',
+    shortLabel: 'Proforma',
     subtitle: 'Advance Billing & Collection',
     path: '/crm/sales-orders?tab=proformas',
     color: {
@@ -68,6 +72,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: 4,
     label: 'Work Order (BOM & Routing)',
+    shortLabel: 'Work Order',
     subtitle: 'Shop Floor & Machining',
     path: '/production/work-orders',
     color: {
@@ -82,6 +87,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: 5,
     label: 'Partial / Full Dispatch (DN)',
+    shortLabel: 'Dispatch & DN',
     subtitle: 'Material Issue & Delivery Note',
     path: '/inventory/material-issue',
     color: {
@@ -96,6 +102,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: 6,
     label: 'Final Tax Invoice',
+    shortLabel: 'Tax Invoice',
     subtitle: 'Billing & AR Settlement',
     path: '/finance/invoices',
     color: {
@@ -114,10 +121,8 @@ export const WorkflowPipelineBanner: React.FC<WorkflowPipelineBannerProps> = ({
   className = ''
 }) => {
   const navigate = useNavigate()
-  const location = useLocation()
 
   const handleStageClick = (stage: StageConfig) => {
-    // If it's stage 3 or 2 and we are on the same page, we can also dispatch event or let query param update
     navigate(stage.path)
   }
 
@@ -134,8 +139,8 @@ export const WorkflowPipelineBanner: React.FC<WorkflowPipelineBannerProps> = ({
         </span>
       </div>
 
-      {/* Pipeline Stages Flow */}
-      <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+      {/* Pipeline Stages Flow - Fully Flex Responsive (No horizontal scroll on desktop) */}
+      <div className="flex items-center justify-between gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0 scrollbar-none">
         {WORKFLOW_STAGES.map((stage, idx) => {
           const isActive = stage.id === activeStage
           const isPassed = stage.id < activeStage
@@ -146,7 +151,7 @@ export const WorkflowPipelineBanner: React.FC<WorkflowPipelineBannerProps> = ({
                 type="button"
                 onClick={() => handleStageClick(stage)}
                 title={`Navigate to Stage ${stage.id}: ${stage.label}`}
-                className={`group shrink-0 flex items-center gap-2 px-2.5 py-1.5 border text-left transition-all cursor-pointer rounded-none select-none ${
+                className={`group flex-1 min-w-0 flex items-center justify-between sm:justify-start gap-1.5 px-2 py-1.5 border text-left transition-all cursor-pointer rounded-none select-none ${
                   isActive
                     ? `${stage.color.activeBg} ${stage.color.activeBorder} shadow-sm ring-1 ring-rex-500/20`
                     : 'bg-surface2/40 hover:bg-surface2 border-theme-subtle hover:border-theme text-secondary'
@@ -154,7 +159,7 @@ export const WorkflowPipelineBanner: React.FC<WorkflowPipelineBannerProps> = ({
               >
                 {/* Stage Number Badge */}
                 <span
-                  className={`w-5 h-5 rounded-none flex items-center justify-center font-mono text-[10px] font-bold shrink-0 transition-transform group-hover:scale-105 ${
+                  className={`w-4 h-4 rounded-none flex items-center justify-center font-mono text-[9px] font-bold shrink-0 transition-transform group-hover:scale-105 ${
                     isActive
                       ? stage.color.badgeBg
                       : isPassed
@@ -163,37 +168,36 @@ export const WorkflowPipelineBanner: React.FC<WorkflowPipelineBannerProps> = ({
                   }`}
                 >
                   {isPassed ? (
-                    <CheckCircle2 size={12} className="text-emerald-500" />
+                    <CheckCircle2 size={11} className="text-emerald-500" />
                   ) : (
                     stage.id
                   )}
                 </span>
 
-                {/* Stage Info */}
-                <div className="flex flex-col min-w-0 pr-1">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`text-xs whitespace-nowrap tracking-tight font-medium ${
-                        isActive
-                          ? stage.color.activeText
-                          : 'text-primary/90 group-hover:text-primary font-semibold'
-                      }`}
-                    >
-                      {stage.label}
+                {/* Stage Label */}
+                <div className="flex items-center gap-1 min-w-0 truncate">
+                  <span
+                    className={`text-xs whitespace-nowrap tracking-tight truncate ${
+                      isActive
+                        ? stage.color.activeText
+                        : 'text-primary/90 group-hover:text-primary font-medium'
+                    }`}
+                  >
+                    <span className="hidden xl:inline">{stage.label}</span>
+                    <span className="inline xl:hidden">{stage.shortLabel}</span>
+                  </span>
+                  {isActive && (
+                    <span className="text-[8.5px] uppercase tracking-widest font-mono font-bold px-1 py-0.2 rounded-none bg-primary text-surface dark:bg-white dark:text-black hidden sm:inline-block">
+                      Active
                     </span>
-                    {isActive && (
-                      <span className="text-[9px] uppercase tracking-widest font-mono font-bold px-1 py-0.2 rounded-none bg-primary text-surface dark:bg-white dark:text-black">
-                        Active
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
               </button>
 
               {idx < WORKFLOW_STAGES.length - 1 && (
                 <ChevronRight
-                  size={14}
-                  className={`shrink-0 mx-0.5 ${
+                  size={12}
+                  className={`shrink-0 ${
                     isPassed ? 'text-emerald-500/70' : 'text-muted/40'
                   }`}
                 />
