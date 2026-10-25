@@ -27,6 +27,7 @@ import {
   fetchQuotations 
 } from '@/lib/api'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
+import { WorkOrderQCHub } from '@/components/production/WorkOrderQCHub'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
@@ -45,6 +46,7 @@ export const WorkOrderDetail: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState<DetailTab>('bom')
+  const [targetQcOp, setTargetQcOp] = useState<{ partTitle?: string; opName?: string } | null>(null)
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
 
   // Sub-Modals
@@ -1384,9 +1386,21 @@ export const WorkOrderDetail: React.FC = () => {
                                               })
                                             }}
                                             className="text-[11px] py-1 px-2 h-auto text-secondary border border-theme hover:bg-surface2 rounded-none"
-                                            title="QC inspection"
+                                            title="Quick QC status check"
                                           >
                                             <ShieldCheck size={10}/>
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              setTargetQcOp({ partTitle: bom.title, opName: proc.procName })
+                                              setActiveTab('qc_rework')
+                                            }}
+                                            className="text-[10px] py-1 px-2 h-auto text-rex-600 dark:text-rex-400 border border-rex-500/30 hover:bg-rex-500/10 rounded-none font-bold"
+                                            title="Define & inspect QC points for this machining operation"
+                                          >
+                                            <ShieldCheck size={10} className="mr-1"/> QC Points
                                           </Button>
                                         </div>
                                       ) : (
@@ -1793,138 +1807,29 @@ export const WorkOrderDetail: React.FC = () => {
 
       {/* ── TAB 4: QC INSPECTION & REWORK LOOP ─────────────────────────────────────── */}
       {activeTab === 'qc_rework' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
-                <ShieldCheck size={16} className="text-secondary"/>
-                Quality Control (QC) Gates & Rework Ticket Tracking
-              </h3>
-              <p className="text-xs text-muted">
-                Inspection reports, defect logging, rework tickets, and supervisor sign-offs.
-              </p>
-            </div>
-          </div>
-
-          {/* Rework Tickets Grid */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
-              <RotateCcw size={14} className="text-amber-500"/> Active Rework Tickets ({reworkLogs.length})
-            </h4>
-
-            {reworkLogs.length === 0 ? (
-              <div className="p-8 text-center bg-surface2/30 rounded-none border border-dashed border-theme-subtle text-xs text-muted">
-                No rework tickets logged for this work order. High first-pass yield!
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {reworkLogs.map((rw: any) => (
-                  <GlassCard key={rw.id} className="p-3.5 border-theme-subtle rounded-none space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-rose-500">Ticket #{rw.id}</span>
-                      <Badge 
-                        value={rw.status || 'Pending'} 
-                        variant={rw.status === 'Resolved' ? 'success' : 'error'} 
-                        className="rounded-none"
-                      />
-                    </div>
-                    <p className="text-xs font-bold text-primary">{rw.defectReason || 'Quality Defect'}</p>
-                    {rw.actionTaken && (
-                      <p className="text-[11px] text-secondary bg-surface2/50 p-1.5 rounded-none border border-theme-subtle">
-                        <strong>Action:</strong> {rw.actionTaken}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between text-[11px] text-muted pt-2 border-t border-theme-subtle">
-                      <span>Rework Cost: {formatCurrency(rw.cost || 0)}</span>
-                      {rw.status !== 'Resolved' && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => {
-                            setShowReworkModal(rw)
-                            setReworkForm({
-                              id: rw.id,
-                              status: 'Resolved',
-                              actionTaken: rw.actionTaken || '',
-                              assignedEmployeeId: rw.assignedEmployeeId || '',
-                              machineId: rw.machineId || '',
-                              hours: rw.hours || 1,
-                              cost: rw.cost || 0,
-                              notes: rw.notes || '',
-                              resolvedBy: 'QA Supervisor'
-                            })
-                          }}
-                          className="text-[11px] py-1 px-2 h-auto text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none font-bold"
-                        >
-                          Resolve Ticket
-                        </Button>
-                      )}
-                    </div>
-                  </GlassCard>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* QC Inspection Audit Trail */}
-          <div className="space-y-3 pt-4 border-t border-theme-subtle">
-            <h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
-              <ShieldCheck size={14} className="text-secondary"/> QC Inspection Log ({qcInspections.length})
-            </h4>
-
-            {qcInspections.length === 0 ? (
-              <div className="p-8 text-center bg-surface2/30 rounded-none border border-dashed border-theme-subtle text-xs text-muted">
-                No QC inspections logged yet.
-              </div>
-            ) : (
-              <div className="overflow-x-auto rounded-none border border-theme-subtle">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-surface2/60 border-b border-theme-subtle text-left text-muted font-bold">
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Operation / Step</th>
-                      <th className="py-2.5 px-3">Inspector</th>
-                      <th className="py-2.5 px-3 text-center">Status</th>
-                      <th className="py-2.5 px-3 text-right">Sample / Defect Qty</th>
-                      <th className="py-2.5 px-3">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-theme-subtle">
-                    {qcInspections.map((qc: any, i: number) => (
-                      <tr key={qc.id || i} className="hover:bg-surface2/30">
-                        <td className="py-2.5 px-3 font-mono text-muted">
-                          {qc.createdAt ? new Date(qc.createdAt).toLocaleDateString() : '-'}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-primary">
-                          {qc.operationName || qc.operationId || 'Operation'}
-                        </td>
-                        <td className="py-2.5 px-3 text-secondary">
-                          {qc.inspectedBy || 'QA Inspector'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span className={`px-2 py-0.5 rounded-none font-bold text-[10px] inline-flex items-center gap-1 ${
-                            qc.status === 'Pass' 
-                              ? 'bg-green-500/10 text-green-600 border border-green-500/20' 
-                              : 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
-                          }`}>
-                            {qc.status === 'Pass' ? <Check size={10}/> : <AlertTriangle size={10}/>}
-                            {qc.status}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono">
-                          {qc.sampleQty || 1} sample / <strong className="text-rose-500">{qc.defectQty || 0}</strong> defect
-                        </td>
-                        <td className="py-2.5 px-3 text-muted">
-                          {qc.notes || qc.defectReason || '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        <WorkOrderQCHub
+          workOrder={wo}
+          parsedBoms={parsedBoms}
+          operations={operations}
+          reworkLogs={reworkLogs}
+          qcInspections={qcInspections}
+          onRefreshWO={loadData}
+          onOpenReworkModal={(rw: any) => {
+            setShowReworkModal(rw)
+            setReworkForm({
+              id: rw.id,
+              status: 'Resolved',
+              actionTaken: rw.actionTaken || '',
+              assignedEmployeeId: rw.assignedEmployeeId || '',
+              machineId: rw.machineId || '',
+              hours: rw.hours || 1,
+              cost: rw.cost || 0,
+              notes: rw.notes || '',
+              resolvedBy: 'QA Supervisor'
+            })
+          }}
+          initialTargetOp={targetQcOp}
+        />
       )}
 
       {/* ── TAB 5: JOB COSTING & FINANCIALS ───────────────────────────────────────── */}

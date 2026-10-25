@@ -1144,7 +1144,8 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerAddress TEXT DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
-    "ALTER TABLE invoices ADD COLUMN customerEmail VARCHAR(255) DEFAULT NULL"
+    "ALTER TABLE invoices ADD COLUMN customerEmail VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN qcCheckpoints LONGTEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -6718,8 +6719,18 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
       [id, wo.orderNo || id, `%${id}%`]
     );
 
+    let parsedQcCheckpoints: any[] = [];
+    if (wo.qcCheckpoints) {
+      try {
+        parsedQcCheckpoints = typeof wo.qcCheckpoints === 'string' ? JSON.parse(wo.qcCheckpoints) : wo.qcCheckpoints;
+      } catch (e) {
+        parsedQcCheckpoints = [];
+      }
+    }
+
     res.json({
       ...wo,
+      qcCheckpoints: parsedQcCheckpoints,
       operations: ops.map((o: any) => {
         const emp = empRows.find((e: any) => e.id === o.employeeId);
         const mac = machRows.find((m: any) => m.id === o.machineId);
@@ -7742,6 +7753,135 @@ app.put('/api/production/rework-logs/:id', async (req, res) => {
 
     res.json({ success: true, message: 'Rework log updated successfully' });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SAVE / UPDATE QC CHECKPOINTS ON WORK ORDER
+app.put('/api/production/work-orders/:id/qc-checkpoints', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { checkpoints } = req.body;
+    const jsonStr = JSON.stringify(checkpoints || []);
+    await db.query('UPDATE work_orders SET qcCheckpoints = ?, updatedAt = NOW() WHERE id = ?', [jsonStr, id]);
+    res.json({ success: true, checkpoints: checkpoints || [] });
+  } catch (error: any) {
+    console.error('Error saving QC checkpoints:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// LOG QC MEASUREMENT WITH AUTO-EVALUATION
+app.post('/api/production/work-orders/:id/qc-measurement', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { checkpointId, pieceNo, measuredValue, measuredBy, remarks, autoReworkOnFail } = req.body;
+    
+    const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
+    if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
+    const wo = wos[0];
+
+    let checkpoints: any[] = [];
+    try {
+      checkpoints = typeof wo.qcCheckpoints === 'string' ? JSON.parse(wo.qcCheckpoints || '[]') : (wo.qcCheckpoints || []);
+    } catch (e) {
+      checkpoints = [];
+    }
+
+    const cpIndex = checkpoints.findIndex((c: any) => c.id === checkpointId);
+    if (cpIndex === -1) return res.status(404).json({ error: 'QC Checkpoint not found' });
+
+    const cp = checkpoints[cpIndex];
+    const val = Number(measuredValue);
+    let status: 'Pass' | 'Marginal' | 'Fail' = 'Pass';
+
+    if (!isNaN(val) && cp.targetValue !== undefined && cp.targetValue !== null && cp.targetValue !== '') {
+      const target = Number(cp.targetValue);
+      const lowerTol = Number(cp.lowerTolerance || 0);
+      const upperTol = Number(cp.upperTolerance || 0);
+      
+      const minVal = target + lowerTol;
+      const maxVal = target + upperTol;
+      const totalTol = Math.max(0.0001, maxVal - minVal);
+      const marginBuffer = totalTol * 0.15; // 15% warning zone near limits
+
+      if (val < minVal || val > maxVal) {
+        status = 'Fail';
+      } else if (val <= (minVal + marginBuffer) || val >= (maxVal - marginBuffer)) {
+        status = 'Marginal';
+      } else {
+        status = 'Pass';
+      }
+    } else {
+      status = req.body.status || 'Pass';
+    }
+
+    const newMeasurement = {
+      id: 'M-' + Date.now().toString().slice(-6),
+      pieceNo: pieceNo || (cp.measurements ? cp.measurements.length + 1 : 1),
+      measuredValue,
+      status,
+      measuredBy: measuredBy || 'QA Inspector',
+      measuredAt: new Date().toISOString(),
+      remarks: remarks || ''
+    };
+
+    if (!cp.measurements) cp.measurements = [];
+    cp.measurements.push(newMeasurement);
+    cp.latestValue = measuredValue;
+    cp.lastInspectedAt = newMeasurement.measuredAt;
+    cp.lastInspectedBy = newMeasurement.measuredBy;
+
+    // Check overall checkpoint status
+    const hasFail = cp.measurements.some((m: any) => m.status === 'Fail');
+    const hasMarginal = cp.measurements.some((m: any) => m.status === 'Marginal');
+    cp.status = hasFail ? 'Fail' : (hasMarginal ? 'Marginal' : 'Pass');
+
+    checkpoints[cpIndex] = cp;
+    await db.query('UPDATE work_orders SET qcCheckpoints = ?, updatedAt = NOW() WHERE id = ?', [JSON.stringify(checkpoints), id]);
+
+    // If failed and autoReworkOnFail, create a rework ticket and qc_inspection record
+    let reworkTicketId = null;
+    if (status === 'Fail' && autoReworkOnFail) {
+      const qcId = 'QC-' + Date.now().toString().slice(-4);
+      await db.query(
+        `INSERT INTO qc_inspections 
+         (id, workOrderId, operationId, inspectedBy, status, defectReason, notes, sampleQty, defectQty, severity, createdAt) 
+         VALUES (?, ?, ?, ?, 'Fail', ?, ?, 1, 1, 'Medium', NOW())`,
+        [
+          qcId, id, cp.opId || null, measuredBy || 'QA Inspector',
+          `Out of tolerance: ${cp.parameter} (Nominal: ${cp.targetValue}, Actual: ${measuredValue})`,
+          remarks || `Failed checkpoint ${cp.checkpointNo || cp.parameter}`
+        ]
+      );
+
+      reworkTicketId = 'RWK-' + Date.now().toString().slice(-5);
+      await db.query(
+        `INSERT INTO rework_logs 
+         (id, workOrderId, qcId, operationId, defectCategory, reason, status, assignedEmployeeId, machineId, hours, cost, createdAt) 
+         VALUES (?, ?, ?, ?, 'Dimensional Defect', ?, 'Pending', ?, ?, 0.00, 0.00, NOW())`,
+        [
+          reworkTicketId, id, qcId, cp.opId || null,
+          `QC Checkpoint Fail: ${cp.parameter} measured ${measuredValue} (Target: ${cp.targetValue})`,
+          null, null
+        ]
+      );
+
+      if (cp.opId) {
+        await db.query("UPDATE work_order_operations SET status = 'Rework Required' WHERE id = ?", [cp.opId]);
+      }
+      await db.query("UPDATE work_orders SET status = 'Rework', updatedAt = NOW() WHERE id = ?", [id]);
+    }
+
+    res.json({
+      success: true,
+      measurement: newMeasurement,
+      checkpoint: cp,
+      checkpoints,
+      reworkTicketId
+    });
+  } catch (error: any) {
+    console.error('Error logging QC measurement:', error);
     res.status(500).json({ error: error.message });
   }
 });

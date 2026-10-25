@@ -667,6 +667,24 @@ export const deleteWorkOrderOperation = async (opId: string) => {
   return res.json();
 };
 
+export const saveWorkOrderQcCheckpoints = async (workOrderId: string, checkpoints: any[]) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${workOrderId}/qc-checkpoints`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ checkpoints })
+  });
+  return res.json();
+};
+
+export const logWorkOrderQcMeasurement = async (workOrderId: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/work-orders/${workOrderId}/qc-measurement`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
 export const logOperationQC = async (opId: string, data: any) => {
   const res = await fetch(`${API_URL}/production/operations/${opId}/qc`, {
     method: 'POST',
