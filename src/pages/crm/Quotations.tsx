@@ -1621,13 +1621,13 @@ export const Quotations: React.FC = () => {
                         </td>
 
                         {/* Date */}
-                        <td className="px-3.5 py-2.5">
-                          <div className="flex flex-col font-mono text-[11px]">
-                            <span className="text-primary">{formatDate(group.latestDate)}</span>
-                            {(parsed.custValidity || parsed.validity) && (
-                              <span className="text-muted text-[10px]">Valid: {parsed.custValidity || parsed.validity}</span>
-                            )}
-                          </div>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          <span 
+                            className="font-mono text-[11px] text-primary block" 
+                            title={(parsed.custValidity || parsed.validity) ? `Validity: ${parsed.custValidity || parsed.validity}` : undefined}
+                          >
+                            {formatDate(group.latestDate)}
+                          </span>
                         </td>
 
                         {/* Quoted Total Value */}

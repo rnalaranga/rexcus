@@ -1129,7 +1129,7 @@ export const ProductQuotations: React.FC = () => {
                   <th className="px-3.5 py-3">Quote # & Ver</th>
                   <th className="px-3.5 py-3">Customer / Client</th>
                   <th className="px-3.5 py-3">Catalog Items</th>
-                  <th className="px-3.5 py-3">Date & Validity</th>
+                  <th className="px-3.5 py-3">Date</th>
                   <th className="px-3.5 py-3 text-right">Quoted Value</th>
                   <th className="px-3 py-3 text-center">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -1213,14 +1213,14 @@ export const ProductQuotations: React.FC = () => {
                           )}
                         </td>
 
-                        {/* Date & Validity */}
-                        <td className="px-3.5 py-2.5">
-                          <div className="flex flex-col font-mono text-[11px]">
-                            <span className="text-primary">{formatDate(group.latestDate)}</span>
-                            {parsed.custValidity && (
-                              <span className="text-muted text-[10px]">Valid: {parsed.custValidity}</span>
-                            )}
-                          </div>
+                        {/* Date */}
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          <span 
+                            className="font-mono text-[11px] text-primary block" 
+                            title={parsed.custValidity ? `Validity: ${parsed.custValidity}` : undefined}
+                          >
+                            {formatDate(group.latestDate)}
+                          </span>
                         </td>
 
                         {/* Total Quoted Value */}
