@@ -2949,11 +2949,12 @@ export const QuotationBuilder: React.FC = () => {
               const element = document.getElementById('print-section');
               if (!element) return;
               const opt: any = {
-                margin:       0.2,
-                filename:     `Quotation_${quotationNo}.pdf`,
+                margin:       [6, 8, 6, 8],
+                filename:     `Quotation_${quotationNo || 'Q'}.pdf`,
                 image:        { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true },
-                jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+                html2canvas:  { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
               };
               html2pdf().set(opt).from(element).save();
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2">Export PDF</Button>

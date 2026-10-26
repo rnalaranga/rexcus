@@ -145,38 +145,56 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
     <>
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 6mm 8mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           body * { visibility: hidden !important; }
           #print-section, #print-section * { visibility: visible !important; }
           #print-section { 
             position: absolute !important; 
             left: 0 !important; 
             top: 0 !important; 
-            width: 210mm !important; 
+            width: 100% !important; 
+            max-width: 100% !important;
             margin: 0 !important; 
             padding: 0 !important;
             color: #000000 !important; 
             background: #ffffff !important; 
+            box-sizing: border-box !important;
+          }
+          .print-no-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
       `}</style>
-      <div id="print-section" className="mx-auto w-full bg-white text-black leading-snug" style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: '800px', fontSize: '12px' }}>
+      <div id="print-section" className="mx-auto w-full bg-white text-black leading-snug" style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: '750px', fontSize: '11px', boxSizing: 'border-box' }}>
         <div className="border border-black flex flex-col">
           
           {/* Header */}
-          <div className="flex p-4 border-b border-black items-center">
-            <div className="w-[35%] flex justify-center items-center">
+          <div className="flex p-3 border-b border-black items-center print-no-break">
+            <div className="w-[32%] flex justify-center items-center">
               {settings?.company_logo
-                ? <img src={settings.company_logo} alt="Logo" className="max-h-24" />
-                : <div className="text-5xl font-black text-red-600 tracking-tighter" style={{fontFamily: 'Impact, sans-serif'}}>REX</div>}
+                ? <img src={settings.company_logo} alt="Logo" className="max-h-20 object-contain" />
+                : <div className="text-4xl font-black text-red-600 tracking-tighter" style={{fontFamily: 'Impact, sans-serif'}}>REX</div>}
             </div>
-            <div className="w-[65%] pl-4">
-              <h1 className="text-[22px] font-black mb-2" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>
+            <div className="w-[68%] pl-3">
+              <h1 className="text-[19px] font-black mb-1 leading-tight" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>
                 {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
               </h1>
-              <table className="text-[12px] leading-tight w-full" style={{fontFamily: 'Courier New, Courier, monospace'}}>
+              <table className="text-[11px] leading-tight w-full" style={{fontFamily: 'Courier New, Courier, monospace'}}>
                 <tbody>
                   <tr>
-                    <td className="font-bold w-16 align-top">Office</td>
+                    <td className="font-bold w-14 align-top">Office</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -185,7 +203,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     </td>
                   </tr>
                   <tr>
-                    <td className="font-bold w-16 align-top">Tel.</td>
+                    <td className="font-bold w-14 align-top">Tel.</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -194,7 +212,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     </td>
                   </tr>
                   <tr>
-                    <td className="font-bold w-16 align-top">E-mail</td>
+                    <td className="font-bold w-14 align-top">E-mail</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -203,7 +221,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     </td>
                   </tr>
                   <tr>
-                    <td className="font-bold w-16 align-top">Web</td>
+                    <td className="font-bold w-14 align-top">Web</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -212,7 +230,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     </td>
                   </tr>
                   <tr>
-                    <td className="font-bold w-16 align-top">TIN</td>
+                    <td className="font-bold w-14 align-top">TIN</td>
                     <td className="align-top font-bold">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -226,40 +244,40 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           </div>
 
           {/* Title */}
-          <div className="text-center font-bold text-[16px] py-1.5 border-b border-black tracking-widest uppercase">
+          <div className="text-center font-bold text-[14px] py-1 border-b border-black tracking-widest uppercase bg-gray-50/50 print-no-break">
             QUOTATION
           </div>
 
           {/* TO / Details */}
-          <div className="flex border-b border-black text-[12px]">
+          <div className="flex border-b border-black text-[11px] print-no-break">
             <div className="w-[55%] p-2 border-r border-black flex flex-col justify-between">
               <div>
-                <div className="font-bold italic mb-1 text-[11px] text-gray-700">TO</div>
+                <div className="font-bold italic mb-0.5 text-[10px] text-gray-700">TO</div>
                 {toCompany && (
-                  <div className="font-bold text-[13px] uppercase leading-snug text-black">
+                  <div className="font-bold text-[12px] uppercase leading-tight text-black">
                     {toCompany}
                   </div>
                 )}
                 {toAddress && (
-                  <div className="whitespace-pre-line text-[11px] leading-relaxed text-black mt-1">
+                  <div className="whitespace-pre-line text-[10.5px] leading-snug text-black mt-0.5">
                     {toAddress}
                   </div>
                 )}
               </div>
-              <div className="mt-4 space-y-0.5 font-medium">
+              <div className="mt-2 space-y-0.5 font-medium text-[10.5px]">
                 <div className="flex items-start">
-                  <span className="w-20 font-bold shrink-0">TIN No.</span>
+                  <span className="w-16 font-bold shrink-0">TIN No.</span>
                   <span className="font-bold mr-1 shrink-0">:</span>
                   <span className="flex-1">{tinNo || vatNo || '-'}</span>
                 </div>
               </div>
             </div>
             <div className="w-[45%] p-0">
-              <table className="w-full h-full">
+              <table className="w-full h-full text-[11px]">
                 <tbody>
                   <tr className="border-b border-black">
-                    <td className="p-1.5 border-r border-black font-bold w-24">QUO DATE</td>
-                    <td className="p-1.5">
+                    <td className="p-1.5 border-r border-black font-bold w-20">QUO DATE</td>
+                    <td className="p-1.5 font-mono">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
                         <span className="flex-1">{quoDate}</span>
@@ -268,7 +286,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   </tr>
                   <tr>
                     <td className="p-1.5 border-r border-black font-bold">QUO NO</td>
-                    <td className="p-1.5 font-bold">
+                    <td className="p-1.5 font-bold font-mono">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
                         <span className="flex-1">{quotationNo}</span>
@@ -281,144 +299,142 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           </div>
 
           {/* Attention & Subject */}
-          <div className="p-3 border-b border-black flex flex-col gap-1.5">
+          <div className="px-3 py-1.5 border-b border-black flex flex-col gap-1 text-[11px] print-no-break">
             <div className="flex items-start">
-              <span className="w-24 font-bold shrink-0">ATTENTION</span>
+              <span className="w-20 font-bold shrink-0">ATTENTION</span>
               <span className="font-bold mr-1.5 shrink-0">:</span>
               <span className="flex-1">{attention || '-'}</span>
             </div>
             <div className="flex items-start">
-              <span className="w-24 font-bold shrink-0">SUBJECT</span>
+              <span className="w-20 font-bold shrink-0">SUBJECT</span>
               <span className="font-bold mr-1.5 shrink-0">:</span>
               <span className="font-bold underline uppercase flex-1 whitespace-pre-wrap">{subject}</span>
             </div>
           </div>
 
           {/* Table Headers */}
-          <div className="flex font-bold border-b border-black text-center bg-gray-50">
-            <div className="w-[55%] p-2 border-r border-black">DESCRIPTION</div>
-            <div className="w-[10%] p-2 border-r border-black">QTY</div>
-            <div className="w-[15%] p-2 border-r border-black">UNIT PRICE<br/>({data.currency || 'LKR'})</div>
-            <div className="w-[20%] p-2">AMOUNT<br/>({data.currency || 'LKR'})</div>
+          <div className="flex font-bold border-b border-black text-center bg-gray-50 text-[11px] print-no-break">
+            <div className="w-[55%] p-1.5 border-r border-black">DESCRIPTION</div>
+            <div className="w-[10%] p-1.5 border-r border-black">QTY</div>
+            <div className="w-[15%] p-1.5 border-r border-black leading-tight">UNIT PRICE<br/>({data.currency || 'LKR'})</div>
+            <div className="w-[20%] p-1.5 leading-tight">AMOUNT<br/>({data.currency || 'LKR'})</div>
           </div>
 
-          {/* Table Body - Aligned Row by Row */}
-          <div className="min-h-[350px] text-[13px] bg-white flex flex-col justify-between">
+          {/* Table Body - Sizes naturally to avoid pushing content to page 2 */}
+          <div className="min-h-0 text-[11.5px] bg-white flex flex-col">
             <div className="flex flex-col">
               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
                 const { titleLine, detailLines } = cleanDescLines(item.desc || '');
 
                 return (
-                  <div key={idx} className="flex border-b border-black/15 min-h-[38px] items-stretch">
-                    <div className="w-[55%] p-2 border-r border-black whitespace-pre-wrap">
+                  <div key={idx} className="flex border-b border-black/20 min-h-[30px] items-stretch print-no-break">
+                    <div className="w-[55%] p-1.5 border-r border-black whitespace-pre-wrap">
                       <div className="font-semibold text-gray-900 leading-tight">
                         {titleLine}
                       </div>
                       {detailLines && (
-                        <div className="text-[11.5px] text-gray-700 mt-1 leading-relaxed font-sans">
+                        <div className="text-[10.5px] text-gray-700 mt-0.5 leading-snug font-sans">
                           {detailLines}
                         </div>
                       )}
-                      {item.note && <div className="text-xs text-gray-500 italic mt-0.5">{item.note}</div>}
+                      {item.note && <div className="text-[10px] text-gray-500 italic mt-0.5">{item.note}</div>}
                     </div>
-                    <div className="w-[10%] p-2 border-r border-black text-center pt-2 font-mono font-medium">
+                    <div className="w-[10%] p-1.5 border-r border-black text-center pt-1.5 font-mono font-medium">
                       {Number(item.qty || 0).toFixed(2)}
                     </div>
-                    <div className="w-[15%] p-2 border-r border-black text-right pt-2 font-mono">
+                    <div className="w-[15%] p-1.5 border-r border-black text-right pt-1.5 font-mono">
                       {((Number(item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </div>
-                    <div className="w-[20%] p-2 text-right pt-2 font-mono font-semibold">
+                    <div className="w-[20%] p-1.5 text-right pt-1.5 font-mono font-semibold">
                       {(((Number(item.qty) * Number(item.unitPrice)) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </div>
                   </div>
                 );
               })}
               {quotationType === 'job' && (
-                <div className="font-bold italic text-gray-500 text-center mt-10 p-4">
+                <div className="font-bold italic text-gray-500 text-center mt-6 p-4">
                   [Internal Job Items / Costing - Use Customer Quote for Print]
                 </div>
               )}
-            </div>
-            {/* Empty space vertical borders for continuous ledger aesthetic */}
-            <div className="flex flex-1 min-h-[40px]">
-              <div className="w-[55%] border-r border-black"></div>
-              <div className="w-[10%] border-r border-black"></div>
-              <div className="w-[15%] border-r border-black"></div>
-              <div className="w-[20%]"></div>
+              {custItems.length === 0 && quotationType !== 'job' && (
+                <div className="p-4 text-center text-gray-400 italic text-[11px] border-b border-black/20">
+                  No line items entered.
+                </div>
+              )}
             </div>
           </div>
 
           {/* Totals */}
-          <div className="border-t border-black flex flex-col">
-            <div className="flex border-b border-black items-center h-8">
+          <div className="border-t border-black flex flex-col print-no-break">
+            <div className="flex border-b border-black items-center h-6 text-[11px]">
               <div className="w-[65%] text-right font-bold pr-6">
                 {isSsclHidden && isVatHidden 
                   ? 'Total Value of Supply' 
                   : 'Sub Total'}
               </div>
               <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
-              <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+              <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
                 {Number((quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </div>
             </div>
             
             {/* Discount */}
             {quotationType !== 'job' && custTotals.discount > 0 && (
-               <div className="flex border-b border-black items-center h-8">
+               <div className="flex border-b border-black items-center h-6 text-[11px]">
                  <div className="w-[65%] text-right pr-6">Discount</div>
                  <div className="w-[15%] text-center">
                    {custDiscountType === 'amount'
                      ? `${(custTotals.subtotal > 0 ? (custTotals.discount / custTotals.subtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
                      : `${Number(custDiscount || 0)} %`}
                  </div>
-                 <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+                 <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
                    {Number((custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                  </div>
                </div>
             )}
 
             {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
-                 <div className="flex border-b border-black items-center h-8">
+                 <div className="flex border-b border-black items-center h-6 text-[11px]">
                    <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</div>
                    <div className="w-[15%] text-center">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</div>
-                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
                      {Number(quotationType === 'job' ? data.jobSscl : data.custSscl).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                    </div>
                  </div>
             )}
             
             {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
-                 <div className="flex border-b border-black items-center h-8">
+                 <div className="flex border-b border-black items-center h-6 text-[11px]">
                    <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</div>
                    <div className="w-[15%] text-center">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</div>
-                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
                      {Number(quotationType === 'job' ? data.jobVat : data.custVat).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                    </div>
                  </div>
             )}
 
-            <div className="flex items-center h-8 bg-gray-100">
+            <div className="flex items-center h-7 bg-gray-100 text-[11.5px]">
               <div className="w-[65%] text-right font-bold pr-6">Grand Total</div>
               <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
-              <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end">
+              <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
                 {Number(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </div>
             </div>
           </div>
 
           {/* Value in words */}
-          <div className="p-2 border-b border-t border-black text-[11px] font-bold">
+          <div className="py-1 px-2 border-b border-t border-black text-[10.5px] font-bold print-no-break">
             <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL))}</span>
           </div>
 
           {/* Footer Notes & Bank */}
-          <div className="flex">
-            <div className="w-1/2 p-3 border-r border-black text-[11px]">
-              <div className="font-bold underline mb-1">TERMS & CONDITIONS</div>
+          <div className="flex print-no-break">
+            <div className="w-[52%] p-2 border-r border-black text-[10px]">
+              <div className="font-bold underline mb-0.5">TERMS & CONDITIONS</div>
               <table className="w-full">
                 <tbody>
                   <tr>
-                    <td className="w-24 align-top">Payment terms</td>
+                    <td className="w-24 align-top font-medium">Payment terms</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="mr-1.5 shrink-0">:</span>
@@ -427,7 +443,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     </td>
                   </tr>
                   <tr>
-                    <td className="w-24 align-top">Validity</td>
+                    <td className="w-24 align-top font-medium">Validity</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="mr-1.5 shrink-0">:</span>
@@ -436,7 +452,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     </td>
                   </tr>
                   <tr>
-                    <td className="w-24 align-top">Delivery</td>
+                    <td className="w-24 align-top font-medium">Delivery</td>
                     <td className="align-top">
                       <div className="flex items-start">
                         <span className="mr-1.5 shrink-0">:</span>
@@ -448,11 +464,11 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               </table>
               {activeBank && (
                 <>
-                  <div className="mt-4 font-bold underline mb-1">BANK DETAILS</div>
+                  <div className="mt-2 font-bold underline mb-0.5">BANK DETAILS</div>
                   <table className="w-full">
                     <tbody>
                       <tr>
-                        <td className="w-24 align-top">A/C NAME</td>
+                        <td className="w-24 align-top font-medium">A/C NAME</td>
                         <td className="align-top font-bold">
                           <div className="flex items-start">
                             <span className="mr-1.5 shrink-0">:</span>
@@ -461,7 +477,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                         </td>
                       </tr>
                       <tr>
-                        <td className="w-24 align-top">A/C NO</td>
+                        <td className="w-24 align-top font-medium">A/C NO</td>
                         <td className="align-top font-bold">
                           <div className="flex items-start">
                             <span className="mr-1.5 shrink-0">:</span>
@@ -470,7 +486,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                         </td>
                       </tr>
                       <tr>
-                        <td className="w-24 align-top">BANK</td>
+                        <td className="w-24 align-top font-medium">BANK</td>
                         <td className="align-top">
                           <div className="flex items-start">
                             <span className="mr-1.5 shrink-0">:</span>
@@ -479,7 +495,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                         </td>
                       </tr>
                       <tr>
-                        <td className="w-24 align-top">BRANCH</td>
+                        <td className="w-24 align-top font-medium">BRANCH</td>
                         <td className="align-top">
                           <div className="flex items-start">
                             <span className="mr-1.5 shrink-0">:</span>
@@ -489,7 +505,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                       </tr>
                       {activeBank.swiftCode && (
                         <tr>
-                          <td className="w-24 align-top">SWIFT</td>
+                          <td className="w-24 align-top font-medium">SWIFT</td>
                           <td className="align-top">
                             <div className="flex items-start">
                               <span className="mr-1.5 shrink-0">:</span>
@@ -504,16 +520,19 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               )}
             </div>
             
-            <div className="w-1/2 p-3 flex flex-col justify-end text-[11px]">
-              <div className="flex justify-between items-end mt-16 px-4">
-                <div className="text-center w-32 border-t border-black pt-1">Prepared By</div>
-                <div className="text-center w-32 border-t border-black pt-1">Authorized By</div>
+            <div className="w-[48%] p-2 flex flex-col justify-between text-[10px]">
+              <div></div>
+              <div>
+                <div className="flex justify-between items-end mt-6 px-3">
+                  <div className="text-center w-28 border-t border-black pt-1 font-semibold">Prepared By</div>
+                  <div className="text-center w-28 border-t border-black pt-1 font-semibold">Authorized By</div>
+                </div>
+                <div className="mt-2 text-[9px] text-center text-gray-500 italic">This is a system generated quotation, no signature required.</div>
               </div>
-              <div className="mt-2 text-[10px] text-center text-gray-500 italic">This is a system generated quotation, no signature required.</div>
             </div>
           </div>
 
-          <div className="mt-auto border-t flex items-center justify-between px-4 py-2 text-[9px] font-bold text-black w-full">
+          <div className="mt-auto border-t flex items-center justify-between px-3 py-1 text-[8px] font-bold text-black w-full print-no-break">
             <span>DOC NO: {docNo}</span>
             <span>ISSUE NO: {issueNo}</span>
             <span>ISSUE DATE: {issueDate}</span>

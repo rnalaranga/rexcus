@@ -1656,28 +1656,39 @@ export const ProductQuotations: React.FC = () => {
           <div className="space-y-4">
             <div className="flex justify-end gap-2 pb-3 border-b border-theme-subtle">
               <Button
-                variant="primary"
+                variant="ghost"
                 size="sm"
                 icon={Download}
                 onClick={() => {
-                  const element = document.getElementById('product-quote-list-print');
+                  const element = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
                   if (element) {
-                    html2pdf().from(element).set({
-                      margin: 10,
-                      filename: `Quotation_${previewData.quotation?.parsed?.quotationNo || 'PQ'}.pdf`,
+                    const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
+                    const opt: any = {
+                      margin: [6, 8, 6, 8],
+                      filename: `Quotation_${quoteNo}.pdf`,
                       image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2 },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    }).save();
+                      html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
+                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                    };
+                    html2pdf().from(element).set(opt).save();
                   }
                 }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
               >
                 Download PDF
               </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => window.print()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+              >
+                Print Quotation
+              </Button>
             </div>
 
-            <div id="product-quote-list-print" className="bg-white text-zinc-900 rounded-xl p-6 shadow-sm overflow-x-auto">
+            <div id="product-quote-list-print" className="bg-white text-black p-2 overflow-x-auto">
               <QuotationPrintView
                 data={previewData.quotation.parsed}
                 type="main"

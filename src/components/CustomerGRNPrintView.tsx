@@ -19,21 +19,33 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
       <>
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 6mm 8mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+          }
           body * { visibility: hidden !important; }
           #grn-print-section, #grn-print-section * { visibility: visible !important; }
           #grn-print-section { 
             position: absolute !important; 
             left: 0 !important; 
             top: 0 !important; 
-            width: 210mm !important; 
+            width: 100% !important; 
+            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
+            box-sizing: border-box !important;
           }
         }
       `}</style>
-    <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col" style={{ width: '210mm', minHeight: '297mm', color: '#000', fontFamily: 'Arial, sans-serif' }}>
+    <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col" style={{ width: '100%', maxWidth: '750px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
       
       {/* Header Row */}
       <div className="flex border-b border-black">
