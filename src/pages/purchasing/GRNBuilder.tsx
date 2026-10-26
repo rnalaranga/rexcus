@@ -65,6 +65,11 @@ export const GRNBuilder: React.FC = () => {
   const [vehicleNo, setVehicleNo] = useState<string>('');
   const [storageLocation, setStorageLocation] = useState<string>('Main Warehouse - Receiving Bay');
   
+  // ISO 8.5.2 Material Traceability
+  const [heatNo, setHeatNo] = useState<string>('');
+  const [batchNo, setBatchNo] = useState<string>('');
+  const [mtrCertNo, setMtrCertNo] = useState<string>('');
+  
   // Receipt mode: 'po' for PO Fulfillment, 'direct' for Direct Receipt (No PO)
   const [receiptMode, setReceiptMode] = useState<'po' | 'direct'>(poParam ? 'po' : 'po');
 
@@ -158,6 +163,9 @@ export const GRNBuilder: React.FC = () => {
 
           setVehicleNo(vNo);
           setStorageLocation(sLoc || 'Main Warehouse - Receiving Bay');
+          setHeatNo(grn.heatNo || '');
+          setBatchNo(grn.batchNo || '');
+          setMtrCertNo(grn.mtrCertNo || '');
 
           const cleanNotes = rawNotes.replace(/Vehicle:[^|]+\|\s*Location:[^|]+\|\s*/, '').trim();
           setNotes(cleanNotes || rawNotes || 'All items inspected and received in good condition.');
@@ -403,6 +411,11 @@ export const GRNBuilder: React.FC = () => {
       return;
     }
 
+    const hasDamaged = items.some(it => it.condition === 'Damaged' || it.condition === 'Rejected');
+    const assignedLocation = (hasDamaged && (storageLocation === 'Main Warehouse - Receiving Bay' || !storageLocation))
+      ? 'QA Quarantine Staging (Hold - Non-conforming)'
+      : storageLocation;
+
     const payload = {
       id: docNo,
       poId: selectedPoIds[0] || null,
@@ -411,10 +424,14 @@ export const GRNBuilder: React.FC = () => {
       date,
       receivedBy,
       vehicleNo,
-      storageLocation,
+      storageLocation: assignedLocation,
+      heatNo: heatNo.trim() || null,
+      batchNo: batchNo.trim() || null,
+      mtrCertNo: mtrCertNo.trim() || null,
+      quarantineNotes: hasDamaged ? 'Material quarantined due to damaged/rejected items on receipt (ISO 8.5.4 hold)' : null,
       items,
       status: 'received',
-      notes: `Vehicle: ${vehicleNo} | Location: ${storageLocation} | ${notes}`
+      notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${notes}`
     };
 
     await createGRN(payload);
@@ -752,7 +769,77 @@ export const GRNBuilder: React.FC = () => {
                     />
                   )}
                 </div>
+
+                {/* ISO 8.5.2 Material Heat Traceability */}
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1 flex items-center gap-1.5">
+                    <ShieldCheck size={12} className="text-rex-500" /> Heat / Melt No. (ISO 8.5.2)
+                  </label>
+                  {isViewMode ? (
+                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
+                      {heatNo || 'N/A'}
+                    </div>
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={heatNo} 
+                      onChange={e => setHeatNo(e.target.value)} 
+                      placeholder="e.g. HT-48291 / SS316" 
+                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono focus:border-rex-500" 
+                    />
+                  )}
+                </div>
+
+                {/* Batch / Lot No */}
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1 flex items-center gap-1.5">
+                    <Package size={12} className="text-secondary" /> Batch / Lot No.
+                  </label>
+                  {isViewMode ? (
+                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
+                      {batchNo || 'N/A'}
+                    </div>
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={batchNo} 
+                      onChange={e => setBatchNo(e.target.value)} 
+                      placeholder="e.g. LOT-2026-B1" 
+                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono focus:border-rex-500" 
+                    />
+                  )}
+                </div>
+
+                {/* Mill Test Report Certificate (MTR) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1 flex items-center gap-1.5">
+                    <FileText size={12} className="text-secondary" /> Mill Test Cert No. (MTR)
+                  </label>
+                  {isViewMode ? (
+                    <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
+                      {mtrCertNo || 'N/A'}
+                    </div>
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={mtrCertNo} 
+                      onChange={e => setMtrCertNo(e.target.value)} 
+                      placeholder="e.g. MTR-CERT-88421" 
+                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono focus:border-rex-500" 
+                    />
+                  )}
+                </div>
               </div>
+
+              {/* Quarantine Alert if damaged items exist */}
+              {items.some(it => it.condition === 'Damaged' || it.condition === 'Rejected') && (
+                <div className="mt-3 p-2.5 bg-rose-500/10 border border-rose-500/30 text-rose-500 rounded-lg text-xs flex items-center gap-2">
+                  <AlertTriangle size={16} className="shrink-0 text-rose-500" />
+                  <div>
+                    <strong>ISO 8.5.4 Quality Quarantine Hold:</strong> Damaged/rejected items detected. Material has been routed to <strong>QA Quarantine Staging</strong> to prevent unapproved release into active machining.
+                  </div>
+                </div>
+              )}
             </GlassCard>
 
             {/* Progress Card */}
@@ -934,6 +1021,9 @@ export const GRNBuilder: React.FC = () => {
                                   const newItems = [...items];
                                   newItems[idx].condition = e.target.value;
                                   setItems(newItems);
+                                  if (e.target.value === 'Damaged') {
+                                    setStorageLocation('QA Quarantine Staging (Hold - Damaged/Rejected)');
+                                  }
                                 }} 
                                 className="bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-medium focus:border-primary"
                               >

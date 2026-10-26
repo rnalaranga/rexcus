@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rexcus ERP/MES — ISO Standards Compliance Audit Report</title>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --secondary: #334155;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --success: #059669;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2.5rem 1rem;
+    }
+
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+      padding: 3rem;
+    }
+
+    header {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 1.75rem;
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .header-titles h1 {
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.025em;
+      margin-bottom: 0.25rem;
+    }
+
+    .header-titles .subtitle {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .print-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.2s;
+    }
+
+    .print-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 2.25rem;
+      font-size: 0.85rem;
+    }
+
+    .meta-item strong {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.2rem;
+    }
+
+    .meta-item span {
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--secondary);
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      margin-bottom: 1rem;
+      font-size: 0.92rem;
+      color: #334155;
+    }
+
+    /* Scorecard Overview */
+    .scorecard-row {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 2rem;
+      align-items: center;
+      margin: 1.5rem 0 2rem 0;
+      padding: 1.5rem;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .chart-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .score-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      width: 100%;
+    }
+
+    .score-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .score-card .val {
+      font-size: 1.75rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 0.35rem;
+    }
+
+    .score-card .lbl {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.25rem 0;
+      font-size: 0.85rem;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    tr:hover {
+      background: #f8fafc;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .badge-warning {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+
+    .badge-danger {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    .badge-info {
+      background: #e0f2fe;
+      color: #075985;
+      border: 1px solid #bae6fd;
+    }
+
+    /* Callout Alert Boxes */
+    .alert {
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      margin: 1.25rem 0;
+      font-size: 0.88rem;
+      border-left: 4px solid;
+    }
+
+    .alert-danger {
+      background: #fef2f2;
+      border-color: var(--danger);
+      color: #991b1b;
+    }
+
+    .alert-warning {
+      background: #fffbeb;
+      border-color: var(--warning);
+      color: #92400e;
+    }
+
+    .alert-info {
+      background: #eff6ff;
+      border-color: var(--accent);
+      color: #1e40af;
+    }
+
+    .alert-success {
+      background: #f0fdf4;
+      border-color: var(--success);
+      color: #166534;
+    }
+
+    .alert strong {
+      display: block;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Clauses Breakdown Card */
+    .clause-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+      background: white;
+    }
+
+    .clause-box header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .clause-box header h4 {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .clause-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .detail-col strong {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+    }
+
+    .detail-col p {
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .action-required {
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-top: 0.75rem;
+      font-size: 0.82rem;
+      color: #881337;
+    }
+
+    .action-required strong {
+      color: #9f1239;
+    }
+
+    /* Workflow Diagram SVG Container */
+    .diagram-container {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      text-align: center;
+    }
+
+    .diagram-container svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+      margin-top: 3rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .print-btn {
+        display: none;
+      }
+      .clause-box {
+        page-break-inside: avoid;
+      }
+      table {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <header>
+      <div class="header-titles">
+        <h1>Rexcus ERP/MES — ISO Compliance Audit Report</h1>
+        <div class="subtitle">Quality Management System (ISO 9001:2015), InfoSec (ISO 27001) & Safety (ISO 45001)</div>
+      </div>
+      <button class="print-btn" onclick="window.print()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2m-12 0v4h12v-4M8 14h.01M12 14h.01"></svg>
+        Print / Save as PDF
+      </button>
+    </header>
+
+    <!-- Meta Information -->
+    <div class="meta-grid">
+      <div class="meta-item">
+        <strong>Audit Reference Standard</strong>
+        <span>ISO 9001:2015 / ISO 27001 / ISO 45001</span>
+      </div>
+      <div class="meta-item">
+        <strong>Audited Platform</strong>
+        <span>Rex Industries ERP & Shopfloor MES v1.0</span>
+      </div>
+      <div class="meta-item">
+        <strong>Evaluation Date</strong>
+        <span>October 26, 2026</span>
+      </div>
+      <div class="meta-item">
+        <strong>Audit Readiness Score</strong>
+        <span style="color: var(--success); font-weight: 800;">72% — Substantially Compliant</span>
+      </div>
+    </div>
+
+    <!-- 1. Executive Summary & Compliance Scorecard -->
+    <h2>1. Executive Summary & Compliance Scorecard</h2>
+    <p>
+      Rexcus ERP demonstrates robust foundational alignment with precision manufacturing best practices. The system already incorporates multi-tier quotation approval gates, engineering BOM breakdowns, machine routing schedules, linear offcut stock traceability, and comprehensive First-Piece Inspection (FPI) dimensional checkpoints.
+    </p>
+
+    <div class="scorecard-row">
+      <div class="chart-container">
+        <!-- SVG Donut Chart -->
+        <svg width="180" height="180" viewBox="0 0 42 42">
+          <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#e2e8f0" stroke-width="5"></circle>
+          <!-- Compliant 62% -->
+          <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#10b981" stroke-width="5" stroke-dasharray="62 38" stroke-dashoffset="25"></circle>
+          <!-- Minor Gap 24% -->
+          <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f59e0b" stroke-width="5" stroke-dasharray="24 76" stroke-dashoffset="63"></circle>
+          <!-- Critical Gap 14% -->
+          <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#ef4444" stroke-width="5" stroke-dasharray="14 86" stroke-dashoffset="39"></circle>
+          <g class="chart-text">
+            <text x="50%" y="47%" text-anchor="middle" font-size="7" font-weight="bold" fill="#0f172a">72%</text>
+            <text x="50%" y="60%" text-anchor="middle" font-size="3" fill="#64748b" text-transform="uppercase" font-weight="600">Readiness</text>
+          </g>
+        </svg>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem; text-align: center;">
+          <span style="color: #10b981;">●</span> Ready (62%) &nbsp;
+          <span style="color: #f59e0b;">●</span> Partial (24%) &nbsp;
+          <span style="color: #ef4444;">●</span> Gap (14%)
+        </div>
+      </div>
+
+      <div class="score-stats">
+        <div class="score-card">
+          <div class="val" style="color: #10b981;">6 / 10</div>
+          <div class="lbl">Fully Compliant Clauses</div>
+        </div>
+        <div class="score-card">
+          <div class="val" style="color: #f59e0b;">4 / 10</div>
+          <div class="lbl">Enhancement Areas</div>
+        </div>
+        <div class="score-card">
+          <div class="val" style="color: #ef4444;">2</div>
+          <div class="lbl">Critical Gaps (P0)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clause by Clause Scorecard Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>ISO 9001 Clause</th>
+          <th>Requirement Area</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Evaluation & Key Findings</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Clause 4</strong></td>
+          <td>Context of Organization</td>
+          <td><span class="badge badge-success">Compliant</span></td>
+          <td>85%</td>
+          <td>Multi-currency, tax schemes, profile presets, entity roles active.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 5</strong></td>
+          <td>Leadership & Governance</td>
+          <td><span class="badge badge-success">Compliant</span></td>
+          <td>90%</td>
+          <td>Role-based permissions, quotation & work order authorization gates.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 6</strong></td>
+          <td>Risk-Based Planning</td>
+          <td><span class="badge badge-warning">Partial</span></td>
+          <td>50%</td>
+          <td>Margin risk checks present; systematic risk register not integrated.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 7.1.3</strong></td>
+          <td>Infrastructure & Maintenance</td>
+          <td><span class="badge badge-warning">Partial</span></td>
+          <td>60%</td>
+          <td>Machinery catalog logged; periodic PM schedules and breakdown tickets needed.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 7.1.5</strong></td>
+          <td>Monitoring & Measuring (Calibration)</td>
+          <td><span class="badge badge-danger">Critical Gap</span></td>
+          <td>30%</td>
+          <td>Measuring tools are plain text; lacks calibrated equipment registry & expiry alert.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 7.2</strong></td>
+          <td>Competence & Training</td>
+          <td><span class="badge badge-success">Compliant</span></td>
+          <td>80%</td>
+          <td>Employee skills matrix and machine authorization matrix implemented.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 7.5</strong></td>
+          <td>Documented Info & Control</td>
+          <td><span class="badge badge-warning">Partial</span></td>
+          <td>70%</td>
+          <td>Doc control codes (FO/PD/02) present; lacks formal Engineering Change Order (ECO).</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 8.2</strong></td>
+          <td>Customer Requirements Review</td>
+          <td><span class="badge badge-success">Compliant</span></td>
+          <td>95%</td>
+          <td>Detailed quote specs, customer acceptance status, advance proforma gates.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 8.4</strong></td>
+          <td>Vendor / Supplier Control</td>
+          <td><span class="badge badge-warning">Partial</span></td>
+          <td>55%</td>
+          <td>Supplier catalog and auto-complete active; lacks Approved Vendor List (AVL) rating.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 8.5</strong></td>
+          <td>Production & Traceability</td>
+          <td><span class="badge badge-success">Compliant</span></td>
+          <td>90%</td>
+          <td>Full traceability thread, linear stock offcut genealogy, routing schedules.</td>
+        </tr>
+        <tr>
+          <td><strong>Clause 8.7 & 10.2</strong></td>
+          <td>Non-conforming Outputs & CAPA</td>
+          <td><span class="badge badge-danger">Critical Gap</span></td>
+          <td>45%</td>
+          <td>QC fail triggers rework log; lacks formal NCR report and 5-Why root cause CAPA.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 2. Detailed Non-Conformances & Gaps -->
+    <h2>2. Detailed Clause-by-Clause Gap Analysis</h2>
+
+    <!-- Clause 7.1.5 -->
+    <div class="clause-box">
+      <header>
+        <h4>Clause 7.1.5 — Calibration of Measuring Instruments (Critical Non-Conformance)</h4>
+        <span class="badge badge-danger">High Priority (P0)</span>
+      </header>
+      <div class="alert alert-danger">
+        <strong>ISO 9001:2015 Mandatory Requirement:</strong>
+        All measuring equipment used to certify conformity (Micrometers, Verniers, Bore Gauges, CMM, Dial Indicators) must be uniquely identified, calibrated at specified intervals, and safeguarded against adjustments that would invalidate the measurement.
+      </div>
+      <div class="clause-details">
+        <div class="detail-col">
+          <strong>Current System State:</strong>
+          <p>In <code>WorkOrderQCHub.tsx</code>, inspectors select instruments from hardcoded text strings (e.g., <em>External Micrometer (0-25mm)</em>). No tool serial number or calibration status is recorded.</p>
+        </div>
+        <div class="detail-col">
+          <strong>Audit Finding / Risk:</strong>
+          <p>If an uncalibrated instrument with wear or drift is used on an h7 precision shaft, defective parts can pass internal QC, resulting in customer rejection and ISO audit non-conformance.</p>
+        </div>
+      </div>
+      <div class="action-required">
+        <strong>Action Required:</strong> Create <code>calibration_instruments</code> table. In <code>WorkOrderQCHub.tsx</code>, dropdown must pull active calibrated instruments and block/warn if calibration certificate has expired.
+      </div>
+    </div>
+
+    <!-- Clause 8.7 & 10.2 -->
+    <div class="clause-box">
+      <header>
+        <h4>Clause 8.7 & 10.2 — Non-conforming Outputs (NCR) & CAPA (Critical Non-Conformance)</h4>
+        <span class="badge badge-danger">High Priority (P0)</span>
+      </header>
+      <div class="alert alert-danger">
+        <strong>ISO 9001:2015 Mandatory Requirement:</strong>
+        The organization must identify and control nonconforming outputs to prevent their unintended use or delivery, take appropriate disposition action (rework, scrap, concession), and initiate Corrective and Preventive Actions (CAPA) addressing root cause.
+      </div>
+      <div class="clause-details">
+        <div class="detail-col">
+          <strong>Current System State:</strong>
+          <p>Failed QC measurements log into <code>rework_logs</code>, but there is no formal serial-numbered <strong>Non-Conformance Report (NCR)</strong> document or formal CAPA root-cause inquiry.</p>
+        </div>
+        <div class="detail-col">
+          <strong>Audit Finding / Risk:</strong>
+          <p>Without root-cause analysis (5-Why or 4M Fishbone), repetitive machine setting or tooling mistakes recur, increasing material scrap and machining hour losses.</p>
+        </div>
+      </div>
+      <div class="action-required">
+        <strong>Action Required:</strong> Implement automated NCR generation when QC status is marked "Fail". Require disposition decision (Rework, Scrap, Customer Concession) and 5-Why root cause log before closing the job.
+      </div>
+    </div>
+
+    <!-- NCR & CAPA Flowchart -->
+    <div class="diagram-container">
+      <h3 style="margin-top: 0; margin-bottom: 1rem;">Automated ISO 9001 NCR & CAPA Closed-Loop Lifecycle</h3>
+      <!-- Clean SVG Architecture Flowchart -->
+      <svg width="780" height="230" viewBox="0 0 780 230">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b"/>
+          </marker>
+        </defs>
+
+        <!-- Node 1 -->
+        <rect x="10" y="20" width="130" height="50" rx="6" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="75" y="42" font-size="11" font-weight="bold" fill="#991b1b" text-anchor="middle">QC Measurement</text>
+        <text x="75" y="56" font-size="9" fill="#991b1b" text-anchor="middle">Tolerance Fails</text>
+
+        <!-- Arrow 1 -->
+        <line x1="140" y1="45" x2="175" y2="45" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Node 2 -->
+        <rect x="180" y="20" width="135" height="50" rx="6" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+        <text x="247" y="42" font-size="11" font-weight="bold" fill="#0f172a" text-anchor="middle">Auto-Gen NCR</text>
+        <text x="247" y="56" font-size="9" fill="#64748b" text-anchor="middle">Serial: NCR-2026-XXXX</text>
+
+        <!-- Arrow 2 -->
+        <line x1="315" y1="45" x2="350" y2="45" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Node 3 -->
+        <rect x="355" y="20" width="125" height="50" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+        <text x="417" y="42" font-size="11" font-weight="bold" fill="#92400e" text-anchor="middle">Quarantine Stock</text>
+        <text x="417" y="56" font-size="9" fill="#92400e" text-anchor="middle">Segregate Physical/Virtual</text>
+
+        <!-- Arrow 3 -->
+        <line x1="480" y1="45" x2="515" y2="45" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Node 4 -->
+        <polygon points="590,15 650,45 590,75 530,45" fill="#f8fafc" stroke="#2563eb" stroke-width="1.5"/>
+        <text x="590" y="48" font-size="10" font-weight="bold" fill="#1e40af" text-anchor="middle">Disposition?</text>
+
+        <!-- Branch to Rework -->
+        <line x1="650" y1="45" x2="685" y2="45" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+        <rect x="690" y="20" width="80" height="50" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+        <text x="730" y="42" font-size="10" font-weight="bold" fill="#1e40af" text-anchor="middle">Rework</text>
+        <text x="730" y="56" font-size="8" fill="#1e40af" text-anchor="middle">Log Operations</text>
+
+        <!-- Down Arrow from NCR to CAPA -->
+        <line x1="247" y1="70" x2="247" y2="125" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Node 5: CAPA -->
+        <rect x="180" y="130" width="135" height="55" rx="6" fill="#f0fdf4" stroke="#059669" stroke-width="1.5"/>
+        <text x="247" y="152" font-size="11" font-weight="bold" fill="#065f46" text-anchor="middle">5-Why Root Cause</text>
+        <text x="247" y="168" font-size="9" fill="#065f46" text-anchor="middle">Man, Machine, Tooling</text>
+
+        <!-- Arrow to Preventive -->
+        <line x1="315" y1="157" x2="380" y2="157" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+        <rect x="385" y="130" width="155" height="55" rx="6" fill="#f0fdf4" stroke="#059669" stroke-width="1.5"/>
+        <text x="462" y="152" font-size="11" font-weight="bold" fill="#065f46" text-anchor="middle">Preventive Action</text>
+        <text x="462" y="168" font-size="9" fill="#065f46" text-anchor="middle">Program/Offset Fix / Training</text>
+
+        <!-- Arrow to Signoff -->
+        <line x1="540" y1="157" x2="605" y2="157" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+        <rect x="610" y="130" width="160" height="55" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+        <text x="690" y="152" font-size="11" font-weight="bold" fill="#065f46" text-anchor="middle">QA Manager Signoff</text>
+        <text x="690" y="168" font-size="9" fill="#065f46" text-anchor="middle">Close NCR & Update AVL</text>
+      </svg>
+    </div>
+
+    <!-- Clause 8.4 -->
+    <div class="clause-box">
+      <header>
+        <h4>Clause 8.4 — Vendor Evaluation & Incoming Material MTR (Medium Non-Conformance)</h4>
+        <span class="badge badge-warning">Medium Priority (P1)</span>
+      </header>
+      <div class="clause-details">
+        <div class="detail-col">
+          <strong>Current System State:</strong>
+          <p>Vendors are selected via <code>SupplierAutocomplete</code> with ledger tracking. GRN records material description and condition (Good/Damaged/Rejected).</p>
+        </div>
+        <div class="detail-col">
+          <strong>Audit Finding / Risk:</strong>
+          <p>Lacks Mill Test Certificate (MTR) and Heat Number tracking for raw steel/alloys. Lacks automated vendor scoring (On-Time Delivery % & Rejection %).</p>
+        </div>
+      </div>
+      <div class="action-required">
+        <strong>Action Required:</strong> Add Heat Number / Batch No and MTR document attachment in <code>GRNBuilder.tsx</code>. Calculate automated vendor delivery & quality scorecards in <code>Suppliers.tsx</code>.
+      </div>
+    </div>
+
+    <!-- Clause 7.1.3 -->
+    <div class="clause-box">
+      <header>
+        <h4>Clause 7.1.3 — Machine Maintenance (TPM) Schedules & Breakdown Tickets</h4>
+        <span class="badge badge-warning">Medium Priority (P2)</span>
+      </header>
+      <div class="clause-details">
+        <div class="detail-col">
+          <strong>Current System State:</strong>
+          <p>Machinery registry records machine list, hourly rate, and single <code>lastMaintenance</code> date.</p>
+        </div>
+        <div class="detail-col">
+          <strong>Audit Finding / Risk:</strong>
+          <p>No Preventive Maintenance (PM) intervals (daily, 500-hr, quarterly). No Mean Time to Repair (MTTR) or breakdown downtime logging.</p>
+        </div>
+      </div>
+      <div class="action-required">
+        <strong>Action Required:</strong> Create <code>machine_maintenance_logs</code> table with scheduled PM calendar and breakdown maintenance ticket workflow.
+      </div>
+    </div>
+
+    <!-- 3. Implementation Roadmap -->
+    <h2>3. Prioritized ISO Compliance Action Roadmap</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th>Priority</th>
+          <th>System Upgrade Module</th>
+          <th>Target Codebase Files</th>
+          <th>Timeframe</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Phase 1</strong></td>
+          <td><span class="badge badge-danger">P0 — Critical</span></td>
+          <td>
+            <strong>Measuring Tool Calibration Control (ISO 7.1.5)</strong><br>
+            Register tools with serial numbers, calibration validity, and auto-warn expired gauges during QC inspections.
+          </td>
+          <td>
+            <code>src/components/production/WorkOrderQCHub.tsx</code><br>
+            <code>api/src/server.ts (table: calibration_instruments)</code>
+          </td>
+          <td>1 - 2 Days</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 2</strong></td>
+          <td><span class="badge badge-danger">P0 — Critical</span></td>
+          <td>
+            <strong>Formal NCR & CAPA Workflow (ISO 8.7 & 10.2)</strong><br>
+            Auto-generate serial NCR upon QC Fail, quarantine stock, 5-Why root cause inquiry, and QA signoff.
+          </td>
+          <td>
+            <code>src/components/production/WorkOrderQCHub.tsx</code><br>
+            <code>api/src/server.ts (table: ncr_records)</code>
+          </td>
+          <td>2 Days</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 3</strong></td>
+          <td><span class="badge badge-warning">P1 — High</span></td>
+          <td>
+            <strong>Raw Material Heat/MTR & Quarantine (ISO 8.5.2 & 8.5.4)</strong><br>
+            Record Heat No & MTR cert at GRN; auto-segregate rejected goods into virtual Quarantine location.
+          </td>
+          <td>
+            <code>src/pages/purchasing/GRNBuilder.tsx</code><br>
+            <code>api/src/server.ts (table: grns, stock_ledger)</code>
+          </td>
+          <td>1 Day</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 4</strong></td>
+          <td><span class="badge badge-warning">P1 — High</span></td>
+          <td>
+            <strong>Approved Vendor List (AVL) & Scoring (ISO 8.4)</strong><br>
+            Auto-calculate Vendor Quality Rejection % and On-Time Delivery % across historical Purchase Orders.
+          </td>
+          <td>
+            <code>src/pages/inventory/Suppliers.tsx</code><br>
+            <code>api/src/server.ts (table: suppliers)</code>
+          </td>
+          <td>1 Day</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 5</strong></td>
+          <td><span class="badge badge-info">P2 — Medium</span></td>
+          <td>
+            <strong>Machine Preventive Maintenance & Breakdown Tickets (ISO 7.1.3)</strong><br>
+            Schedule periodic PM checklist (spindle lube, hydraulic oil) and downtime hours tracking.
+          </td>
+          <td>
+            <code>src/pages/production/Machinery.tsx</code><br>
+            <code>api/src/server.ts (table: machine_maintenance_logs)</code>
+          </td>
+          <td>1 - 2 Days</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <footer>
+      <span>Rexcus ERP Quality Assurance Division</span>
+      <span>Confidential & Proprietary • ISO 9001:2015 Audit Documentation</span>
+    </footer>
+
+  </div>
+
+</body>
+</html>

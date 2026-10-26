@@ -1032,3 +1032,113 @@ export const adjustWorkOrderFullBom = async (
   });
   return res.json();
 };
+
+// ==========================================
+// ISO 9001:2015 & MES ENHANCEMENT API CLIENTS
+// ==========================================
+
+// 1. Calibration Instruments (ISO 7.1.5)
+export const fetchCalibrationInstruments = async () => {
+  const res = await fetch(`${API_URL}/calibration-instruments`);
+  if (!res.ok) throw new Error('Failed to fetch calibration instruments');
+  return res.json();
+};
+
+export const createCalibrationInstrument = async (data: any) => {
+  const res = await fetch(`${API_URL}/calibration-instruments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to create calibration instrument');
+  return res.json();
+};
+
+export const updateCalibrationInstrument = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/calibration-instruments/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update calibration instrument');
+  return res.json();
+};
+
+// 2. Non-Conformance Reports (NCR) & CAPA (ISO 8.7 & 10.2)
+export const fetchNcrRecords = async (params?: { workOrderId?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.workOrderId) query.append('workOrderId', params.workOrderId);
+  if (params?.status) query.append('status', params.status);
+  const res = await fetch(`${API_URL}/ncr-records?${query.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch NCR records');
+  return res.json();
+};
+
+export const createNcrRecord = async (data: any) => {
+  const res = await fetch(`${API_URL}/ncr-records`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to create NCR record');
+  return res.json();
+};
+
+export const updateNcrRecord = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/ncr-records/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update NCR record');
+  return res.json();
+};
+
+// 3. Machine Maintenance Logs (ISO 7.1.3 - TPM)
+export const fetchMachineMaintenanceLogs = async (params?: { machineId?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.machineId) query.append('machineId', params.machineId);
+  const res = await fetch(`${API_URL}/machine-maintenance-logs?${query.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch machine maintenance logs');
+  return res.json();
+};
+
+export const createMachineMaintenanceLog = async (data: any) => {
+  const res = await fetch(`${API_URL}/machine-maintenance-logs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to create machine maintenance log');
+  return res.json();
+};
+
+export const updateMachineMaintenanceLog = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/machine-maintenance-logs/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update machine maintenance log');
+  return res.json();
+};
+
+// 4. Engineering Change Orders (ECO) (ISO 7.5.3)
+export const fetchEngineeringChangeOrders = async (params?: { workOrderId?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.workOrderId) query.append('workOrderId', params.workOrderId);
+  const res = await fetch(`${API_URL}/engineering-change-orders?${query.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch ECO records');
+  return res.json();
+};
+
+export const createEngineeringChangeOrder = async (data: any) => {
+  const res = await fetch(`${API_URL}/engineering-change-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to create ECO record');
+  return res.json();
+};
+

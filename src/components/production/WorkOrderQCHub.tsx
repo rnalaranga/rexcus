@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { 
   ShieldCheck, Plus, CheckCircle2, AlertTriangle, AlertCircle, 
   RotateCcw, Printer, Edit2, Trash2, Gauge, Check, Search, 
@@ -10,7 +10,13 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { WorkOrderQCInspectionReportModal } from './WorkOrderQCInspectionReportModal'
-import { saveWorkOrderQcCheckpoints, logWorkOrderQcMeasurement } from '@/lib/api'
+import { 
+  saveWorkOrderQcCheckpoints, 
+  logWorkOrderQcMeasurement,
+  fetchCalibrationInstruments,
+  fetchNcrRecords,
+  updateNcrRecord
+} from '@/lib/api'
 
 export interface QCMeasurement {
   id: string
@@ -240,6 +246,67 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
   const [measureRemarks, setMeasureRemarks] = useState('')
   const [autoReworkOnFail, setAutoReworkOnFail] = useState(true)
 
+  // Calibration & ISO NCR state
+  const [instruments, setInstruments] = useState<any[]>([])
+  const [ncrList, setNcrList] = useState<any[]>([])
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('')
+  const [selectedNcr, setSelectedNcr] = useState<any | null>(null)
+  const [ncrDispositionForm, setNcrDispositionForm] = useState({
+    disposition: 'Rework',
+    dispositionNotes: '',
+    dispositionBy: 'Quality Manager',
+    rootCause: '',
+    correctiveAction: '',
+    preventiveAction: '',
+    status: 'Dispositioned'
+  })
+
+  const loadIsoData = async () => {
+    try {
+      const [instData, ncrData] = await Promise.all([
+        fetchCalibrationInstruments().catch(() => []),
+        fetchNcrRecords({ workOrderId: workOrder?.id }).catch(() => [])
+      ])
+      setInstruments(Array.isArray(instData) ? instData : [])
+      setNcrList(Array.isArray(ncrData) ? ncrData : [])
+    } catch (e) {
+      console.error('Failed to load ISO records', e)
+    }
+  }
+
+  useEffect(() => {
+    loadIsoData()
+  }, [workOrder?.id])
+
+  const handleOpenNcrModal = (ncr: any) => {
+    setSelectedNcr(ncr)
+    setNcrDispositionForm({
+      disposition: ncr.disposition || 'Rework',
+      dispositionNotes: ncr.dispositionNotes || '',
+      dispositionBy: ncr.dispositionBy || 'Quality Manager',
+      rootCause: ncr.rootCause || '',
+      correctiveAction: ncr.correctiveAction || '',
+      preventiveAction: ncr.preventiveAction || '',
+      status: ncr.status || 'Dispositioned'
+    })
+  }
+
+  const handleSaveNcrDisposition = async () => {
+    if (!selectedNcr) return
+    setSaving(true)
+    try {
+      await updateNcrRecord(selectedNcr.id, ncrDispositionForm)
+      showToast(`NCR #${selectedNcr.ncrNo} disposition updated successfully!`, 'success')
+      setSelectedNcr(null)
+      loadIsoData()
+      onRefreshWO()
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update NCR', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Toast Helper
   const showToast = (text: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
     setToastMsg({ text, type })
@@ -436,12 +503,16 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
 
     setSaving(true)
     try {
+      const selectedInst = instruments.find(i => i.id === selectedInstrumentId)
+      const instRemark = selectedInst ? ` [Gauge Ref: ${selectedInst.toolNo} - ${selectedInst.name}]` : ''
+      const combinedRemarks = (measureRemarks.trim() + instRemark).trim()
+
       const res = await logWorkOrderQcMeasurement(workOrder.id, {
         checkpointId: activeMeasureCp.id,
         pieceNo: measurePieceNo,
         measuredValue: measureValueInput.trim(),
         measuredBy: 'QA Inspector',
-        remarks: measureRemarks.trim(),
+        remarks: combinedRemarks,
         autoReworkOnFail
       })
 
@@ -451,11 +522,12 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
         } else if (res.measurement?.status === 'Marginal') {
           showToast(`Piece #${measurePieceNo} Marked Marginal (near limit).`, 'warning')
         } else {
-          showToast(`Piece #${measurePieceNo} FAILED tolerance! Rework ticket created.`, 'error')
+          showToast(`Piece #${measurePieceNo} FAILED tolerance! NCR & Rework ticket generated.`, 'error')
         }
         setActiveMeasureCp(null)
         setMeasureValueInput('')
         setMeasureRemarks('')
+        loadIsoData()
         onRefreshWO()
       } else {
         showToast(res.error || 'Failed to record measurement', 'error')
@@ -884,6 +956,10 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
                                       setMeasureValueInput(cp.latestValue !== undefined ? String(cp.latestValue) : '')
                                       setMeasurePieceNo((cp.measurements?.length || 0) + 1)
                                       setMeasureRemarks('')
+                                      const matchedInst = instruments.find(inst => 
+                                        cp.instrument && (inst.name?.toLowerCase().includes(cp.instrument.toLowerCase().slice(0, 8)) || inst.type?.toLowerCase().includes(cp.instrument.toLowerCase().slice(0, 8)))
+                                      )
+                                      setSelectedInstrumentId(matchedInst ? matchedInst.id : (instruments[0]?.id || ''))
                                     }}
                                     className="text-[10px] py-1 px-2.5 h-auto bg-rex-600/10 text-rex-600 dark:text-rex-400 border-rex-500/30 hover:bg-rex-600 hover:text-white rounded-none font-bold"
                                   >
@@ -965,6 +1041,84 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
           </div>
         </div>
       )}
+
+      {/* ISO 8.7 & 10.2: Non-Conformance Reports (NCR) & CAPA Action Hub */}
+      <div className="pt-4 border-t border-theme-subtle space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={16} className="text-rose-500" />
+            <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">
+              ISO 8.7 & 10.2: Non-Conformance Reports (NCR) & CAPA Hub ({ncrList.length})
+            </h4>
+          </div>
+          <span className="text-[10px] text-muted font-mono">
+            Auto-generated on tolerance failure / quarantine
+          </span>
+        </div>
+
+        {ncrList.length === 0 ? (
+          <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-500 flex items-center gap-2">
+            <CheckCircle2 size={15} />
+            <span>No open Non-Conformance Reports (NCRs) logged for this Work Order. Quality threshold fully compliant.</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {ncrList.map((ncr: any) => (
+              <GlassCard key={ncr.id} className="p-3.5 border-rose-500/20 bg-rose-500/5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-rose-500">{ncr.ncrNo}</span>
+                    <Badge 
+                      value={ncr.severity || 'Major'} 
+                      variant={ncr.severity === 'Critical' ? 'error' : ncr.severity === 'Major' ? 'warning' : 'neutral'} 
+                      className="text-[10px] rounded-none py-0.5"
+                    />
+                  </div>
+                  <Badge 
+                    value={ncr.status || 'Open'} 
+                    variant={ncr.status === 'Closed' ? 'success' : ncr.status === 'Dispositioned' ? 'warning' : 'error'} 
+                    className="text-[10px] rounded-none py-0.5"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-primary">{ncr.defectDescription || 'Out of specification reading'}</p>
+                  <div className="flex items-center gap-2 text-[10px] text-muted mt-0.5">
+                    <span>Part: {ncr.partTitle || 'Machined Component'}</span>
+                    <span>•</span>
+                    <span>Qty: {ncr.qtyAffected || 1}</span>
+                    {ncr.disposition && (
+                      <>
+                        <span>•</span>
+                        <span className="text-rex-500 font-bold">Disposition: {ncr.disposition}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {ncr.rootCause && (
+                  <div className="text-[11px] bg-surface2/60 p-2 border border-theme-subtle space-y-1">
+                    <div className="text-[10px] font-bold text-secondary uppercase tracking-wider">Root Cause / 5-Why:</div>
+                    <p className="text-secondary italic line-clamp-2">{ncr.rootCause}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] text-muted font-mono">Raised: {ncr.date ? String(ncr.date).slice(0, 10) : ''}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOpenNcrModal(ncr)}
+                    className="text-[11px] py-1 px-2.5 h-auto text-rose-500 border border-rose-500/40 hover:bg-rose-500/10 rounded-none font-bold"
+                  >
+                    Disposition & 5-Why CAPA
+                  </Button>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── MODAL 1: ADD / EDIT QC CHECKPOINT ───────────────────────────────── */}
       <Modal
@@ -1284,6 +1438,42 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
               )}
             </div>
 
+            {/* Calibrated Tool Selection & ISO 7.1.5 Verification */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider">
+                  Calibrated Instrument (ISO 7.1.5):
+                </label>
+                {selectedInstrumentId && instruments.find(i => i.id === selectedInstrumentId)?.isExpired && (
+                  <span className="text-[10px] font-bold text-rose-500 bg-rose-500/10 px-1.5 py-0.5 border border-rose-500/20">
+                    CALIBRATION EXPIRED
+                  </span>
+                )}
+              </div>
+              <select
+                value={selectedInstrumentId}
+                onChange={e => setSelectedInstrumentId(e.target.value)}
+                className="w-full bg-surface border border-theme-subtle p-2 text-xs text-primary focus:border-rex-500 font-mono"
+              >
+                <option value="">-- Generic Workshop Instrument --</option>
+                {instruments.map(inst => (
+                  <option key={inst.id} value={inst.id}>
+                    [{inst.toolNo}] {inst.name} {inst.rangeSpec ? `(${inst.rangeSpec})` : ''} - Due: {inst.nextDueDate ? String(inst.nextDueDate).slice(0, 10) : 'N/A'} {inst.isExpired ? '⚠️ [EXPIRED]' : '✅ [Valid]'}
+                  </option>
+                ))}
+              </select>
+
+              {/* Expired Instrument Warning Banner */}
+              {selectedInstrumentId && instruments.find(i => i.id === selectedInstrumentId)?.isExpired && (
+                <div className="mt-2 p-2 bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0 text-rose-500" />
+                  <div>
+                    <strong>ISO 7.1.5 Non-Compliance Alert:</strong> This instrument calibration expired on {String(instruments.find(i => i.id === selectedInstrumentId)?.nextDueDate).slice(0, 10)}. Please quarantine this tool and recalibrate before recording certified production readings.
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Input Form */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1392,6 +1582,118 @@ export const WorkOrderQCHub: React.FC<WorkOrderQCHubProps> = ({
         workOrder={workOrder}
         checkpoints={checkpoints}
       />
+
+      {/* ── MODAL 4: ISO 8.7 & 10.2 NCR DISPOSITION & 5-WHY CAPA ─────────────── */}
+      <Modal
+        isOpen={Boolean(selectedNcr)}
+        onClose={() => setSelectedNcr(null)}
+        title={selectedNcr ? `ISO 8.7 / 10.2 NCR Disposition: ${selectedNcr.ncrNo}` : 'NCR Disposition'}
+        size="lg"
+      >
+        {selectedNcr && (
+          <div className="space-y-4">
+            <div className="p-3 bg-surface2/40 border border-theme-subtle space-y-1.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted">Defect Description:</span>
+                <span className="font-bold text-primary">{selectedNcr.defectDescription}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted">Work Order / Part:</span>
+                <span className="font-mono text-primary">{selectedNcr.workOrderNumber || workOrder.workOrderNumber} • {selectedNcr.partTitle || 'Machined Component'}</span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-theme-subtle">
+                <span className="text-muted">Severity & Quantity:</span>
+                <span className="font-bold text-rose-500">{selectedNcr.severity || 'Major'} • {selectedNcr.qtyAffected || 1} pcs</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                  Material Disposition (ISO 8.7):
+                </label>
+                <select
+                  value={ncrDispositionForm.disposition}
+                  onChange={e => setNcrDispositionForm({ ...ncrDispositionForm, disposition: e.target.value })}
+                  className="w-full bg-surface border border-theme-subtle p-2 text-xs text-primary focus:border-rex-500"
+                >
+                  <option value="Rework">Rework to Drawing Specification</option>
+                  <option value="Scrap">Scrap / Write-off Non-conforming Material</option>
+                  <option value="Customer Concession">Customer Concession (Accept Under Deviation)</option>
+                  <option value="Return to Supplier">Return to Raw Material Supplier (RTV)</option>
+                  <option value="Pending">Pending Quality Engineering Review</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                  NCR Workflow Status:
+                </label>
+                <select
+                  value={ncrDispositionForm.status}
+                  onChange={e => setNcrDispositionForm({ ...ncrDispositionForm, status: e.target.value })}
+                  className="w-full bg-surface border border-theme-subtle p-2 text-xs text-primary focus:border-rex-500"
+                >
+                  <option value="Open">Open (Action Pending)</option>
+                  <option value="Under Investigation">Under Investigation</option>
+                  <option value="Dispositioned">Dispositioned (Action Assigned)</option>
+                  <option value="Closed">Closed & Verified Compliant</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                Root Cause Analysis (5-Why Method - ISO 10.2):
+              </label>
+              <textarea
+                rows={3}
+                value={ncrDispositionForm.rootCause}
+                onChange={e => setNcrDispositionForm({ ...ncrDispositionForm, rootCause: e.target.value })}
+                placeholder="1. Why did the bore oversize? Carbide insert broke mid-pass. 2. Why did it break? Feed rate spike during rapid traverse. 3. Why?..."
+                className="w-full bg-surface border border-theme-subtle p-2 text-xs text-primary focus:border-rex-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                  Corrective Action (Immediate Fix):
+                </label>
+                <textarea
+                  rows={2}
+                  value={ncrDispositionForm.correctiveAction}
+                  onChange={e => setNcrDispositionForm({ ...ncrDispositionForm, correctiveAction: e.target.value })}
+                  placeholder="Immediate correction applied on active setup..."
+                  className="w-full bg-surface border border-theme-subtle p-2 text-xs text-primary focus:border-rex-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                  Preventive Action (Systemic CAPA):
+                </label>
+                <textarea
+                  rows={2}
+                  value={ncrDispositionForm.preventiveAction}
+                  onChange={e => setNcrDispositionForm({ ...ncrDispositionForm, preventiveAction: e.target.value })}
+                  placeholder="Preventive actions to prevent reoccurrence across all shifts..."
+                  className="w-full bg-surface border border-theme-subtle p-2 text-xs text-primary focus:border-rex-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+              <Button variant="outline" size="sm" onClick={() => setSelectedNcr(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveNcrDisposition} disabled={saving}>
+                {saving ? 'Saving...' : 'Save NCR Disposition & CAPA'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </div>
   )

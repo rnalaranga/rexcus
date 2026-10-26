@@ -61,6 +61,12 @@ export const Suppliers: React.FC = () => {
     bankBranch: '',
     bankAccountNo: '',
     bankAccountName: '',
+    // ISO 8.4 Approved Vendor List (AVL)
+    isoCertified: false,
+    isoStandard: 'ISO 9001:2015',
+    auditStatus: 'Approved',
+    qualityRating: 95,
+    deliveryRating: 92,
     // Notes
     notes: ''
   }
@@ -121,6 +127,11 @@ export const Suppliers: React.FC = () => {
         bankBranch: item.bankBranch || '',
         bankAccountNo: item.bankAccountNo || '',
         bankAccountName: item.bankAccountName || '',
+        isoCertified: Boolean(item.isoCertified),
+        isoStandard: item.isoStandard || 'ISO 9001:2015',
+        auditStatus: item.auditStatus || 'Approved',
+        qualityRating: item.qualityRating !== undefined ? Number(item.qualityRating) : 95,
+        deliveryRating: item.deliveryRating !== undefined ? Number(item.deliveryRating) : 92,
         notes: item.notes || ''
       })
     } else {
@@ -307,6 +318,38 @@ export const Suppliers: React.FC = () => {
           </div>
         )
       }
+    },
+    {
+      header: 'AVL & ISO Rating (ISO 8.4)',
+      key: 'isoCertified',
+      render: (_val: any, item: any) => (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {item.isoCertified ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 inline-flex items-center gap-1">
+                <ShieldCheck size={11} /> {item.isoStandard || 'ISO 9001:2015'}
+              </span>
+            ) : (
+              <span className="text-[10px] text-muted bg-surface2 px-1.5 py-0.5 border border-theme-subtle">
+                Non-ISO
+              </span>
+            )}
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+              item.auditStatus === 'Approved' ? 'text-emerald-500 bg-emerald-500/10' :
+              item.auditStatus === 'Conditional' ? 'text-amber-500 bg-amber-500/10' :
+              item.auditStatus === 'Disqualified' ? 'text-rose-500 bg-rose-500/10' :
+              'text-muted bg-surface2'
+            }`}>
+              {item.auditStatus || 'Approved'}
+            </span>
+          </div>
+          <div className="text-[10px] text-muted flex items-center gap-2">
+            <span>Quality: <strong className="text-emerald-500">{item.qualityRating ?? 95}%</strong></span>
+            <span>·</span>
+            <span>OTD: <strong className="text-blue-500">{item.deliveryRating ?? 92}%</strong></span>
+          </div>
+        </div>
+      )
     },
     {
       header: 'Status',
@@ -831,6 +874,87 @@ export const Suppliers: React.FC = () => {
                     <span className="text-[10px] text-muted block">Supplier requires payment before dispatching PO orders</span>
                   </div>
                 </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4.5: ISO 8.4 Approved Vendor List (AVL) Evaluation */}
+          <div>
+            <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
+              <ShieldCheck size={14} className="text-blue-500" />
+              ISO 8.4 Approved Vendor List (AVL) & Quality Rating
+            </h3>
+
+            <div className="grid grid-cols-6 gap-3.5">
+              <div className="col-span-6 sm:col-span-2 flex items-center">
+                <label className="flex items-center gap-2.5 cursor-pointer p-2 rounded bg-surface2/50 border border-theme-subtle w-full">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.isoCertified} 
+                    onChange={e => setFormData({...formData, isoCertified: e.target.checked})} 
+                    className="w-4 h-4 rounded text-rex-600 focus:ring-rex-500" 
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-primary block">ISO Certified Supplier</span>
+                    <span className="text-[10px] text-muted block">Supplier holds active QMS certification</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="space-y-1 col-span-6 sm:col-span-2">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">ISO Standard Spec</label>
+                <select 
+                  className="w-full input-base text-xs" 
+                  value={formData.isoStandard} 
+                  onChange={e => setFormData({...formData, isoStandard: e.target.value})}
+                >
+                  <option value="ISO 9001:2015">ISO 9001:2015 (Quality)</option>
+                  <option value="IATF 16949">IATF 16949 (Automotive)</option>
+                  <option value="AS9100D">AS9100D (Aerospace)</option>
+                  <option value="ISO 14001">ISO 14001 (Environmental)</option>
+                  <option value="ISO 45001">ISO 45001 (Health & Safety)</option>
+                  <option value="Non-Certified">Non-Certified</option>
+                </select>
+              </div>
+
+              <div className="space-y-1 col-span-6 sm:col-span-2">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Audit / AVL Status</label>
+                <select 
+                  className="w-full input-base text-xs" 
+                  value={formData.auditStatus} 
+                  onChange={e => setFormData({...formData, auditStatus: e.target.value})}
+                >
+                  <option value="Approved">Approved (AVL Full Status)</option>
+                  <option value="Conditional">Conditional (Trial / Monitored)</option>
+                  <option value="Pending">Pending Audit</option>
+                  <option value="Disqualified">Disqualified (Hold)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1 col-span-6 sm:col-span-3">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Quality Acceptance Score (%)</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  max="100"
+                  value={formData.qualityRating} 
+                  onChange={e => setFormData({...formData, qualityRating: Number(e.target.value)})} 
+                  className="w-full input-base text-xs font-mono" 
+                  placeholder="95" 
+                />
+              </div>
+
+              <div className="space-y-1 col-span-6 sm:col-span-3">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">On-Time Delivery (OTD) Score (%)</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  max="100"
+                  value={formData.deliveryRating} 
+                  onChange={e => setFormData({...formData, deliveryRating: Number(e.target.value)})} 
+                  className="w-full input-base text-xs font-mono" 
+                  placeholder="92" 
+                />
               </div>
             </div>
           </div>

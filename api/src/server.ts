@@ -8762,6 +8762,7 @@ app.post('/api/production/work-orders/:id/qc-measurement', async (req, res) => {
 
     // If failed and autoReworkOnFail, create a rework ticket and qc_inspection record
     let reworkTicketId = null;
+    let ncrRecord: any = null;
     if (status === 'Fail' && autoReworkOnFail) {
       const qcId = 'QC-' + Date.now().toString().slice(-4);
       await db.query(
@@ -8787,6 +8788,31 @@ app.post('/api/production/work-orders/:id/qc-measurement', async (req, res) => {
         ]
       );
 
+      // ISO 9001: Auto-generate formal NCR record
+      try {
+        await db.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'ncr'");
+        const [seqRow]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'ncr'");
+        const nextNcrNum = Math.max(1, (seqRow[0]?.next_number || 1) - 1);
+        const ncrNo = `${seqRow[0]?.prefix || 'NCR-2026-'}${String(nextNcrNum).padStart(seqRow[0]?.padding || 4, '0')}`;
+        const ncrId = 'NCR-' + Date.now().toString().slice(-6);
+
+        await db.query(`
+          INSERT INTO ncr_records
+          (id, ncrNo, workOrderId, workOrderNo, qcId, operationId, operationName, date, detectedBy, itemDescription, lotQty, defectQty, defectCategory, defectDescription, severity, disposition, quarantineLocation, status, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Open', NOW())
+        `, [
+          ncrId, ncrNo, id, wo.orderNo || id, qcId, cp.opId || null, cp.operationName || 'Machining Operation',
+          measuredBy || 'QA Inspector', `${cp.partTitle || 'Job Component'} - ${cp.parameter}`,
+          1, 1, cp.category ? `${cp.category} Defect` : 'Dimensional Out of Tolerance',
+          `Out of tolerance: Measured ${measuredValue} ${cp.unit || 'mm'} (Target: ${cp.targetValue}, Tolerance: ${cp.lowerTolerance} to ${cp.upperTolerance}). Notes: ${remarks || 'None'}`,
+          'Major', 'Rework', 'QA Quarantine Cage / Rework Staging'
+        ]);
+
+        ncrRecord = { id: ncrId, ncrNo };
+      } catch (ncrErr) {
+        console.error('Error auto-generating NCR record:', ncrErr);
+      }
+
       if (cp.opId) {
         await db.query("UPDATE work_order_operations SET status = 'Rework Required' WHERE id = ?", [cp.opId]);
       }
@@ -8798,10 +8824,185 @@ app.post('/api/production/work-orders/:id/qc-measurement', async (req, res) => {
       measurement: newMeasurement,
       checkpoint: cp,
       checkpoints,
-      reworkTicketId
+      reworkTicketId,
+      ncrRecord
     });
   } catch (error: any) {
     console.error('Error logging QC measurement:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================================
+// ISO 9001:2015 QUALITY MANAGEMENT ENDPOINTS
+// ==========================================
+
+// 1. Calibration Instruments (ISO 7.1.5)
+app.get('/api/calibration-instruments', async (req, res) => {
+  try {
+    const [rows]: any = await db.query('SELECT * FROM calibration_instruments ORDER BY nextDueDate ASC');
+    const now = new Date();
+    const enriched = rows.map((r: any) => {
+      const dueDate = r.nextDueDate ? new Date(r.nextDueDate) : null;
+      const isExpired = dueDate ? dueDate < now : false;
+      const daysUntilDue = dueDate ? Math.round((dueDate.getTime() - now.getTime()) / (1000 * 3600 * 24)) : null;
+      return {
+        ...r,
+        isExpired,
+        daysUntilDue,
+        computedStatus: isExpired ? 'Expired' : r.status
+      };
+    });
+    res.json(enriched);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/calibration-instruments', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (!data.id) data.id = 'CAL-' + Date.now().toString().slice(-6);
+    await db.query('INSERT INTO calibration_instruments SET ?', data);
+    res.json({ success: true, id: data.id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/calibration-instruments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('UPDATE calibration_instruments SET ?, updatedAt = NOW() WHERE id = ?', [req.body, id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Non-Conformance Reports (NCR) & CAPA (ISO 8.7 & 10.2)
+app.get('/api/ncr-records', async (req, res) => {
+  try {
+    const { workOrderId, status } = req.query;
+    let sql = 'SELECT * FROM ncr_records WHERE 1=1';
+    const params: any[] = [];
+    if (workOrderId) {
+      sql += ' AND workOrderId = ?';
+      params.push(workOrderId);
+    }
+    if (status && status !== 'all') {
+      sql += ' AND status = ?';
+      params.push(status);
+    }
+    sql += ' ORDER BY createdAt DESC';
+    const [rows]: any = await db.query(sql, params);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/ncr-records', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (!data.id) data.id = 'NCR-' + Date.now().toString().slice(-6);
+    if (!data.ncrNo) {
+      await db.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'ncr'");
+      const [seqRow]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'ncr'");
+      const nextNum = Math.max(1, (seqRow[0]?.next_number || 1) - 1);
+      data.ncrNo = `${seqRow[0]?.prefix || 'NCR-2026-'}${String(nextNum).padStart(seqRow[0]?.padding || 4, '0')}`;
+    }
+    if (!data.date) data.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query('INSERT INTO ncr_records SET ?', data);
+    res.json({ success: true, id: data.id, ncrNo: data.ncrNo });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/ncr-records/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = { ...req.body };
+    if (data.status === 'Closed' && !data.closedAt) {
+      data.closedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+    await db.query('UPDATE ncr_records SET ?, updatedAt = NOW() WHERE id = ?', [data, id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Machine Maintenance Logs (ISO 7.1.3 - TPM)
+app.get('/api/machine-maintenance-logs', async (req, res) => {
+  try {
+    const { machineId } = req.query;
+    let sql = 'SELECT * FROM machine_maintenance_logs';
+    const params: any[] = [];
+    if (machineId) {
+      sql += ' WHERE machineId = ?';
+      params.push(machineId);
+    }
+    sql += ' ORDER BY scheduledDate DESC, createdAt DESC';
+    const [rows]: any = await db.query(sql, params);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/machine-maintenance-logs', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (!data.id) data.id = 'MNT-' + Date.now().toString().slice(-6);
+    await db.query('INSERT INTO machine_maintenance_logs SET ?', data);
+    if (data.performedDate && data.machineId) {
+      await db.query('UPDATE machineries SET lastMaintenance = ? WHERE id = ?', [data.performedDate, data.machineId]);
+    }
+    res.json({ success: true, id: data.id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/machine-maintenance-logs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('UPDATE machine_maintenance_logs SET ?, updatedAt = NOW() WHERE id = ?', [req.body, id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Engineering Change Orders (ECO) (ISO 7.5.3)
+app.get('/api/engineering-change-orders', async (req, res) => {
+  try {
+    const { workOrderId } = req.query;
+    let sql = 'SELECT * FROM engineering_change_orders';
+    const params: any[] = [];
+    if (workOrderId) {
+      sql += ' WHERE workOrderId = ?';
+      params.push(workOrderId);
+    }
+    sql += ' ORDER BY createdAt DESC';
+    const [rows]: any = await db.query(sql, params);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/engineering-change-orders', async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (!data.id) data.id = 'ECO-' + Date.now().toString().slice(-6);
+    if (!data.ecoNo) data.ecoNo = 'ECO-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4);
+    if (!data.effectiveDate) data.effectiveDate = new Date().toISOString().slice(0, 10);
+    await db.query('INSERT INTO engineering_change_orders SET ?', data);
+    res.json({ success: true, id: data.id, ecoNo: data.ecoNo });
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });

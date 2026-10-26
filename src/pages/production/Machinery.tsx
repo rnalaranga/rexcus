@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Download, Plus, Filter, Factory, Wrench, Users, Save, Trash2, Edit, Tag, ArrowRight } from 'lucide-react'
+import { Download, Plus, Filter, Factory, Wrench, Users, Save, Trash2, Edit, Tag, ArrowRight, ShieldCheck, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -11,7 +11,7 @@ import * as api from '@/lib/api'
 const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`
 
 export const Machinery: React.FC = () => {
-  const [activeMainTab, setActiveMainTab] = useState<'machines'|'categories'>('categories')
+  const [activeMainTab, setActiveMainTab] = useState<'machines'|'categories'|'maintenance'>('categories')
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All')
   const [machines, setMachines] = useState<any[]>([])
@@ -19,10 +19,12 @@ export const Machinery: React.FC = () => {
   const [employees, setEmployees] = useState<any[]>([])
   const [operations, setOperations] = useState<any[]>([])
   const [assignedOperators, setAssignedOperators] = useState<string[]>([])
+  const [maintenanceLogs, setMaintenanceLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
   const [showMachineModal, setShowMachineModal] = useState(false)
   const [showCatModal, setShowCatModal] = useState(false)
+  const [showMntModal, setShowMntModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   
   const [newMachinery, setNewMachinery] = useState({ name: '', category: '', model: '', status: 'Active', hourlyCost: '' })
@@ -31,20 +33,34 @@ export const Machinery: React.FC = () => {
   const [manageMachine, setManageMachine] = useState<any>(null)
   const [manageCategory, setManageCategory] = useState<any>(null)
   const [opForm, setOpForm] = useState({ id: '', name: '', hrRate: '', setTimeRate: '', machineId: '' })
+  const [mntForm, setMntForm] = useState({
+    machineId: '',
+    type: 'Preventive',
+    scheduledDate: new Date().toISOString().slice(0, 10),
+    performedDate: new Date().toISOString().slice(0, 10),
+    performedBy: 'Maintenance Tech',
+    description: '',
+    downtimeHours: 0,
+    partsReplaced: '',
+    cost: 0,
+    status: 'Completed'
+  })
 
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [machRes, catRes, empRes, opsRes] = await Promise.all([
+      const [machRes, catRes, empRes, opsRes, mntRes] = await Promise.all([
         fetch(`${API_URL}/production/machineries`).then(r => r.json()),
         fetch(`${API_URL}/production/categories`).then(r => r.json()),
         fetch(`${API_URL}/hr/employees`).then(r => r.json()),
-        api.fetchMachiningOperations()
+        api.fetchMachiningOperations(),
+        api.fetchMachineMaintenanceLogs().catch(() => [])
       ])
       setMachines(Array.isArray(machRes) ? machRes : [])
       setCategories(Array.isArray(catRes) ? catRes : [])
       setEmployees(Array.isArray(empRes) ? empRes : [])
       setOperations(Array.isArray(opsRes) ? opsRes : [])
+      setMaintenanceLogs(Array.isArray(mntRes) ? mntRes : [])
     } catch(e) {}
     setLoading(false)
   }
@@ -90,6 +106,36 @@ export const Machinery: React.FC = () => {
     e.preventDefault(); if (!newCategoryName) return
     await fetch(`${API_URL}/production/categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newCategoryName }) })
     setShowCatModal(false); setNewCategoryName(''); fetchData()
+  }
+
+  const handleSaveMaintenance = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitting(true)
+    try {
+      await api.createMachineMaintenanceLog({
+        ...mntForm,
+        downtimeHours: Number(mntForm.downtimeHours) || 0,
+        cost: Number(mntForm.cost) || 0
+      })
+      setShowMntModal(false)
+      setMntForm({
+        machineId: '',
+        type: 'Preventive',
+        scheduledDate: new Date().toISOString().slice(0, 10),
+        performedDate: new Date().toISOString().slice(0, 10),
+        performedBy: 'Maintenance Tech',
+        description: '',
+        downtimeHours: 0,
+        partsReplaced: '',
+        cost: 0,
+        status: 'Completed'
+      })
+      fetchData()
+    } catch (err: any) {
+      alert('Failed to save maintenance log: ' + err.message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleSaveOp = async (e: React.FormEvent) => {
@@ -139,7 +185,36 @@ export const Machinery: React.FC = () => {
         </div>
       )},
     { key: 'status', header: 'Status', render: (v: any) => <Badge value={String(v).toUpperCase()} variant={v === 'Active' ? 'success' : v === 'Maintenance' ? 'warning' : 'error'} size="sm" /> },
-    { key: 'actions', header: '', align: 'right', render: (_, row) => <Button variant="ghost" size="sm" icon={Users} onClick={() => { setManageMachine(row); fetchAssignedOperators(row.id) }} className="text-xs">Operators</Button> }
+    { 
+      key: 'actions', 
+      header: '', 
+      align: 'right', 
+      render: (_, row) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            icon={Wrench} 
+            onClick={() => {
+              setMntForm(prev => ({ ...prev, machineId: row.id }))
+              setShowMntModal(true)
+            }} 
+            className="text-xs text-amber-500 hover:text-amber-600"
+          >
+            Log PM / Breakdown
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            icon={Users} 
+            onClick={() => { setManageMachine(row); fetchAssignedOperators(row.id) }} 
+            className="text-xs"
+          >
+            Operators
+          </Button>
+        </div>
+      )
+    }
   ]
 
   const currentCategoryOps = manageCategory ? operations.filter(o => o.groupName === manageCategory.name) : []
@@ -155,11 +230,14 @@ export const Machinery: React.FC = () => {
           <div className="flex border border-theme-subtle rounded-md overflow-hidden">
             <button onClick={() => setActiveMainTab('categories')} className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${activeMainTab === 'categories' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400 font-semibold' : 'text-muted hover:text-primary'}`}>Categories</button>
             <button onClick={() => setActiveMainTab('machines')} className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${activeMainTab === 'machines' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400 font-semibold' : 'text-muted hover:text-primary'}`}>Physical Machines</button>
+            <button onClick={() => setActiveMainTab('maintenance')} className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${activeMainTab === 'maintenance' ? 'bg-rex-500/10 text-rex-600 dark:text-rex-400 font-semibold' : 'text-muted hover:text-primary'}`}>ISO 7.1.3 Maintenance & TPM</button>
           </div>
           {activeMainTab === 'categories' ? (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowCatModal(true)}>Add Category</Button>
-          ) : (
+          ) : activeMainTab === 'machines' ? (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowMachineModal(true)}>Add Machinery</Button>
+          ) : (
+            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowMntModal(true)}>Log Maintenance Ticket</Button>
           )}
         </div>
       </div>
@@ -228,6 +306,115 @@ export const Machinery: React.FC = () => {
           </div>
           {loading ? <div className="p-10 text-center text-xs text-muted animate-pulse">Loading machineries...</div> : <DataTable columns={columns} data={filteredMachines} keyExtractor={(r) => r.id}/>}
         </GlassCard>
+      )}
+
+      {activeMainTab === 'maintenance' && (
+        <div className="space-y-4 animate-fade-in">
+          {/* TPM Metrics Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <GlassCard className="p-3.5 space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Total PM & Breakdown Logs</span>
+              <span className="text-2xl font-black text-primary">{maintenanceLogs.length}</span>
+              <span className="text-[10px] text-muted block">ISO 7.1.3 Compliance Active</span>
+            </GlassCard>
+            <GlassCard className="p-3.5 space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Preventive Maintenance</span>
+              <span className="text-2xl font-black text-emerald-500">{maintenanceLogs.filter(m => m.type === 'Preventive').length}</span>
+              <span className="text-[10px] text-emerald-500 block">Scheduled PM Routines</span>
+            </GlassCard>
+            <GlassCard className="p-3.5 space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Breakdown Tickets</span>
+              <span className="text-2xl font-black text-rose-500">{maintenanceLogs.filter(m => m.type === 'Breakdown').length}</span>
+              <span className="text-[10px] text-rose-500 block">Unscheduled Downtime</span>
+            </GlassCard>
+            <GlassCard className="p-3.5 space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Total Downtime Logged</span>
+              <span className="text-2xl font-black text-amber-500">
+                {maintenanceLogs.reduce((acc, m) => acc + (Number(m.downtimeHours) || 0), 0).toFixed(1)} hrs
+              </span>
+              <span className="text-[10px] text-muted block">Cumulative Shopfloor Downtime</span>
+            </GlassCard>
+          </div>
+
+          <GlassCard className="overflow-hidden p-0">
+            <div className="p-4 border-b border-theme-subtle flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-rex-500" />
+                <h3 className="text-xs font-bold text-primary uppercase tracking-wider">
+                  Machine Maintenance & Breakdown Log (ISO 7.1.3)
+                </h3>
+              </div>
+              <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowMntModal(true)}>
+                Log Maintenance
+              </Button>
+            </div>
+
+            {maintenanceLogs.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted">
+                No maintenance logs recorded yet. Click "Log Maintenance" to record a PM checklist or breakdown event.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-surface2/50 border-b border-theme-subtle text-[10px] uppercase text-muted tracking-wider">
+                      <th className="py-2.5 px-3">Machine</th>
+                      <th className="py-2.5 px-3">Type</th>
+                      <th className="py-2.5 px-3">Scheduled / Performed</th>
+                      <th className="py-2.5 px-3">Downtime</th>
+                      <th className="py-2.5 px-3">Technician</th>
+                      <th className="py-2.5 px-3">Description & Spares</th>
+                      <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-theme-subtle">
+                    {maintenanceLogs.map(log => {
+                      const mach = machines.find(m => m.id === log.machineId)
+                      return (
+                        <tr key={log.id} className="hover:bg-surface2/30 transition-colors">
+                          <td className="py-2.5 px-3">
+                            <span className="font-bold text-primary block">{mach?.name || log.machineId}</span>
+                            <span className="text-[10px] font-mono text-muted">{log.machineId}</span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                              log.type === 'Preventive' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                              log.type === 'Breakdown' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
+                              'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                            }`}>
+                              {log.type}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-[11px] text-secondary">
+                            <div>Perf: {log.performedDate ? String(log.performedDate).slice(0, 10) : '-'}</div>
+                            <div className="text-[10px] text-muted">Sched: {log.scheduledDate ? String(log.scheduledDate).slice(0, 10) : '-'}</div>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-xs font-bold text-primary">
+                            {log.downtimeHours ? `${log.downtimeHours} hrs` : '0 hrs'}
+                          </td>
+                          <td className="py-2.5 px-3 text-secondary">{log.performedBy || 'Technician'}</td>
+                          <td className="py-2.5 px-3 text-secondary max-w-xs">
+                            <div className="font-medium truncate">{log.description || '-'}</div>
+                            {log.partsReplaced && (
+                              <div className="text-[10px] text-muted truncate">Parts: {log.partsReplaced}</div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge 
+                              value={log.status || 'Completed'} 
+                              variant={log.status === 'Completed' ? 'success' : log.status === 'In-Progress' ? 'warning' : 'default'} 
+                              size="sm" 
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </GlassCard>
+        </div>
       )}
 
       {/* CATEGORY OPERATIONS MODAL */}
@@ -374,6 +561,129 @@ export const Machinery: React.FC = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* MAINTENANCE LOG MODAL */}
+      <Modal isOpen={showMntModal} onClose={() => setShowMntModal(false)} title="Log Machine Maintenance / Breakdown (ISO 7.1.3)" size="md">
+        <form onSubmit={handleSaveMaintenance} className="space-y-4 p-4">
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Target Machine *</label>
+            <select
+              required
+              className="w-full input-base text-xs font-mono"
+              value={mntForm.machineId}
+              onChange={e => setMntForm({ ...mntForm, machineId: e.target.value })}
+            >
+              <option value="">-- Select Machine --</option>
+              {machines.map(m => (
+                <option key={m.id} value={m.id}>[{m.id}] {m.name} - {m.type}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Maintenance Type *</label>
+              <select
+                className="w-full input-base text-xs"
+                value={mntForm.type}
+                onChange={e => setMntForm({ ...mntForm, type: e.target.value })}
+              >
+                <option value="Preventive">Preventive Maintenance (PM)</option>
+                <option value="Breakdown">Breakdown Repair</option>
+                <option value="Calibration">Spindle / Axis Calibration</option>
+                <option value="Lubrication">Oil / Coolant Service</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Status</label>
+              <select
+                className="w-full input-base text-xs"
+                value={mntForm.status}
+                onChange={e => setMntForm({ ...mntForm, status: e.target.value })}
+              >
+                <option value="Completed">Completed</option>
+                <option value="In-Progress">In-Progress</option>
+                <option value="Scheduled">Scheduled</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Date Performed</label>
+              <input
+                type="date"
+                className="w-full input-base text-xs font-mono"
+                value={mntForm.performedDate}
+                onChange={e => setMntForm({ ...mntForm, performedDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Downtime Hours</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                className="w-full input-base text-xs font-mono"
+                value={mntForm.downtimeHours}
+                onChange={e => setMntForm({ ...mntForm, downtimeHours: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Technician / Performed By</label>
+            <input
+              type="text"
+              className="w-full input-base text-xs"
+              value={mntForm.performedBy}
+              onChange={e => setMntForm({ ...mntForm, performedBy: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Work Description / Defect Root Cause *</label>
+            <textarea
+              required
+              rows={2}
+              className="w-full input-base text-xs resize-none"
+              placeholder="e.g. 500-hour spindle oil replacement and axis backlash alignment check..."
+              value={mntForm.description}
+              onChange={e => setMntForm({ ...mntForm, description: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Spare Parts Replaced</label>
+              <input
+                type="text"
+                className="w-full input-base text-xs"
+                placeholder="e.g. Timing belt, V-ring seal"
+                value={mntForm.partsReplaced}
+                onChange={e => setMntForm({ ...mntForm, partsReplaced: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase mb-1">Maintenance Cost (LKR)</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full input-base text-xs font-mono"
+                value={mntForm.cost}
+                onChange={e => setMntForm({ ...mntForm, cost: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setShowMntModal(false)}>Cancel</Button>
+            <Button variant="primary" size="sm" type="submit" disabled={submitting}>
+              {submitting ? 'Saving...' : 'Save Maintenance Log'}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )
