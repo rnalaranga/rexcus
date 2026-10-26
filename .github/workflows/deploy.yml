@@ -43,6 +43,7 @@ jobs:
               cd api
               npm install
               echo "Setting up Chrome for Puppeteer vector PDF..."
+              rm -rf /var/www/rexnw/api/chrome-bin
               npx @puppeteer/browsers install chrome@stable --path /var/www/rexnw/api/chrome-bin || true
               cd ..
             fi

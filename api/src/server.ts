@@ -108,8 +108,22 @@ async function getChromeExecutablePath(): Promise<string | null> {
     const platform = detectBrowserPlatform();
     if (platform) {
       const installDir = path.resolve(process.cwd(), 'chrome-bin');
-      console.log(`[Rex PDF] Auto-installing stable Chrome for platform ${platform} into ${installDir}...`);
       const buildId = await resolveBuildId(Browser.CHROME, platform, 'stable');
+
+      // Clean up half-downloaded or corrupted folder if executable is missing
+      if (fs.existsSync(installDir)) {
+        const binName = platform.includes('win') ? 'chrome.exe' : 'chrome';
+        const existingBin = findBinaryRecursively(installDir, binName);
+        if (!existingBin) {
+          console.log(`[Rex PDF] Incomplete chrome folder found in ${installDir}. Cleaning up...`);
+          try { fs.rmSync(installDir, { recursive: true, force: true }); } catch (e) {}
+        } else {
+          cachedChromePath = existingBin;
+          return existingBin;
+        }
+      }
+
+      console.log(`[Rex PDF] Auto-installing stable Chrome for platform ${platform} into ${installDir}...`);
       const installed = await install({
         browser: Browser.CHROME,
         buildId,
@@ -124,6 +138,10 @@ async function getChromeExecutablePath(): Promise<string | null> {
     }
   } catch (err: any) {
     console.error('[Rex PDF] Failed auto-installing Chrome:', err.message);
+    try {
+      const installDir = path.resolve(process.cwd(), 'chrome-bin');
+      fs.rmSync(installDir, { recursive: true, force: true });
+    } catch(e) {}
   }
 
   return null;
@@ -311,6 +329,12 @@ app.get('/api/pdf-diagnostics', async (req, res) => {
     result.buildId = bId;
     const installDir = '/var/www/rexnw/api/chrome-bin';
     result.tryingInstallTo = installDir;
+    if (fs.existsSync(installDir)) {
+      const existing = findBinaryRecursively(installDir, plat.includes('win') ? 'chrome.exe' : 'chrome');
+      if (!existing) {
+        fs.rmSync(installDir, { recursive: true, force: true });
+      }
+    }
     const installed = await install({
       browser: Browser.CHROME,
       buildId: bId,
