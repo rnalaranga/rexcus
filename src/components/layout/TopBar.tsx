@@ -416,7 +416,7 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Customers ({searchResults.customers.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/crm/customers')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/customers?search=${encodeURIComponent(searchVal.trim())}` : '/crm/customers')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.customers.map(c => (
@@ -446,13 +446,13 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Contacts ({searchResults.contacts.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/crm/contacts')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/contacts?search=${encodeURIComponent(searchVal.trim())}` : '/crm/contacts')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.contacts.map((contact: any) => (
                         <div
                           key={contact.id}
-                          onClick={() => handleSelectResult(contact.customerId ? `/crm/customers/${contact.customerId}` : '/crm/contacts')}
+                          onClick={() => handleSelectResult(contact.customerId ? `/crm/customers/${contact.customerId}` : `/crm/contacts?search=${encodeURIComponent(contact.name || contact.email || contact.phone || '')}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -478,13 +478,13 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Invoices ({searchResults.invoices.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/finance/invoices')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/finance/invoices?search=${encodeURIComponent(searchVal.trim())}` : '/finance/invoices')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.invoices.map(inv => (
                         <div
                           key={inv.id}
-                          onClick={() => handleSelectResult('/finance/invoices')}
+                          onClick={() => handleSelectResult(`/finance/invoices?id=${encodeURIComponent(inv.id)}&search=${encodeURIComponent(inv.invoiceNo || inv.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -505,9 +505,12 @@ export const TopBar: React.FC = () => {
                               </p>
                             </div>
                           </div>
-                          <span className="text-xs font-mono font-semibold text-primary ml-2 flex-shrink-0">
-                            {formatCurrency(Number(inv.total || 0))}
-                          </span>
+                          <div className="text-right ml-2 flex-shrink-0">
+                            <span className="text-xs font-mono font-semibold text-primary block">
+                              {formatCurrency(Number(inv.total || 0))}
+                            </span>
+                            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Open Invoice →</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -519,17 +522,23 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Quotations ({searchResults.quotations.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/crm/quotations')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/quotations?search=${encodeURIComponent(searchVal.trim())}` : '/crm/quotations')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.quotations.map(quo => {
                         let parsed: any = {}
                         try { parsed = JSON.parse(quo.data || '{}') } catch {}
-                        const quoNo = parsed.quotationNo || quo.id
+                        const quoNo = quo.quotationNo || parsed.quotationNo || quo.id
+                        const isProduct = quo.type === 'product' || quo.type === 'product_draft' || parsed.isProductQuotation || parsed.type === 'product'
+                        const targetLeadId = quo.leadId || parsed.leadId || 'WALK-IN'
+                        const targetUrl = isProduct
+                          ? `/crm/product-quotations/new/${encodeURIComponent(targetLeadId)}?quoteId=${encodeURIComponent(quo.id)}`
+                          : `/crm/quotations/new/${encodeURIComponent(targetLeadId)}?quoteId=${encodeURIComponent(quo.id)}`
+
                         return (
                           <div
                             key={quo.id}
-                            onClick={() => handleSelectResult('/crm/quotations')}
+                            onClick={() => handleSelectResult(targetUrl)}
                             className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -537,13 +546,26 @@ export const TopBar: React.FC = () => {
                                 <FileText size={14} />
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-bold text-primary truncate">{quoNo}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-xs font-bold text-primary truncate">{quoNo}</p>
+                                  {isProduct && (
+                                    <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-blue-500/10 text-blue-500">Product</span>
+                                  )}
+                                  {quo.status && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] uppercase font-mono bg-theme-subtle text-secondary">
+                                      {quo.status}
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[10px] text-muted truncate">{parsed.customerName || parsed.customerCompany || quo.leadId || 'Quotation'}</p>
                               </div>
                             </div>
-                            <span className="text-xs font-mono font-semibold text-primary ml-2 flex-shrink-0">
-                              {quo.totalAmount ? formatCurrency(Number(quo.totalAmount)) : 'Draft'}
-                            </span>
+                            <div className="text-right ml-2 flex-shrink-0">
+                              <span className="text-xs font-mono font-semibold text-primary block">
+                                {quo.totalAmount ? formatCurrency(Number(quo.totalAmount)) : 'Draft'}
+                              </span>
+                              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Open Quote →</span>
+                            </div>
                           </div>
                         )
                       })}
@@ -556,13 +578,13 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Work Orders ({searchResults.workOrders.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/production')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/production/work-orders?search=${encodeURIComponent(searchVal.trim())}` : '/production/work-orders')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.workOrders.map(wo => (
                         <div
                           key={wo.id}
-                          onClick={() => handleSelectResult('/production')}
+                          onClick={() => handleSelectResult(`/production/work-orders/${encodeURIComponent(wo.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -574,9 +596,12 @@ export const TopBar: React.FC = () => {
                               <p className="text-[10px] text-muted truncate">{wo.title || wo.customer || 'Production Order'}</p>
                             </div>
                           </div>
-                          <span className="px-2 py-0.5 rounded text-[9px] uppercase font-mono font-bold bg-theme-subtle text-secondary">
-                            {wo.status || 'Active'}
-                          </span>
+                          <div className="text-right ml-2 flex-shrink-0">
+                            <span className="px-2 py-0.5 rounded text-[9px] uppercase font-mono font-bold bg-theme-subtle text-secondary block mb-0.5">
+                              {wo.status || 'Active'}
+                            </span>
+                            <span className="text-[9px] text-purple-600 dark:text-purple-400 font-medium">Open Order →</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -588,13 +613,13 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Inventory & Products ({searchResults.inventory.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/inventory')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/inventory?search=${encodeURIComponent(searchVal.trim())}` : '/inventory')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.inventory.map(item => (
                         <div
                           key={item.id}
-                          onClick={() => handleSelectResult('/inventory')}
+                          onClick={() => handleSelectResult(`/inventory?itemId=${encodeURIComponent(item.id)}&search=${encodeURIComponent(item.sku || item.name)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -606,9 +631,12 @@ export const TopBar: React.FC = () => {
                               <p className="text-[10px] text-muted font-mono truncate">{item.sku} · {item.category || 'General'}</p>
                             </div>
                           </div>
-                          <span className="text-xs font-mono font-bold text-emerald-500 ml-2 flex-shrink-0">
-                            Qty: {item.quantity || 0}
-                          </span>
+                          <div className="text-right ml-2 flex-shrink-0">
+                            <span className="text-xs font-mono font-bold text-emerald-500 block">
+                              Qty: {item.quantity || 0}
+                            </span>
+                            <span className="text-[9px] text-blue-500 font-medium">Open Item →</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -620,13 +648,13 @@ export const TopBar: React.FC = () => {
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
                       <span>Suppliers ({searchResults.suppliers.length})</span>
-                      <span className="text-[9px] text-blue-500 cursor-pointer" onClick={() => handleSelectResult('/inventory/suppliers')}>View All</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/inventory/suppliers?search=${encodeURIComponent(searchVal.trim())}` : '/inventory/suppliers')}>View All</span>
                     </p>
                     <div className="space-y-1">
                       {searchResults.suppliers.map(sup => (
                         <div
                           key={sup.id}
-                          onClick={() => handleSelectResult(`/inventory/suppliers/${sup.id}`)}
+                          onClick={() => handleSelectResult(`/inventory/suppliers/${encodeURIComponent(sup.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">

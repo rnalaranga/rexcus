@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   Factory, Plus, Search, Filter, Layers, Wrench, Clock, CheckCircle2, 
   AlertTriangle, RotateCcw, DollarSign, Package, ClipboardList, Play, 
@@ -27,6 +27,7 @@ type StatusFilter = 'all' | 'planned' | 'in_progress' | 'qc_rework' | 'completed
 
 export const WorkOrders: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // Data State
   const [workOrders, setWorkOrders] = useState<any[]>([])
@@ -41,10 +42,17 @@ export const WorkOrders: React.FC = () => {
   const [loading, setLoading] = useState(true)
 
   // Filter & Search State
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
+
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
 
   // Modals
   const [activeStudioWO, setActiveStudioWO] = useState<any>(null)

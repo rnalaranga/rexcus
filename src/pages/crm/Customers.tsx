@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { UserPlus, Download, Filter, Users, Star, UserCheck, UserX, Building2, User, Trash2, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
@@ -18,14 +18,22 @@ type SegmentFilter = 'all' | 'enterprise' | 'sme' | 'retail'
 
 export const Customers: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { data: customers, loading, refetch } = useCustomers()
-  const [search, setSearch]           = useState('')
+  const [search, setSearch]           = useState(() => searchParams.get('search') || '')
   const [statusFilter, setStatusFilter]   = useState<StatusFilter>('all')
   const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all')
   const [managerFilter, setManagerFilter] = useState('all')
   const [isModalOpen, setIsModalOpen]     = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
 
 
   const [users, setUsers] = useState<any[]>([]);

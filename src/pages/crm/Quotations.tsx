@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -413,7 +413,15 @@ export const Quotations: React.FC = () => {
     };
   }, []);
 
-  const [search, setSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')

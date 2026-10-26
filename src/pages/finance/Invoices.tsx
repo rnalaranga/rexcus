@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
@@ -32,7 +32,8 @@ export const Invoices: React.FC = () => {
   const { data: accounts } = useAccounts()
   const { settings } = useSettings()
   
-  const [search, setSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')
   const [startDate, setStartDate] = useState('')
@@ -40,6 +41,24 @@ export const Invoices: React.FC = () => {
   const [viewInvoice, setViewInvoice] = useState<any>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
   const [printReceiptData, setPrintReceiptData] = useState<any | null>(null)
+
+  useEffect(() => {
+    const targetId = searchParams.get('id')
+    const searchParam = searchParams.get('search')
+    if (searchParam !== null && searchParam !== undefined) {
+      setSearch(searchParam)
+    }
+    if (targetId && invoices && invoices.length > 0) {
+      const targetLower = String(targetId).trim().toLowerCase()
+      const found = invoices.find((inv: any) => 
+        String(inv.id).trim().toLowerCase() === targetLower || 
+        String(inv.invoiceNo || '').trim().toLowerCase() === targetLower
+      )
+      if (found) {
+        setViewInvoice(found)
+      }
+    }
+  }, [searchParams, invoices])
   
   const [toast, setToast] = useState<{type: 'success'|'error', msg: string} | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)

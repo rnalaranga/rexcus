@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { UserPlus, Phone, Mail, Building2, Bell } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
@@ -9,9 +9,17 @@ import { useCustomers } from '@/hooks/useData'
 
 export const Contacts: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { data: customers, loading } = useCustomers()
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
   const [view, setView]     = useState<'grid' | 'list'>('grid')
+
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading contacts...</div>
 

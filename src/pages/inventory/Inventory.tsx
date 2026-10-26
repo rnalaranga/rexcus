@@ -128,7 +128,7 @@ export const Inventory: React.FC = () => {
   }, [location.state])
   const [ledgerModalItem, setLedgerModalItem] = useState<any | null>(null)
   const [viewingItem, setViewingItem] = useState<any | null>(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
   const [grns, setGrns] = useState<any[]>([])
   const [gatePasses, setGatePasses] = useState<any[]>([])
   const [quotationsList, setQuotationsList] = useState<any[]>([])
@@ -203,6 +203,27 @@ export const Inventory: React.FC = () => {
       }
     }
   }, [searchParams]);
+
+  React.useEffect(() => {
+    const itemIdParam = searchParams.get('itemId');
+    const searchParam = searchParams.get('search');
+    if (searchParam !== null && searchParam !== undefined) {
+      setSearch(searchParam);
+    }
+    if (itemIdParam && inventory && inventory.length > 0) {
+      const targetLower = String(itemIdParam).trim().toLowerCase();
+      const match = inventory.find((i: any) => 
+        String(i.id).trim().toLowerCase() === targetLower || 
+        String(i.sku || '').trim().toLowerCase() === targetLower
+      );
+      if (match) {
+        setViewingItem(match);
+        if (match.type && ['raw_material', 'finished_product', 'company_asset', 'service', 'linear_remnants'].includes(match.type)) {
+          setActiveTab(match.type as TabType);
+        }
+      }
+    }
+  }, [searchParams, inventory]);
   
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)

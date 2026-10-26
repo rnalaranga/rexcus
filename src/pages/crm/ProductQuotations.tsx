@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   UserCheck, Shield, Users, FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
@@ -48,7 +48,15 @@ export const ProductQuotations: React.FC = () => {
   const { data: allOrders = [] } = useFinishedGoodsOrders()
   const { data: workOrders = [] } = useWorkOrders()
 
-  const [search, setSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')

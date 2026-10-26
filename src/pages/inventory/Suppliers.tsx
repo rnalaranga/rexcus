@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   Plus, Building2, Phone, Mail, Edit, Trash2, ArrowLeft, ChevronRight, Download, 
   Users, User, CreditCard, FileText, CheckCircle2, Globe, ShieldCheck, DollarSign, TrendingUp
@@ -16,12 +16,20 @@ import { formatCurrency } from '@/lib/utils'
 
 export const Suppliers: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { data: suppliers, loading, refetch } = useSuppliers()
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
   
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
 
   const initialForm = {
     name: '',

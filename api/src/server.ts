@@ -9058,7 +9058,7 @@ app.get('/api/search', async (req, res) => {
     let quotations: any[] = [];
     try {
       const [qRows] = await db.query(
-        `SELECT id, status, totalAmount, data, leadId FROM quotations 
+        `SELECT id, status, type, quotationNo, totalAmount, data, leadId FROM quotations 
          WHERE id LIKE ? OR quotationNo LIKE ? OR data LIKE ? LIMIT 6`,
         [like, like, like]
       ) as any[];
@@ -9078,7 +9078,7 @@ app.get('/api/search', async (req, res) => {
     let inventory: any[] = [];
     try {
       const [inv] = await db.query(
-        `SELECT id, sku, name, category, quantity, unitCost, unitPrice FROM inventory 
+        `SELECT id, sku, name, category, type, quantity, unitCost, unitPrice FROM inventory 
          WHERE sku LIKE ? OR name LIKE ? OR category LIKE ? OR id LIKE ? LIMIT 6`,
         [like, like, like, like]
       ) as any[];
