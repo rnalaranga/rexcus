@@ -1094,6 +1094,7 @@ async function runDatabaseSync() {
     "ALTER TABLE customer_grns ADD COLUMN dispatchedAt DATETIME DEFAULT NULL",
     "ALTER TABLE customer_grns ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE customer_grns ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE customer_grns ADD COLUMN photos LONGTEXT DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN type VARCHAR(50) DEFAULT 'customer_sample'",
     "ALTER TABLE gate_passes ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN carrier VARCHAR(255) DEFAULT NULL",
@@ -1794,7 +1795,8 @@ app.post('/api/sequences/next', async (req, res) => {
       }
     }
 
-    const paddedNum = String(currentNum).padStart(padding, '0');
+    const paddedNumber = String(currentNum).padStart(padding, '0');
+    const paddedNum = paddedNumber;
 
     const parts: string[] = [];
     if (seq.prefix && seq.prefix.trim()) {
@@ -1806,7 +1808,12 @@ app.post('/api/sequences/next', async (req, res) => {
     if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
       parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
     }
-    parts.push(paddedNum);
+    // If no prefix added yet, fallback to document prefix or QT
+    if (parts.length === 0) {
+      if (type === 'quotation') parts.push('QT');
+      else if (type === 'product_quotation') parts.push('PQ');
+    }
+    parts.push(paddedNumber);
     const formattedNumber = parts.join('-');
 
     if (reserve) {
@@ -2862,6 +2869,7 @@ app.post('/api/crm/grns', async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
     
     // Auto-generate GRN ID (S-XXXX)
     let grnId = data.id;
@@ -2890,6 +2898,8 @@ app.put('/api/crm/grns/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     delete data.id;
+    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
     await db.query('UPDATE customer_grns SET ? WHERE id = ?', [data, id]);
     res.json({ success: true, id });
   } catch (error) {

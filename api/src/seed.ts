@@ -37,6 +37,110 @@ const deals = [
   { id: 'DEAL-008', title: 'Custom Tooling Order', customerId: 'CUST-006', customerName: 'Charith Jayasuriya', company: 'AquaTech Solutions', value: 950000, stage: 'negotiation', probability: 65, priority: 'medium', expectedClose: '2026-09-25T00:00:00Z', owner: 'Dasun Perera', product: 'Custom Manufacturing', lastUpdated: '2026-09-02T09:00:00Z' }
 ];
 
+const quotations = [
+  {
+    id: 'QT-2026-0042',
+    leadId: 'LEAD-001',
+    version: 1,
+    date: '2026-09-01 10:30:00',
+    data: JSON.stringify({
+      quotationNo: 'QT-2026-0042',
+      company: 'TechNova',
+      customerName: 'Kasun Herath',
+      custItems: [{ description: 'CNC Turned Flange 150mm SS304', qty: 20, unitPrice: 60000, total: 1200000 }],
+      custTotals: { subtotal: 1200000, total: 1200000 }
+    }),
+    totalAmount: 1200000.00,
+    type: 'main',
+    status: 'Approved',
+    quotationNo: 'QT-2026-0042',
+    docNo: 'QT-2026-0042',
+    createdBy: 'admin',
+    createdByName: 'System Admin'
+  },
+  {
+    id: 'QT-2026-0045',
+    leadId: 'LEAD-004',
+    version: 1,
+    date: '2026-09-01 16:20:00',
+    data: JSON.stringify({
+      quotationNo: 'QT-2026-0045',
+      company: 'BuildCorp',
+      customerName: 'Ravi Jayaratne',
+      custItems: [{ description: 'Heavy Duty Structural Bracket Fabrication', qty: 50, unitPrice: 110000, total: 5500000 }],
+      custTotals: { subtotal: 5500000, total: 5500000 }
+    }),
+    totalAmount: 5500000.00,
+    type: 'main',
+    status: 'Sent',
+    quotationNo: 'QT-2026-0045',
+    docNo: 'QT-2026-0045',
+    createdBy: 'admin',
+    createdByName: 'System Admin'
+  },
+  {
+    id: 'PQ-2026-0018',
+    leadId: 'LEAD-010',
+    version: 1,
+    date: '2026-09-01 14:00:00',
+    data: JSON.stringify({
+      quotationNo: 'PQ-2026-0018',
+      company: 'AutoMech',
+      customerName: 'Gayan Weerakoon',
+      isProductQuotation: true,
+      items: [{ name: 'Hardened Pinion Gear M4 32T', qty: 100, price: 15000, total: 1500000 }],
+      total: 1500000
+    }),
+    totalAmount: 1500000.00,
+    type: 'product',
+    status: 'Pending Approval',
+    quotationNo: 'PQ-2026-0018',
+    docNo: 'PQ-2026-0018',
+    createdBy: 'admin',
+    createdByName: 'System Admin'
+  },
+  {
+    id: 'QT-2026-0039',
+    leadId: 'LEAD-003',
+    version: 1,
+    date: '2026-08-30 14:45:00',
+    data: JSON.stringify({
+      quotationNo: 'QT-2026-0039',
+      company: 'AquaFresh LK',
+      customerName: 'Piyumi Fernando',
+      custItems: [{ description: 'Precision Impeller Housing Casting & Machining', qty: 10, unitPrice: 340000, total: 3400000 }],
+      custTotals: { subtotal: 3400000, total: 3400000 }
+    }),
+    totalAmount: 3400000.00,
+    type: 'main',
+    status: 'Draft',
+    quotationNo: 'QT-2026-0039',
+    docNo: 'QT-2026-0039',
+    createdBy: 'admin',
+    createdByName: 'System Admin'
+  },
+  {
+    id: 'QT-2026-0035',
+    leadId: 'LEAD-006',
+    version: 1,
+    date: '2026-08-25 11:00:00',
+    data: JSON.stringify({
+      quotationNo: 'QT-2026-0035',
+      company: 'MegaMart',
+      customerName: 'Tharindu Bandara',
+      custItems: [{ description: 'Custom Heavy Racking Components', qty: 30, unitPrice: 70000, total: 2100000 }],
+      custTotals: { subtotal: 2100000, total: 2100000 }
+    }),
+    totalAmount: 2100000.00,
+    type: 'main',
+    status: 'Approved',
+    quotationNo: 'QT-2026-0035',
+    docNo: 'QT-2026-0035',
+    createdBy: 'admin',
+    createdByName: 'System Admin'
+  }
+];
+
 async function seed() {
   console.log('Seeding Customers...');
   for (const c of customers) {
@@ -51,6 +155,11 @@ async function seed() {
   console.log('Seeding Deals...');
   for (const d of deals) {
     try { await db.query('INSERT IGNORE INTO deals SET ?', d); } catch (e) {}
+  }
+
+  console.log('Seeding Quotations...');
+  for (const q of quotations) {
+    try { await db.query('INSERT IGNORE INTO quotations SET ?', q); } catch (e) {}
   }
 
   console.log('Done!');

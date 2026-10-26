@@ -4,7 +4,7 @@ import {
   Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2,
   Flame, Clock, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, ChevronDown, 
   Building2, Mail, ExternalLink, RefreshCw, Trophy, Zap, SlidersHorizontal, Search,
-  Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles
+  Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles, Edit3, MessageSquare, PhoneCall, Camera
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
@@ -12,13 +12,15 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
-import { useLeads, useFollowups, useCustomers } from '@/hooks/useData'
+import { useLeads, useFollowups, useCustomers, useQuotations } from '@/hooks/useData'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
+import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
 const STAGE_LABELS: Record<string, string> = {
@@ -34,6 +36,7 @@ export const Leads: React.FC = () => {
   const navigate = useNavigate()
   const { data: leads, loading, refetch } = useLeads()
   const { data: allFollowups } = useFollowups()
+  const { data: allQuotations = [] } = useQuotations()
   const [view, setView]     = useState<ViewMode>('kanban')
   const [search, setSearch] = useState('')
   const [presetFilter, setPresetFilter] = useState<PresetFilter>('active')
@@ -47,6 +50,49 @@ export const Leads: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [leadGrns, setLeadGrns] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
+  
+  // 360° Command Center Drawer State
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
+  const selectedLead = useMemo(() => {
+    if (!selectedLeadId) return null;
+    return leads.find((l: any) => l.id === selectedLeadId) || null;
+  }, [leads, selectedLeadId])
+  const [updatingStage, setUpdatingStage] = useState(false)
+  const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
+
+  const handleQuickStageChange = async (leadId: string, newStage: string) => {
+    const current = leads.find((l: any) => l.id === leadId);
+    if (!current || current.stage === newStage) return;
+    setUpdatingStage(true);
+    try {
+      await updateLead(leadId, { ...current, stage: newStage, lastActivity: toMySQLDate(new Date()) });
+      await refetch();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
+
+  const handleQuickConvertToCustomer = async (leadId: string) => {
+    if (confirm('Are you sure you want to convert this lead to a Customer? It will be marked as Won.')) {
+      setSubmitting(true);
+      try {
+        const res = await fetch('http://localhost:3000/api/leads/' + leadId + '/convert', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert('Successfully converted to Customer! ID: ' + data.customerId);
+          refetch();
+        } else {
+          alert('Error: ' + data.error);
+        }
+      } catch (e) {
+        alert('Network error');
+      } finally {
+        setSubmitting(false);
+      }
+    }
+  };
   
   // Custom Confirmation Modal State
   const { data: customers } = useCustomers()
@@ -66,6 +112,70 @@ export const Leads: React.FC = () => {
     }
   }, [editId])
 
+  // Fast memoized map of quotation numbers per lead & customer
+  const leadQuotesMap = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    (allQuotations || []).forEach((q: any) => {
+      let parsed: any = {};
+      try {
+        parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
+        if (typeof parsed === 'string') {
+          try { parsed = JSON.parse(parsed); } catch(e) {}
+        }
+      } catch (e) {}
+
+      const quoNo = q.quotationNo || parsed.quotationNo || q.docNo || parsed.docNo || q.id;
+      const quoteObj = {
+        id: q.id,
+        quotationNo: quoNo,
+        status: q.status || parsed.status || 'Draft',
+        type: q.type || parsed.type || 'custom',
+        isProduct: q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation,
+        total: Number(q.totalAmount || parsed.custTotals?.withSSCL || parsed.total || 0),
+        leadId: q.leadId || parsed.leadId,
+        customerId: q.customerId || parsed.customerId,
+        company: q.leadCompany || parsed.company,
+        date: q.date || q.createdAt
+      };
+
+      const keys = [
+        q.leadId, 
+        parsed.leadId, 
+        q.customerId, 
+        parsed.customerId,
+        q.leadCompany ? String(q.leadCompany).trim().toLowerCase() : null,
+        parsed.company ? String(parsed.company).trim().toLowerCase() : null,
+        q.leadId ? String(q.leadId).replace(/^LEAD-0*/i, '') : null
+      ].filter(Boolean);
+
+      keys.forEach((key: any) => {
+        const kStr = String(key);
+        if (!map[kStr]) map[kStr] = [];
+        if (!map[kStr].some(existing => String(existing.id) === String(quoteObj.id))) {
+          map[kStr].push(quoteObj);
+        }
+      });
+    });
+    return map;
+  }, [allQuotations]);
+
+  const getLeadQuotes = React.useCallback((lead: any) => {
+    if (!lead) return [];
+    const directQuotes = leadQuotesMap[String(lead.id)] || [];
+    const customerQuotes = lead.customerId ? (leadQuotesMap[String(lead.customerId)] || []) : [];
+    const companyQuotes = lead.company ? (leadQuotesMap[String(lead.company).trim().toLowerCase()] || []) : [];
+    const numId = String(lead.id).replace(/^LEAD-0*/i, '');
+    const numQuotes = numId ? (leadQuotesMap[numId] || []) : [];
+    
+    const combined = [...directQuotes];
+    [...customerQuotes, ...companyQuotes, ...numQuotes].forEach(q => {
+      if (!combined.some(c => String(c.id) === String(q.id))) {
+        combined.push(q);
+      }
+    });
+    return combined;
+  }, [leadQuotesMap]);
+
     useEffect(() => {
     fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
   }, []);
@@ -78,7 +188,8 @@ export const Leads: React.FC = () => {
     items: [{ description: '', qty: 1, unit: 'Nos' }],
     receivedAt: new Date().toISOString().slice(0, 10),
     receivedBy: 'System Admin',
-    notes: ''
+    notes: '',
+    photos: []
   });
   const [leadQuotesForSample, setLeadQuotesForSample] = useState<any[]>([]);
   const [collectingSample, setCollectingSample] = useState(false);
@@ -91,7 +202,8 @@ export const Leads: React.FC = () => {
       items: [{ description: '', qty: 1, unit: 'Nos' }],
       receivedAt: new Date().toISOString().slice(0, 10),
       receivedBy: 'System Admin',
-      notes: ''
+      notes: '',
+      photos: []
     });
     try {
       const quotes = await fetchQuotations(lead.id);
@@ -125,6 +237,7 @@ export const Leads: React.FC = () => {
         receivedAt: sampleModalData.receivedAt,
         receivedBy: sampleModalData.receivedBy,
         notes: sampleModalData.notes,
+        photos: JSON.stringify(sampleModalData.photos || []),
         status: 'In Stock'
       });
       if (res && res.success) {
@@ -500,6 +613,62 @@ export const Leads: React.FC = () => {
           )}
         </div>
       )
+    },
+    {
+      key: 'quotation',
+      header: 'Quotation #',
+      render: (_, row) => {
+        const quotes = getLeadQuotes(row);
+        if (!quotes || quotes.length === 0) {
+          return (
+            <div className="flex items-center gap-1.5 text-xs text-muted">
+              <span className="italic text-[11px]">—</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/crm/quotations/new/${row.id}`);
+                }}
+                className="text-[10px] text-rex-600 dark:text-rex-400 hover:underline font-semibold cursor-pointer"
+                title="Create Quotation for this Lead"
+              >
+                + Quote
+              </button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex flex-wrap gap-1 max-w-[200px]" onClick={e => e.stopPropagation()}>
+            {quotes.map((q: any) => {
+              const statusColor = 
+                q.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20' :
+                q.status === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/30 hover:bg-blue-500/20' :
+                q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20' :
+                'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20';
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => {
+                    const url = q.isProduct
+                      ? `/crm/product-quotations/new/${row.id}?quoteId=${q.id}`
+                      : `/crm/quotations/new/${row.id}?quoteId=${q.id}`;
+                    navigate(url);
+                  }}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold border rounded-none hover:shadow-xs transition-all cursor-pointer ${statusColor}`}
+                  title={`Open ${q.quotationNo} (${q.status}) • Value: ${formatCurrency(q.total)}`}
+                >
+                  <FileText size={10} className="shrink-0 text-amber-500" />
+                  <span>{q.quotationNo}</span>
+                  <span className="text-[8.5px] opacity-75 uppercase font-sans font-normal">({q.status})</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      }
     },
     {
       key: 'stage',
@@ -947,13 +1116,19 @@ export const Leads: React.FC = () => {
                   {visibleStageLeads.map((lead: any) => {
                     const days = getDaysSinceActivity(lead.lastActivity)
                     const isStale = days >= 7 && !['won', 'lost'].includes(lead.stage)
+                    const quotes = getLeadQuotes(lead)
+                    const isSelected = selectedLeadId === lead.id
 
                     if (cardDensity === 'compact') {
                       return (
                         <div 
                           key={lead.id} 
-                          className="p-2 bg-surface border border-theme-subtle hover:border-rex-500/50 transition-all cursor-pointer rounded-none group hover:shadow-xs" 
-                          onClick={() => openEditModal(lead)}
+                          className={`p-2 bg-surface border transition-all cursor-pointer rounded-none group hover:shadow-xs ${
+                            isSelected 
+                              ? 'border-rex-500 ring-2 ring-rex-500/80 bg-rex-500/5 shadow-sm' 
+                              : 'border-theme-subtle hover:border-rex-500/50'
+                          }`}
+                          onClick={() => setSelectedLeadId(lead.id)}
                           draggable
                           onDragStart={(e) => handleDragStart(e, lead.id)}
                         >
@@ -961,11 +1136,21 @@ export const Leads: React.FC = () => {
                             <p className="text-xs font-bold text-primary truncate flex-1 group-hover:text-rex-600 transition-colors" title={lead.company}>
                               {lead.company}
                             </p>
-                            <span className={`w-2 h-2 rounded-full shrink-0 ${
-                              lead.priority === 'urgent' ? 'bg-rose-500' :
-                              lead.priority === 'high' ? 'bg-amber-500' :
-                              lead.priority === 'medium' ? 'bg-blue-400' : 'bg-slate-300'
-                            }`} title={`Priority: ${lead.priority}`} />
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openEditModal(lead); }}
+                                className="opacity-0 group-hover:opacity-100 p-0.5 text-muted hover:text-rex-600 transition-opacity"
+                                title="Edit Lead Form"
+                              >
+                                <Edit3 size={10} />
+                              </button>
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                lead.priority === 'urgent' ? 'bg-rose-500' :
+                                lead.priority === 'high' ? 'bg-amber-500' :
+                                lead.priority === 'medium' ? 'bg-blue-400' : 'bg-slate-300'
+                              }`} title={`Priority: ${lead.priority}`} />
+                            </div>
                           </div>
                           
                           <div className="flex items-center justify-between text-[11px]">
@@ -974,6 +1159,32 @@ export const Leads: React.FC = () => {
                               {formatCurrency(lead.value)}
                             </span>
                           </div>
+
+                          {/* Quotation number tags before click */}
+                          {quotes.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 mt-1 pt-1 border-t border-theme-subtle/50">
+                              {quotes.slice(0, 2).map((q: any) => (
+                                <span
+                                  key={q.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const url = q.isProduct
+                                      ? `/crm/product-quotations/new/${lead.id}?quoteId=${q.id}`
+                                      : `/crm/quotations/new/${lead.id}?quoteId=${q.id}`;
+                                    navigate(url);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9.5px] font-mono font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-none transition-colors"
+                                  title={`Quotation ${q.quotationNo} (${q.status}) • Click to open`}
+                                >
+                                  <FileText size={9} className="text-amber-500 shrink-0" />
+                                  <span className="truncate max-w-[90px]">{q.quotationNo}</span>
+                                </span>
+                              ))}
+                              {quotes.length > 2 && (
+                                <span className="text-[9px] font-mono text-muted font-bold">+{quotes.length - 2}</span>
+                              )}
+                            </div>
+                          )}
 
                           {isStale && (
                             <div className="mt-1 pt-1 border-t border-theme-subtle flex items-center justify-between text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
@@ -991,14 +1202,28 @@ export const Leads: React.FC = () => {
                     return (
                       <div 
                         key={lead.id} 
-                        className="p-3 bg-surface border border-theme-subtle hover:border-rex-500/50 transition-all cursor-pointer rounded-none group" 
-                        onClick={() => openEditModal(lead)}
+                        className={`p-3 bg-surface border transition-all cursor-pointer rounded-none group ${
+                          isSelected 
+                            ? 'border-rex-500 ring-2 ring-rex-500/80 bg-rex-500/5 shadow-md' 
+                            : 'border-theme-subtle hover:border-rex-500/50'
+                        }`}
+                        onClick={() => setSelectedLeadId(lead.id)}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead.id)}
                       >
                         <div className="flex items-start justify-between mb-1">
                           <p className="text-xs font-bold text-primary leading-snug flex-1 mr-1 group-hover:text-rex-600 transition-colors">{lead.company}</p>
-                          <Badge value={lead.priority} size="sm" />
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openEditModal(lead); }}
+                              className="opacity-0 group-hover:opacity-100 p-0.5 text-muted hover:text-rex-600 transition-opacity"
+                              title="Edit Lead Form"
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <Badge value={lead.priority} size="sm" />
+                          </div>
                         </div>
                         <p className="text-[11px] text-muted mb-1.5 truncate flex items-center gap-1">
                           <User size={10} className="text-muted shrink-0" /> {lead.name}
@@ -1020,6 +1245,45 @@ export const Leads: React.FC = () => {
                         <div className="mt-1.5 h-1 bg-surface2 rounded-none overflow-hidden">
                           <div className="h-full bg-rex-500 rounded-none" style={{ width: `${lead.probability}%` }} />
                         </div>
+
+                        {/* Quotations Ribbon */}
+                        {quotes.length > 0 && (
+                          <div className="mt-2 pt-1.5 border-t border-theme-subtle">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[9.5px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
+                                <FileText size={10} className="text-amber-500" /> Quotation{quotes.length > 1 ? 's' : ''} ({quotes.length})
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {quotes.map((q: any) => {
+                                const statusColor = 
+                                  q.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20' :
+                                  q.status === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/30 hover:bg-blue-500/20' :
+                                  q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20' :
+                                  'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20';
+
+                                return (
+                                  <button
+                                    key={q.id}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const url = q.isProduct
+                                        ? `/crm/product-quotations/new/${lead.id}?quoteId=${q.id}`
+                                        : `/crm/quotations/new/${lead.id}?quoteId=${q.id}`;
+                                      navigate(url);
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold border rounded-none transition-all cursor-pointer ${statusColor}`}
+                                    title={`Click to open ${q.quotationNo} • Status: ${q.status} • Total: ${formatCurrency(q.total)}`}
+                                  >
+                                    <span>{q.quotationNo}</span>
+                                    <span className="text-[8.5px] opacity-75 uppercase font-sans font-normal">({q.status})</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-theme-subtle">
                           <span className="text-[10px] text-faint truncate max-w-[90px]">{lead.assignedTo?.split(' ')[0] || 'Unassigned'}</span>
@@ -1044,15 +1308,33 @@ export const Leads: React.FC = () => {
                           >
                             <Package size={11} className="text-rex-600 dark:text-rex-400" /> Sample
                           </button>
-                          {lead.stage === 'qualified' && (
+                          {quotes.length > 0 ? (
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${lead.id}`); }}
-                              className="text-[10px] font-bold py-1 px-2 rounded-none bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center justify-center gap-1"
-                              title="Create Quotation"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const primary = quotes[0];
+                                const url = primary.isProduct
+                                  ? `/crm/product-quotations/new/${lead.id}?quoteId=${primary.id}`
+                                  : `/crm/quotations/new/${lead.id}?quoteId=${primary.id}`;
+                                navigate(url);
+                              }}
+                              className="text-[10px] font-bold py-1 px-2 rounded-none bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors flex items-center justify-center gap-1"
+                              title={`Open Quotation ${quotes[0].quotationNo}`}
                             >
-                              <FileText size={11} /> Quote
+                              <FileText size={11} className="text-amber-500" /> {quotes[0].quotationNo}
                             </button>
+                          ) : (
+                            lead.stage === 'qualified' && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${lead.id}`); }}
+                                className="text-[10px] font-bold py-1 px-2 rounded-none bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center justify-center gap-1"
+                                title="Create Quotation"
+                              >
+                                <FileText size={11} /> Quote
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -1100,7 +1382,7 @@ export const Leads: React.FC = () => {
             columns={columns} 
             data={visibleLeads} 
             keyExtractor={(r: any) => r.id} 
-            onRowClick={openEditModal} 
+            onRowClick={(r: any) => setSelectedLeadId(r.id)} 
             emptyMessage="No leads found matching your criteria. Try adjusting your filters or search." 
           />
           {!showAllLeads && filtered.length > displayLimit && (
@@ -1694,6 +1976,15 @@ export const Leads: React.FC = () => {
               />
             </div>
 
+            {/* Inspection Photos Upload (Single or Multiple) */}
+            <div className="pt-2 border-t border-theme-subtle">
+              <SamplePhotoUploadSection
+                photos={sampleModalData.photos || []}
+                onChange={photos => setSampleModalData({ ...sampleModalData, photos })}
+                disabled={collectingSample}
+              />
+            </div>
+
             <div className="flex justify-end gap-3 pt-3 border-t border-theme-subtle">
               <Button variant="ghost" type="button" onClick={() => setSampleModalLead(null)}>
                 Cancel
@@ -1705,6 +1996,433 @@ export const Leads: React.FC = () => {
           </form>
         )}
       </Modal>
+
+      {/* ── 360° COMMAND CENTER DRAWER (SPLIT-PANE DOSSIER) ────────────────────── */}
+      {selectedLead && (() => {
+        const leadQuotes = getLeadQuotes(selectedLead);
+        const leadSamples = leadGrns.filter((g: any) => g.leadId === selectedLead.id);
+        const daysInStage = getDaysSinceActivity(selectedLead.lastActivity);
+        const cleanPhone = (selectedLead.phone || '').replace(/[^0-9]/g, '');
+        const waLink = cleanPhone ? `https://wa.me/${cleanPhone.startsWith('0') ? '94' + cleanPhone.slice(1) : cleanPhone}` : null;
+
+        return (
+          <>
+            {/* Mobile backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-50 md:hidden"
+              onClick={() => setSelectedLeadId(null)}
+            />
+
+            {/* Split-Pane Drawer */}
+            <aside 
+              className="fixed top-0 right-0 h-screen w-full sm:w-[480px] md:w-[520px] lg:w-[550px] z-50 bg-surface border-l border-theme-subtle shadow-2xl flex flex-col transition-all duration-200"
+              style={{ boxShadow: '-12px 0 35px rgba(0, 0, 0, 0.25)' }}
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-theme-subtle bg-surface2/70 shrink-0">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] font-bold text-rex-600 dark:text-rex-400 bg-rex-500/10 px-2 py-0.5 border border-rex-500/30">
+                      {selectedLead.id}
+                    </span>
+                    <Badge value={selectedLead.priority} size="sm" />
+                    {selectedLead.customerId && (
+                      <span className="text-[10px] font-mono text-muted bg-surface px-1.5 py-0.5 border border-theme-subtle">
+                        Cust: {selectedLead.customerId}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(selectedLead)}
+                      className="p-1.5 text-muted hover:text-primary hover:bg-surface transition-colors border border-theme-subtle cursor-pointer"
+                      title="Open Full Edit Modal"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLeadId(null)}
+                      className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-500/10 transition-colors border border-theme-subtle cursor-pointer"
+                      title="Close Command Center"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                <h2 className="text-base font-bold text-primary leading-snug truncate" title={selectedLead.company}>
+                  {selectedLead.company || selectedLead.name}
+                </h2>
+                <div className="flex items-center gap-2 text-xs text-muted mt-1">
+                  <span className="flex items-center gap-1 font-medium text-secondary">
+                    <User size={12} className="text-rex-500" /> {selectedLead.name}
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Clock size={11} /> {relativeTime(selectedLead.lastActivity)}
+                  </span>
+                </div>
+
+                {/* Industrial Interactive Stage Stepper */}
+                <div className="mt-3 pt-3 border-t border-theme-subtle/80">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
+                    <span>Pipeline Stage</span>
+                    {updatingStage && <span className="text-rex-500 animate-pulse font-mono">Updating...</span>}
+                  </div>
+                  <div className="grid grid-cols-6 gap-1 bg-surface p-1 border border-theme-subtle">
+                    {STAGES.filter(s => s !== 'lost').map((stg) => {
+                      const isCurrent = selectedLead.stage === stg;
+                      return (
+                        <button
+                          key={stg}
+                          type="button"
+                          disabled={updatingStage}
+                          onClick={() => handleQuickStageChange(selectedLead.id, stg)}
+                          className={`text-center py-1 text-[9px] font-bold uppercase transition-all rounded-none cursor-pointer ${
+                            isCurrent
+                              ? 'bg-rex-600 text-white shadow-xs'
+                              : 'text-muted hover:text-primary hover:bg-surface2'
+                          }`}
+                          title={`Move to ${STAGE_LABELS[stg] || stg}`}
+                        >
+                          {STAGE_LABELS[stg] || stg}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI Strip */}
+              <div className="grid grid-cols-4 border-b border-theme-subtle bg-surface/80 shrink-0 divide-x divide-theme-subtle">
+                <div className="p-2.5 text-center">
+                  <p className="text-[9.5px] uppercase font-bold text-muted">Est. Value</p>
+                  <p className="text-xs font-mono font-bold text-rex-600 dark:text-rex-300 mt-0.5 truncate">
+                    {formatCurrency(selectedLead.value)}
+                  </p>
+                </div>
+                <div className="p-2.5 text-center">
+                  <p className="text-[9.5px] uppercase font-bold text-muted">Win Prob.</p>
+                  <p className="text-xs font-mono font-bold text-primary mt-0.5">
+                    {selectedLead.probability || 0}%
+                  </p>
+                </div>
+                <div className="p-2.5 text-center">
+                  <p className="text-[9.5px] uppercase font-bold text-muted">Stage Age</p>
+                  <p className={`text-xs font-mono font-bold mt-0.5 ${
+                    daysInStage >= 7 ? 'text-rose-500' : daysInStage >= 3 ? 'text-amber-500' : 'text-emerald-600'
+                  }`}>
+                    {daysInStage === 999 ? 'New' : `${daysInStage}d`}
+                  </p>
+                </div>
+                <div className="p-2.5 text-center">
+                  <p className="text-[9.5px] uppercase font-bold text-muted">Source</p>
+                  <p className="text-[11px] font-bold text-primary mt-0.5 capitalize truncate">
+                    {selectedLead.source || 'Direct'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Scrollable Content Body */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {/* Contact & Communication Channels */}
+                <div className="bg-surface2/40 border border-theme-subtle p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
+                    <span>Contact & Direct Connect</span>
+                    <span className="text-[9px] font-normal text-secondary">Quick Action</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {selectedLead.phone ? (
+                      <div className="flex items-center gap-1.5 col-span-2">
+                        <a
+                          href={`tel:${selectedLead.phone}`}
+                          className="flex-1 flex items-center gap-2 px-2.5 py-1.5 bg-surface border border-theme-subtle hover:border-rex-500 text-xs text-primary transition-colors font-mono"
+                        >
+                          <Phone size={12} className="text-emerald-500 shrink-0" />
+                          <span className="truncate">{selectedLead.phone}</span>
+                        </a>
+                        {waLink && (
+                          <a
+                            href={waLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+                            title="Open WhatsApp Chat"
+                          >
+                            <MessageSquare size={12} className="text-emerald-600" />
+                            <span>WhatsApp</span>
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted italic col-span-2">No phone number recorded</span>
+                    )}
+
+                    {selectedLead.email && (
+                      <a
+                        href={`mailto:${selectedLead.email}`}
+                        className="col-span-2 flex items-center gap-2 px-2.5 py-1.5 bg-surface border border-theme-subtle hover:border-rex-500 text-xs text-primary transition-colors truncate"
+                      >
+                        <Mail size={12} className="text-blue-500 shrink-0" />
+                        <span className="truncate font-mono">{selectedLead.email}</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quotations Dossier */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText size={13} className="text-amber-500" />
+                      Quotations ({leadQuotes.length})
+                    </h3>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/crm/quotations/new/${selectedLead.id}`)}
+                        className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-theme-subtle hover:border-amber-500 hover:text-amber-600 text-primary transition-colors flex items-center gap-1 cursor-pointer"
+                        title="New Custom Job Costing Quotation"
+                      >
+                        <Plus size={10} /> Custom
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/crm/product-quotations/new/${selectedLead.id}`)}
+                        className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="New Product Catalog Quotation"
+                      >
+                        <Plus size={10} /> Product
+                      </button>
+                    </div>
+                  </div>
+
+                  {leadQuotes.length === 0 ? (
+                    <div className="p-3 bg-surface border border-dashed border-theme-subtle text-center space-y-1.5">
+                      <p className="text-xs text-muted">No quotation created for this lead yet.</p>
+                      <div className="flex justify-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/crm/quotations/new/${selectedLead.id}`)}
+                          className="px-2.5 py-1 text-xs font-bold bg-amber-500 text-slate-900 hover:bg-amber-400 transition-colors cursor-pointer"
+                        >
+                          + Create Custom Quote
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {leadQuotes.map((q: any) => {
+                        const statusColor = 
+                          q.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' :
+                          q.status === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/30' :
+                          q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
+                          'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
+
+                        return (
+                          <div 
+                            key={q.id}
+                            className="p-2.5 bg-surface border border-theme-subtle hover:border-amber-500/50 flex items-center justify-between gap-2 group transition-all"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-xs font-bold text-primary group-hover:text-amber-600 transition-colors">
+                                  {q.quotationNo}
+                                </span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.2 border uppercase ${statusColor}`}>
+                                  {q.status}
+                                </span>
+                                <span className="text-[9px] font-mono text-muted bg-surface2 px-1 border border-theme-subtle">
+                                  {q.isProduct ? 'Product' : 'Custom'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-mono font-bold text-rex-600 dark:text-rex-300 mt-1">
+                                {formatCurrency(q.total)}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = q.isProduct
+                                  ? `/crm/product-quotations/new/${selectedLead.id}?quoteId=${q.id}`
+                                  : `/crm/quotations/new/${selectedLead.id}?quoteId=${q.id}`;
+                                navigate(url);
+                              }}
+                              className="px-2.5 py-1.5 text-xs font-bold bg-surface border border-theme-subtle group-hover:bg-amber-500 group-hover:text-slate-900 group-hover:border-amber-500 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                            >
+                              <span>Open</span>
+                              <ArrowRight size={11} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Samples & Customer Inward GRN Dossier */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Package size={13} className="text-rex-500" />
+                      Physical Samples (GRN) ({leadSamples.length})
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => openCollectSampleModal(selectedLead)}
+                      className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-theme-subtle hover:border-rex-500 hover:text-rex-600 text-primary transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={10} /> Inward Sample
+                    </button>
+                  </div>
+
+                  {leadSamples.length === 0 ? (
+                    <div className="p-3 bg-surface border border-dashed border-theme-subtle text-center">
+                      <p className="text-xs text-muted">No physical samples collected yet.</p>
+                      <button
+                        type="button"
+                        onClick={() => openCollectSampleModal(selectedLead)}
+                        className="mt-1.5 px-2.5 py-1 text-xs font-semibold bg-surface border border-theme-subtle hover:border-rex-500 text-primary transition-colors cursor-pointer"
+                      >
+                        + Record Sample Inward
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {leadSamples.map((sample: any) => {
+                        let parsedItems: any[] = [];
+                        try {
+                          parsedItems = typeof sample.items === 'string' ? JSON.parse(sample.items) : (sample.items || []);
+                        } catch (e) {
+                          parsedItems = [{ description: sample.items || 'Sample Part', qty: 1 }];
+                        }
+
+                        let samplePhotos: any[] = [];
+                        try {
+                          if (typeof sample.photos === 'string' && sample.photos.startsWith('[')) {
+                            samplePhotos = JSON.parse(sample.photos);
+                          } else if (Array.isArray(sample.photos)) {
+                            samplePhotos = sample.photos;
+                          }
+                        } catch (e) {
+                          samplePhotos = [];
+                        }
+
+                        return (
+                          <div key={sample.id} className="p-2.5 bg-surface border border-theme-subtle text-xs space-y-1">
+                            <div className="flex items-center justify-between font-mono font-bold text-[11px] text-primary">
+                              <span className="text-rex-600">{sample.id}</span>
+                              <span className="text-[10px] text-muted font-normal">
+                                {sample.receivedAt ? sample.receivedAt.slice(0, 10) : ''}
+                              </span>
+                            </div>
+                            <div className="space-y-0.5 pt-0.5">
+                              {parsedItems.map((it, i) => (
+                                <p key={i} className="text-secondary font-medium truncate">
+                                • {it.description || 'Part'} {it.qty ? `(Qty: ${it.qty} ${it.unit || ''})` : ''}
+                                </p>
+                              ))}
+                            </div>
+                            {sample.notes && (
+                              <p className="text-[10px] text-muted italic border-l border-theme-subtle pl-1.5 mt-1">
+                                {sample.notes}
+                              </p>
+                            )}
+
+                            {/* Sample Photos Gallery */}
+                            {samplePhotos.length > 0 && (
+                              <div className="pt-2 border-t border-theme-subtle/60 mt-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[9.5px] font-bold text-muted uppercase flex items-center gap-1">
+                                    <Camera size={11} className="text-amber-500" /> Photos ({samplePhotos.length})
+                                  </span>
+                                  <span 
+                                    className="text-[9px] text-rex-600 dark:text-rex-400 font-semibold cursor-pointer hover:underline" 
+                                    onClick={() => setActiveViewingPhotos({ photos: samplePhotos, title: `Sample ${sample.id} - ${selectedLead.company || selectedLead.name}` })}
+                                  >
+                                    View Full
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 overflow-x-auto py-1 custom-scrollbar">
+                                  {samplePhotos.map((p: any, pIdx: number) => (
+                                    <button
+                                      key={pIdx}
+                                      type="button"
+                                      onClick={() => setActiveViewingPhotos({ photos: samplePhotos, title: `Sample ${sample.id} - ${selectedLead.company || selectedLead.name}` })}
+                                      className="w-12 h-12 shrink-0 rounded border border-theme-subtle hover:border-amber-500 overflow-hidden relative group cursor-pointer"
+                                      title={p.name || 'Click to enlarge photo'}
+                                    >
+                                      <img src={p.url} alt={p.name || 'Sample photo'} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Scope & Requirements Notes */}
+                {selectedLead.description && (
+                  <div className="bg-surface border border-theme-subtle p-3 space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                      Requirements & Scope
+                    </p>
+                    <p className="text-xs text-secondary whitespace-pre-wrap leading-relaxed">
+                      {selectedLead.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Drawer Footer Actions */}
+              <div className="p-3 bg-surface2/80 border-t border-theme-subtle flex items-center justify-between gap-2 shrink-0">
+                {selectedLead.stage !== 'won' ? (
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => handleQuickConvertToCustomer(selectedLead.id)}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    <Trophy size={13} />
+                    <span>{submitting ? 'Converting...' : 'Convert to Customer / Won'}</span>
+                  </button>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                    <CheckCircle2 size={14} />
+                    <span>Converted / Won Customer</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => openEditModal(selectedLead)}
+                  className="px-3 py-2 text-xs font-semibold bg-surface border border-theme-subtle hover:border-rex-500 hover:text-rex-600 text-primary transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Edit3 size={13} />
+                  <span>Full Edit</span>
+                </button>
+              </div>
+            </aside>
+          </>
+        );
+      })()}
+
+      {/* Sample Photos Full Lightbox Viewer */}
+      {activeViewingPhotos && (
+        <SamplePhotoViewerModal
+          isOpen={!!activeViewingPhotos}
+          onClose={() => setActiveViewingPhotos(null)}
+          photos={activeViewingPhotos.photos}
+          title={activeViewingPhotos.title}
+        />
+      )}
     </div>
   )
 }

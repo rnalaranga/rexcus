@@ -3,7 +3,7 @@ import { formatDate } from '@/lib/utils';
 
 export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: any }> = ({ grn, group, settings }) => {
   // Try to parse items string if it's JSON
-    let itemsList: any[] = [];
+  let itemsList: any[] = [];
   try {
     if (typeof grn.items === 'string' && grn.items.startsWith('[')) {
       itemsList = JSON.parse(grn.items);
@@ -12,6 +12,17 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
     }
   } catch (e) {
     itemsList = [{ description: grn.items, qty: 1 }];
+  }
+
+  let photosList: any[] = [];
+  try {
+    if (typeof grn.photos === 'string' && grn.photos.startsWith('[')) {
+      photosList = JSON.parse(grn.photos);
+    } else if (Array.isArray(grn.photos)) {
+      photosList = grn.photos;
+    }
+  } catch (e) {
+    photosList = [];
   }
 
   return (
@@ -119,6 +130,21 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
           </div>
         </div>
       </div>
+
+      {/* Attached Inspection Photos if present */}
+      {photosList.length > 0 && (
+        <div className="border-t border-black p-3 bg-white">
+          <p className="font-bold text-[12px] uppercase mb-2">Sample Inspection Photos ({photosList.length}):</p>
+          <div className="flex flex-wrap gap-2">
+            {photosList.map((p: any, idx: number) => (
+              <div key={idx} className="border border-black p-1 text-center" style={{ width: '120px' }}>
+                <img src={p.url} alt={p.name || 'Sample photo'} style={{ maxHeight: '90px', width: '100%', objectFit: 'contain' }} />
+                <p className="text-[10px] truncate mt-1">{p.name || `Photo ${idx + 1}`}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Footer / Signatures */}
       <div className="border-t border-black p-4 pt-8 mt-auto bg-white">

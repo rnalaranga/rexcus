@@ -12,6 +12,8 @@ import { Modal } from '@/components/ui/Modal';
 import { usePurchaseOrders, useGRNs } from '@/hooks/usePurchasing';
 import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
+import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
+import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
 import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
@@ -27,9 +29,32 @@ export const GRNBuilder: React.FC = () => {
 
   const { data: pos, loading: loadingPOs } = usePurchaseOrders();
   const { data: allGRNs } = useGRNs();
-  const { data: suppliers } = useSuppliers();
-  const { data: inventory = [] } = useInventory();
+  const { data: suppliers, refetch: refetchSuppliers } = useSuppliers();
+  const { data: inventory = [], refetch: refetchInventory } = useInventory();
   const { settings } = useSettings();
+
+  const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
+  const [showQuickItemModal, setShowQuickItemModal] = useState(false);
+
+  const handleSupplierCreated = (newSupplier: any) => {
+    refetchSuppliers();
+    setSupplierId(newSupplier.id);
+  };
+
+  const handleItemCreated = (newItem: any) => {
+    refetchInventory();
+    const newItemRow = {
+      id: newItem.id || ('DIRECT-ITEM-' + Date.now()),
+      inventoryId: newItem.id,
+      name: newItem.name,
+      desc: newItem.name,
+      qtyReceived: 1,
+      unit: newItem.unit || 'Nos',
+      unitCost: Number(newItem.costPrice) || 0,
+      condition: 'Good'
+    };
+    setItems(prev => [...prev, newItemRow]);
+  };
 
   const [loading, setLoading] = useState<boolean>(isViewMode);
   const [docNo, setDocNo] = useState<string>(targetId || ('GRN-' + Date.now().toString().slice(-4)));
@@ -619,9 +644,20 @@ export const GRNBuilder: React.FC = () => {
 
                 {/* Supplier Detail */}
                 <div>
-                  <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                    <Building2 size={12} className="text-muted" /> Supplier
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-muted uppercase flex items-center gap-1.5">
+                      <Building2 size={12} className="text-muted" /> Supplier
+                    </label>
+                    {!isViewMode && (
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickSupplierModal(true)}
+                        className="text-[10px] font-bold text-rex-600 hover:text-rex-500 flex items-center gap-1 hover:underline cursor-pointer"
+                      >
+                        <Plus size={11} /> New Vendor
+                      </button>
+                    )}
+                  </div>
                   {isViewMode || (receiptMode === 'po' && selectedPoIds.length > 0) ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-semibold text-secondary truncate">
                       {supplierName}
@@ -751,15 +787,26 @@ export const GRNBuilder: React.FC = () => {
                 </h2>
                 <div className="flex items-center gap-2">
                   {!isViewMode && receiptMode === 'direct' && (
-                    <Button 
-                      variant="primary" 
-                      size="sm" 
-                      icon={Plus} 
-                      onClick={handleOpenAddItemModal}
-                      className="text-xs h-7"
-                    >
-                      Add Material
-                    </Button>
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        icon={Plus} 
+                        onClick={() => setShowQuickItemModal(true)}
+                        className="text-xs h-7 border-theme-subtle hover:border-primary text-secondary"
+                      >
+                        New Material
+                      </Button>
+                      <Button 
+                        variant="primary" 
+                        size="sm" 
+                        icon={Plus} 
+                        onClick={handleOpenAddItemModal}
+                        className="text-xs h-7"
+                      >
+                        Add from Inventory
+                      </Button>
+                    </>
                   )}
                   {!isViewMode && receiptMode === 'po' && items.length > 0 && (
                     <>
@@ -1300,6 +1347,18 @@ export const GRNBuilder: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Quick Modals for Vendors and Items */}
+      <QuickSupplierModal
+        isOpen={showQuickSupplierModal}
+        onClose={() => setShowQuickSupplierModal(false)}
+        onSuccess={handleSupplierCreated}
+      />
+      <QuickItemModal
+        isOpen={showQuickItemModal}
+        onClose={() => setShowQuickItemModal(false)}
+        onSuccess={handleItemCreated}
+      />
     </div>
   );
 };

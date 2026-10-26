@@ -29,6 +29,8 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
+import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
+import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 
 
 export const Quotations: React.FC = () => {
@@ -432,7 +434,8 @@ export const Quotations: React.FC = () => {
   const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string} | null>(null)
   const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
-  const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string } | null>(null)
+  const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string, photos?: any[] } | null>(null)
+  const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
   const [printGrnData, setPrintGrnData] = useState<{ grn: any, group: any } | null>(null)
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
   const [selectedBomTab, setSelectedBomTab] = useState<number | 'overview'>('overview')
@@ -970,22 +973,44 @@ export const Quotations: React.FC = () => {
                 )}
 
                 {sampleGrns.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPrintGrnData({ grn: sampleGrns[0], group });
-                      setOpenActionId(null);
-                    }}
-                    className="w-full px-3.5 py-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2.5 transition-colors text-left"
-                  >
-                    <Printer size={14} className="shrink-0 text-purple-600 dark:text-purple-400" />
-                    <span>Print Sample GRN</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrintGrnData({ grn: sampleGrns[0], group });
+                        setOpenActionId(null);
+                      }}
+                      className="w-full px-3.5 py-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2.5 transition-colors text-left"
+                    >
+                      <Printer size={14} className="shrink-0 text-purple-600 dark:text-purple-400" />
+                      <span>Print Sample GRN</span>
+                    </button>
+                    {(() => {
+                      let sPhotos: any[] = [];
+                      try {
+                        sPhotos = typeof sampleGrns[0].photos === 'string' ? JSON.parse(sampleGrns[0].photos) : (sampleGrns[0].photos || []);
+                      } catch(e) {}
+                      if (!Array.isArray(sPhotos) || sPhotos.length === 0) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveViewingPhotos({ photos: sPhotos, title: `Sample Photos - ${group.quoNo} (${sampleGrns[0].grnNo || 'GRN'})` });
+                            setOpenActionId(null);
+                          }}
+                          className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
+                        >
+                          <Eye size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                          <span>View Sample Photos ({sPhotos.length})</span>
+                        </button>
+                      );
+                    })()}
+                  </>
                 ) : (
                   <button
                     type="button"
                     onClick={() => {
-                      setGrnDialog({ group, latestMain, items: [{ description: '', qty: 1 }] });
+                      setGrnDialog({ group, latestMain, items: [{ description: '', qty: 1 }], photos: [] });
                       setOpenActionId(null);
                     }}
                     className="w-full px-3.5 py-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 flex items-center gap-2.5 transition-colors text-left"
@@ -2707,6 +2732,13 @@ export const Quotations: React.FC = () => {
                 onChange={e => setGrnDialog(p => p ? { ...p, notes: e.target.value } : null)}
               />
             </div>
+            <div>
+              <SamplePhotoUploadSection
+                photos={grnDialog?.photos || []}
+                onChange={photos => setGrnDialog(p => p ? { ...p, photos } : null)}
+                maxPhotos={6}
+              />
+            </div>
             <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-theme-subtle">
               <Button variant="ghost" onClick={() => setGrnDialog(null)}>Cancel</Button>
               <Button variant="primary" onClick={async () => {
@@ -2716,6 +2748,7 @@ export const Quotations: React.FC = () => {
                      quoNo: grnDialog.group.quoNo,
                      leadId: grnDialog.group.leadId,
                      items: JSON.stringify(grnDialog.items),
+                     photos: JSON.stringify(grnDialog.photos || []),
                      receivedAt: grnDialog.receivedAt,
                      receivedBy: 'System', // from auth
                      notes: grnDialog.notes
@@ -2890,6 +2923,14 @@ export const Quotations: React.FC = () => {
           })}
         />
       )}
+
+      {/* ── SAMPLE PHOTO LIGHTBOX VIEWER ── */}
+      <SamplePhotoViewerModal
+        isOpen={!!activeViewingPhotos}
+        onClose={() => setActiveViewingPhotos(null)}
+        photos={activeViewingPhotos?.photos || []}
+        title={activeViewingPhotos?.title || 'Sample Photos'}
+      />
     </div>
   )
 }

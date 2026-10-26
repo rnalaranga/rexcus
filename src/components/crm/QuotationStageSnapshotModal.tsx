@@ -4,11 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { 
   X, CheckCircle2, Clock, AlertTriangle, ArrowRight, ExternalLink, 
   FileText, ShoppingBag, Receipt, Factory, Truck, DollarSign, Eye, 
-  AlertCircle, ChevronRight, Layers, Sparkles
+  AlertCircle, ChevronRight, Layers, Sparkles, Package, Camera
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { SamplePhotoViewerModal } from './SamplePhotoViewerModal';
 
 export interface QuotationStageSnapshotModalProps {
   isOpen: boolean;
@@ -46,6 +47,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
   onPreviewPdf
 }) => {
   const navigate = useNavigate();
+  const [viewingPhotos, setViewingPhotos] = React.useState<{ photos: any[], title?: string } | null>(null);
 
   if (!isOpen || !quotation) return null;
 
@@ -274,6 +276,101 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
               </div>
             </div>
           </div>
+
+          {/* CUSTOMER SAMPLE GRN (IF RECEIVED) */}
+          {sampleGrns && sampleGrns.length > 0 && (
+            <div className="p-3.5 border border-purple-500/30 bg-purple-500/5 transition-all">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-6 h-6 flex items-center justify-center text-xs font-mono font-bold rounded-none bg-purple-600 text-white">
+                    <Package size={13} />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-bold text-primary flex items-center gap-1.5">
+                      Customer Physical Sample GRN
+                      <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-500/30 font-mono">
+                        {sampleGrns.length} Received
+                      </Badge>
+                    </h4>
+                    <span className="text-[11px] text-muted">
+                      Physical samples inwarded for drawing/spec verification & manufacturing feasibility.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2 mt-2 pt-2 border-t border-purple-500/20">
+                {sampleGrns.map((sGrn, idx) => {
+                  let grnPhotos: any[] = [];
+                  try {
+                    grnPhotos = typeof sGrn.photos === 'string' ? JSON.parse(sGrn.photos) : (sGrn.photos || []);
+                  } catch(e) {}
+
+                  return (
+                    <div key={sGrn.id || idx} className="bg-surface p-2.5 border border-theme-subtle text-xs space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                            {sGrn.grnNo || `GRN #${sGrn.id}`}
+                          </span>
+                          {sGrn.receivedAt && (
+                            <span className="text-[10px] text-muted font-mono">
+                              • Received: {formatDate(sGrn.receivedAt)}
+                            </span>
+                          )}
+                          {sGrn.receivedBy && (
+                            <span className="text-[10px] text-muted">
+                              by {sGrn.receivedBy}
+                            </span>
+                          )}
+                        </div>
+                        {Array.isArray(grnPhotos) && grnPhotos.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setViewingPhotos({ photos: grnPhotos, title: `Sample Photos - ${sGrn.grnNo || 'GRN'}` })}
+                            className="h-6 text-[11px] px-2 text-purple-600 hover:text-purple-700 flex items-center gap-1 font-semibold"
+                          >
+                            <Camera size={12} />
+                            <span>View Photos ({grnPhotos.length})</span>
+                          </Button>
+                        )}
+                      </div>
+
+                      {sGrn.notes && (
+                        <div className="text-[11px] text-secondary bg-surface2/60 p-1.5 border border-theme-subtle">
+                          <span className="font-semibold text-primary">Condition / Notes:</span> {sGrn.notes}
+                        </div>
+                      )}
+
+                      {/* Photo Thumbnail Strip */}
+                      {Array.isArray(grnPhotos) && grnPhotos.length > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-1">
+                          {grnPhotos.map((photo: any, pIdx: number) => {
+                            const src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.url);
+                            return (
+                              <button
+                                key={pIdx}
+                                type="button"
+                                onClick={() => setViewingPhotos({ photos: grnPhotos, title: `Sample Photos - ${sGrn.grnNo || 'GRN'}` })}
+                                className="relative group shrink-0 w-12 h-12 border border-theme-subtle rounded overflow-hidden bg-black/10 hover:ring-2 hover:ring-purple-500 transition-all cursor-pointer"
+                                title="Click to enlarge"
+                              >
+                                <img src={src} alt="sample thumb" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                                  <Eye size={12} />
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* STAGE 2: SALES ORDER */}
           <div className={`p-3.5 border transition-all ${
@@ -630,6 +727,14 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
         </div>
 
       </div>
+
+      {/* SAMPLE PHOTO VIEWER MODAL */}
+      <SamplePhotoViewerModal
+        isOpen={!!viewingPhotos}
+        onClose={() => setViewingPhotos(null)}
+        photos={viewingPhotos?.photos || []}
+        title={viewingPhotos?.title || 'Sample Photos'}
+      />
     </div>,
     document.body
   );

@@ -15,6 +15,8 @@ import { useMaterialRequests, usePurchaseOrders, useBills } from '@/hooks/usePur
 import { createPO, updatePO, fetchPOs } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
+import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
+import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -43,12 +45,51 @@ export const POBuilder: React.FC = () => {
 
   const navigate = useNavigate();
   const { toast } = useDialog();
-  const { data: suppliers } = useSuppliers();
-  const { data: inventory } = useInventory();
+  const { data: suppliers, refetch: refetchSuppliers } = useSuppliers();
+  const { data: inventory, refetch: refetchInventory } = useInventory();
   const { data: mrs } = useMaterialRequests();
   const { data: pos } = usePurchaseOrders();
   const { data: taxProfiles } = useTaxProfiles();
   const { data: allBills } = useBills();
+
+  const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
+  const [showQuickItemModal, setShowQuickItemModal] = useState(false);
+
+  const handleSupplierCreated = (newSupplier: any) => {
+    refetchSuppliers();
+    setSupplierId(newSupplier.id);
+    setSupplierDetails({
+      contact: newSupplier.contactName || newSupplier.contactPerson || '',
+      email: newSupplier.email || '',
+      phone: newSupplier.phone || '',
+      address: newSupplier.address || '',
+      vat: newSupplier.vat || '',
+      svat: newSupplier.svat || '',
+      brNumber: newSupplier.brNumber || ''
+    });
+    if (newSupplier.paymentTerms) {
+      setPaymentTerms(newSupplier.paymentTerms);
+    }
+    toast(`Vendor ${newSupplier.name} registered and selected!`, 'success');
+  };
+
+  const handleItemCreated = (newItem: any) => {
+    refetchInventory();
+    const newItemRow: POItem = {
+      id: Date.now().toString(),
+      inventoryId: newItem.id,
+      desc: newItem.name,
+      qty: 1,
+      unitPrice: Number(newItem.costPrice) || Number(newItem.unitPrice) || 0,
+      taxRate: 0,
+      discount: 0,
+      total: Number(newItem.costPrice) || Number(newItem.unitPrice) || 0,
+      unit: newItem.unit || 'Nos',
+      uom: newItem.unit || 'Nos'
+    };
+    setItems(prev => [...prev, newItemRow]);
+    toast(`Material ${newItem.name} created and added to line items!`, 'success');
+  };
 
   const [docNo, setDocNo] = useState('PO-' + Date.now().toString().slice(-4));
   const [status, setStatus] = useState('DRAFT');
@@ -588,7 +629,16 @@ export const POBuilder: React.FC = () => {
                 </h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-muted uppercase mb-1">Select Supplier *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-muted uppercase">Select Supplier *</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickSupplierModal(true)}
+                        className="text-[10px] font-bold text-rex-600 hover:text-rex-500 flex items-center gap-1 hover:underline cursor-pointer"
+                      >
+                        <Plus size={11} /> New Vendor
+                      </button>
+                    </div>
                     <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm font-medium focus:border-primary">
                       <option value="">-- Choose Supplier --</option>
                       {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -686,7 +736,18 @@ export const POBuilder: React.FC = () => {
                 <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                   <FileText size={16} /> Line Items
                 </h2>
-                <Button variant="ghost" size="sm" icon={Plus} onClick={addItem} className="text-primary hover:bg-primary/10">Add Row</Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    icon={Plus} 
+                    onClick={() => setShowQuickItemModal(true)} 
+                    className="text-xs h-7 border-theme-subtle hover:border-primary text-secondary"
+                  >
+                    New Material
+                  </Button>
+                  <Button variant="ghost" size="sm" icon={Plus} onClick={addItem} className="text-primary hover:bg-primary/10">Add Row</Button>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left whitespace-nowrap">
@@ -1104,6 +1165,18 @@ export const POBuilder: React.FC = () => {
            </div>
          </div>
       </div>
-    </div>
+
+    {/* Quick Modals for Vendors and Items */}
+    <QuickSupplierModal
+      isOpen={showQuickSupplierModal}
+      onClose={() => setShowQuickSupplierModal(false)}
+      onSuccess={handleSupplierCreated}
+    />
+    <QuickItemModal
+      isOpen={showQuickItemModal}
+      onClose={() => setShowQuickItemModal(false)}
+      onSuccess={handleItemCreated}
+    />
+  </div>
   );
 };

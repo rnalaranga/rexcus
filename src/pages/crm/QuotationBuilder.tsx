@@ -476,12 +476,14 @@ export const QuotationBuilder: React.FC = () => {
         else {
           const userPrefix = user?.prefix ? `${user.prefix}-` : '';
           const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-          setQuotationNo(`${userPrefix}${custPrefix}2206`);
+          const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
+          setQuotationNo(`${base}2206`);
         }
       }).catch(() => {
         const userPrefix = user?.prefix ? `${user.prefix}-` : '';
         const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-        setQuotationNo(`${userPrefix}${custPrefix}2206`);
+        const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
+        setQuotationNo(`${base}2206`);
       });
     } else {
       const leadItem = leads?.find((l: any) => l.id === itemId) || item;
@@ -516,12 +518,14 @@ export const QuotationBuilder: React.FC = () => {
           else {
             const userPrefix = user?.prefix ? `${user.prefix}-` : '';
             const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-            setQuotationNo(`${userPrefix}${custPrefix}2206`);
+            const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
+            setQuotationNo(`${base}2206`);
           }
         }).catch(() => {
           const userPrefix = user?.prefix ? `${user.prefix}-` : '';
           const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-          setQuotationNo(`${userPrefix}${custPrefix}2206`);
+          const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
+          setQuotationNo(`${base}2206`);
         });
       } else {
         setCustomerAddress(leadItem.address || '');
@@ -533,11 +537,11 @@ export const QuotationBuilder: React.FC = () => {
         }).then(res => {
           if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
           else {
-            const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+            const userPrefix = user?.prefix ? `${user.prefix}-` : 'QT-';
             setQuotationNo(`${userPrefix}2206`);
           }
         }).catch(() => {
-          const userPrefix = user?.prefix ? `${user.prefix}-` : '';
+          const userPrefix = user?.prefix ? `${user.prefix}-` : 'QT-';
           setQuotationNo(`${userPrefix}2206`);
         });
       }
@@ -562,15 +566,21 @@ export const QuotationBuilder: React.FC = () => {
             reserve: false
           }).then(res => {
             if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-          }).catch(() => {});
+            else setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+          }).catch(() => {
+            setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+          });
         }
-     } else if (!quoteIdParam && !quotationNo && user?.prefix) {
+     } else if (!quoteIdParam && !quotationNo) {
         fetchNextDocumentNumber('quotation', {
           userPrefix: user?.prefix,
           reserve: false
         }).then(res => {
           if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-        }).catch(() => {});
+          else setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+        }).catch(() => {
+          setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+        });
      }
   }, [leadId, lead, customers, quoteIdParam, quotationNo, user?.prefix]);
 
