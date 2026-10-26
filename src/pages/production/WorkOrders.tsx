@@ -42,13 +42,13 @@ export const WorkOrders: React.FC = () => {
   const [loading, setLoading] = useState(true)
 
   // Filter & Search State
-  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
 
   useEffect(() => {
-    const s = searchParams.get('search')
+    const s = searchParams.get('search') || searchParams.get('id')
     if (s !== null && s !== undefined) {
       setSearch(s)
     }
@@ -196,7 +196,7 @@ export const WorkOrders: React.FC = () => {
         reference: linkedOrder.orderNo,
         subtitle: `Customer: ${linkedOrder.customerName || ''}`,
         statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
-        navigateUrl: '/crm/sales-orders'
+        navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder.orderNo)}`
       })
 
       if (linkedOrder.gatePassNo) {
@@ -206,7 +206,7 @@ export const WorkOrders: React.FC = () => {
           reference: linkedOrder.gatePassNo,
           subtitle: linkedOrder.isDispatched ? 'Dispatched from Premises' : 'Gate Pass Issued',
           statusBadge: { label: linkedOrder.isDispatched ? 'Dispatched' : 'Gate Pass', variant: 'info' },
-          navigateUrl: '/inventory'
+          navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder.orderNo)}`
         })
       }
     }
@@ -235,13 +235,14 @@ export const WorkOrders: React.FC = () => {
       m.workOrderId === row.id || m.jobNo === row.orderNo || (row.orderNo && m.notes && m.notes.includes(row.orderNo))
     )
     if (linkedMrs.length > 0) {
+      const mrNum = linkedMrs[0].mrNo || linkedMrs[0].id;
       traces.push({
         type: 'mr',
         title: 'Material Request',
         reference: linkedMrs[0].mrNo || `MR (${linkedMrs.length})`,
         subtitle: `Items: ${linkedMrs[0].items?.length || 1} material(s)`,
         statusBadge: { label: 'MR Linked', variant: 'info' },
-        navigateUrl: '/purchasing'
+        navigateUrl: `/purchasing?tab=mr&search=${encodeURIComponent(mrNum)}`
       })
     }
 

@@ -50,10 +50,10 @@ export const ProductQuotations: React.FC = () => {
   const { data: workOrders = [] } = useWorkOrders()
 
   const [searchParams] = useSearchParams()
-  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
 
   useEffect(() => {
-    const s = searchParams.get('search')
+    const s = searchParams.get('search') || searchParams.get('id')
     if (s !== null && s !== undefined) {
       setSearch(s)
     }
@@ -258,7 +258,7 @@ export const ProductQuotations: React.FC = () => {
     return groupedQuotes.filter((g: any) => {
       if (g.leadId !== customerFilter) return false;
       const latest = g.versions[0];
-      return latest?.type === 'product_draft' || latest?.status === 'Draft';
+      return latest?.type === 'product_draft';
     });
   }, [groupedQuotes, customerFilter]);
 
@@ -1286,7 +1286,7 @@ export const ProductQuotations: React.FC = () => {
                                   reference: linkedOrder.orderNo,
                                   subtitle: `Customer Order • ${linkedOrder.customerName || ''}`,
                                   statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
-                                  navigateUrl: '/crm/sales-orders'
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder.orderNo)}`
                                 });
                               }
 
@@ -1300,7 +1300,7 @@ export const ProductQuotations: React.FC = () => {
                                     label: linkedWo.status || 'In Production', 
                                     variant: linkedWo.status === 'Completed' ? 'success' : 'warning' 
                                   },
-                                  navigateUrl: `/production/work-orders/${linkedWo.id}`
+                                  navigateUrl: `/production/work-orders?search=${encodeURIComponent(linkedWo.orderNo || linkedWo.id)}`
                                 });
                               }
 

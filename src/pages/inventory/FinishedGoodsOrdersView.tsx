@@ -60,12 +60,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: allInvoices = [] } = useInvoices()
 
   const [searchParams, setSearchParams] = useSearchParams()
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
   const [activeViewTab, setActiveViewTab] = useState<'orders' | 'proformas'>(() => {
     return searchParams.get('tab') === 'proformas' ? 'proformas' : 'orders'
   })
 
   useEffect(() => {
+    const s = searchParams.get('search') || searchParams.get('id')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
     const tab = searchParams.get('tab')
     if (tab === 'proformas' && activeViewTab !== 'proformas') {
       setActiveViewTab('proformas')
@@ -720,14 +724,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   // Filtered Orders
   const filteredOrders = useMemo(() => {
     return orders.filter(ord => {
-      const q = search.toLowerCase()
-      const matchesSearch = !search || (
+      const q = search.trim().toLowerCase()
+      const matchesSearch = !q || (
         (ord.orderNo && ord.orderNo.toLowerCase().includes(q)) ||
+        (ord.id && String(ord.id).toLowerCase().includes(q)) ||
+        (ord.quotationNo && ord.quotationNo.toLowerCase().includes(q)) ||
+        (ord.gatePassNo && ord.gatePassNo.toLowerCase().includes(q)) ||
+        (ord.invoiceNo && ord.invoiceNo.toLowerCase().includes(q)) ||
         (ord.productName && ord.productName.toLowerCase().includes(q)) ||
         (ord.productSku && ord.productSku.toLowerCase().includes(q)) ||
         (ord.customerName && ord.customerName.toLowerCase().includes(q)) ||
         (ord.attention && ord.attention.toLowerCase().includes(q)) ||
-        (ord.customerPhone && ord.customerPhone.toLowerCase().includes(q))
+        (ord.customerPhone && ord.customerPhone.toLowerCase().includes(q)) ||
+        (ord.notes && ord.notes.toLowerCase().includes(q))
       )
 
       const matchesStatus = statusFilter === 'all' || ord.status === statusFilter
@@ -1438,7 +1447,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                 label: existingWO.status || 'In Production', 
                                 variant: existingWO.status === 'Completed' ? 'success' : 'warning' 
                               },
-                              navigateUrl: `/production/work-orders/${existingWO.id}`
+                              navigateUrl: `/production/work-orders?search=${encodeURIComponent(existingWO.orderNo || existingWO.id)}`
                             });
                           }
                           if (linkedProforma) {

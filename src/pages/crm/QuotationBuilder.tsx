@@ -300,12 +300,16 @@ export const QuotationBuilder: React.FC = () => {
             initialLoadedRef.current = true;
             const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
             restoreSnapshot(snap);
-            if (target.type === 'draft' || target.status === 'Draft') {
+            if (target.type === 'draft') {
               setDraftId(target.id);
               draftIdRef.current = target.id;
+              setCurrentId(null);
+              currentIdRef.current = null;
             } else {
               setCurrentId(target.id);
               currentIdRef.current = target.id;
+              setDraftId(null);
+              draftIdRef.current = null;
             }
             if (target.leadId) {
               setSelectedLeadId(target.leadId);
@@ -440,7 +444,7 @@ export const QuotationBuilder: React.FC = () => {
     // If not currently working on an existing finalized quote, check if this customer has an active draft to resume
     if (!currentIdRef.current && !quoteIdParam) {
       fetchQuotations(itemId).then((custQuotes) => {
-        const existingDraft = (custQuotes || []).find((q: any) => q.type === 'draft' || q.status === 'Draft');
+        const existingDraft = (custQuotes || []).find((q: any) => q.type === 'draft');
         if (existingDraft) {
           setDraftId(existingDraft.id);
           draftIdRef.current = existingDraft.id;
@@ -959,6 +963,7 @@ export const QuotationBuilder: React.FC = () => {
       // Don't save completely empty state
       if (!selectedLeadId) return; // Only auto-save if a customer is explicitly selected 
       if (currentIdRef.current) return; // If we are editing an active version, don't auto-save as draft
+      if (quoteIdParam && !initialLoadedRef.current) return; // Wait until quote is fully loaded from URL
       
       setSaveStatus('saving');
       const snapshot: any = {
@@ -988,6 +993,8 @@ export const QuotationBuilder: React.FC = () => {
       try {
         if (!draftIdRef.current) {
           const res = await createQuotation({
+            id: draftIdRef.current || undefined,
+            quotationNo: quotationNo || null,
             leadId: selectedLeadId || 'WALK-IN', type: 'draft', data: snapshot,
             totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
@@ -1000,7 +1007,8 @@ export const QuotationBuilder: React.FC = () => {
         } else {
           await updateQuotation(draftIdRef.current, {
             leadId: selectedLeadId || 'WALK-IN',
-            type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+            type: 'draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+            quotationNo: quotationNo || null
           });
         }
         setSaveStatus('saved');

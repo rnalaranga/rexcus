@@ -399,7 +399,7 @@ export const ProductQuotationBuilder: React.FC = () => {
   const [savedVersions, setSavedVersions] = useState<any[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [currentId, setCurrentId] = useState<string | null>(null)
-  const [draftId, setDraftId] = useState<string | null>(() => quoteIdParam || null)
+  const [draftId, setDraftId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -502,7 +502,7 @@ export const ProductQuotationBuilder: React.FC = () => {
   }
   const [quickSearchText, setQuickSearchText] = useState('')
   const initialLoadedRef = useRef(false)
-  const draftIdRef = useRef<string | null>(quoteIdParam || null)
+  const draftIdRef = useRef<string | null>(null)
   const currentIdRef = useRef<string | null>(null)
 
   const currentQuote = useMemo(() => {
@@ -544,12 +544,16 @@ export const ProductQuotationBuilder: React.FC = () => {
           initialLoadedRef.current = true;
           const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
           restoreSnapshot(snap);
-          if (target.type === 'product_draft' || target.status === 'Draft') {
+          if (target.type === 'product_draft') {
             setDraftId(target.id);
             draftIdRef.current = target.id;
+            setCurrentId(null);
+            currentIdRef.current = null;
           } else {
             setCurrentId(target.id);
             currentIdRef.current = target.id;
+            setDraftId(null);
+            draftIdRef.current = null;
           }
           if (target.leadId) {
             setSelectedLeadId(target.leadId);
@@ -688,7 +692,7 @@ export const ProductQuotationBuilder: React.FC = () => {
     // If not currently working on an existing finalized quote, check if this customer has an active draft to resume
     if (!currentIdRef.current && !quoteIdParam) {
       fetchQuotations(itemId).then((custQuotes) => {
-        const existingDraft = (custQuotes || []).find((q: any) => q.type === 'product_draft' || q.status === 'Draft');
+        const existingDraft = (custQuotes || []).find((q: any) => q.type === 'product_draft');
         if (existingDraft) {
           setDraftId(existingDraft.id);
           draftIdRef.current = existingDraft.id;
@@ -1117,6 +1121,7 @@ export const ProductQuotationBuilder: React.FC = () => {
     const timer = setTimeout(async () => {
       if (!selectedLeadId) return; 
       if (currentIdRef.current) return; 
+      if (quoteIdParam && !initialLoadedRef.current) return; // Wait until quote is fully loaded from URL
       
       setSaveStatus('saving');
       const snapshot: any = {
@@ -1148,6 +1153,8 @@ export const ProductQuotationBuilder: React.FC = () => {
       try {
         if (!draftIdRef.current) {
           const res = await createQuotation({
+            id: draftIdRef.current || undefined,
+            quotationNo: quotationNo || null,
             leadId: selectedLeadId || 'WALK-IN', type: 'product_draft', data: snapshot,
             totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
@@ -1160,7 +1167,8 @@ export const ProductQuotationBuilder: React.FC = () => {
         } else {
           await updateQuotation(draftIdRef.current, {
             leadId: selectedLeadId || 'WALK-IN',
-            type: 'product_draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
+            type: 'product_draft', data: snapshot, totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+            quotationNo: quotationNo || null
           });
         }
         setSaveStatus('saved');

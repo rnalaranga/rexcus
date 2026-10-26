@@ -326,7 +326,25 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                     if (trace.onClick) {
                       trace.onClick()
                     } else if (trace.navigateUrl) {
-                      navigate(trace.navigateUrl)
+                      let url = trace.navigateUrl
+                      const rawRef = (trace.reference || '').replace(/\(.*\)/g, '').trim()
+
+                      // If navigating to a list route without an existing search param, automatically append ?search=
+                      if (rawRef && !url.includes('search=') && !url.includes('id=') && !url.match(/\/[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+$/)) {
+                        const separator = url.includes('?') ? '&' : '?'
+                        if (
+                          url.startsWith('/crm/sales-orders') ||
+                          url.startsWith('/production/work-orders') ||
+                          url.startsWith('/finance/invoices') ||
+                          url.startsWith('/crm/quotations') ||
+                          url.startsWith('/crm/product-quotations') ||
+                          url.startsWith('/crm/leads') ||
+                          url.startsWith('/purchasing')
+                        ) {
+                          url = `${url}${separator}search=${encodeURIComponent(rawRef)}`
+                        }
+                      }
+                      navigate(url)
                     }
                   }
 

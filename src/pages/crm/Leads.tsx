@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2,
   Flame, Clock, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, ChevronDown, 
@@ -38,11 +38,19 @@ type CardDensity = 'detailed' | 'compact'
 
 export const Leads: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { data: leads, loading, refetch } = useLeads()
   const { data: allFollowups } = useFollowups()
   const { data: allQuotations = [] } = useQuotations()
   const [view, setView]     = useState<ViewMode>('kanban')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
+
+  useEffect(() => {
+    const s = searchParams.get('search') || searchParams.get('id')
+    if (s !== null && s !== undefined) {
+      setSearch(s)
+    }
+  }, [searchParams])
   const [presetFilter, setPresetFilter] = useState<PresetFilter>('active')
   const [selectedStage, setSelectedStage] = useState<string>('all')
   const [selectedPriority, setSelectedPriority] = useState<string>('all')

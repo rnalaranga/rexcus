@@ -48,6 +48,8 @@ export const Invoices: React.FC = () => {
     const searchParam = searchParams.get('search')
     if (searchParam !== null && searchParam !== undefined) {
       setSearch(searchParam)
+    } else if (targetId) {
+      setSearch(targetId)
     }
     if (targetId && invoices && invoices.length > 0) {
       const targetLower = String(targetId).trim().toLowerCase()
@@ -651,7 +653,7 @@ export const Invoices: React.FC = () => {
             reference: ordNo,
             subtitle: `Customer: ${linkedOrder?.customerName || item.customer || ''}`,
             statusBadge: { label: linkedOrder?.status || 'Order', variant: 'info' },
-            navigateUrl: '/crm/sales-orders'
+            navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(ordNo)}`
           });
         }
 
@@ -684,7 +686,7 @@ export const Invoices: React.FC = () => {
               label: linkedWo.status || 'Production', 
               variant: linkedWo.status === 'Completed' ? 'success' : 'warning' 
             },
-            navigateUrl: `/production/work-orders/${linkedWo.id}`
+            navigateUrl: `/production/work-orders?search=${encodeURIComponent(linkedWo.orderNo || linkedWo.id)}`
           });
         }
 

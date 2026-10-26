@@ -2385,20 +2385,100 @@ app.post('/api/quotations', async (req, res) => {
     const data = { ...req.body };
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const qType = data.type || 'customer';
-    
-    if (qType === 'draft' || qType === 'product_draft') {
-      const [existing]: any = await db.query(
-        'SELECT id FROM quotations WHERE leadId = ? AND type = ? LIMIT 1',
-        [data.leadId, qType]
-      );
-      if (existing && existing.length > 0) {
-        const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
-        const qNo = data.quotationNo || qData.quotationNo || null;
+    const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
+    const qNo = data.quotationNo || qData.quotationNo || null;
+    const createdBy = data.createdBy || qData.createdBy || (req.user && (req.user.id || req.user.username)) || null;
+    const createdByName = data.createdByName || qData.createdByName || (req.user && (req.user.name || req.user.username)) || null;
+
+    // 1. If explicit id is provided and exists in DB, update instead of creating duplicate
+    if (data.id) {
+      const [existingById]: any = await db.query('SELECT id, version, type, quotationNo FROM quotations WHERE id = ? LIMIT 1', [data.id]);
+      if (existingById && existingById.length > 0) {
         await db.query(
-          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=NOW(), docNo=?, issueNo=?, issueDate=?, quotationNo=? WHERE id=?',
-          [JSON.stringify(data.data), data.totalAmount, data.customAmount || null, data.docNo || null, data.issueNo || null, data.issueDate || null, qNo, draftId]
+          `UPDATE quotations SET 
+            data = ?, 
+            totalAmount = ?, 
+            customAmount = ?, 
+            type = COALESCE(?, type), 
+            leadId = COALESCE(?, leadId), 
+            date = NOW(), 
+            docNo = COALESCE(?, docNo), 
+            issueNo = COALESCE(?, issueNo), 
+            issueDate = COALESCE(?, issueDate),
+            quotationNo = COALESCE(?, quotationNo),
+            createdBy = COALESCE(createdBy, ?),
+            createdByName = COALESCE(createdByName, ?)
+          WHERE id = ?`,
+          [
+            JSON.stringify(data.data),
+            data.totalAmount,
+            data.customAmount || null,
+            data.type || null,
+            data.leadId || null,
+            data.docNo || null,
+            data.issueNo || null,
+            data.issueDate || null,
+            qNo,
+            createdBy,
+            createdByName,
+            data.id
+          ]
         );
-        return res.json({ success: true, quotation: { id: draftId, version: 1, type: qType } });
+        return res.json({
+          success: true,
+          quotation: {
+            id: data.id,
+            version: existingById[0].version || 1,
+            type: data.type || existingById[0].type,
+            quotationNo: qNo || existingById[0].quotationNo
+          }
+        });
+      }
+    }
+
+    // 2. Draft handling: update existing draft if matching by qNo or leadId
+    if (qType === 'draft' || qType === 'product_draft') {
+      let existingDraft: any = null;
+      if (qNo) {
+        const [rows]: any = await db.query(
+          'SELECT id, version FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") LIMIT 1',
+          [qNo, qNo]
+        );
+        if (rows && rows.length > 0) existingDraft = rows[0];
+      }
+      if (!existingDraft && data.leadId && data.leadId !== 'WALK-IN') {
+        const [rows]: any = await db.query(
+          'SELECT id, version FROM quotations WHERE leadId = ? AND type = ? ORDER BY date DESC LIMIT 1',
+          [data.leadId, qType]
+        );
+        if (rows && rows.length > 0) existingDraft = rows[0];
+      }
+      if (existingDraft) {
+        const draftId = existingDraft.id;
+        await db.query(
+          'UPDATE quotations SET data=?, totalAmount=?, customAmount=?, date=NOW(), docNo=?, issueNo=?, issueDate=?, quotationNo=?, createdBy=COALESCE(?, createdBy), createdByName=COALESCE(?, createdByName) WHERE id=?',
+          [
+            JSON.stringify(data.data),
+            data.totalAmount,
+            data.customAmount || null,
+            data.docNo || null,
+            data.issueNo || null,
+            data.issueDate || null,
+            qNo,
+            createdBy,
+            createdByName,
+            draftId
+          ]
+        );
+        return res.json({
+          success: true,
+          quotation: {
+            id: draftId,
+            version: existingDraft.version || 1,
+            type: qType,
+            quotationNo: qNo
+          }
+        });
       }
     }
 
@@ -2411,10 +2491,6 @@ app.post('/api/quotations', async (req, res) => {
     const nextVersion = isDraft ? 1 : ((rows[0]?.maxVer || 0) + 1);
     const prefix = (qType === 'product' || qType === 'product_draft') ? 'PQ' : 'QT';
     
-    const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
-    const createdBy = data.createdBy || qData.createdBy || (req.user && (req.user.id || req.user.username)) || null;
-    const createdByName = data.createdByName || qData.createdByName || (req.user && (req.user.name || req.user.username)) || null;
-
     const newQuotation = {
       id: `${prefix}-${Date.now().toString().slice(-6)}`,
       leadId: data.leadId,

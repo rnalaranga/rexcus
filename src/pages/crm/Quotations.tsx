@@ -417,10 +417,10 @@ export const Quotations: React.FC = () => {
   }, []);
 
   const [searchParams] = useSearchParams()
-  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
   
   useEffect(() => {
-    const s = searchParams.get('search')
+    const s = searchParams.get('search') || searchParams.get('id')
     if (s !== null && s !== undefined) {
       setSearch(s)
     }
@@ -590,7 +590,7 @@ export const Quotations: React.FC = () => {
     return groupedQuotations.filter((g: any) => {
       if (g.leadId !== customerFilter) return false;
       const main0 = g.main[0];
-      return main0?.type === 'draft' || main0?.status === 'Draft';
+      return main0?.type === 'draft';
     });
   }, [groupedQuotations, customerFilter]);
 
@@ -1725,7 +1725,7 @@ export const Quotations: React.FC = () => {
                                   reference: linkedOrder.orderNo,
                                   subtitle: `Customer Order • ${linkedOrder.customerName || ''}`,
                                   statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
-                                  navigateUrl: '/crm/sales-orders'
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder.orderNo)}`
                                 });
                               }
 
@@ -1739,7 +1739,7 @@ export const Quotations: React.FC = () => {
                                     label: existingWO.status || 'In Production', 
                                     variant: existingWO.status === 'Completed' ? 'success' : 'warning' 
                                   },
-                                  navigateUrl: `/production/work-orders/${existingWO.id}`
+                                  navigateUrl: `/production/work-orders?search=${encodeURIComponent(existingWO.orderNo || existingWO.id)}`
                                 });
                               }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
@@ -22,14 +22,30 @@ type Tab = 'po' | 'mr' | 'grn' | 'bill';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
 
 export const PurchasingHub: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<Tab>('po');
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const t = searchParams.get('tab');
+    if (t === 'mr' || t === 'po' || t === 'grn' || t === 'bill') return t as Tab;
+    return 'po';
+  });
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [supplierFilter, setSupplierFilter] = useState('all');
   const [grnSourceFilter, setGrnSourceFilter] = useState<'all' | 'vendor' | 'sample'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t === 'mr' || t === 'po' || t === 'grn' || t === 'bill') {
+      setActiveTab(t as Tab);
+    }
+    const s = searchParams.get('search') || searchParams.get('id');
+    if (s !== null && s !== undefined) {
+      setSearch(s);
+    }
+  }, [searchParams]);
 
   const { data: mrs, loading: loadingMRs } = useMaterialRequests();
   const { data: pos, loading: loadingPOs } = usePurchaseOrders();
@@ -98,19 +114,26 @@ export const PurchasingHub: React.FC = () => {
   const currentData = activeTab === 'po' ? pos : activeTab === 'mr' ? mrs : activeTab === 'grn' ? combinedGrns : bills;
 
   const filtered = currentData.filter((item: any) => {
-    const term = search.toLowerCase();
-    const matchSearch = !search || [
-      item.id, 
+    const term = search.trim().toLowerCase();
+    const matchSearch = !term || [
+      item.id,
+      item.mrNo,
+      item.poNo,
+      item.grnNo,
+      item.billNo,
+      item.invoiceNo,
+      item.orderNo,
+      item.jobNo,
+      item.workOrderNo,
       item.supplierId, 
       getSupplierName(item.supplierId), 
       item.status, 
       item.requestedBy, 
-      item.invoiceNo,
       item.quoNo,
       item.customerName,
       item.leadName,
       item.vehicleNo
-    ].some(v => v?.toLowerCase().includes(term));
+    ].some(v => v && String(v).toLowerCase().includes(term));
 
     const matchStatus = statusFilter === 'all' || item.status?.toLowerCase() === statusFilter.toLowerCase();
 
@@ -377,7 +400,7 @@ export const PurchasingHub: React.FC = () => {
                 reference: woNum,
                 subtitle: 'Linked Work Order',
                 statusBadge: { label: 'WO Linked', variant: 'info' },
-                navigateUrl: '/production/work-orders'
+                navigateUrl: `/production/work-orders?search=${encodeURIComponent(woNum)}`
               });
             });
 
