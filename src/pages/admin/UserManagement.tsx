@@ -49,12 +49,24 @@ const getRoleBadgeStyle = (roleId: string) => {
     case 'manager':
       return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     case 'sales':
+    case 'sales_head':
+    case 'crm_manager':
+    case 'sales_engineer':
+    case 'tech_sales_officer':
       return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
     case 'finance':
+    case 'finance_manager':
+    case 'finance_executive':
       return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     case 'production':
+    case 'chief_designer':
+    case 'assistant_designer':
+    case 'cnc_programmer':
       return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
     case 'inventory':
+    case 'store_keeper':
+    case 'store_assistant':
+    case 'procurement_officer':
       return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     case 'hr':
       return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
@@ -542,6 +554,52 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
       return { ...m, permissions: filteredPerms };
     }).filter(m => m.permissions.length > 0);
   }, [permissionSearch]);
+
+  const renderRoleOptions = (currentRole?: string) => {
+    const groups: { label: string; roles: RoleRecord[] }[] = [
+      {
+        label: 'Sales & CRM Roles',
+        roles: roles.filter(r => ['crm_manager', 'sales_engineer', 'tech_sales_officer', 'sales_head', 'sales'].includes(r.id))
+      },
+      {
+        label: 'Stores & Purchasing Roles',
+        roles: roles.filter(r => ['store_keeper', 'store_assistant', 'procurement_officer', 'inventory'].includes(r.id))
+      },
+      {
+        label: 'Engineering & Design Roles',
+        roles: roles.filter(r => ['chief_designer', 'assistant_designer', 'cnc_programmer', 'production'].includes(r.id))
+      },
+      {
+        label: 'Finance & Accounts Roles',
+        roles: roles.filter(r => ['finance_manager', 'finance_executive', 'finance'].includes(r.id))
+      },
+      {
+        label: 'Management & Core Roles',
+        roles: roles.filter(r => ['admin', 'manager', 'hr', 'user'].includes(r.id))
+      },
+      {
+        label: 'Custom Roles',
+        roles: roles.filter(r => !['admin', 'manager', 'hr', 'user', 'crm_manager', 'sales_engineer', 'tech_sales_officer', 'sales_head', 'sales', 'store_keeper', 'store_assistant', 'procurement_officer', 'inventory', 'chief_designer', 'assistant_designer', 'cnc_programmer', 'finance_manager', 'finance_executive'].includes(r.id))
+      }
+    ];
+
+    return (
+      <>
+        {currentRole && !roles.some(r => r.id === currentRole) && (
+          <option value={currentRole}>{currentRole}</option>
+        )}
+        {groups.filter(g => g.roles.length > 0).map(g => (
+          <optgroup key={g.label} label={g.label}>
+            {g.roles.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.name} {r.isSystem ? '' : '(Custom)'} — {r.permissions.length} perms
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </>
+    );
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -1427,14 +1485,13 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
               <select
                 value={userForm.role}
                 onChange={e => setUserForm({ ...userForm, role: e.target.value })}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all font-medium"
               >
-                {roles.length === 0 && <option value="user">Standard User</option>}
-                {roles.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} {r.isSystem ? '(System Default)' : '(Custom)'} — {r.permissions.length} permissions
-                  </option>
-                ))}
+                {roles.length === 0 ? (
+                  <option value="user">Standard User</option>
+                ) : (
+                  renderRoleOptions(userForm.role)
+                )}
               </select>
             </div>
             <div>
@@ -1486,16 +1543,13 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
               <select
                 value={showEditUser.role}
                 onChange={e => setShowEditUser({ ...showEditUser, role: e.target.value })}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all font-medium"
               >
-                {!roles.some(r => r.id === showEditUser.role) && (
+                {roles.length === 0 ? (
                   <option value={showEditUser.role}>{showEditUser.roleName || showEditUser.role}</option>
+                ) : (
+                  renderRoleOptions(showEditUser.role)
                 )}
-                {roles.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} {r.isSystem ? '(System Default)' : '(Custom)'} — {r.permissions.length} permissions
-                  </option>
-                ))}
               </select>
             </div>
             <div className="flex justify-end gap-3 pt-3">

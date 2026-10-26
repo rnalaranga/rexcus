@@ -770,6 +770,139 @@ async function runDatabaseSync() {
           'production.work_orders.view', 'inventory.items.view', 'inventory.items.view_details'
         ]),
         isSystem: 1
+      },
+      // ── EXCEL PRESET ROLES ──────────────────────────────────────────
+      {
+        id: 'crm_manager',
+        name: 'CRM Manager',
+        description: 'Customer relationship leadership, customer registration, pipeline control, and quotation approvals.',
+        permissions: JSON.stringify([
+          'crm.leads.create','crm.leads.manage','crm.leads.edit','crm.leads.view','crm.customers.create','crm.customers.view',
+          'inventory.customer_grn.manage','inventory.customer_grn.create','inventory.customer_grn.edit','inventory.customer_grn.view',
+          'quotations.create','quotations.view_all','quotations.edit','quotations.view','approvals.quotations','quotations.approve',
+          'production.work_orders.create','inventory.items.view','production.work_orders.edit','production.work_orders.view',
+          'production.operations.manage','production.machining.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'sales_engineer',
+        name: 'Sales Engineer',
+        description: 'Technical sales inquiries, sample receipts, BOM drafting, and customer order processing.',
+        permissions: JSON.stringify([
+          'crm.leads.create','crm.leads.manage','crm.leads.edit','crm.leads.view','crm.customers.create','crm.customers.view',
+          'inventory.customer_grn.manage','inventory.customer_grn.create','inventory.customer_grn.edit','inventory.customer_grn.view',
+          'quotations.create','quotations.view_all','quotations.view','production.work_orders.create','inventory.items.view',
+          'production.work_orders.view','production.operations.manage','production.work_orders.edit','production.machining.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'tech_sales_officer',
+        name: 'Technical Sales Officer',
+        description: 'Technical quoting, engineering estimates, customer product drawings, and BOM review.',
+        permissions: JSON.stringify([
+          'crm.leads.create','crm.leads.manage','crm.leads.edit','crm.leads.view','crm.customers.create','crm.customers.view',
+          'inventory.customer_grn.manage','inventory.customer_grn.create','inventory.customer_grn.view',
+          'quotations.create','quotations.view_all','quotations.edit','quotations.view','production.work_orders.create',
+          'inventory.items.view','production.work_orders.view','production.operations.manage','production.work_orders.edit',
+          'production.machining.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'store_keeper',
+        name: 'Store Keeper',
+        description: 'Warehouse material receipts, tool issues, goods delivery notes, and stock movements.',
+        permissions: JSON.stringify([
+          'inventory.customer_grn.manage','inventory.customer_grn.create','inventory.customer_grn.view',
+          'production.work_orders.edit','production.work_orders.view','inventory.items.view','purchasing.mr.manage',
+          'inventory.ledger.manage','inventory.stock_ledger.view','purchasing.grn.manage','inventory.assets.manage',
+          'inventory.gatepass.manage','inventory.items.view_details','production.operations.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'store_assistant',
+        name: 'Store Assistant',
+        description: 'Assisting workshop material requests, stock handling, tool checks, and delivery notes.',
+        permissions: JSON.stringify([
+          'inventory.customer_grn.manage','inventory.customer_grn.create','inventory.customer_grn.view',
+          'production.work_orders.edit','production.work_orders.view','inventory.items.view','purchasing.mr.manage',
+          'inventory.ledger.manage','inventory.stock_ledger.view','purchasing.grn.manage','inventory.assets.manage',
+          'inventory.gatepass.manage','inventory.items.view_details','production.operations.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'procurement_officer',
+        name: 'Procurement Officer',
+        description: 'Purchase orders, supplier registration, material requisitions, and vendor goods receipts.',
+        permissions: JSON.stringify([
+          'production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
+          'inventory.items.view','purchasing.mr.manage','purchasing.grn.manage','inventory.ledger.manage',
+          'inventory.stock_ledger.view','inventory.items.create','inventory.items.edit','inventory.items.view_details',
+          'purchasing.po.manage','purchasing.suppliers.view','purchasing.suppliers.manage','finance.payables.view'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'chief_designer',
+        name: 'Chief Designer',
+        description: 'Engineering sign-off, CAD drawing approval, full BOM releases, and CNC program verification.',
+        permissions: JSON.stringify([
+          'production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
+          'approvals.work_orders','production.machining.manage','inventory.items.view','production.qc.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'assistant_designer',
+        name: 'Assistant Designer',
+        description: 'Component modeling, CAD revisions, and technical BOM preparation.',
+        permissions: JSON.stringify([
+          'production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
+          'inventory.items.view'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'cnc_programmer',
+        name: 'Programmer (CNC / CAM)',
+        description: 'CAM programming, G-code path generation, tool setup, and technical drawing inspection.',
+        permissions: JSON.stringify([
+          'production.work_orders.view','production.machining.manage','production.operations.manage'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'finance_manager',
+        name: 'Finance Manager',
+        description: 'Fiscal controllership, tax invoicing authorization, customer credit approval, and ledger entries.',
+        permissions: JSON.stringify([
+          'quotations.view','quotations.view_all','production.work_orders.view','inventory.items.view',
+          'purchasing.suppliers.view','purchasing.suppliers.manage','finance.invoices.create','finance.payments.record',
+          'finance.invoices.edit','finance.tax.manage','finance.invoices.view','finance.receivables.view',
+          'crm.customers.create','crm.customers.edit','crm.credit.request','crm.customers.view',
+          'approvals.credit_limit','finance.payables.view','inventory.gatepass.manage','finance.journals.create',
+          'finance.banking.manage','finance.accounting.view','finance.banking.view','finance.reports.view',
+          'inventory.stock_ledger.view'
+        ]),
+        isSystem: 1
+      },
+      {
+        id: 'finance_executive',
+        name: 'Finance Executive',
+        description: 'Invoicing creation, payment receipts, customer credit tracking, and general ledger journal postings.',
+        permissions: JSON.stringify([
+          'quotations.view','quotations.view_all','production.work_orders.view','inventory.items.view',
+          'purchasing.suppliers.view','purchasing.suppliers.manage','finance.invoices.create','finance.payments.record',
+          'finance.invoices.view','finance.receivables.view','finance.invoices.edit','finance.tax.manage',
+          'crm.customers.create','crm.customers.edit','crm.credit.request','crm.customers.view',
+          'finance.payables.view','inventory.gatepass.manage','finance.journals.create','finance.accounting.view',
+          'finance.banking.view','finance.reports.view','inventory.stock_ledger.view'
+        ]),
+        isSystem: 1
       }
     ];
 
