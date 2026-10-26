@@ -6,6 +6,7 @@ import { InvoicePreview } from '@/components/finance/InvoicePreview';
 import { useTaxProfiles } from '@/hooks/useFinance';
 import { useCustomers, useLeads } from '@/hooks/useData';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { printElement } from '@/lib/printElement';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -30,7 +31,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   if (!isOpen || !invoice) return null;
 
   const handlePrint = () => {
-    window.print();
+    printElement('invoice-preview', `Proforma_Invoice_${invoice.invoiceNo || invoice.id || 'PI'}`);
   };
 
   const handleDownloadPDF = () => {

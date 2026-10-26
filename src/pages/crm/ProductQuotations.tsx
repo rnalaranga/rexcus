@@ -28,6 +28,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { GitBranch } from 'lucide-react'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
+import { printElement } from '@/lib/printElement'
 // @ts-ignore
 import html2pdf from 'html2pdf.js'
 
@@ -1681,7 +1682,7 @@ export const ProductQuotations: React.FC = () => {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => window.print()}
+                onClick={() => printElement('print-section', previewData.quotation?.parsed?.quotationNo || 'Product_Quotation')}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
               >
                 Print Quotation

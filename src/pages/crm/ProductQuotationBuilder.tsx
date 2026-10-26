@@ -30,6 +30,7 @@ import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import html2pdf from 'html2pdf.js'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { printElement } from '@/lib/printElement'
 
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
@@ -2601,7 +2602,7 @@ export const ProductQuotationBuilder: React.FC = () => {
               html2pdf().set(opt).from(element).save();
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
             
-            <Button variant="primary" icon={Printer} onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>
+            <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Product_Quotation')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>
           </div>
         </div>
       </Modal>

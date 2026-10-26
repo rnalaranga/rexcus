@@ -19,6 +19,7 @@ import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
+import { printElement } from '@/lib/printElement'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -1094,7 +1095,7 @@ export const Invoices: React.FC = () => {
                     icon={Printer}
                     className="h-9 text-xs font-bold" 
                     onClick={() => {
-                      window.print();
+                      printElement('invoice-preview', `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}`);
                     }}
                   >
                     Print Invoice

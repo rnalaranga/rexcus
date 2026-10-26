@@ -28,6 +28,7 @@ import { QuotationStageSnapshotModal } from '@/components/crm/QuotationStageSnap
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
+import { printElement } from '@/lib/printElement'
 
 
 export const Quotations: React.FC = () => {
@@ -2160,7 +2161,7 @@ export const Quotations: React.FC = () => {
                 };
                 html2pdf().set(opt).from(element).save();
               }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
-              <Button variant="primary" onClick={() => window.print()}>Print Quotation</Button>
+              <Button variant="primary" onClick={() => printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation')}>Print Quotation</Button>
             </div>
           </div>
         )}

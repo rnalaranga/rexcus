@@ -156,20 +156,36 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             color: #000000 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            height: auto !important;
+            overflow: visible !important;
           }
           body * { visibility: hidden !important; }
+          /* Neutralize modal and fixed positioning wrappers on print */
+          [class*="fixed"], [class*="backdrop"], [role="dialog"], .fixed {
+            position: static !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
           #print-section, #print-section * { visibility: visible !important; }
           #print-section { 
-            position: absolute !important; 
+            position: fixed !important; 
             left: 0 !important; 
             top: 0 !important; 
             width: 100% !important; 
-            max-width: 100% !important;
+            max-width: 100% !important; 
             margin: 0 !important; 
             padding: 0 !important;
             color: #000000 !important; 
             background: #ffffff !important; 
             box-sizing: border-box !important;
+            z-index: 999999 !important;
           }
           .print-no-break {
             page-break-inside: avoid !important;

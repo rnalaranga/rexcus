@@ -1,0 +1,94 @@
+/**
+ * Utility to reliably print an HTML element in an isolated iframe.
+ * Eliminates modal positioning artifacts (fixed/flex centering), scroll offsets,
+ * and ensures the document starts cleanly at the top of an A4 page (100% width).
+ */
+export function printElement(elementId: string, docTitle: string = 'Document') {
+  const el = document.getElementById(elementId);
+  if (!el) {
+    window.print();
+    return;
+  }
+
+  // Reuse or create hidden iframe
+  let iframe = document.getElementById('__isolated_print_frame__') as HTMLIFrameElement;
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = '__isolated_print_frame__';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
+  }
+
+  const doc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (!doc) {
+    window.print();
+    return;
+  }
+
+  // Clone head styles and links to preserve Tailwind and fonts
+  const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+    .map(s => s.outerHTML)
+    .join('\n');
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${docTitle}</title>
+  ${styles}
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 8mm 8mm;
+    }
+    * {
+      box-sizing: border-box !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      color: #000000 !important;
+      width: 100% !important;
+      height: auto !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+    }
+    #print-section, #invoice-preview, #grn-print-section {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 auto !important;
+      padding: 0 !important;
+      position: static !important;
+      display: block !important;
+    }
+    .print-no-break {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+  </style>
+</head>
+<body>
+  ${el.outerHTML}
+</body>
+</html>`);
+  doc.close();
+
+  // Allow styles, fonts, and images a brief moment to render before opening print dialog
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (e) {
+      window.print();
+    }
+  }, 250);
+}

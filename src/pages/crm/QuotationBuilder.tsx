@@ -20,6 +20,7 @@ import { useDialog } from '@/components/ui/DialogProvider'
 import html2pdf from 'html2pdf.js'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { printElement } from '@/lib/printElement'
 
 function toWords(num: number): string {
   if (num === 0) return 'Zero';
@@ -2959,7 +2960,7 @@ export const QuotationBuilder: React.FC = () => {
               html2pdf().set(opt).from(element).save();
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2">Export PDF</Button>
             
-            <Button variant="primary" icon={Printer} onClick={() => window.print()}>Print Quotation</Button>
+            <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Quotation')}>Print Quotation</Button>
           </div>
         </div>
       </Modal>
