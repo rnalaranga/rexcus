@@ -54,5 +54,6 @@ jobs:
             # 5. PM2 Backend Process එක Restart කිරීම
             echo "Restarting backend via PM2..."
             pm2 restart rexnw-backend --update-env || pm2 restart all
+            pm2 status
 
             echo "=== Rexcus ERP Deployment Completed Successfully! ==="

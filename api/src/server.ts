@@ -27,6 +27,23 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+function findBinaryRecursively(dir: string, binaryName: string): string | null {
+  if (!fs.existsSync(dir)) return null;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findBinaryRecursively(fullPath, binaryName);
+        if (found) return found;
+      } else if (entry.name === binaryName) {
+        return fullPath;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
 let cachedChromePath: string | null = null;
 
 async function getChromeExecutablePath(): Promise<string | null> {
@@ -59,31 +76,30 @@ async function getChromeExecutablePath(): Promise<string | null> {
 
   // Check via which on Unix
   try {
-    const whichRes = execSync('which chromium || which chromium-browser || which google-chrome || which google-chrome-stable', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    const whichRes = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null || which google-chrome-stable 2>/dev/null').toString().trim();
     if (whichRes && fs.existsSync(whichRes)) {
       cachedChromePath = whichRes;
       return whichRes;
     }
   } catch (e) {}
 
-  // Check custom chrome-bin directories
+  // Check custom chrome-bin directories using recursive pure node search
   const checkDirs = [
     path.resolve(process.cwd(), 'chrome-bin'),
     path.resolve(process.cwd(), 'api/chrome-bin'),
     path.resolve(__dirname, '../chrome-bin'),
-    path.resolve(__dirname, '../../chrome-bin')
+    path.resolve(__dirname, '../../chrome-bin'),
+    '/var/www/rexnw/api/chrome-bin',
+    '/var/www/rexnw/chrome-bin',
+    path.join(process.env.HOME || '/root', '.cache/puppeteer')
   ];
+
+  const binName = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
   for (const dir of checkDirs) {
-    if (fs.existsSync(dir)) {
-      try {
-        const platform = detectBrowserPlatform();
-        const binName = platform?.includes('win') ? 'chrome.exe' : 'chrome';
-        const found = execSync(`find "${dir}" -type f -name "${binName}" 2>/dev/null | head -n 1`).toString().trim();
-        if (found && fs.existsSync(found)) {
-          cachedChromePath = found;
-          return found;
-        }
-      } catch (e) {}
+    const found = findBinaryRecursively(dir, binName);
+    if (found && fs.existsSync(found)) {
+      cachedChromePath = found;
+      return found;
     }
   }
 
@@ -256,6 +272,34 @@ app.post('/api/export-pdf', async (req, res) => {
     console.error('PDF export error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate PDF' });
   }
+});
+
+app.get('/api/pdf-diagnostics', async (req, res) => {
+  const result: any = {
+    platform: process.platform,
+    arch: process.arch,
+    cwd: process.cwd(),
+    dirname: __dirname,
+    cachedChromePath,
+    env: {
+      CHROME_BIN: process.env.CHROME_BIN,
+      PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH
+    }
+  };
+
+  try {
+    result.whichChromium = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null || which google-chrome-stable 2>/dev/null').toString().trim();
+  } catch (e: any) {
+    result.whichChromium = 'none';
+  }
+
+  try {
+    result.resolvedPath = await getChromeExecutablePath();
+  } catch (e: any) {
+    result.resolveError = e.message;
+  }
+
+  res.json(result);
 });
 
 
