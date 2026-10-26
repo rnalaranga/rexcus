@@ -18,24 +18,35 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
+            set -e
+            echo "=== Rexcus Deployment Started ==="
+            export NODE_OPTIONS="--max-old-space-size=4096"
+
             # 1. Project Directory එකට යෑම
             cd /var/www/rexnw
 
-            # 2. GitHub එකෙන් අලුත්ම Code ටික Pull කිරීම
-            git pull origin main
+            # 2. Local modifications discard කර GitHub එකෙන් අලුත්ම Code එකට sync කිරීම
+            echo "Fetching latest changes from origin/main..."
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
 
             # 3. Frontend Build කිරීම
+            echo "Installing root dependencies..."
             npm install
+            echo "Building frontend..."
             npm run build
 
             # 4. Backend Dependencies Update කිරීම (api folder එක ඇත්නම්)
             if [ -d "api" ]; then
+              echo "Installing API dependencies..."
               cd api
               npm install
               cd ..
             fi
 
             # 5. PM2 Backend Process එක Restart කිරීම
-            pm2 restart rexnw-backend --update-env
+            echo "Restarting backend via PM2..."
+            pm2 restart rexnw-backend --update-env || pm2 restart all
 
-            echo "Rexcus ERP Deployment Completed Successfully!"
+            echo "=== Rexcus ERP Deployment Completed Successfully! ==="
