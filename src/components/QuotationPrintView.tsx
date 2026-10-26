@@ -177,12 +177,24 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           #print-section { 
             position: static !important; 
             width: 100% !important; 
-            max-width: 794px !important; 
+            max-width: 100% !important; 
             margin: 0 auto !important; 
             padding: 0 !important; 
             color: #000000 !important; 
             background: #ffffff !important; 
             box-sizing: border-box !important;
+            display: block !important;
+            min-height: 0 !important;
+            height: auto !important;
+          }
+          #print-section > div {
+            min-height: 0 !important;
+            height: auto !important;
+            display: block !important;
+          }
+          #print-section .table-body-container {
+            min-height: 0 !important;
+            flex: none !important;
             display: block !important;
           }
           .print-no-break {
@@ -193,7 +205,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
       `}</style>
       <div 
         id="print-section" 
-        className="mx-auto w-full bg-white text-black leading-snug flex flex-col shadow-sm" 
+        className="mx-auto w-full bg-white text-black leading-snug flex flex-col shadow-sm print:shadow-none print:m-0 print:p-0 print:border-none print:w-full print:max-w-none print:min-h-0 print:h-auto" 
         style={{ 
           fontFamily: 'Arial, Helvetica, sans-serif', 
           maxWidth: '794px', 
@@ -203,7 +215,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           boxSizing: 'border-box' 
         }}
       >
-        <div className="border border-black flex flex-col flex-1 justify-between" style={{ minHeight: '1040px' }}>
+        <div className="border border-black flex flex-col flex-1 justify-between print:min-h-0 print:h-auto print:block print:border-black" style={{ minHeight: '1040px' }}>
           
           {/* Header */}
           <div className="flex p-3 border-b border-black items-center print-no-break">
@@ -346,7 +358,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           </div>
 
           {/* Table Body - Sizes naturally to avoid pushing content to page 2 */}
-          <div className="min-h-[200px] flex-1 text-[11.5px] bg-white flex flex-col justify-start">
+          <div className="table-body-container min-h-[160px] flex-1 text-[11.5px] bg-white flex flex-col justify-start print:min-h-0 print:flex-none print:block">
             <div className="flex flex-col">
               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
                 const { titleLine, detailLines } = cleanDescLines(item.desc || '');

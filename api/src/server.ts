@@ -1,4 +1,6 @@
 import puppeteer from 'puppeteer-core';
+import { execSync } from 'child_process';
+import { resolveBuildId, Browser, detectBrowserPlatform, install } from '@puppeteer/browsers';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -25,7 +27,13 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-function getChromeExecutablePath(): string | null {
+let cachedChromePath: string | null = null;
+
+async function getChromeExecutablePath(): Promise<string | null> {
+  if (cachedChromePath && fs.existsSync(cachedChromePath)) {
+    return cachedChromePath;
+  }
+
   const possiblePaths = [
     process.env.CHROME_BIN,
     process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -36,11 +44,72 @@ function getChromeExecutablePath(): string | null {
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
     '/usr/bin/chromium-browser',
-    '/usr/bin/chromium'
+    '/usr/bin/chromium',
+    '/snap/bin/chromium',
+    '/usr/local/bin/chromium',
+    '/usr/local/bin/chrome'
   ];
+
   for (const p of possiblePaths) {
-    if (p && fs.existsSync(p)) return p;
+    if (p && fs.existsSync(p)) {
+      cachedChromePath = p;
+      return p;
+    }
   }
+
+  // Check via which on Unix
+  try {
+    const whichRes = execSync('which chromium || which chromium-browser || which google-chrome || which google-chrome-stable', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    if (whichRes && fs.existsSync(whichRes)) {
+      cachedChromePath = whichRes;
+      return whichRes;
+    }
+  } catch (e) {}
+
+  // Check custom chrome-bin directories
+  const checkDirs = [
+    path.resolve(process.cwd(), 'chrome-bin'),
+    path.resolve(process.cwd(), 'api/chrome-bin'),
+    path.resolve(__dirname, '../chrome-bin'),
+    path.resolve(__dirname, '../../chrome-bin')
+  ];
+  for (const dir of checkDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const platform = detectBrowserPlatform();
+        const binName = platform?.includes('win') ? 'chrome.exe' : 'chrome';
+        const found = execSync(`find "${dir}" -type f -name "${binName}" 2>/dev/null | head -n 1`).toString().trim();
+        if (found && fs.existsSync(found)) {
+          cachedChromePath = found;
+          return found;
+        }
+      } catch (e) {}
+    }
+  }
+
+  // Auto-install stable Chrome if missing
+  try {
+    const platform = detectBrowserPlatform();
+    if (platform) {
+      const installDir = path.resolve(process.cwd(), 'chrome-bin');
+      console.log(`[Rex PDF] Auto-installing stable Chrome for platform ${platform} into ${installDir}...`);
+      const buildId = await resolveBuildId(Browser.CHROME, platform, 'stable');
+      const installed = await install({
+        browser: Browser.CHROME,
+        buildId,
+        cacheDir: installDir,
+        platform
+      });
+      if (installed && installed.executablePath && fs.existsSync(installed.executablePath)) {
+        console.log(`[Rex PDF] Chrome installed successfully: ${installed.executablePath}`);
+        cachedChromePath = installed.executablePath;
+        return installed.executablePath;
+      }
+    }
+  } catch (err: any) {
+    console.error('[Rex PDF] Failed auto-installing Chrome:', err.message);
+  }
+
   return null;
 }
 
@@ -63,7 +132,7 @@ app.post('/api/export-pdf', async (req, res) => {
       return res.status(400).json({ error: 'HTML content is required' });
     }
 
-    const chromePath = getChromeExecutablePath();
+    const chromePath = await getChromeExecutablePath();
     if (!chromePath) {
       return res.status(500).json({ error: 'Chrome/Chromium executable not found on server' });
     }
