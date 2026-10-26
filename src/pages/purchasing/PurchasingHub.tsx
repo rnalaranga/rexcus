@@ -13,6 +13,7 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
@@ -810,20 +811,15 @@ export const PurchasingHub: React.FC = () => {
           {activeTab !== 'mr' && (
             <>
               <div className="w-px h-4 bg-theme-subtle mx-1 hidden sm:block" />
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-muted uppercase tracking-wider">Vendor:</span>
-                <select
+              <div className="flex items-center gap-1.5 w-52">
+                <SupplierAutocomplete
                   value={supplierFilter}
-                  onChange={e => setSupplierFilter(e.target.value)}
-                  className="bg-surface border border-theme-subtle rounded px-2.5 py-1 text-primary text-xs focus:border-rex-500 outline-none max-w-[180px]"
-                >
-                  <option value="all">All Vendors ({suppliers.length})</option>
-                  {suppliers.map((s: any) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={sId => setSupplierFilter(sId || 'all')}
+                  suppliers={suppliers}
+                  allOptionLabel={`All Vendors (${suppliers.length})`}
+                  placeholder="Filter by vendor..."
+                  className="text-xs py-1"
+                />
               </div>
             </>
           )}

@@ -4,6 +4,7 @@ import { ArrowLeft, Save, Receipt, Wallet, Calendar, Percent } from 'lucide-reac
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { useAccounts, useTaxes } from '@/hooks/useFinance';
 import { useSuppliers } from '@/hooks/useData';
 import { createJournal } from '@/lib/api';
@@ -99,11 +100,12 @@ export const ExpenseBuilder: React.FC = () => {
              </div>
              <div className="md:col-span-1">
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1">Supplier (Optional)</label>
-                <SearchableSelect
+                <SupplierAutocomplete
                   value={supplierId}
                   onChange={setSupplierId}
-                  placeholder="-- Select a Supplier --"
-                  options={[{ value: '', label: 'None / Not Applicable' }, ...suppliers.map(s => ({ value: s.id, label: s.name }))]}
+                  suppliers={suppliers}
+                  placeholder="Type to search vendor / supplier..."
+                  className="text-xs py-1.5"
                 />
              </div>
              <div className="md:col-span-1">

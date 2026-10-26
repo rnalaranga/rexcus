@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
 import { changeBomMaterial, reportMaterialShortage } from '@/lib/api';
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 
 interface Props {
   isOpen: boolean;
@@ -265,18 +266,15 @@ export const WorkOrderMaterialSubstituteModal: React.FC<Props> = ({
 
           {!useCustomMaterial ? (
             <div>
-              <select
+              <ProductAutocomplete
                 value={selectedInvId}
-                onChange={e => handleSelectInventory(e.target.value)}
-                className="w-full input-base text-xs cursor-pointer font-medium"
-              >
-                <option value="">-- Choose Alternative Material from Stores Catalog --</option>
-                {inventory.map(inv => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.name} (Stock: {inv.quantity || 0} {inv.unit || 'pcs'}) {inv.sku ? `[${inv.sku}]` : ''} - {formatCurrency(inv.unitCost || 0)}
-                  </option>
-                ))}
-              </select>
+                onChange={(val, inv) => {
+                  handleSelectInventory(val);
+                }}
+                products={inventory}
+                placeholder="Type to search alternative material / SKU..."
+                className="text-xs py-1.5"
+              />
 
               {selectedInvItem && (
                 <div className="mt-2 p-2 bg-indigo-500/10 border border-indigo-500/20 text-[11px] flex items-center justify-between">

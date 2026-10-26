@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
 import { adjustWorkOrderFullBom } from '@/lib/api';
+import { useInventory } from '@/hooks/useData';
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 
 export interface BomAdjustPart {
   partId?: string | number;
@@ -76,6 +78,7 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [searchPartQuery, setSearchPartQuery] = useState<string>('');
   const [filterMode, setFilterMode] = useState<'all' | 'mats' | 'ops'>('all');
+  const { data: inventory = [] } = useInventory();
   const partListRef = useRef<HTMLDivElement>(null);
 
   // Initialize form state when modal opens
@@ -965,12 +968,18 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
                           <tr key={mat.id || mIdx} className="hover:bg-surface2/30 transition-colors">
                             <td className="py-2 px-3 font-mono text-[11px] text-muted">{mIdx + 1}</td>
                             <td className="py-1 px-3">
-                              <input
-                                type="text"
+                              <ProductAutocomplete
                                 value={mat.material}
-                                onChange={e => handleUpdateAutoMat(mIdx, 'material', e.target.value)}
-                                placeholder="e.g. EN8, SS304, MS, Aluminum..."
-                                className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle focus:border-primary focus:outline-hidden font-medium text-primary rounded-none"
+                                onChange={(val, inv) => {
+                                  handleUpdateAutoMat(mIdx, 'material', inv ? inv.name : val);
+                                  if (inv) {
+                                    if (inv.uom) handleUpdateAutoMat(mIdx, 'unit', inv.uom);
+                                    if (inv.unitCost) handleUpdateAutoMat(mIdx, 'unitPrice', Number(inv.unitCost));
+                                  }
+                                }}
+                                products={inventory}
+                                placeholder="Search raw material / grade..."
+                                className="text-xs py-1"
                               />
                             </td>
                             <td className="py-1 px-3">
@@ -1105,12 +1114,18 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
                           <tr key={mat.id || mIdx} className="hover:bg-surface2/30 transition-colors">
                             <td className="py-2 px-3 font-mono text-[11px] text-muted">{mIdx + 1}</td>
                             <td className="py-1 px-3">
-                              <input
-                                type="text"
+                              <ProductAutocomplete
                                 value={mat.material}
-                                onChange={e => handleUpdateManualMat(mIdx, 'material', e.target.value)}
-                                placeholder="e.g. M12x50 Allen Bolt, 6205-2RS Bearing..."
-                                className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle focus:border-primary focus:outline-hidden font-medium text-primary rounded-none"
+                                onChange={(val, inv) => {
+                                  handleUpdateManualMat(mIdx, 'material', inv ? inv.name : val);
+                                  if (inv) {
+                                    if (inv.uom) handleUpdateManualMat(mIdx, 'unit', inv.uom);
+                                    if (inv.unitCost) handleUpdateManualMat(mIdx, 'unitPrice', Number(inv.unitCost));
+                                  }
+                                }}
+                                products={inventory}
+                                placeholder="Search hardware / component..."
+                                className="text-xs py-1"
                               />
                             </td>
                             <td className="py-1 px-3">

@@ -1241,16 +1241,14 @@ export const Invoices: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Customer</label>
-                <select
+                <CustomerAutocomplete
                   value={newInvoiceData.leadId}
-                  onChange={e => setNewInvoiceData({ ...newInvoiceData, leadId: e.target.value })}
-                  className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
-                >
-                  <option value="">Select Customer...</option>
-                  {leads.map((l: any) => (
-                    <option key={l.id} value={l.id}>{l.name} - {l.company}</option>
-                  ))}
-                </select>
+                  onChange={(cId) => setNewInvoiceData({ ...newInvoiceData, leadId: cId })}
+                  customers={customers}
+                  leads={leads}
+                  placeholder="Type to search customer (name, company)..."
+                  className="py-2 text-xs"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>

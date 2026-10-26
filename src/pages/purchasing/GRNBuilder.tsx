@@ -14,6 +14,8 @@ import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
 import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
@@ -663,18 +665,13 @@ export const GRNBuilder: React.FC = () => {
                       {supplierName}
                     </div>
                   ) : (
-                    <select
+                    <SupplierAutocomplete
                       value={supplierId}
-                      onChange={e => setSupplierId(e.target.value)}
-                      className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-semibold text-secondary focus:border-primary"
-                    >
-                      <option value="">-- Select Supplier / Vendor --</option>
-                      {suppliers?.map((s: any) => (
-                        <option key={s.id} value={s.id}>
-                          {s.company ? `${s.company} (${s.name})` : s.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={sId => setSupplierId(sId)}
+                      suppliers={suppliers}
+                      placeholder="Type to search vendor / supplier..."
+                      className="text-xs py-1.5"
+                    />
                   )}
                 </div>
 
@@ -1251,18 +1248,18 @@ export const GRNBuilder: React.FC = () => {
             <label className="block text-xs font-bold text-muted uppercase mb-1">
               Select From Inventory (Optional)
             </label>
-            <select
+            <ProductAutocomplete
               value={selectedInvId}
-              onChange={e => handleSelectInventoryItem(e.target.value)}
-              className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium focus:border-primary"
-            >
-              <option value="">-- Choose Existing Item or Type Custom Below --</option>
-              {inventory?.map((inv: any) => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.name || inv.desc || inv.item_name} ({inv.sku ? `SKU: ${inv.sku}` : `ID: ${inv.id}`}) - Stock: {inv.quantity || 0} {inv.unit || 'Nos'}
-                </option>
-              ))}
-            </select>
+              onChange={(val, inv) => {
+                if (val) handleSelectInventoryItem(val);
+                else {
+                  setSelectedInvId('');
+                }
+              }}
+              products={inventory}
+              placeholder="Search existing inventory stock or enter custom below..."
+              className="text-xs py-1.5"
+            />
           </div>
 
           <div>

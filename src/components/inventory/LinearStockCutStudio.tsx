@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useStockRemnants } from '@/hooks/useData'
@@ -757,18 +758,13 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
                   Material / Raw Stock Item
                 </label>
                 <div className="flex gap-2">
-                  <select
-                    className="w-full input-base text-xs font-medium"
+                  <ProductAutocomplete
                     value={selectedInventoryId}
-                    onChange={(e) => handleSelectInventory(e.target.value)}
-                  >
-                    <option value="">-- Custom / Direct Linear Item --</option>
-                    {linearItems.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} ({item.quantity || 0} {item.uom || 'bars'} in stock)
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => handleSelectInventory(val)}
+                    products={linearItems.length > 0 ? linearItems : inventoryList}
+                    placeholder="Type to search material / bar stock..."
+                    className="text-xs py-1.5"
+                  />
                 </div>
               </div>
 

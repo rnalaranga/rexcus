@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useGRNs, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { createBill } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
@@ -300,19 +301,18 @@ export const BillBuilder: React.FC = () => {
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1">
                   Supplier / Vendor *
                 </label>
-                <select 
-                  value={supplierId} 
-                  onChange={e => {
-                    setSupplierId(e.target.value);
-                    if (selectedPO && selectedPO.supplierId !== e.target.value) {
+                <SupplierAutocomplete
+                  value={supplierId}
+                  onChange={sId => {
+                    setSupplierId(sId);
+                    if (selectedPO && selectedPO.supplierId !== sId) {
                       setPoId('');
                     }
-                  }} 
-                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium focus:border-amber-500"
-                >
-                  <option value="">-- Choose Supplier --</option>
-                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
-                </select>
+                  }}
+                  suppliers={suppliers}
+                  placeholder="Type to search vendor / supplier..."
+                  className="text-xs py-1.5"
+                />
               </div>
 
               <div>

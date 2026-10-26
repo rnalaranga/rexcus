@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/utils'
 import { createWorkOrder, updateQuotationStatus } from '@/lib/api'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { QuotationAutocomplete } from '@/components/ui/QuotationAutocomplete'
+import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
 
 interface WorkOrderCreateModalProps {
   isOpen: boolean
@@ -480,12 +481,18 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
             {bomRows.map((bom, idx) => (
               <div key={idx} className="flex items-center gap-2 p-2 bg-surface2/30 rounded-none border border-theme-subtle">
                 <div className="flex-1">
-                  <input 
-                    type="text" 
-                    value={bom.material} 
-                    onChange={e => updateBomRow(idx, 'material', e.target.value)} 
-                    placeholder="Material name / Bar stock specification"
-                    className="w-full input-base text-xs py-1.5"
+                  <ProductAutocomplete
+                    value={bom.material}
+                    onChange={(val, inv) => {
+                      updateBomRow(idx, 'material', inv ? inv.name : val);
+                      if (inv) {
+                        if (inv.uom) updateBomRow(idx, 'unit', inv.uom);
+                        if (inv.unitCost) updateBomRow(idx, 'unitCost', Number(inv.unitCost));
+                      }
+                    }}
+                    products={inventory}
+                    placeholder="Search material / Bar stock specification..."
+                    className="text-xs py-1"
                   />
                 </div>
                 <div className="w-20">

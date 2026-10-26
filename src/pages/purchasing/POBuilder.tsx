@@ -15,6 +15,7 @@ import { useMaterialRequests, usePurchaseOrders, useBills } from '@/hooks/usePur
 import { createPO, updatePO, fetchPOs } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
 // @ts-ignore
@@ -639,10 +640,13 @@ export const POBuilder: React.FC = () => {
                         <Plus size={11} /> New Vendor
                       </button>
                     </div>
-                    <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm font-medium focus:border-primary">
-                      <option value="">-- Choose Supplier --</option>
-                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
+                    <SupplierAutocomplete 
+                      value={supplierId} 
+                      onChange={sId => setSupplierId(sId)} 
+                      suppliers={suppliers}
+                      placeholder="Type to search vendor / supplier..."
+                      className="text-xs py-1.5"
+                    />
                   </div>
                   {supplierId && (
                     <div className="bg-surface/50 p-3 rounded-lg border border-theme-subtle text-xs space-y-2 font-medium">
