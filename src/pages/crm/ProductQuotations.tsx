@@ -35,7 +35,7 @@ export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
   const { toast, showConfirm } = useDialog()
   const { user, can } = useAuth()
-  const canApprove = can('approvals.quotations')
+  const canApprove = can('approvals.quotations') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
   const canViewAll = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager' || (user?.permissions?.includes('*') ?? false)
   const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all')
   const { settings } = useSettings()

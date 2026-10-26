@@ -265,8 +265,8 @@ export default function Approvals() {
     }
   }
 
-  const canApproveQuotations = can('approvals.quotations')
-  const canApproveCredit = can('approvals.credit_limit')
+  const canApproveQuotations = can('approvals.quotations') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
+  const canApproveCredit = can('approvals.credit_limit') || user?.role === 'admin' || user?.role === 'manager'
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">

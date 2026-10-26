@@ -198,6 +198,8 @@ export const QuotationBuilder: React.FC = () => {
   const [templateSaveName, setTemplateSaveName] = useState('')
   const [templateSaveDesc, setTemplateSaveDesc] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [rejectModalOpen, setRejectModalOpen] = useState(false)
+  const [rejectReasonInput, setRejectReasonInput] = useState('')
   const navigate = useNavigate()
   const { showConfirm } = useDialog()
   const [useAiPolish, setUseAiPolish] = useState(true)
@@ -210,7 +212,7 @@ export const QuotationBuilder: React.FC = () => {
   const { data: inventory } = useInventory()
   const { settings } = useSettings()
   const { user, can } = useAuth()
-  const canApprove = can ? can('approvals.quotations') : false
+  const canApprove = (can ? can('approvals.quotations') : false) || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
   const { data: currencies } = useCurrencies()
   const { data: taxes } = useTaxes()
   const [currency, setCurrency] = useState('LKR')
@@ -1616,16 +1618,9 @@ export const QuotationBuilder: React.FC = () => {
                         size="sm"
                         icon={XCircle}
                         className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/30"
-                        onClick={async () => {
-                          const reason = prompt('Enter rejection reason:');
-                          if (!reason) return;
-                          try {
-                            await rejectQuotation(currentQuote.id, reason);
-                            showToast('error', 'Quotation rejected');
-                            await loadVersions();
-                          } catch(err: any) {
-                            showToast('error', err?.message || 'Failed to reject');
-                          }
+                        onClick={() => {
+                          setRejectReasonInput('');
+                          setRejectModalOpen(true);
                         }}
                       >
                         Reject
@@ -3240,6 +3235,56 @@ export const QuotationBuilder: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Reject Quotation Reason Modal */}
+      {rejectModalOpen && (
+        <Modal
+          isOpen={rejectModalOpen}
+          onClose={() => setRejectModalOpen(false)}
+          title="Reject Quotation"
+          size="sm"
+        >
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-secondary">
+              Please enter the reason for rejecting this quotation. The creator will see this note to make necessary corrections.
+            </p>
+            <textarea
+              value={rejectReasonInput}
+              onChange={e => setRejectReasonInput(e.target.value)}
+              placeholder="e.g. Margins too low, incorrect material spec, discount exceeds threshold..."
+              className="w-full h-24 p-2.5 text-xs bg-surface border border-theme-subtle rounded-lg focus:outline-none focus:border-red-500 font-sans resize-none"
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRejectModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={!rejectReasonInput.trim()}
+                onClick={async () => {
+                  if (!currentQuote || !rejectReasonInput.trim()) return;
+                  try {
+                    await rejectQuotation(currentQuote.id, rejectReasonInput.trim());
+                    showToast('error', 'Quotation rejected with reason');
+                    setRejectModalOpen(false);
+                    await loadVersions();
+                  } catch(err: any) {
+                    showToast('error', err?.message || 'Failed to reject');
+                  }
+                }}
+              >
+                Confirm Rejection
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
     </div>
   )

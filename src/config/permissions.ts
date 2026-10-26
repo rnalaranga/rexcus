@@ -190,7 +190,18 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   'crm.leads.create': ['crm.leads.create', 'crm.leads.manage'],
   'crm.leads.edit': ['crm.leads.edit', 'crm.leads.manage'],
   'crm.leads.delete': ['crm.leads.delete', 'crm.leads.manage'],
-  'crm.leads.manage': ['crm.leads.manage', 'crm.leads.view']
+  'crm.leads.manage': ['crm.leads.manage', 'crm.leads.view'],
+  'admin.approvals.manage': [
+    'admin.approvals.manage',
+    'approvals.quotations',
+    'quotations.approve',
+    'approvals.discounts',
+    'approvals.credit_limit',
+    'approvals.purchase_orders',
+    'approvals.material_requests',
+    'approvals.bills_payments',
+    'approvals.work_orders'
+  ]
 };
 
 export const hasPermission = (
@@ -199,6 +210,30 @@ export const hasPermission = (
   userRole?: string
 ): boolean => {
   if (userRole === 'admin') return true;
+
+  // CRM Manager and Head of Sales have complete CRM and quotation approval rights
+  if (userRole === 'crm_manager' || userRole === 'sales_head') {
+    if (
+      requiredPermission.startsWith('crm.') ||
+      requiredPermission.startsWith('quotations.') ||
+      requiredPermission.startsWith('approvals.quotations') ||
+      requiredPermission === 'admin.approvals.manage' ||
+      requiredPermission === 'approvals.discounts' ||
+      requiredPermission === 'inventory.customer_grn.manage' ||
+      requiredPermission === 'inventory.customer_grn.view' ||
+      requiredPermission === 'inventory.items.view'
+    ) {
+      return true;
+    }
+  }
+
+  // General Manager has broad operational rights
+  if (userRole === 'manager') {
+    if (!requiredPermission.startsWith('admin.database') && !requiredPermission.startsWith('admin.users')) {
+      return true;
+    }
+  }
+
   if (!userPermissions || !Array.isArray(userPermissions)) return false;
   if (userPermissions.includes('*')) return true;
 
