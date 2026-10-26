@@ -4,7 +4,7 @@ import { Printer, Download, X, FileText, Factory } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { WorkOrderPrintView } from './WorkOrderPrintView';
 // @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { exportPdf } from '@/lib/exportPdf';
 
 interface WorkOrderPrintModalProps {
   workOrder: any | null;
@@ -27,17 +27,8 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
     window.print();
   };
 
-  const handleDownloadPDF = () => {
-    const el = document.getElementById('work-order-print-section');
-    if (!el) return;
-    const opt: any = {
-      margin: [5, 5, 5, 5],
-      filename: `Job_Traveler_${workOrder.id || 'WO'}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().set(opt).from(el).save();
+  const handleDownloadPDF = async () => {
+    await exportPdf('work-order-print-section', `Job_Traveler_${workOrder.orderNo || workOrder.id || 'WO'}.pdf`);
   };
 
   return createPortal(

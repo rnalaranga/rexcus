@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, numberToWords } from "@/lib/utils";
 // @ts-ignore
-import html2pdf from "html2pdf.js";
+import { exportPdf } from '@/lib/exportPdf';
 
 export interface PaymentReceiptData {
   id?: string;
@@ -89,17 +89,8 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
   const companyVat = settings?.vat_number || settings?.company_vat || settings?.tin || "102837490-7000";
 
   // PDF Export
-  const handleExportPDF = () => {
-    const el = document.getElementById("receipt-print-section");
-    if (!el) return;
-    const opt: any = {
-      margin: 0,
-      filename: `Payment_Receipt_${receipt.receiptNo}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
-    };
-    html2pdf().set(opt).from(el).save();
+  const handleExportPDF = async () => {
+    await exportPdf('receipt-print-section', `Payment_Receipt_${receipt.receiptNo}.pdf`);
   };
 
   // Browser Print

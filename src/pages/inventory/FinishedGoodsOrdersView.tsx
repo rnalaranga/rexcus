@@ -29,7 +29,7 @@ import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProfor
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 // @ts-ignore
-import html2pdf from 'html2pdf.js'
+import { exportPdf } from '@/lib/exportPdf'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -2149,17 +2149,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   variant="ghost"
                   size="sm"
                   icon={Download}
-                  onClick={() => {
-                    const el = document.getElementById('sales-order-print-section');
-                    if (!el) return;
-                    const opt: any = {
-                      margin: 0,
-                      filename: `Sales_Order_${printOrder.orderNo}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2, useCORS: true },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    };
-                    html2pdf().set(opt).from(el).save();
+                  onClick={async () => {
+                    await exportPdf('sales-order-print-section', `Sales_Order_${printOrder.orderNo}.pdf`);
                   }}
                   className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
                 >
@@ -2206,17 +2197,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   variant="ghost"
                   size="sm"
                   icon={Download}
-                  onClick={() => {
-                    const el = document.getElementById('gatepass-print-section');
-                    if (!el) return;
-                    const opt: any = {
-                      margin: 0,
-                      filename: `Gate_Pass_${printGatePass.id}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2, useCORS: true },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    };
-                    html2pdf().set(opt).from(el).save();
+                  onClick={async () => {
+                    await exportPdf('gatepass-print-section', `Gate_Pass_${printOrder.orderNo}.pdf`);
                   }}
                   className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
                 >

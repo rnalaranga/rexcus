@@ -17,8 +17,7 @@ import { useQuotations, useLeads, useCustomers, useInvoices, useFinishedGoodsOrd
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
+import { exportPdf } from '@/lib/exportPdf'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
 import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
@@ -1041,7 +1040,7 @@ export const Quotations: React.FC = () => {
             )}
 
             {/* Approvals Section */}
-            {((latestMain?.status === 'Draft' || !latestMain?.status || latestMain?.status === 'Rejected') || (canApprove && (latestMain?.status === 'Pending Approval' || latestMain?.status === 'Draft'))) && (
+            {latestMain?.type !== 'draft' && ((latestMain?.status === 'Draft' || !latestMain?.status || latestMain?.status === 'Rejected') || (canApprove && latestMain?.status === 'Pending Approval')) && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                 <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
@@ -1068,7 +1067,7 @@ export const Quotations: React.FC = () => {
                   </button>
                 )}
 
-                {canApprove && (latestMain?.status === 'Pending Approval' || latestMain?.status === 'Draft') && (
+                {canApprove && latestMain?.status === 'Pending Approval' && (
                   <button
                     type="button"
                     onClick={async () => {
@@ -2182,19 +2181,9 @@ export const Quotations: React.FC = () => {
               >
                 Email Quotation
               </Button>
-              <Button variant="ghost" onClick={() => {
-                const element = document.getElementById('print-section');
-                if (!element) return;
+              <Button variant="ghost" onClick={async () => {
                 const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
-                const opt: any = {
-                  margin: [6, 8, 6, 8],
-                  filename: `Quotation_${quoteNo}.pdf`,
-                  image: { type: 'jpeg', quality: 0.98 },
-                  html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                  jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                  pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                };
-                html2pdf().set(opt).from(element).save();
+                await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
               }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
               <Button variant="primary" onClick={() => printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation')}>Print Quotation</Button>
             </div>
@@ -2781,17 +2770,9 @@ export const Quotations: React.FC = () => {
                settings={settings}
             />
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
-              <Button variant="ghost" onClick={() => {
-                const element = document.getElementById('grn-print-section');
-                if (!element) return;
-                const opt: any = {
-                  margin: 0.5,
-                  filename: `GRN-${printGrnData.grn.id}.pdf`,
-                  image: { type: 'jpeg', quality: 0.98 },
-                  html2canvas: { scale: 2, useCORS: true },
-                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-                };
-                html2pdf().set(opt).from(element).save();
+              <Button variant="ghost" onClick={async () => {
+                const grnNo = printGrnData?.grn?.id || 'GRN';
+                await exportPdf('grn-print-section', `Customer_GRN_${grnNo}.pdf`);
               }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
               <Button variant="primary" onClick={() => window.print()}>Print</Button>
             </div>

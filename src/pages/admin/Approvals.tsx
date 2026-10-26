@@ -84,9 +84,9 @@ export default function Approvals() {
     return quotations.filter((q: any) => {
       let parsed: any = {}
       try { parsed = typeof q.data === 'string' ? JSON.parse(q.data || '{}') : (q.data || {}) } catch (e) {}
-      const val = Number(q.totalAmount || parsed.custTotals?.total || parsed.total || 0)
-      const isPending = q.status === 'Pending Approval' || (q.status === 'Draft' && val > 0)
-      if (!isPending) return false
+      // Drafts should NEVER be in approvals
+      if (q.type === 'draft' || q.type === 'product_draft' || q.status === 'Draft' || !q.status) return false;
+      if (q.status !== 'Pending Approval') return false;
       if (!search.trim()) return true
       const term = search.toLowerCase()
       const quoNo = (parsed.quotationNo || q.docNo || q.id || '').toLowerCase()

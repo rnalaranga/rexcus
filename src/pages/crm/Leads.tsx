@@ -2531,22 +2531,10 @@ export const Leads: React.FC = () => {
                 <Button 
                   variant="ghost" 
                   size="sm"
-                  onClick={() => {
-                    const element = document.getElementById('print-section');
-                    if (!element) return;
+                  onClick={async () => {
                     const quoteNo = previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || 'Quote';
-                    import('html2pdf.js').then((html2pdfModule: any) => {
-                      const html2pdf = html2pdfModule.default || html2pdfModule;
-                      const opt: any = {
-                        margin: [6, 8, 6, 8],
-                        filename: `Quotation_${quoteNo}.pdf`,
-                        image: { type: 'jpeg', quality: 0.98 },
-                        html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                      };
-                      html2pdf().set(opt).from(element).save();
-                    });
+                    const { exportPdf } = await import('@/lib/exportPdf');
+                    await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
                   }} 
                   className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs"
                 >

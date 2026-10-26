@@ -193,8 +193,19 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           }
         }
       `}</style>
-      <div id="print-section" className="mx-auto w-full bg-white text-black leading-snug" style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: '750px', fontSize: '11px', boxSizing: 'border-box' }}>
-        <div className="border border-black flex flex-col">
+      <div 
+        id="print-section" 
+        className="mx-auto w-full bg-white text-black leading-snug flex flex-col shadow-sm" 
+        style={{ 
+          fontFamily: 'Arial, Helvetica, sans-serif', 
+          maxWidth: '794px', 
+          width: '100%',
+          minHeight: '1050px', 
+          fontSize: '11px', 
+          boxSizing: 'border-box' 
+        }}
+      >
+        <div className="border border-black flex flex-col flex-1 justify-between" style={{ minHeight: '1040px' }}>
           
           {/* Header */}
           <div className="flex p-3 border-b border-black items-center print-no-break">
@@ -337,7 +348,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           </div>
 
           {/* Table Body - Sizes naturally to avoid pushing content to page 2 */}
-          <div className="min-h-0 text-[11.5px] bg-white flex flex-col">
+          <div className="min-h-[200px] flex-1 text-[11.5px] bg-white flex flex-col justify-start">
             <div className="flex flex-col">
               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
                 const { titleLine, detailLines } = cleanDescLines(item.desc || '');

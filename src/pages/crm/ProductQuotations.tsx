@@ -29,8 +29,7 @@ import { GitBranch } from 'lucide-react'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
+import { exportPdf } from '@/lib/exportPdf'
 
 export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
@@ -679,7 +678,7 @@ export const ProductQuotations: React.FC = () => {
             )}
 
             {/* Approval Actions */}
-            {((status === 'Draft' || !status || status === 'Rejected') || (canApprove && (status === 'Pending Approval' || status === 'Draft'))) && (
+            {latest?.type !== 'draft' && latest?.type !== 'product_draft' && ((status === 'Draft' || !status || status === 'Rejected') || (canApprove && status === 'Pending Approval')) && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                 <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
@@ -707,7 +706,7 @@ export const ProductQuotations: React.FC = () => {
                   </button>
                 )}
 
-                {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
+                {canApprove && status === 'Pending Approval' && (
                   <button
                     type="button"
                     onClick={async () => {
@@ -1670,19 +1669,11 @@ export const ProductQuotations: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 icon={Download}
-                onClick={() => {
-                  const element = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
-                  if (element) {
+                onClick={async () => {
+                  const el = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
+                  if (el) {
                     const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
-                    const opt: any = {
-                      margin: [6, 8, 6, 8],
-                      filename: `Quotation_${quoteNo}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                    };
-                    html2pdf().from(element).set(opt).save();
+                    await exportPdf(el, `Quotation_${quoteNo}.pdf`);
                   }
                 }}
                 className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"

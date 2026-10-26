@@ -2637,6 +2637,14 @@ app.put('/api/quotations/status/:id', async (req, res) => {
 app.post('/api/quotations/:id/submit-approval', async (req, res) => {
   try {
     const { id } = req.params;
+    const [rows]: any = await db.query('SELECT id, type, status FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const q = rows[0];
+    if (q.type === 'draft' || q.type === 'product_draft') {
+      return res.status(400).json({ error: 'Quotation drafts cannot be submitted for approval. Please save the quotation first.' });
+    }
     await db.query(
       "UPDATE quotations SET status = 'Pending Approval', rejectionReason = NULL WHERE id = ?",
       [id]

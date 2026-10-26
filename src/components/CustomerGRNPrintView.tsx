@@ -56,7 +56,7 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
           }
         }
       `}</style>
-    <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col" style={{ width: '100%', maxWidth: '750px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+    <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col justify-between shadow-sm" style={{ width: '100%', maxWidth: '794px', minHeight: '1050px', color: '#000', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
       
       {/* Header Row */}
       <div className="flex border-b border-black">

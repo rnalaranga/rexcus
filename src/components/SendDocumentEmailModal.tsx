@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Mail, Send, Paperclip, CheckCircle2, AlertCircle, RefreshCw, FileText } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
+import { exportPdfDataUri } from '@/lib/exportPdf';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -152,7 +152,7 @@ Finance & Accounts Department
               pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
             };
 
-            const pdfDataUri: string = await html2pdf().set(opt).from(element).output('datauristring');
+            const pdfDataUri: string = await exportPdfDataUri(element);
             if (pdfDataUri) {
               attachments.push({
                 filename: `${docLabel}-${documentNumber}.pdf`,

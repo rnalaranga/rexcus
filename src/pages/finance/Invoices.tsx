@@ -1109,17 +1109,8 @@ export const Invoices: React.FC = () => {
                       const el = document.getElementById('invoice-preview');
                       if (!el) return;
                       // @ts-ignore
-                      import('html2pdf.js').then((html2pdfModule) => {
-                        const html2pdf = html2pdfModule.default || html2pdfModule;
-                        const opt: any = {
-                          margin: [6, 8, 6, 8],
-                          filename: `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}.pdf`,
-                          image: { type: 'jpeg', quality: 0.98 },
-                          html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                        };
-                        html2pdf().set(opt).from(el).save();
+                      import('@/lib/exportPdf').then(({ exportPdf }) => {
+                        exportPdf('invoice-preview', `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}.pdf`);
                       });
                     }}
                   >
