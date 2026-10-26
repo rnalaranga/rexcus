@@ -4,7 +4,8 @@ import {
   Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2,
   Flame, Clock, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, ChevronDown, 
   Building2, Mail, ExternalLink, RefreshCw, Trophy, Zap, SlidersHorizontal, Search,
-  Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles, Edit3, MessageSquare, PhoneCall, Camera
+  Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles, Edit3, MessageSquare, PhoneCall, Camera,
+  FileEdit, Printer
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
@@ -13,6 +14,9 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
 import { useLeads, useFollowups, useCustomers, useQuotations } from '@/hooks/useData'
+import { useSettings } from '@/contexts/SettingsContext'
+import { QuotationPrintView } from '@/components/QuotationPrintView'
+import { printElement } from '@/lib/printElement'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -57,8 +61,10 @@ export const Leads: React.FC = () => {
     if (!selectedLeadId) return null;
     return leads.find((l: any) => l.id === selectedLeadId) || null;
   }, [leads, selectedLeadId])
+  const { settings } = useSettings()
   const [updatingStage, setUpdatingStage] = useState(false)
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
+  const [previewQuoteData, setPreviewQuoteData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
 
   const handleQuickStageChange = async (leadId: string, newStage: string) => {
     const current = leads.find((l: any) => l.id === leadId);
@@ -127,6 +133,8 @@ export const Leads: React.FC = () => {
       const quoNo = q.quotationNo || parsed.quotationNo || q.docNo || parsed.docNo || q.id;
       const quoteObj = {
         id: q.id,
+        raw: q,
+        data: q.data,
         quotationNo: quoNo,
         status: q.status || parsed.status || 'Draft',
         type: q.type || parsed.type || 'custom',
@@ -639,31 +647,44 @@ export const Leads: React.FC = () => {
         }
 
         return (
-          <div className="flex flex-wrap gap-1 max-w-[200px]" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-wrap gap-1.5 max-w-[240px]" onClick={e => e.stopPropagation()}>
             {quotes.map((q: any) => {
               const statusColor = 
-                q.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20' :
-                q.status === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/30 hover:bg-blue-500/20' :
-                q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20' :
-                'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20';
+                q.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' :
+                q.status === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/30' :
+                q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
+                'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
+
+              const editUrl = q.isProduct
+                ? `/crm/product-quotations/new/${row.id}?quoteId=${q.id}`
+                : `/crm/quotations/new/${row.id}?quoteId=${q.id}`;
 
               return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => {
-                    const url = q.isProduct
-                      ? `/crm/product-quotations/new/${row.id}?quoteId=${q.id}`
-                      : `/crm/quotations/new/${row.id}?quoteId=${q.id}`;
-                    navigate(url);
-                  }}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold border rounded-none hover:shadow-xs transition-all cursor-pointer ${statusColor}`}
-                  title={`Open ${q.quotationNo} (${q.status}) • Value: ${formatCurrency(q.total)}`}
-                >
-                  <FileText size={10} className="shrink-0 text-amber-500" />
-                  <span>{q.quotationNo}</span>
-                  <span className="text-[8.5px] opacity-75 uppercase font-sans font-normal">({q.status})</span>
-                </button>
+                <div key={q.id} className="inline-flex items-stretch border border-theme-subtle bg-surface shadow-2xs overflow-hidden">
+                  {/* Quote Number -> Opens in Builder (Edit) */}
+                  <button
+                    type="button"
+                    onClick={() => navigate(editUrl)}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold hover:underline hover:opacity-90 cursor-pointer ${statusColor}`}
+                    title={`Edit ${q.quotationNo} in Builder (${q.status}) • Value: ${formatCurrency(q.total)}`}
+                  >
+                    <FileEdit size={10} className="shrink-0 text-amber-500" />
+                    <span>{q.quotationNo}</span>
+                  </button>
+                  {/* View Document Preview Button */}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewQuoteData({
+                      quotation: q.raw || q,
+                      type: q.isProduct ? 'product' : 'main',
+                      lead: row
+                    })}
+                    className="px-1.5 py-0.5 bg-surface hover:bg-surface2 text-muted hover:text-primary border-l border-theme-subtle transition-colors cursor-pointer flex items-center justify-center"
+                    title={`View ${q.quotationNo} Document`}
+                  >
+                    <Eye size={11} />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -2221,14 +2242,23 @@ export const Leads: React.FC = () => {
                           q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
                           'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
 
+                        const editUrl = q.isProduct
+                          ? `/crm/product-quotations/new/${selectedLead.id}?quoteId=${q.id}`
+                          : `/crm/quotations/new/${selectedLead.id}?quoteId=${q.id}`;
+
                         return (
                           <div 
                             key={q.id}
                             className="p-2.5 bg-surface border border-theme-subtle hover:border-amber-500/50 flex items-center justify-between gap-2 group transition-all"
                           >
-                            <div className="min-w-0 flex-1">
+                            <div 
+                              className="min-w-0 flex-1 cursor-pointer"
+                              onClick={() => navigate(editUrl)}
+                              title="Click to edit quotation in builder"
+                            >
                               <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-xs font-bold text-primary group-hover:text-amber-600 transition-colors">
+                                <span className="font-mono text-xs font-bold text-primary group-hover:text-amber-600 hover:underline transition-colors flex items-center gap-1">
+                                  <FileEdit size={11} className="text-amber-500" />
                                   {q.quotationNo}
                                 </span>
                                 <span className={`text-[9px] font-bold px-1.5 py-0.2 border uppercase ${statusColor}`}>
@@ -2243,19 +2273,33 @@ export const Leads: React.FC = () => {
                               </p>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const url = q.isProduct
-                                  ? `/crm/product-quotations/new/${selectedLead.id}?quoteId=${q.id}`
-                                  : `/crm/quotations/new/${selectedLead.id}?quoteId=${q.id}`;
-                                navigate(url);
-                              }}
-                              className="px-2.5 py-1.5 text-xs font-bold bg-surface border border-theme-subtle group-hover:bg-amber-500 group-hover:text-slate-900 group-hover:border-amber-500 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
-                            >
-                              <span>Open</span>
-                              <ArrowRight size={11} />
-                            </button>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* VIEW BUTTON */}
+                              <button
+                                type="button"
+                                onClick={() => setPreviewQuoteData({
+                                  quotation: q.raw || q,
+                                  type: q.isProduct ? 'product' : 'main',
+                                  lead: selectedLead
+                                })}
+                                className="px-2 py-1 text-xs font-semibold bg-surface hover:bg-surface2 border border-theme-subtle text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
+                                title="View Quotation Document"
+                              >
+                                <Eye size={12} />
+                                <span>View</span>
+                              </button>
+
+                              {/* EDIT BUTTON */}
+                              <button
+                                type="button"
+                                onClick={() => navigate(editUrl)}
+                                className="px-2.5 py-1 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 border border-amber-500 transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Edit Quotation in Builder"
+                              >
+                                <FileEdit size={12} />
+                                <span>Edit</span>
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -2423,6 +2467,96 @@ export const Leads: React.FC = () => {
           title={activeViewingPhotos.title}
         />
       )}
+
+      {/* ── QUOTATION DOCUMENT PREVIEW / VIEW MODAL ── */}
+      <Modal 
+        isOpen={!!previewQuoteData} 
+        onClose={() => setPreviewQuoteData(null)} 
+        title={'Quotation Document - ' + (previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || '')} 
+        size="xl"
+      >
+        {previewQuoteData && (
+          <div className="bg-white text-black p-5 sm:p-8 max-h-[82vh] overflow-y-auto w-[900px] max-w-full">
+            <QuotationPrintView 
+              data={((): any => {
+                let parsed: any = {};
+                try {
+                  parsed = typeof previewQuoteData.quotation.data === 'string' 
+                    ? JSON.parse(previewQuoteData.quotation.data) 
+                    : (previewQuoteData.quotation.data || previewQuoteData.quotation);
+                } catch(e) {
+                  parsed = previewQuoteData.quotation;
+                }
+                if (!parsed.vatNo && previewQuoteData.lead?.vat) parsed.vatNo = previewQuoteData.lead.vat;
+                if (!parsed.tinNo && previewQuoteData.lead?.svat) parsed.tinNo = previewQuoteData.lead.svat;
+                if (!parsed.customerAddress && previewQuoteData.lead?.address) parsed.customerAddress = previewQuoteData.lead.address;
+                if (!parsed.customerName && (previewQuoteData.lead?.company || previewQuoteData.lead?.name)) {
+                  parsed.customerName = previewQuoteData.lead.company || previewQuoteData.lead.name;
+                }
+                return parsed;
+              })()} 
+              type={previewQuoteData.type}
+              lead={previewQuoteData.lead}
+              settings={settings}
+            />
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 pb-4 border-t border-theme-subtle pt-6">
+              <Button
+                variant="outline"
+                size="sm"
+                icon={FileEdit}
+                onClick={() => {
+                  const q = previewQuoteData.quotation;
+                  const isProd = previewQuoteData.type === 'product';
+                  const leadId = previewQuoteData.lead?.id || q.leadId;
+                  const url = isProd
+                    ? `/crm/product-quotations/new/${leadId}?quoteId=${q.id}`
+                    : `/crm/quotations/new/${leadId}?quoteId=${q.id}`;
+                  setPreviewQuoteData(null);
+                  navigate(url);
+                }}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-900 border-none font-bold text-xs"
+              >
+                Edit in Quotation Builder
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    const element = document.getElementById('print-section');
+                    if (!element) return;
+                    const quoteNo = previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || 'Quote';
+                    import('html2pdf.js').then((html2pdfModule: any) => {
+                      const html2pdf = html2pdfModule.default || html2pdfModule;
+                      const opt: any = {
+                        margin: [6, 8, 6, 8],
+                        filename: `Quotation_${quoteNo}.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                      };
+                      html2pdf().set(opt).from(element).save();
+                    });
+                  }} 
+                  className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs"
+                >
+                  Export PDF
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm"
+                  onClick={() => printElement('print-section', previewQuoteData?.quotation?.quotationNo || 'Quotation')}
+                  className="text-xs font-bold"
+                >
+                  Print Quotation
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

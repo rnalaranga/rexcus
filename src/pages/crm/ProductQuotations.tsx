@@ -1153,9 +1153,14 @@ export const ProductQuotations: React.FC = () => {
                         {/* Quote # & Version */}
                         <td className="px-3.5 py-2.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
+                              className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors"
+                              title="Click to open quotation in builder"
+                            >
                               {group.quoNo}
-                            </span>
+                            </button>
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
                               v{latest?.version || 1}
                             </span>
@@ -1344,9 +1349,9 @@ export const ProductQuotations: React.FC = () => {
                               icon={Eye}
                               onClick={() => setPreviewData({ quotation: latest, lead: group })}
                               className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
-                              title="Preview Document"
+                              title="View Document Preview"
                             >
-                              PDF
+                              View
                             </Button>
                             <Button
                               variant="ghost"
@@ -1496,9 +1501,14 @@ export const ProductQuotations: React.FC = () => {
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-2 pb-2 mb-2 border-b border-theme-subtle/40">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
+                        className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors"
+                        title="Click to open quotation in builder"
+                      >
                         {group.quoNo}
-                      </span>
+                      </button>
                       <span className="text-[10px] font-mono px-1.5 py-0.2 bg-surface2 text-muted border border-theme-subtle">
                         v{latest?.version || 1}
                       </span>
@@ -1578,9 +1588,9 @@ export const ProductQuotations: React.FC = () => {
                       icon={Eye}
                       onClick={() => setPreviewData({ quotation: latest, lead: group })}
                       className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
-                      title="Preview Document"
+                      title="View Document Preview"
                     >
-                      PDF
+                      View
                     </Button>
                     <Button
                       variant="ghost"

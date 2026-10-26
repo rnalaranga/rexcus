@@ -1587,9 +1587,14 @@ export const Quotations: React.FC = () => {
                         {/* Quote # & Version */}
                         <td className="px-3.5 py-2.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono font-bold text-xs text-rex-600 dark:text-rex-400">
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
+                              className="font-mono font-bold text-xs text-rex-600 dark:text-rex-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors"
+                              title="Click to open quotation in builder"
+                            >
                               {group.quoNo}
-                            </span>
+                            </button>
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
                               v{latestMain?.version || 1}
                             </span>
@@ -1794,16 +1799,16 @@ export const Quotations: React.FC = () => {
                               icon={Eye}
                               onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
                               className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
-                              title="Preview Document"
+                              title="View Document Preview"
                             >
-                              PDF
+                              View
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
                               icon={FileEdit}
                               onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
-                              className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                              className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 font-semibold text-primary"
                               title="Edit in Quotation Builder"
                             >
                               Edit
@@ -1967,9 +1972,14 @@ export const Quotations: React.FC = () => {
                         }}
                         title="Select for final quote"
                       />
-                      <span className="font-mono font-bold text-sm text-rex-600 dark:text-rex-400">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
+                        className="font-mono font-bold text-sm text-rex-600 dark:text-rex-400 hover:underline hover:text-amber-500 transition-colors cursor-pointer text-left"
+                        title="Click to open quotation in builder"
+                      >
                         {group.quoNo}
-                      </span>
+                      </button>
                       <span className="text-[10px] font-mono px-1.5 py-0.2 bg-surface2 text-muted border border-theme-subtle">
                         v{latestMain?.version || 1}
                       </span>
@@ -2057,16 +2067,16 @@ export const Quotations: React.FC = () => {
                       icon={Eye}
                       onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
                       className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
-                      title="Preview Document"
+                      title="View Document Preview"
                     >
-                      PDF
+                      View
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       icon={FileEdit}
                       onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
-                      className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                      className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 font-semibold text-primary"
                       title="Edit in Builder"
                     >
                       Edit
