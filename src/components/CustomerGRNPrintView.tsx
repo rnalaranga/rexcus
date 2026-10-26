@@ -43,16 +43,15 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
           body * { visibility: hidden !important; }
           #grn-print-section, #grn-print-section * { visibility: visible !important; }
           #grn-print-section { 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
+            position: static !important; 
             width: 100% !important; 
-            max-width: 100% !important;
-            margin: 0 !important;
+            max-width: 794px !important;
+            margin: 0 auto !important;
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
             box-sizing: border-box !important;
+            display: block !important;
           }
         }
       `}</style>

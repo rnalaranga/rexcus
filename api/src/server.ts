@@ -1,3 +1,4 @@
+import puppeteer from 'puppeteer-core';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -23,6 +24,171 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+function getChromeExecutablePath(): string | null {
+  const possiblePaths = [
+    process.env.CHROME_BIN,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium'
+  ];
+  for (const p of possiblePaths) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+// ==========================
+// HIGH-PRECISION VECTOR PDF EXPORT (PUPPETEER CHROMIUM)
+// ==========================
+app.post('/api/export-pdf', async (req, res) => {
+  let browser = null;
+  try {
+    const { 
+      html, 
+      styles = [], 
+      filename = 'document.pdf', 
+      orientation = 'portrait',
+      margin = '6mm',
+      returnBase64 = false 
+    } = req.body;
+
+    if (!html) {
+      return res.status(400).json({ error: 'HTML content is required' });
+    }
+
+    const chromePath = getChromeExecutablePath();
+    if (!chromePath) {
+      return res.status(500).json({ error: 'Chrome/Chromium executable not found on server' });
+    }
+
+    browser = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+    const isLandscape = orientation === 'landscape';
+    await page.setViewport({ 
+      width: isLandscape ? 1123 : 794, 
+      height: isLandscape ? 794 : 1123, 
+      deviceScaleFactor: 2 
+    });
+
+    const stylesHtml = Array.isArray(styles) 
+      ? styles.map((s: any) => (typeof s === 'string' && s.trim().startsWith('<')) ? s : `<style>${s}</style>`).join('\n')
+      : (styles ? `<style>${styles}</style>` : '');
+
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+          <style>
+            @page {
+              size: A4 ${orientation};
+              margin: ${margin};
+            }
+            * {
+              box-sizing: border-box !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              font-family: 'Inter', Arial, Helvetica, sans-serif;
+              font-size: 11px;
+            }
+            .font-mono {
+              font-family: 'JetBrains Mono', Courier, monospace !important;
+            }
+            table {
+              border-collapse: collapse !important;
+              width: 100% !important;
+            }
+            img, svg {
+              max-width: 100%;
+              image-rendering: -webkit-optimize-contrast;
+            }
+            .avoid-break, tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            #print-section {
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 794px !important;
+              box-sizing: border-box !important;
+            }
+          </style>
+          ${stylesHtml}
+        </head>
+        <body>
+          ${html}
+        </body>
+      </html>
+    `;
+
+    await page.setContent(fullHtml, { waitUntil: ['load', 'networkidle0'], timeout: 20000 });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      landscape: isLandscape,
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: {
+        top: margin,
+        bottom: margin,
+        left: '8mm',
+        right: '8mm'
+      }
+    });
+
+    await browser.close();
+    browser = null;
+
+    if (returnBase64) {
+      const base64 = Buffer.from(pdfBuffer).toString('base64');
+      return res.json({ success: true, base64: `data:application/pdf;base64,${base64}` });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.end(Buffer.from(pdfBuffer));
+
+  } catch (err: any) {
+    if (browser) {
+      try { await browser.close(); } catch(e) {}
+    }
+    console.error('PDF export error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate PDF' });
+  }
+});
+
 
 
 // ==========================

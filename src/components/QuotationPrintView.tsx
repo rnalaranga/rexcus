@@ -175,17 +175,15 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           }
           #print-section, #print-section * { visibility: visible !important; }
           #print-section { 
-            position: fixed !important; 
-            left: 0 !important; 
-            top: 0 !important; 
+            position: static !important; 
             width: 100% !important; 
-            max-width: 100% !important; 
-            margin: 0 !important; 
-            padding: 0 !important;
+            max-width: 794px !important; 
+            margin: 0 auto !important; 
+            padding: 0 !important; 
             color: #000000 !important; 
             background: #ffffff !important; 
             box-sizing: border-box !important;
-            z-index: 999999 !important;
+            display: block !important;
           }
           .print-no-break {
             page-break-inside: avoid !important;
