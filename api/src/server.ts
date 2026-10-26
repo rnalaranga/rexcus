@@ -293,10 +293,38 @@ app.get('/api/pdf-diagnostics', async (req, res) => {
     result.whichChromium = 'none';
   }
 
+  const checkDirs = [
+    '/var/www/rexnw/api/chrome-bin',
+    '/var/www/rexnw/chrome-bin',
+    path.resolve(process.cwd(), 'chrome-bin')
+  ];
+  result.dirs = checkDirs.map(d => ({
+    dir: d,
+    exists: fs.existsSync(d),
+    content: fs.existsSync(d) ? fs.readdirSync(d) : []
+  }));
+
   try {
-    result.resolvedPath = await getChromeExecutablePath();
+    const plat = detectBrowserPlatform();
+    result.detectedPlatform = plat;
+    const bId = await resolveBuildId(Browser.CHROME, plat, 'stable');
+    result.buildId = bId;
+    const installDir = '/var/www/rexnw/api/chrome-bin';
+    result.tryingInstallTo = installDir;
+    const installed = await install({
+      browser: Browser.CHROME,
+      buildId: bId,
+      cacheDir: installDir,
+      platform: plat
+    });
+    result.installedResult = installed;
+    result.executableExists = installed ? fs.existsSync(installed.executablePath) : false;
+    if (installed && installed.executablePath && fs.existsSync(installed.executablePath)) {
+      cachedChromePath = installed.executablePath;
+    }
   } catch (e: any) {
-    result.resolveError = e.message;
+    result.installError = e.message;
+    result.installStack = e.stack;
   }
 
   res.json(result);
