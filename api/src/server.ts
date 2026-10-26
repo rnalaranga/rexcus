@@ -610,6 +610,14 @@ async function runDatabaseSync() {
       include_user_prefix TINYINT(1) DEFAULT 0,
       include_customer_prefix TINYINT(1) DEFAULT 0,
       updated_at DATETIME DEFAULT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS user_quotation_sequences (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_prefix VARCHAR(50) NOT NULL,
+      user_id VARCHAR(50) NULL,
+      next_number INT NOT NULL DEFAULT 2206,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_user_prefix (user_prefix)
     )`
   ];
 
@@ -1201,6 +1209,20 @@ async function runDatabaseSync() {
     await db.query("UPDATE document_sequences SET next_number = 2206 WHERE id = 'quotation' AND next_number < 2206");
   } catch (err) {}
 
+  // Auto-seed user_quotation_sequences for users with prefixes
+  try {
+    const [uRows]: any = await db.query("SELECT id, prefix FROM users WHERE prefix IS NOT NULL AND prefix != ''");
+    for (const u of (uRows || [])) {
+      const pfx = (u.prefix || '').trim().toUpperCase();
+      if (pfx) {
+        await db.query(
+          "INSERT IGNORE INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) VALUES (?, ?, 2206, NOW())",
+          [pfx, u.id]
+        );
+      }
+    }
+  } catch (err) {}
+
   // Auto-migrate groq_model & gemini_model default seeds
   try {
     await db.query("UPDATE settings SET val = 'gemini-1.5-flash' WHERE id = 'gemini_model' AND (val IS NULL OR val = '')");
@@ -1559,24 +1581,94 @@ app.put('/api/users/:id/prefix', async (req, res) => {
   }
 });
 
+app.get('/api/sequences/user-quotations', async (req, res) => {
+  try {
+    const [users]: any = await db.query(
+      'SELECT id as userId, name, username, prefix FROM users ORDER BY name ASC'
+    );
+    const [seqs]: any = await db.query('SELECT * FROM user_quotation_sequences');
+    const seqMap = new Map();
+    seqs.forEach((s: any) => seqMap.set((s.user_prefix || '').toUpperCase(), s));
+
+    const [baseSeq]: any = await db.query("SELECT next_number FROM document_sequences WHERE id = 'quotation' LIMIT 1");
+    const defaultNum = Number(baseSeq[0]?.next_number) || 2206;
+
+    const result = users.map((u: any) => {
+      const pfx = (u.prefix || '').trim().toUpperCase();
+      const userSeq = pfx ? seqMap.get(pfx) : null;
+      return {
+        userId: u.userId,
+        name: u.name,
+        username: u.username,
+        prefix: pfx,
+        next_number: userSeq ? Number(userSeq.next_number) : defaultNum,
+        updated_at: userSeq?.updated_at || null
+      };
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/sequences/user-quotations/:prefix', async (req, res) => {
+  try {
+    const prefix = req.params.prefix.trim().toUpperCase();
+    const { next_number, userId } = req.body;
+    const num = Math.max(1, parseInt(next_number, 10) || 2206);
+    await db.query(
+      `INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) 
+       VALUES (?, ?, ?, NOW()) 
+       ON DUPLICATE KEY UPDATE next_number = VALUES(next_number), user_id = COALESCE(VALUES(user_id), user_id), updated_at = NOW()`,
+      [prefix, userId || null, num]
+    );
+    res.json({ success: true, prefix, next_number: num });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/sequences/next', async (req, res) => {
   try {
-    const { type = 'quotation', userPrefix, customerPrefix, reserve = false } = req.body;
+    const { type = 'quotation', userPrefix, customerPrefix, reserve = false, userId } = req.body;
     const [rows]: any = await db.query('SELECT * FROM document_sequences WHERE id = ? LIMIT 1', [type]);
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: `Sequence '${type}' not found` });
     }
     const seq = rows[0];
-    const currentNum = Number(seq.next_number) || 2206;
+    const defaultNum = Number(seq.next_number) || 2206;
     const padding = Number(seq.padding) || 4;
+
+    let currentNum = defaultNum;
+    const normalizedUserPrefix = (userPrefix || '').trim().toUpperCase();
+
+    // Check if this quotation sequence should use user-specific prefix sequence
+    const isUserQuotation = (type === 'quotation' && Boolean(seq.include_user_prefix) && Boolean(normalizedUserPrefix));
+
+    if (isUserQuotation) {
+      const [uRows]: any = await db.query(
+        'SELECT next_number FROM user_quotation_sequences WHERE user_prefix = ? LIMIT 1',
+        [normalizedUserPrefix]
+      );
+      if (uRows && uRows.length > 0) {
+        currentNum = Number(uRows[0].next_number) || defaultNum;
+      } else {
+        currentNum = defaultNum;
+        await db.query(
+          'INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE updated_at = NOW()',
+          [normalizedUserPrefix, userId || null, defaultNum]
+        );
+      }
+    }
+
     const paddedNum = String(currentNum).padStart(padding, '0');
 
     const parts: string[] = [];
     if (seq.prefix && seq.prefix.trim()) {
       parts.push(seq.prefix.trim().replace(/[-_]+$/, ''));
     }
-    if (seq.include_user_prefix && userPrefix && userPrefix.trim()) {
-      parts.push(userPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
+    if (seq.include_user_prefix && normalizedUserPrefix) {
+      parts.push(normalizedUserPrefix.replace(/[-_]+$/, ''));
     }
     if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
       parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
@@ -1585,12 +1677,23 @@ app.post('/api/sequences/next', async (req, res) => {
     const formattedNumber = parts.join('-');
 
     if (reserve) {
-      await db.query('UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = ?', [type]);
+      if (isUserQuotation) {
+        await db.query(
+          'UPDATE user_quotation_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE user_prefix = ?',
+          [normalizedUserPrefix]
+        );
+      } else {
+        await db.query(
+          'UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = ?',
+          [type]
+        );
+      }
     }
 
     res.json({
       success: true,
       type,
+      userPrefix: normalizedUserPrefix || null,
       number: currentNum,
       paddedNumber,
       formattedNumber,
@@ -2190,6 +2293,41 @@ app.post('/api/quotations', async (req, res) => {
     };
     
     await db.query('INSERT INTO quotations SET ?', newQuotation);
+
+    // Auto-advance sequence for quotation numbers upon official creation
+    if (qType !== 'draft' && qType !== 'product_draft' && newQuotation.quotationNo) {
+      try {
+        let userPfx = '';
+        if (createdBy) {
+          const [uRow]: any = await db.query('SELECT prefix FROM users WHERE id = ? OR username = ? LIMIT 1', [createdBy, createdBy]);
+          if (uRow && uRow[0]?.prefix) userPfx = uRow[0].prefix.trim().toUpperCase();
+        }
+        if (!userPfx && qData.userPrefix) {
+          userPfx = String(qData.userPrefix).trim().toUpperCase();
+        }
+
+        const numMatch = String(newQuotation.quotationNo).match(/(\d+)$/);
+        if (numMatch) {
+          const usedNum = parseInt(numMatch[1], 10);
+          if (userPfx) {
+            await db.query(
+              `INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) 
+               VALUES (?, ?, ?, NOW()) 
+               ON DUPLICATE KEY UPDATE next_number = GREATEST(next_number, VALUES(next_number)), updated_at = NOW()`,
+              [userPfx, createdBy || null, usedNum + 1]
+            );
+          } else {
+            await db.query(
+              "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'quotation'",
+              [usedNum + 1]
+            );
+          }
+        }
+      } catch (seqErr) {
+        console.error('Error auto-advancing quotation sequence:', seqErr);
+      }
+    }
+
     res.json({ success: true, quotation: newQuotation });
   } catch (error) {
     console.error(error);

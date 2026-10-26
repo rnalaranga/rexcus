@@ -779,6 +779,36 @@ export const ProductQuotationBuilder: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (leadId && lead) {
+      const isCust = leadId.startsWith('CUST-') || customers?.some(c => c.id === leadId);
+      setClientType(isCust ? 'customer' : 'lead');
+      setCustomerName(lead.company || lead.name || '');
+      setCustomerAddress(lead.address || '');
+      setSelectedLeadId(lead.id);
+      if (!attention && lead.name) setAttention(lead.name);
+      if (lead.vat) setVatNo(lead.vat);
+      if (lead.svat || lead.tin) setTinNo(lead.svat || lead.tin);
+      if (!quoteIdParam && !quotationNo) {
+        const cust = isCust ? customers?.find(c => c.id === leadId) || lead : null;
+        fetchNextDocumentNumber('quotation', {
+          userPrefix: user?.prefix,
+          customerPrefix: cust?.prefix,
+          reserve: false
+        }).then(res => {
+          if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
+        }).catch(() => {});
+      }
+    } else if (!quoteIdParam && !quotationNo && user?.prefix) {
+      fetchNextDocumentNumber('quotation', {
+        userPrefix: user?.prefix,
+        reserve: false
+      }).then(res => {
+        if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
+      }).catch(() => {});
+    }
+  }, [leadId, lead, customers, quoteIdParam, quotationNo, user?.prefix]);
+
   // Scope Items
   const addJobItem = () => setJobItems(p => [...p, { id: Date.now(), text: '' }]);
   const updateJobItem = (id: number, text: string) => setJobItems(p => p.map(i => i.id === id ? { ...i, text } : i));

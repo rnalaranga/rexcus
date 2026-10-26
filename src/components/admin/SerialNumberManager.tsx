@@ -7,7 +7,13 @@ import {
   Hash, Save, RefreshCw, CheckCircle2, User, FileText, 
   Layers, SlidersHorizontal, Check, Edit2, ShieldAlert, Sparkles, Building2
 } from 'lucide-react';
-import { fetchDocumentSequences, updateDocumentSequence, updateUserPrefix } from '@/lib/api';
+import { 
+  fetchDocumentSequences, 
+  updateDocumentSequence, 
+  updateUserPrefix, 
+  fetchUserQuotationSequences, 
+  updateUserQuotationSequence 
+} from '@/lib/api';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -31,14 +37,16 @@ export const SerialNumberManager: React.FC = () => {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const [userPrefixes, setUserPrefixes] = useState<Record<string, string>>({});
+  const [userSeqNumbers, setUserSeqNumbers] = useState<Record<string, number>>({});
   const [savingUserPrefixId, setSavingUserPrefixId] = useState<string | number | null>(null);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [seqData, usersRes] = await Promise.all([
+      const [seqData, usersRes, userSeqList] = await Promise.all([
         fetchDocumentSequences(),
-        fetch(`${API_BASE}/users`).then(r => r.json()).catch(() => [])
+        fetch(`${API_BASE}/users`).then(r => r.json()).catch(() => []),
+        fetchUserQuotationSequences().catch(() => [])
       ]);
 
       const seqList = Array.isArray(seqData) ? seqData : [];
@@ -48,10 +56,22 @@ export const SerialNumberManager: React.FC = () => {
       setUsers(uList);
       
       const pfxMap: Record<string, string> = {};
+      const numMap: Record<string, number> = {};
+
       uList.forEach((u: any) => {
-        pfxMap[u.id] = u.prefix || '';
+        pfxMap[u.id] = (u.prefix || '').trim().toUpperCase();
       });
+
+      if (Array.isArray(userSeqList)) {
+        userSeqList.forEach((s: any) => {
+          const num = Number(s.next_number) || 2206;
+          if (s.userId) numMap[s.userId] = num;
+          if (s.prefix) numMap[s.prefix.toUpperCase()] = num;
+        });
+      }
+
       setUserPrefixes(pfxMap);
+      setUserSeqNumbers(numMap);
     } catch (err: any) {
       toast('Failed to load sequence configurations', 'error');
     } finally {
@@ -95,8 +115,8 @@ export const SerialNumberManager: React.FC = () => {
   const handleSaveAll = async () => {
     setSavingAll(true);
     try {
-      await Promise.all(
-        sequences.map(seq =>
+      await Promise.all([
+        ...sequences.map(seq =>
           updateDocumentSequence(seq.id, {
             prefix: seq.prefix,
             next_number: Number(seq.next_number),
@@ -104,9 +124,17 @@ export const SerialNumberManager: React.FC = () => {
             include_user_prefix: Boolean(seq.include_user_prefix),
             include_customer_prefix: Boolean(seq.include_customer_prefix)
           })
-        )
-      );
-      toast('All document sequence rules saved successfully', 'success');
+        ),
+        ...users.map(async u => {
+          const pfx = (userPrefixes[u.id] || '').trim().toUpperCase();
+          const nextNum = Number(userSeqNumbers[u.id] || (pfx ? userSeqNumbers[pfx] : 2206)) || 2206;
+          await updateUserPrefix(u.id, pfx);
+          if (pfx) {
+            await updateUserQuotationSequence(pfx, nextNum, u.id);
+          }
+        })
+      ]);
+      toast('All document sequence rules and user counters saved successfully', 'success');
       await loadData();
     } catch (e: any) {
       toast('Failed to save some sequence settings', 'error');
@@ -119,12 +147,20 @@ export const SerialNumberManager: React.FC = () => {
     setSavingUserPrefixId(userId);
     try {
       const pfx = (userPrefixes[userId] || '').trim().toUpperCase();
+      const nextNum = Number(userSeqNumbers[userId] || (pfx ? userSeqNumbers[pfx] : 2206)) || 2206;
+
       const res = await updateUserPrefix(userId, pfx);
-      if (res.success) {
-        toast('User prefix updated', 'success');
-      } else {
-        toast(res.error || 'Failed to update prefix', 'error');
+      if (!res.success) {
+        toast(res.error || 'Failed to update user prefix', 'error');
+        return;
       }
+
+      if (pfx) {
+        await updateUserQuotationSequence(pfx, nextNum, userId);
+      }
+
+      toast('User prefix & quotation sequence updated', 'success');
+      await loadData();
     } catch (e: any) {
       toast(e.message || 'Error saving user prefix', 'error');
     } finally {
@@ -147,6 +183,28 @@ export const SerialNumberManager: React.FC = () => {
     }
 
     const paddedNum = String(seq.next_number || 1001).padStart(Number(seq.padding) || 4, '0');
+    parts.push(paddedNum);
+
+    return parts.join('-');
+  };
+
+  const getUserQuotationPreview = (u: any) => {
+    const pfx = (userPrefixes[u.id] || '').trim().toUpperCase();
+    const num = Number(userSeqNumbers[u.id] || (pfx ? userSeqNumbers[pfx] : 2206)) || 2206;
+    const quoSeq = sequences.find(s => s.id === 'quotation');
+    const padding = Number(quoSeq?.padding) || 4;
+    const paddedNum = String(num).padStart(padding, '0');
+
+    const parts: string[] = [];
+    if (quoSeq?.prefix?.trim()) {
+      parts.push(quoSeq.prefix.trim().replace(/[-_]+$/, ''));
+    }
+    if (pfx) {
+      parts.push(pfx);
+    }
+    if (quoSeq?.include_customer_prefix) {
+      parts.push('CUS');
+    }
     parts.push(paddedNum);
 
     return parts.join('-');
@@ -209,9 +267,9 @@ export const SerialNumberManager: React.FC = () => {
       <div className="p-3.5 rounded-xl bg-rex-500/10 border border-rex-500/20 text-xs text-secondary flex items-start gap-3">
         <Sparkles size={16} className="text-rex-600 dark:text-rex-400 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <span className="font-bold text-primary">Unified Quotation Numbering Rules:</span>
+          <span className="font-bold text-primary">Independent Quotation Numbering Series Per User:</span>
           <p className="text-[11px] text-muted leading-relaxed">
-            Normal Engineering Quotations and Product/Finished Goods Quotations share this exact same continuous sequence starting from <strong className="font-mono text-rex-600 dark:text-rex-400">2206</strong>. Both builders automatically query this engine so no duplicate quote numbers can ever be issued.
+            Quotations follow an <strong>independent sequence per user prefix</strong> (e.g. User A issues <code className="font-mono text-rex-600 font-bold">RN-2206, RN-2207...</code> while User B issues <code className="font-mono text-rex-600 font-bold">SP-2206, SP-2207...</code>). You can customize each user's prefix and next quotation sequence number below. All other ERP documents (Work Orders, Invoices, Receipts, GRNs, POs) follow global continuous numbering.
           </p>
         </div>
       </div>
@@ -260,13 +318,20 @@ export const SerialNumberManager: React.FC = () => {
 
                   {/* Next Number */}
                   <td className="py-3.5 px-3">
-                    <input
-                      type="number"
-                      min="1"
-                      value={seq.next_number}
-                      onChange={e => handleSequenceFieldChange(seq.id, 'next_number', Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-24 px-2.5 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono font-bold text-xs focus:outline-none focus:border-rex-500"
-                    />
+                    <div className="space-y-1">
+                      <input
+                        type="number"
+                        min="1"
+                        value={seq.next_number}
+                        onChange={e => handleSequenceFieldChange(seq.id, 'next_number', Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-24 px-2.5 py-1.5 rounded-lg border border-theme-subtle bg-surface text-primary font-mono font-bold text-xs focus:outline-none focus:border-rex-500"
+                      />
+                      {isQuotation && Boolean(seq.include_user_prefix) && (
+                        <div className="text-[10px] text-rex-600 dark:text-rex-400 font-semibold leading-tight">
+                          Per-User Series Active
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   {/* Padding */}
@@ -328,64 +393,111 @@ export const SerialNumberManager: React.FC = () => {
         </table>
       </div>
 
-      {/* --- SUB-SECTION: USER PREFIX MANAGEMENT --- */}
+      {/* --- SUB-SECTION: USER PREFIX & QUOTATION SEQUENCES --- */}
       <div className="pt-4 border-t border-theme-subtle space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <User size={16} className="text-rex-600 dark:text-rex-400" />
             <div>
-              <h3 className="text-xs font-bold text-primary">User Identification Prefixes</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-primary">User Identification Prefixes & Independent Quotation Counters</h3>
+                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-rex-500/15 text-rex-600 border border-rex-500/30">
+                  Per-User Quotations Only
+                </span>
+              </div>
               <p className="text-[11px] text-muted">
-                Each user can have a unique 2-4 letter prefix (e.g. <span className="font-mono font-bold text-primary">RN</span>, <span className="font-mono font-bold text-primary">SP</span>). When 'User Prefix' is enabled in Quotation rules, the creator's prefix is automatically prepended to the quote number.
+                Each sales agent or estimator has their own unique 2-4 letter prefix (e.g. <span className="font-mono font-bold text-primary">RN</span>, <span className="font-mono font-bold text-primary">SP</span>) and their own independent quotation sequence counter (starting at <span className="font-mono font-bold text-primary">2206</span>). Quotes created by RN advance RN's series without affecting SP's series.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {users.map(u => {
             const isMe = currentUser?.id === u.id;
-            const currentVal = userPrefixes[u.id] || '';
+            const currentPrefix = userPrefixes[u.id] || '';
+            const currentNum = userSeqNumbers[u.id] || (currentPrefix ? userSeqNumbers[currentPrefix] : 2206) || 2206;
             const isSavingUser = savingUserPrefixId === u.id;
+            const userPreview = getUserQuotationPreview(u);
 
             return (
               <div
                 key={u.id}
-                className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                  isMe ? 'bg-rex-500/10 border-rex-500/30' : 'bg-surface2/30 border-theme-subtle'
+                className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 transition-all ${
+                  isMe ? 'bg-rex-500/10 border-rex-500/40 shadow-xs' : 'bg-surface2/30 border-theme-subtle'
                 }`}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-xs text-primary truncate">{u.name}</span>
-                    {isMe && (
-                      <span className="text-[8px] uppercase tracking-wider font-bold bg-rex-500/20 text-rex-600 px-1 py-0.2 rounded">
-                        You
-                      </span>
-                    )}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-xs text-primary truncate">{u.name}</span>
+                      {isMe && (
+                        <span className="text-[8px] uppercase tracking-wider font-bold bg-rex-500/20 text-rex-600 px-1 py-0.2 rounded">
+                          You
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted font-mono truncate block">@{u.username}</span>
                   </div>
-                  <span className="text-[10px] text-muted font-mono truncate block">@{u.username}</span>
+
+                  {/* Dynamic Preview Badge */}
+                  <div className="text-right shrink-0">
+                    <span className="font-mono font-bold text-[11px] bg-surface px-2 py-0.5 rounded-md border border-theme-subtle text-primary inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {userPreview}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={currentVal}
-                    onChange={e => setUserPrefixes(p => ({ ...p, [u.id]: e.target.value.toUpperCase() }))}
-                    placeholder="PREFIX"
-                    className="w-16 px-2 py-1 text-center font-mono font-bold uppercase rounded-lg border border-theme-subtle bg-surface text-primary text-xs focus:outline-none focus:border-rex-500"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSaveUserPrefix(u.id)}
-                    disabled={isSavingUser}
-                    className="h-7 w-7 p-0 border border-theme-subtle hover:border-rex-500"
-                    title="Save Prefix"
-                  >
-                    {isSavingUser ? <RefreshCw size={11} className="animate-spin" /> : <Check size={12} />}
-                  </Button>
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-theme-subtle/50">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-muted block mb-1">
+                      User Prefix
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={currentPrefix}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase();
+                        setUserPrefixes(p => ({ ...p, [u.id]: val }));
+                      }}
+                      placeholder="e.g. RN"
+                      className="w-full px-2.5 py-1 text-center font-mono font-bold uppercase rounded-lg border border-theme-subtle bg-surface text-primary text-xs focus:outline-none focus:border-rex-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-muted block mb-1">
+                      Next Quote #
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="1"
+                        value={currentNum}
+                        onChange={e => {
+                          const val = Math.max(1, parseInt(e.target.value) || 1);
+                          setUserSeqNumbers(p => {
+                            const updated: Record<string, number> = { ...p, [u.id]: val };
+                            if (currentPrefix) updated[currentPrefix] = val;
+                            return updated;
+                          });
+                        }}
+                        className="w-full px-2 py-1 text-center font-mono font-bold rounded-lg border border-theme-subtle bg-surface text-primary text-xs focus:outline-none focus:border-rex-500"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSaveUserPrefix(u.id)}
+                        disabled={isSavingUser}
+                        className="h-7 w-7 p-0 shrink-0 border border-theme-subtle hover:border-rex-500"
+                        title="Save User Prefix & Quote Sequence"
+                      >
+                        {isSavingUser ? <RefreshCw size={11} className="animate-spin" /> : <Check size={12} />}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             );

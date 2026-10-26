@@ -909,6 +909,21 @@ export const updateUserPrefix = async (userId: string | number, prefix: string) 
   return res.json();
 };
 
+export const fetchUserQuotationSequences = async () => {
+  const res = await fetch(`${API_URL}/sequences/user-quotations`);
+  const json = await res.json();
+  return Array.isArray(json) ? json : [];
+};
+
+export const updateUserQuotationSequence = async (prefix: string, next_number: number, userId?: string | number) => {
+  const res = await fetch(`${API_URL}/sequences/user-quotations/${encodeURIComponent(prefix)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ next_number, userId })
+  });
+  return res.json();
+};
+
 
 
 
