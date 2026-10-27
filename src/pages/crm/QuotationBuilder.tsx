@@ -330,6 +330,18 @@ export const QuotationBuilder: React.FC = () => {
               setShowPreview(true);
             }
           }
+        } else if (!quoteIdParam && !initialLoadedRef.current && data.length > 0) {
+          // If customer already has an active draft, connect to it to avoid duplicate repeating drafts
+          const existingDraft = data.find((v: any) => v.type === 'draft');
+          if (existingDraft) {
+            initialLoadedRef.current = true;
+            setDraftId(existingDraft.id);
+            draftIdRef.current = existingDraft.id;
+            try {
+              const snap = typeof existingDraft.data === 'string' ? JSON.parse(existingDraft.data) : existingDraft.data;
+              restoreSnapshot(snap);
+            } catch(e) {}
+          }
         }
       } catch (err) {
         console.error(err);

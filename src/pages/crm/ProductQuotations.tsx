@@ -251,11 +251,20 @@ export const ProductQuotations: React.FC = () => {
       const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
 
       const isDraft = q.type === "product_draft" || q.type === "draft";
-      const groupKey = isDraft ? (q.id || `${quoNo}_${resolvedLeadId}`) : (quoNo ? `${quoNo}_${resolvedLeadId}` : q.id);
+      const isAutoPregenNo = !quoNo || quoNo.startsWith('PQ-DRAFT-') || quoNo.startsWith('QT-DRAFT-') || quoNo === 'PQ-2206' || quoNo === 'QT-2206';
+
+      let groupKey: string;
+      if (quoNo && !isAutoPregenNo) {
+        groupKey = `${quoNo}_${resolvedLeadId}`;
+      } else if (isDraft && resolvedLeadId !== 'WALK-IN') {
+        groupKey = `PQ_DRAFT_${resolvedLeadId}`;
+      } else {
+        groupKey = q.id;
+      }
 
       if (!map[groupKey]) {
         map[groupKey] = {
-          quoNo: quoNo || q.id,
+          quoNo: (isAutoPregenNo ? (parsed.quotationNo || q.docNo || q.id) : quoNo) || q.id,
           leadId: resolvedLeadId,
           customerId: cust?.id || lead?.customerId || q.customerId,
           clientName,
@@ -268,12 +277,31 @@ export const ProductQuotations: React.FC = () => {
           salesRep: q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || '',
           versions: []
         };
+      } else {
+        const qTime = new Date(q.date).getTime();
+        const existingTime = new Date(map[groupKey].latestDate).getTime();
+        if (!isNaN(qTime) && qTime > existingTime) {
+          map[groupKey].latestDate = q.date;
+          if (quoNo && !isAutoPregenNo) {
+            map[groupKey].quoNo = quoNo;
+          }
+        }
       }
 
-      map[groupKey].versions.push({
-        ...q,
-        parsed
-      });
+      // Deduplicate versions: if it's a draft, replace any older draft in versions
+      const existingIdx = map[groupKey].versions.findIndex((v: any) => v.id === q.id || (isDraft && (v.type === 'product_draft' || v.type === 'draft')));
+      if (existingIdx >= 0) {
+        const existingTime = new Date(map[groupKey].versions[existingIdx].date).getTime();
+        const qTime = new Date(q.date).getTime();
+        if (qTime >= existingTime) {
+          map[groupKey].versions[existingIdx] = { ...q, parsed };
+        }
+      } else {
+        map[groupKey].versions.push({
+          ...q,
+          parsed
+        });
+      }
 
       if (new Date(q.date) > new Date(map[groupKey].latestDate)) {
         map[groupKey].latestDate = q.date;

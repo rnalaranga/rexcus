@@ -2844,6 +2844,13 @@ app.post('/api/quotations', async (req, res) => {
         );
         if (rows && rows.length > 0) existingDraft = rows[0];
       }
+      if (!existingDraft && data.leadId && data.leadId !== 'WALK-IN') {
+        const [rows]: any = await db.query(
+          'SELECT id, version FROM quotations WHERE leadId = ? AND type = ? ORDER BY date DESC LIMIT 1',
+          [data.leadId, qType]
+        );
+        if (rows && rows.length > 0) existingDraft = rows[0];
+      }
       if (existingDraft) {
         const draftId = existingDraft.id;
         await db.query(
@@ -2861,11 +2868,17 @@ app.post('/api/quotations', async (req, res) => {
             draftId
           ]
         );
-        // Clean up any other duplicate drafts matching qNo or docNo
+        // Clean up any other duplicate drafts matching qNo or for the same customer
         if (qNo) {
           await db.query(
             'DELETE FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ?',
             [qNo, qNo, draftId]
+          );
+        }
+        if (data.leadId && data.leadId !== 'WALK-IN') {
+          await db.query(
+            'DELETE FROM quotations WHERE leadId = ? AND type = ? AND id != ?',
+            [data.leadId, qType, draftId]
           );
         }
         return res.json({
@@ -2908,12 +2921,20 @@ app.post('/api/quotations', async (req, res) => {
     
     await db.query('INSERT INTO quotations SET ?', newQuotation);
 
-    // If new draft was inserted, ensure no older duplicate drafts exist for the same quote number
-    if (isDraft && newQuotation.quotationNo) {
-      await db.query(
-        'DELETE FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ?',
-        [newQuotation.quotationNo, newQuotation.quotationNo, newQuotation.id]
-      );
+    // If new draft was inserted, ensure no older duplicate drafts exist for the same quote number or customer
+    if (isDraft) {
+      if (newQuotation.quotationNo) {
+        await db.query(
+          'DELETE FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ?',
+          [newQuotation.quotationNo, newQuotation.quotationNo, newQuotation.id]
+        );
+      }
+      if (data.leadId && data.leadId !== 'WALK-IN') {
+        await db.query(
+          'DELETE FROM quotations WHERE leadId = ? AND type = ? AND id != ?',
+          [data.leadId, qType, newQuotation.id]
+        );
+      }
     }
 
     // Auto-advance sequence for quotation numbers upon official creation

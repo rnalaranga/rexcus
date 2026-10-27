@@ -597,7 +597,16 @@ export const Quotations: React.FC = () => {
 
       const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
       const isDraft = q.type === "draft" || q.type === "product_draft";
-      const groupKey = isDraft ? (q.id || `${quoNo}_${resolvedLeadId}`) : (quoNo ? `${quoNo}_${resolvedLeadId}` : q.id);
+      const isAutoPregenNo = !quoNo || quoNo.startsWith('QT-DRAFT-') || quoNo.startsWith('PQ-DRAFT-') || quoNo === 'QT-2206' || quoNo === 'PQ-2206';
+
+      let groupKey: string;
+      if (quoNo && !isAutoPregenNo) {
+        groupKey = `${quoNo}_${resolvedLeadId}`;
+      } else if (isDraft && resolvedLeadId !== 'WALK-IN') {
+        groupKey = `DRAFT_${resolvedLeadId}`;
+      } else {
+        groupKey = q.id;
+      }
       
       if (!groups[groupKey]) {
         const leadCompany = q.leadCompany || cust?.company || lead?.company || parsed.company || parsed.customerCompany || "";
@@ -608,7 +617,7 @@ export const Quotations: React.FC = () => {
         const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || cust?.tin || lead?.svat || lead?.tin || "";
 
         groups[groupKey] = { 
-          quoNo: quoNo || q.id, 
+          quoNo: (isAutoPregenNo ? (q.quotationNo || q.docNo || q.id) : quoNo) || q.id, 
           leadName, 
           leadCompany, 
           leadEmail, 
@@ -624,15 +633,46 @@ export const Quotations: React.FC = () => {
           latestDate: q.date || q.createdAt || new Date().toISOString(), 
           salesRep: repName 
         };
+      } else {
+        const qTime = new Date(q.date || q.createdAt).getTime();
+        const existingTime = new Date(groups[groupKey].latestDate).getTime();
+        if (!isNaN(qTime) && qTime > existingTime) {
+          groups[groupKey].latestDate = q.date || q.createdAt;
+          if (quoNo && !isAutoPregenNo) {
+            groups[groupKey].quoNo = quoNo;
+          }
+        }
       }
       
-      if (q.type === "main") groups[groupKey].main.push(q);
-      else if (q.type === "job") groups[groupKey].job.push(q);
-      else if (q.type === "customer") {
-        groups[groupKey].customer.push(q);
-        if (!groups[groupKey].main.length) groups[groupKey].main.push(q);
+      if (q.type === "main") {
+        if (!groups[groupKey].main.some(m => m.id === q.id)) {
+          groups[groupKey].main.push(q);
+        }
+      } else if (q.type === "job") {
+        if (!groups[groupKey].job.some(j => j.id === q.id)) {
+          groups[groupKey].job.push(q);
+        }
+      } else if (q.type === "customer") {
+        if (!groups[groupKey].customer.some(c => c.id === q.id)) {
+          groups[groupKey].customer.push(q);
+          if (!groups[groupKey].main.length) groups[groupKey].main.push(q);
+        }
+      } else if (isDraft) {
+        // Deduplicate drafts: keep only the latest draft for this group
+        const existingDraftIdx = groups[groupKey].main.findIndex(m => m.type === 'draft' || m.type === 'product_draft' || m.id === q.id);
+        if (existingDraftIdx >= 0) {
+          const existingTime = new Date(groups[groupKey].main[existingDraftIdx].date || groups[groupKey].main[existingDraftIdx].createdAt).getTime();
+          const qTime = new Date(q.date || q.createdAt).getTime();
+          if (qTime >= existingTime) {
+            groups[groupKey].main[existingDraftIdx] = q;
+          }
+        } else {
+          groups[groupKey].main.push(q);
+        }
       } else {
-        groups[groupKey].main.push(q);
+        if (!groups[groupKey].main.some(m => m.id === q.id)) {
+          groups[groupKey].main.push(q);
+        }
       }
       
       const qTime = new Date(q.date || q.createdAt).getTime();
