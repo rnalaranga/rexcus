@@ -1576,6 +1576,9 @@ async function runDatabaseSync() {
     "ALTER TABLE finished_goods_orders ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE finished_goods_orders ADD COLUMN taxRate DECIMAL(5,2) DEFAULT 0.00",
     "ALTER TABLE finished_goods_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerPoNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerPoDate VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerPoAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders MODIFY productId VARCHAR(50) NULL",
     "ALTER TABLE finished_goods_orders MODIFY productName VARCHAR(255) NULL",
     "ALTER TABLE gate_passes ADD COLUMN orderId VARCHAR(50) DEFAULT NULL",
@@ -4034,6 +4037,9 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       driverName: data.driverName || null,
       deliveryAddress: data.deliveryAddress || null,
       paymentTerms: data.paymentTerms || null,
+      customerPoNo: data.customerPoNo || null,
+      customerPoDate: data.customerPoDate || null,
+      customerPoAttachment: data.customerPoAttachment ? (typeof data.customerPoAttachment === 'object' ? JSON.stringify(data.customerPoAttachment) : String(data.customerPoAttachment)) : null,
       notes: data.notes || '',
       createdAt: now,
       updatedAt: now
@@ -4063,6 +4069,9 @@ app.post('/api/finished-goods-orders', async (req, res) => {
         { col: 'taxAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00' },
         { col: 'taxRate', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN taxRate DECIMAL(5,2) DEFAULT 0.00' },
         { col: 'taxProfileId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL' },
+        { col: 'customerPoNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoNo VARCHAR(100) DEFAULT NULL' },
+        { col: 'customerPoDate', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoDate VARCHAR(50) DEFAULT NULL' },
+        { col: 'customerPoAttachment', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoAttachment LONGTEXT DEFAULT NULL' },
       ];
       for (const q of alterQueries) {
         if (!validCols.has(q.col)) {
@@ -4147,8 +4156,21 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     if (data.items && typeof data.items === 'object') {
       data.items = JSON.stringify(data.items);
     }
+    if (data.customerPoAttachment && typeof data.customerPoAttachment === 'object') {
+      data.customerPoAttachment = JSON.stringify(data.customerPoAttachment);
+    }
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    await db.query('UPDATE finished_goods_orders SET ? WHERE id = ?', [data, id]);
+
+    const [colRows]: any = await db.query('SHOW COLUMNS FROM finished_goods_orders');
+    const validCols = new Set(colRows.map((c: any) => c.Field));
+    const safeData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validCols.has(k)) {
+        safeData[k] = v;
+      }
+    }
+
+    await db.query('UPDATE finished_goods_orders SET ? WHERE id = ? OR orderNo = ?', [safeData, id, id]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
@@ -4399,7 +4421,7 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
 app.delete('/api/finished-goods-orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query('DELETE FROM finished_goods_orders WHERE id = ?', [id]);
+    await db.query('DELETE FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
     res.json({ success: true });
   } catch (error) {
     console.error(error);

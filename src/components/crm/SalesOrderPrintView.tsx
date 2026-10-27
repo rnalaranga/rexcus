@@ -161,6 +161,18 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                   <td className="w-36 font-bold pb-1.5">Sales Order No</td>
                   <td className="font-bold pb-1.5">: <span className="font-mono text-[14px] text-blue-900">{order.orderNo}</span></td>
                 </tr>
+                {order.customerPoNo && (
+                  <tr>
+                    <td className="font-bold pb-1.5">Customer PO No</td>
+                    <td className="pb-1.5 font-mono font-bold text-black">: {order.customerPoNo}</td>
+                  </tr>
+                )}
+                {order.customerPoDate && (
+                  <tr>
+                    <td className="font-bold pb-1.5">Customer PO Date</td>
+                    <td className="pb-1.5 font-mono">: {formatDate(order.customerPoDate)}</td>
+                  </tr>
+                )}
                 <tr>
                   <td className="font-bold pb-1.5">Order Date</td>
                   <td className="pb-1.5 font-mono">: {formatDate(order.orderDate || order.createdAt)}</td>

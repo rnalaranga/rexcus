@@ -343,6 +343,8 @@ export const Quotations: React.FC = () => {
         customerEmail: group.leadEmail || '',
         deliveryAddress: group.leadAddress || quoteData.customerAddress || '',
         paymentTerms: quoteData.custTerms || quoteData.terms || 'Standard Terms',
+        customerPoNo: quoteData.customerPoNo || quoteData.poNo || null,
+        customerPoDate: quoteData.customerPoDate || null,
         orderDate: new Date().toISOString().slice(0, 10),
         targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         items: itemsList,

@@ -6,7 +6,7 @@ import {
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
-  ShoppingBag, Receipt
+  ShoppingBag, Receipt, UploadCloud, Paperclip
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -131,6 +131,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [preInvoicePromptOrder, setPreInvoicePromptOrder] = useState<any | null>(null)
   const [proformaModalOrder, setProformaModalOrder] = useState<any | null>(null)
   const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
+  const [viewingPoAttachment, setViewingPoAttachment] = useState<{ url: string; orderNo: string; poNo?: string } | null>(null)
 
   const handleOpenPrintProforma = (proforma: any, order?: any) => {
     if (!proforma) return
@@ -258,6 +259,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     customerPhone: '',
     customerEmail: '',
     deliveryAddress: '',
+    customerPoNo: '',
+    customerPoDate: '',
+    customerPoAttachment: '',
+    customerPoAttachmentName: '',
     orderDate: new Date().toISOString().slice(0, 10),
     targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     qty: '1',
@@ -268,6 +273,24 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const [formData, setFormData] = useState(initialForm)
+
+  const handlePoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) {
+      toast('File size exceeds 15MB limit', 'error')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setFormData(prev => ({
+        ...prev,
+        customerPoAttachment: reader.result as string,
+        customerPoAttachmentName: file.name
+      }))
+    }
+    reader.readAsDataURL(file)
+  }
 
   const handleOpenCreateModal = (preselectedProduct?: any) => {
     setEditingOrder(null)
@@ -323,6 +346,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       customerPhone: order.customerPhone || '',
       customerEmail: order.customerEmail || '',
       deliveryAddress: order.deliveryAddress || '',
+      customerPoNo: order.customerPoNo || '',
+      customerPoDate: order.customerPoDate ? String(order.customerPoDate).slice(0, 10) : '',
+      customerPoAttachment: order.customerPoAttachment || '',
+      customerPoAttachmentName: order.customerPoAttachment ? (order.customerPoNo ? `Customer_PO_${order.customerPoNo}` : 'Customer_PO_Document') : '',
       orderDate: order.orderDate ? String(order.orderDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
       targetDeliveryDate: order.targetDeliveryDate ? String(order.targetDeliveryDate).slice(0, 10) : '',
       qty: String(order.qty || '1'),
@@ -563,7 +590,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       attention: formData.attention || null,
       quoteId: formData.quoteId || null,
       quotationNo: formData.quotationNo || null,
-      deliveryAddress: formData.deliveryAddress || null
+      deliveryAddress: formData.deliveryAddress || null,
+      customerPoNo: formData.customerPoNo?.trim() || null,
+      customerPoDate: formData.customerPoDate || null,
+      customerPoAttachment: formData.customerPoAttachment || null
     };
 
     try {
@@ -711,11 +741,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     if (!deleteTarget) return
     setSubmitting(true)
     try {
-      await deleteFinishedGoodsOrder(deleteTarget.id)
+      await deleteFinishedGoodsOrder(deleteTarget.id || deleteTarget.orderNo)
       refetch()
+      toast(`Sales Order ${deleteTarget.orderNo || deleteTarget.id} deleted successfully!`, 'success')
       setDeleteTarget(null)
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
+      toast(err?.message || 'Failed to delete sales order', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -1014,19 +1046,37 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <Edit size={13} /> Edit Sales Order Details
             </button>
 
-            {/* 7. Delete Order (if draft / unpaid) */}
-            {order.status !== 'Dispatched' && !order.isDispatched && (
+            {/* View PO Attachment if present */}
+            {order.customerPoAttachment && (
               <button
                 type="button"
                 onClick={() => {
                   setOpenActionOrderId(null)
-                  setDeleteTarget(order)
+                  setViewingPoAttachment({
+                    url: order.customerPoAttachment,
+                    orderNo: order.orderNo,
+                    poNo: order.customerPoNo
+                  })
                 }}
-                className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-rose-500/10 transition-colors text-rose-600 font-medium"
+                className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-blue-600 dark:text-blue-400 font-medium"
               >
-                <Trash2 size={13} /> Delete Sales Order
+                <Paperclip size={13} /> View Customer PO Document
               </button>
             )}
+
+            <div className="my-1 border-t border-theme-subtle" />
+
+            {/* 7. Delete Order (available for any order) */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                setDeleteTarget(order)
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-rose-500/10 transition-colors text-rose-600 font-semibold"
+            >
+              <Trash2 size={13} /> Delete Sales Order
+            </button>
           </div>,
           document.body
         )}
@@ -1319,6 +1369,30 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
                           {order.orderNo}
                         </span>
+                        {order.customerPoNo && (
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className="text-[10px] font-mono font-bold px-1 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" title={`Customer PO: ${order.customerPoNo}`}>
+                              PO: {order.customerPoNo}
+                            </span>
+                            {order.customerPoAttachment && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setViewingPoAttachment({
+                                    url: order.customerPoAttachment,
+                                    orderNo: order.orderNo,
+                                    poNo: order.customerPoNo
+                                  })
+                                }}
+                                className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
+                                title="View Customer PO Document"
+                              >
+                                <Paperclip size={10} /> View PO
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <div className="text-[11px] text-muted flex items-center gap-1 font-mono mt-0.5">
                           <Calendar size={10} className="shrink-0" />
                           <span>{formatDate(order.orderDate)}</span>
@@ -1541,7 +1615,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                     {/* Compact Dropdown Actions */}
                     <td className="px-4 py-2.5 text-right">
-                      {renderOrderActions(order, orderItems, existingWO, linkedInvoice, linkedProforma)}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(order)}
+                          className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
+                          title={`Delete Order ${order.orderNo}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                        {renderOrderActions(order, orderItems, existingWO, linkedInvoice, linkedProforma)}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -1932,6 +2016,115 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   </div>
                 </div>
 
+                {/* ── CUSTOMER PURCHASE ORDER (PO) SECTION ── */}
+                <div className="sm:col-span-2 p-3.5 bg-blue-500/5 border border-blue-500/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText size={15} className="text-blue-600 dark:text-blue-400" />
+                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                        Customer Purchase Order (PO) Details & Document
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted font-mono">Customer PO Verification</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">
+                        Customer PO Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.customerPoNo}
+                        onChange={e => setFormData({ ...formData, customerPoNo: e.target.value })}
+                        placeholder="e.g. PO/2026/0891 or CUST-PO-774"
+                        className="w-full input-base font-mono text-xs font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">
+                        Customer PO Date
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.customerPoDate}
+                        onChange={e => setFormData({ ...formData, customerPoDate: e.target.value })}
+                        className="w-full input-base text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* PO Document Attachment (Upload) */}
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1.5">
+                      Customer PO Attachment (PDF or Image)
+                    </label>
+                    {formData.customerPoAttachment ? (
+                      <div className="flex items-center justify-between p-2.5 bg-surface border border-theme-subtle">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 border border-blue-500/20">
+                            {formData.customerPoAttachment.startsWith('data:image/') ? (
+                              <img src={formData.customerPoAttachment} alt="PO Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <FileText size={16} />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-primary block truncate">
+                              {formData.customerPoAttachmentName || (formData.customerPoNo ? `Customer_PO_${formData.customerPoNo}` : 'Customer_PO_Document')}
+                            </span>
+                            <span className="text-[10px] text-muted font-mono">
+                              Document attached • Ready to save
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const win = window.open();
+                              if (win) {
+                                win.document.write(`<iframe src="${formData.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                              }
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-700 p-1.5 h-auto flex items-center gap-1"
+                            title="View Document"
+                          >
+                            <Eye size={14} /> View
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setFormData({ ...formData, customerPoAttachment: '', customerPoAttachmentName: '' })}
+                            className="text-xs text-rose-600 hover:text-rose-700 p-1.5 h-auto flex items-center gap-1"
+                            title="Remove Attachment"
+                          >
+                            <Trash2 size={14} /> Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <label className="flex flex-col items-center justify-center p-3.5 border border-dashed border-theme-subtle hover:border-blue-500 bg-surface2/30 hover:bg-surface2/60 cursor-pointer transition-colors text-center">
+                          <UploadCloud size={20} className="text-blue-500 mb-1" />
+                          <span className="text-xs font-semibold text-primary">Click to upload Customer PO (PDF, PNG, JPG)</span>
+                          <span className="text-[10px] text-muted mt-0.5">Maximum recommended size: 15MB</span>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={handlePoFileUpload}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-secondary mb-1">Order Notes / Delivery Details</label>
                   <textarea
@@ -2248,6 +2441,49 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               >
                 {submitting ? 'Deleting...' : 'Delete Order'}
               </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* CUSTOMER PO ATTACHMENT VIEWER MODAL */}
+      {viewingPoAttachment && (
+        <Modal
+          isOpen={true}
+          onClose={() => setViewingPoAttachment(null)}
+          title={`Customer PO Document - Order #${viewingPoAttachment.orderNo} ${viewingPoAttachment.poNo ? `(PO: ${viewingPoAttachment.poNo})` : ''}`}
+          size="4xl"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-theme-subtle">
+              <div className="text-xs text-muted">
+                Official Customer Purchase Order uploaded for order <strong className="text-primary">{viewingPoAttachment.orderNo}</strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={viewingPoAttachment.url}
+                  download={`Customer_PO_${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Download size={13} /> Download File
+                </a>
+              </div>
+            </div>
+
+            <div className="bg-surface2 border border-theme-subtle p-2 flex items-center justify-center min-h-[500px] max-h-[75vh] overflow-auto">
+              {viewingPoAttachment.url.startsWith('data:image/') ? (
+                <img
+                  src={viewingPoAttachment.url}
+                  alt="Customer PO"
+                  className="max-w-full max-h-[70vh] object-contain shadow-md"
+                />
+              ) : (
+                <iframe
+                  src={viewingPoAttachment.url}
+                  title="Customer PO Document"
+                  className="w-full h-[70vh] border-none"
+                />
+              )}
             </div>
           </div>
         </Modal>

@@ -431,6 +431,8 @@ export const ProductQuotations: React.FC = () => {
         customerEmail: group.clientEmail || '',
         deliveryAddress: group.clientAddress || parsed.deliveryAddress || '',
         paymentTerms: parsed.custTerms || parsed.paymentTerms || 'Standard Terms',
+        customerPoNo: parsed.customerPoNo || parsed.poNo || null,
+        customerPoDate: parsed.customerPoDate || null,
         orderDate: new Date().toISOString().slice(0, 10),
         targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         items: itemsList,
