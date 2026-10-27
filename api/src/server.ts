@@ -4414,11 +4414,91 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       }
     }
 
-    await db.query('INSERT INTO finished_goods_orders SET ?', safeOrder);
-    res.json({ success: true, order });
+    const [result]: any = await db.query('INSERT INTO finished_goods_orders SET ?', safeOrder);
+    const insertedId = result?.insertId || safeOrder.id;
+
+    if (safeOrder.status === 'Pending Advance Approval') {
+      try {
+        await db.query(
+          `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+           VALUES (?, ?, ?, ?, ?, 'Advance Waiver Requested', ?, NOW(), ?, NOW())`,
+          ['Sales Order', String(insertedId), safeOrder.orderNo, safeOrder.customerName || 'Customer', Number(safeOrder.totalPrice || safeOrder.subtotal || 0), safeOrder.createdBy || 'Sales Executive', safeOrder.notes || 'Sales Order submitted without advance payment proforma']
+        );
+      } catch (logErr) {}
+    }
+
+    res.json({ success: true, order, id: insertedId });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// Approve Sales Order Advance Waiver
+app.post('/api/finished-goods-orders/:id/approve-advance-waiver', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approvedBy, notes } = req.body;
+
+    const [orders]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
+    if (!orders || orders.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const order = orders[0];
+
+    const updatedNotes = `${order.notes || ''}\n[Advance Waiver Approved by ${approvedBy || 'Admin'} on ${new Date().toISOString().slice(0, 10)}]`.trim();
+
+    await db.query(
+      "UPDATE finished_goods_orders SET status = 'Confirmed', notes = ? WHERE id = ? OR orderNo = ?",
+      [updatedNotes, order.id, order.orderNo]
+    );
+
+    // Audit log
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Advance Waiver Approved', ?, NOW(), ?, NOW())`,
+        ['Sales Order', String(order.id), order.orderNo || String(order.id), order.customerName || 'Customer', Number(order.totalPrice || order.subtotal || 0), approvedBy || 'Admin', notes || 'Approved Sales Order creation without advance deposit']
+      );
+    } catch (logErr) {}
+
+    res.json({ success: true, id: order.id, status: 'Confirmed' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reject Sales Order Advance Waiver
+app.post('/api/finished-goods-orders/:id/reject-advance-waiver', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejectedBy, reason } = req.body;
+
+    const [orders]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
+    if (!orders || orders.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const order = orders[0];
+
+    const updatedNotes = `${order.notes || ''}\n[Advance Waiver Rejected by ${rejectedBy || 'Admin'}: ${reason || 'Advance payment required'}]`.trim();
+
+    await db.query(
+      "UPDATE finished_goods_orders SET status = 'Rejected', notes = ? WHERE id = ? OR orderNo = ?",
+      [updatedNotes, order.id, order.orderNo]
+    );
+
+    // Audit log
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Advance Waiver Rejected', ?, NOW(), ?, NOW())`,
+        ['Sales Order', String(order.id), order.orderNo || String(order.id), order.customerName || 'Customer', Number(order.totalPrice || order.subtotal || 0), rejectedBy || 'Admin', reason || 'Sales Order rejected: Advance deposit mandatory']
+      );
+    } catch (logErr) {}
+
+    res.json({ success: true, id: order.id, status: 'Rejected' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

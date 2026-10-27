@@ -335,6 +335,28 @@ export const updateFinishedGoodsOrder = async (id: string, data: any) => {
   return res.json();
 };
 
+export const approveOrderAdvanceWaiver = async (id: string | number, approvedBy?: string, notes?: string) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${id}/approve-advance-waiver`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvedBy, notes })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to approve advance waiver');
+  return data;
+};
+
+export const rejectOrderAdvanceWaiver = async (id: string | number, rejectedBy?: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${id}/reject-advance-waiver`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rejectedBy, reason })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to reject advance waiver');
+  return data;
+};
+
 export const dispatchFinishedGoodsOrder = async (id: string, dispatchDetails?: any) => {
   const res = await fetch(`${API_URL}/finished-goods-orders/${id}/dispatch`, {
     method: 'POST',

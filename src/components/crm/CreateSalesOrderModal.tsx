@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { 
   X, ShoppingBag, FileText, Calendar, Building2, User, Phone, 
   MapPin, UploadCloud, Eye, Trash2, CheckCircle2, AlertCircle, 
-  Package, DollarSign
+  Package, DollarSign, AlertTriangle, ShieldCheck, Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { createFinishedGoodsOrder } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useCustomers, useLeads } from '@/hooks/useData';
+import { useCustomers, useLeads, useInvoices } from '@/hooks/useData';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface CreateSalesOrderModalProps {
   isOpen: boolean;
@@ -31,10 +32,53 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 }) => {
   const { toast } = useDialog();
   const navigate = useNavigate();
+  const { user, can } = useAuth();
   const { data: customers = [] } = useCustomers();
   const { data: leads = [] } = useLeads();
+  const { data: allInvoices = [] } = useInvoices();
 
   const [submitting, setSubmitting] = useState(false);
+  const [adminOverrideWaiver, setAdminOverrideWaiver] = useState(false);
+  const [advanceWaiverReason, setAdvanceWaiverReason] = useState('');
+
+  const isAdminOrManager = Boolean(
+    user?.role === 'admin' || 
+    user?.role === 'manager' || 
+    user?.role === 'sales_head' || 
+    can?.('approvals.orders')
+  );
+
+  // Check if an Advance Proforma Invoice or payment exists for this Quotation
+  const linkedProforma = useMemo(() => {
+    if (!quotationData) return null;
+    const { group, quotation } = quotationData;
+    const qId = String(quotation?.id || '');
+    const qNo = String(group?.quoNo || quotation?.quotationNo || quotation?.docNo || '').trim().toLowerCase();
+
+    return allInvoices.find((inv: any) => {
+      const isPI = Boolean(
+        inv.isProforma || 
+        inv.invoiceType === 'proforma' || 
+        inv.status === 'proforma' || 
+        String(inv.id || inv.invoiceNo || '').startsWith('PI-')
+      );
+      if (!isPI) return false;
+
+      const matchId = qId && String(inv.quotationId) === qId;
+      const invQNo = String(inv.quotationNo || inv.orderNo || '').trim().toLowerCase();
+      const matchNo = qNo && invQNo && (invQNo === qNo || qNo.includes(invQNo) || invQNo.includes(qNo));
+      return matchId || matchNo;
+    });
+  }, [quotationData, allInvoices]);
+
+  const hasAdvance = Boolean(
+    linkedProforma && (
+      Number(linkedProforma.paidAmount || 0) > 0 || 
+      linkedProforma.status === 'paid' || 
+      linkedProforma.status === 'partially_paid' ||
+      linkedProforma.id
+    )
+  );
 
   // Form State
   const [formData, setFormData] = useState({
@@ -169,19 +213,45 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       return;
     }
 
+    if (!hasAdvance && !adminOverrideWaiver && !advanceWaiverReason.trim()) {
+      toast('Please enter a reason for bypassing the advance payment requirement.', 'warning');
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const isWaiver = !hasAdvance;
+      const orderStatus = (isWaiver && !adminOverrideWaiver) ? 'Pending Advance Approval' : 'Confirmed';
+
+      let waiverNote = '';
+      if (isWaiver) {
+        if (adminOverrideWaiver) {
+          waiverNote = `\n[Advance Waived by Admin ${user?.name || user?.username || 'Authorized Approver'}: ${advanceWaiverReason || 'Admin Override'}]`;
+        } else {
+          waiverNote = `\n[Advance Waiver Requested: ${advanceWaiverReason || 'Pending Management Authorization'}]`;
+        }
+      } else if (linkedProforma) {
+        waiverNote = `\n[Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}]`;
+      }
+
       const payload = {
         ...formData,
+        status: orderStatus,
         customerPoNo: formData.customerPoNo.trim() || null,
         customerPoDate: formData.customerPoDate || null,
-        customerPoAttachment: formData.customerPoAttachment || null
+        customerPoAttachment: formData.customerPoAttachment || null,
+        notes: `${formData.notes || ''}${waiverNote}`.trim()
       };
 
       const res = await createFinishedGoodsOrder(payload);
       if (res && res.error) throw new Error(res.error);
 
-      toast(`Sales Order ${formData.orderNo} created successfully with Customer PO details!`, 'success');
+      if (orderStatus === 'Pending Advance Approval') {
+        toast(`Sales Order ${formData.orderNo} submitted! Awaiting Admin Approval in Central Approval Hub.`, 'info');
+      } else {
+        toast(`Sales Order ${formData.orderNo} created successfully!`, 'success');
+      }
+
       onSuccess?.(res);
       onClose();
       navigate('/crm/sales-orders');
@@ -262,6 +332,84 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* ── ADVANCE PAYMENT & PROFORMA VERIFICATION SECTION ── */}
+          {hasAdvance ? (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 size={16} />
+                </div>
+                <div>
+                  <span className="font-bold text-emerald-800 dark:text-emerald-300 block">
+                    Advance Payment / Proforma Invoice Verified
+                  </span>
+                  <span className="text-muted text-[11px]">
+                    Linked Proforma: <strong className="font-mono text-primary">{linkedProforma.invoiceNo || linkedProforma.id}</strong>
+                    {Number(linkedProforma.paidAmount) > 0 ? ` · Paid: ${formatCurrency(linkedProforma.paidAmount)}` : ' · Formally Issued'}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-600 text-white uppercase font-mono">
+                Advance OK
+              </span>
+            </div>
+          ) : (
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
+              <div className="flex items-start gap-2.5">
+                <div className="p-1.5 bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                  <AlertTriangle size={16} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-800 dark:text-amber-300 block">
+                      Advance Payment Required (Approval Workflow)
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 uppercase font-mono">
+                      Approval Needed
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                    Rex ERP policy requires an Advance Deposit / Proforma Invoice before a Sales Order can be confirmed. No advance proforma was found for quotation <strong>{formData.quotationNo}</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-amber-500/20 space-y-2">
+                <p className="text-[11px] text-secondary">
+                  To proceed without an advance payment, an <strong>Advance Waiver Approval Request</strong> will be routed to the <strong>Central Approval Hub</strong> for Admin / Management authorization.
+                </p>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-muted mb-1">
+                    Reason for Bypassing Advance Deposit *
+                  </label>
+                  <input
+                    type="text"
+                    required={!hasAdvance && !adminOverrideWaiver}
+                    value={advanceWaiverReason}
+                    onChange={(e) => setAdvanceWaiverReason(e.target.value)}
+                    placeholder="e.g. Corporate client with 30-day PO credit term, approved by Director"
+                    className="w-full h-8 px-2.5 text-xs bg-surface border border-amber-500/40 text-primary focus:outline-none focus:border-amber-600 font-medium"
+                  />
+                </div>
+
+                {isAdminOrManager && (
+                  <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adminOverrideWaiver}
+                      onChange={(e) => setAdminOverrideWaiver(e.target.checked)}
+                      className="rounded-none text-rex-600 focus:ring-0"
+                    />
+                    <span className="text-xs font-semibold text-primary">
+                      Direct Admin Override: Waive advance deposit and Confirm order immediately
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── CUSTOMER PURCHASE ORDER (PO) SECTION ── */}
           <div className="p-4 bg-blue-500/5 border border-blue-500/25 space-y-3">
@@ -472,9 +620,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               type="submit"
               variant="primary"
               disabled={submitting}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5"
+              className={`font-bold px-5 ${
+                (!hasAdvance && !adminOverrideWaiver)
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
             >
-              {submitting ? 'Creating Sales Order...' : 'Confirm & Create Sales Order'}
+              {submitting
+                ? 'Processing...'
+                : (!hasAdvance && !adminOverrideWaiver)
+                  ? 'Request Admin Approval & Submit Order'
+                  : 'Confirm & Create Sales Order'}
             </Button>
           </div>
         </form>

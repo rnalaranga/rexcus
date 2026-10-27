@@ -1,14 +1,20 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { 
   CheckSquare, Search, Check, X, FileText, Eye, Clock, ShieldCheck, 
-  History, Filter, User, RefreshCw, CheckCircle2, XCircle, ArrowLeftRight, Package
+  History, Filter, User, RefreshCw, CheckCircle2, XCircle, ArrowLeftRight, Package,
+  ShoppingBag, AlertTriangle
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { useCustomers, useQuotations, useLeads } from '@/hooks/useData'
-import { approveCreditLimit, approveQuotation, rejectQuotation, approveQuotationEdit, rejectQuotationEdit, fetchApprovalLogs, fetchSubstituteRequests, approveMaterialSubstitute, rejectMaterialSubstitute, createMRForShortage } from '@/lib/api'
+import { useCustomers, useQuotations, useLeads, useFinishedGoodsOrders } from '@/hooks/useData'
+import { 
+  approveCreditLimit, approveQuotation, rejectQuotation, approveQuotationEdit, 
+  rejectQuotationEdit, approveOrderAdvanceWaiver, rejectOrderAdvanceWaiver, 
+  fetchApprovalLogs, fetchSubstituteRequests, approveMaterialSubstitute, 
+  rejectMaterialSubstitute, createMRForShortage 
+} from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -23,9 +29,10 @@ export default function Approvals() {
 
   const { data: customers = [], refetch: refetchCustomers } = useCustomers()
   const { data: quotations = [], refetch: refetchQuotations } = useQuotations()
+  const { data: orders = [], refetch: refetchOrders } = useFinishedGoodsOrders()
   const { data: leads = [] } = useLeads()
 
-  const [activeTab, setActiveTab] = useState<'quotations' | 'credit' | 'substitutes' | 'history'>('quotations')
+  const [activeTab, setActiveTab] = useState<'quotations' | 'orders' | 'credit' | 'substitutes' | 'history'>('quotations')
   const [substituteRequests, setSubstituteRequests] = useState<any[]>([])
   const [loadingSubstitutes, setLoadingSubstitutes] = useState(false)
   const [search, setSearch] = useState('')
@@ -40,7 +47,7 @@ export default function Approvals() {
   const [selectedLogDetail, setSelectedLogDetail] = useState<any | null>(null)
 
   // Rejection dialog state
-  const [rejectDialog, setRejectDialog] = useState<{ id: string; title: string; type?: 'quote' | 'credit' | 'substitute'; workOrderId?: string; bomIndex?: number } | null>(null)
+  const [rejectDialog, setRejectDialog] = useState<{ id: string; title: string; type?: 'quote' | 'order' | 'credit' | 'substitute'; workOrderId?: string; bomIndex?: number } | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
   // Quotation Preview state
@@ -96,6 +103,22 @@ export default function Approvals() {
       return quoNo.includes(term) || client.includes(term)
     })
   }, [quotations, search])
+
+  // --- Sales Orders Approvals (Pending Advance Waiver) ---
+  const pendingOrders = useMemo(() => {
+    return orders.filter((o: any) => {
+      const st = (o.status || '').toLowerCase().trim();
+      const isPending = st === 'pending advance approval' || st === 'pending approval';
+      if (!isPending) return false;
+      if (!search.trim()) return true;
+      const term = search.toLowerCase();
+      const ordNo = (o.orderNo || o.id || '').toLowerCase();
+      const client = (o.customerName || o.customerCompany || '').toLowerCase();
+      const qNo = (o.quotationNo || '').toLowerCase();
+      const poNo = (o.customerPoNo || '').toLowerCase();
+      return ordNo.includes(term) || client.includes(term) || qNo.includes(term) || poNo.includes(term);
+    });
+  }, [orders, search]);
 
   // --- Credit Limit Approvals (Pending) ---
   const pendingCredits = useMemo(() => {
@@ -207,6 +230,28 @@ export default function Approvals() {
     }
   }
 
+  const handleApproveOrderAdvanceWaiver = async (ord: any) => {
+    setProcessing(ord.id)
+    try {
+      await approveOrderAdvanceWaiver(ord.id, user?.name || 'Authorized Admin', 'Advance waiver authorized by management')
+      toast(`Sales Order ${ord.orderNo} advance waiver approved! Order is now Confirmed.`, 'success')
+      await refetchOrders()
+      await loadApprovalLogs()
+    } catch (e: any) {
+      toast(e.message || 'Failed to approve advance waiver', 'error')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const handleRejectOrderAdvanceWaiver = (ord: any) => {
+    setRejectDialog({
+      id: ord.id,
+      title: `Reject Sales Order ${ord.orderNo} (Advance Waiver)`,
+      type: 'order'
+    })
+  }
+
   const handleConfirmRejectQuotation = async () => {
     if (!rejectDialog) return
     setProcessing(rejectDialog.id)
@@ -215,6 +260,10 @@ export default function Approvals() {
         await approveCreditLimit(rejectDialog.id, 'rejected', user?.name || 'Authorized Approver', rejectionReason)
         toast(`Credit limit request rejected with notes.`, 'info')
         await refetchCustomers()
+      } else if (rejectDialog.type === 'order') {
+        await rejectOrderAdvanceWaiver(rejectDialog.id, user?.name || 'Authorized Approver', rejectionReason)
+        toast(`Sales Order advance waiver rejected.`, 'info')
+        await refetchOrders()
       } else {
         await rejectQuotation(rejectDialog.id, rejectionReason)
         toast(`Quotation rejected with notes.`, 'info')
@@ -296,6 +345,7 @@ export default function Approvals() {
   }
 
   const canApproveQuotations = can('approvals.quotations') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
+  const canApproveOrders = can('approvals.orders') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head'
   const canApproveCredit = can('approvals.credit_limit') || user?.role === 'admin' || user?.role === 'manager'
 
   return (
@@ -415,6 +465,23 @@ export default function Approvals() {
             {pendingQuotations.length > 0 && (
               <span className="px-2 py-0.5 rounded-none text-xs font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-medium">
                 {pendingQuotations.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-none text-xs transition-all ${
+              activeTab === 'orders' 
+                ? 'bg-surface text-primary border border-theme shadow-xs font-semibold' 
+                : 'text-secondary hover:text-primary hover:bg-surface2/50 border border-transparent font-medium'
+            }`}
+          >
+            <ShoppingBag size={14} />
+            Sales Orders (Advance Waivers)
+            {pendingOrders.length > 0 && (
+              <span className="px-2 py-0.5 rounded-none text-xs font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-medium">
+                {pendingOrders.length}
               </span>
             )}
           </button>
@@ -604,6 +671,140 @@ export default function Approvals() {
                       </div>
                     </div>
                   )
+                })}
+              </div>
+            )}
+          </GlassCard>
+        )}
+
+        {/* --- TAB: SALES ORDERS AWAITING ADVANCE WAIVER --- */}
+        {activeTab === 'orders' && (
+          <GlassCard className="w-full rounded-none">
+            <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
+              <div>
+                <h2 className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-amber-500" />
+                  Commercial Sales Orders Awaiting Advance Waiver Authorization
+                </h2>
+                <p className="text-xs text-muted font-medium mt-0.5">
+                  Orders submitted without an advance payment proforma must be authorized by management before proceeding to production.
+                </p>
+              </div>
+              <Badge value={`${pendingOrders.length} Pending`} variant="warning" size="sm" />
+            </div>
+
+            {pendingOrders.length === 0 ? (
+              <div className="p-12 text-center text-muted">
+                <CheckSquare size={36} className="mx-auto mb-3 opacity-20 text-emerald-500" />
+                <p className="text-sm font-medium">All caught up! No sales orders pending advance approval.</p>
+                <p className="text-xs text-muted mt-1">Orders created without advance payment proformas will appear here automatically.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-theme-subtle">
+                {pendingOrders.map((ord: any) => {
+                  let items: any[] = [];
+                  if (ord.items) {
+                    try { items = typeof ord.items === 'string' ? JSON.parse(ord.items) : ord.items; } catch (e) {}
+                  }
+                  const total = Number(ord.totalPrice || ord.totalAmount || ord.subtotal || 0);
+
+                  return (
+                    <div key={ord.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-theme-hover/20 transition-colors">
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">{ord.orderNo}</span>
+                          {ord.quotationNo && (
+                            <span className="text-xs bg-surface2 text-secondary px-2 py-0.5 rounded-none border border-theme-subtle font-mono font-medium">
+                              Ref Quote: {ord.quotationNo}
+                            </span>
+                          )}
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                            Pending Advance Approval
+                          </span>
+                          <span className="text-xs text-muted flex items-center gap-1 font-mono">
+                            <Clock size={11} /> {formatDate(ord.orderDate || ord.createdAt)}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-secondary">
+                          Client: <span className="font-semibold text-primary">{ord.customerName}</span>
+                          {ord.attention ? ` · Attn: ${ord.attention}` : ''}
+                        </p>
+
+                        {ord.customerPoNo && (
+                          <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 font-mono">
+                            <span>Customer PO: <strong>{ord.customerPoNo}</strong></span>
+                            {ord.customerPoDate && <span>(Dated: {ord.customerPoDate})</span>}
+                            {ord.customerPoAttachment && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const win = window.open();
+                                  if (win) {
+                                    if (ord.customerPoAttachment.startsWith('data:')) {
+                                      win.document.write(`<iframe src="${ord.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                    } else {
+                                      win.location.href = ord.customerPoAttachment;
+                                    }
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 text-[11px] underline text-blue-600 hover:text-blue-500 ml-1"
+                              >
+                                View PO Document
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {ord.notes && (
+                          <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 font-mono">
+                            <strong>Waiver Note / Remarks:</strong> {ord.notes}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-muted font-medium">
+                          {items.length} line item(s) · Target Delivery: {ord.targetDeliveryDate ? formatDate(ord.targetDeliveryDate) : 'Not specified'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-5">
+                        <div className="text-right">
+                          <p className="text-xs uppercase tracking-wider text-muted font-medium">Order Value</p>
+                          <p className="text-sm font-semibold font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(total)}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {canApproveOrders ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRejectOrderAdvanceWaiver(ord)}
+                                disabled={processing === ord.id}
+                                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20 font-medium text-xs"
+                                title="Reject Advance Waiver Request"
+                              >
+                                <X size={14} /> Reject
+                              </Button>
+
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleApproveOrderAdvanceWaiver(ord)}
+                                disabled={processing === ord.id}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1 rounded-none text-xs"
+                                title="Approve Sales Order without Advance Payment"
+                              >
+                                <Check size={14} /> Approve (Waive Advance)
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted font-medium italic">Requires Manager role</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
                 })}
               </div>
             )}

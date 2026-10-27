@@ -1181,6 +1181,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             className="px-3 py-1.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary rounded-none focus:outline-none focus:border-rex-500 cursor-pointer shadow-2xs"
           >
             <option value="all">All Orders ({orders.length})</option>
+            {orders.some(o => o.status === 'Pending Advance Approval') && (
+              <option value="Pending Advance Approval">Pending Advance Approval ({orders.filter(o => o.status === 'Pending Advance Approval').length})</option>
+            )}
             <option value="Pending">Pending ({orders.filter(o => o.status === 'Pending').length})</option>
             <option value="Confirmed">Confirmed ({orders.filter(o => o.status === 'Confirmed').length})</option>
             <option value="In Production">In Production ({orders.filter(o => o.status === 'In Production').length})</option>
@@ -1589,6 +1592,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         variant={
                           order.status === 'Dispatched' ? 'success' :
                           order.status === 'In Production' ? 'warning' :
+                          order.status === 'Pending Advance Approval' ? 'warning' :
                           order.status === 'Ready to Dispatch' ? 'info' : 'default'
                         }
                         size="sm"
