@@ -1684,42 +1684,24 @@ export const Quotations: React.FC = () => {
                         </td>
 
                         {/* Quote # & Version */}
-                        <td className="px-3.5 py-2.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <td className="px-3.5 py-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 flex-nowrap">
                             <button
                               type="button"
                               onClick={() => navigate(editUrl)}
-                              className="font-mono font-bold text-xs text-rex-600 dark:text-rex-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors"
+                              className="font-mono font-bold text-xs text-rex-600 dark:text-rex-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors whitespace-nowrap"
                               title="Click to open quotation in builder"
                             >
                               {group.quoNo}
                             </button>
-                            {group.isProduct ? (
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
-                                Product
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 font-semibold">
-                                Custom
-                              </span>
-                            )}
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle shrink-0">
                               v{latestMain?.version || displayQ?.version || 1}
                             </span>
-                            {(latestMain?.customerPoNo || parsed.customerPoNo) && (
-                              <span
-                                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
-                                title={`Customer PO: ${latestMain?.customerPoNo || parsed.customerPoNo}`}
-                              >
-                                <FileCheck size={10} className="shrink-0" />
-                                PO: #{latestMain?.customerPoNo || parsed.customerPoNo}
-                              </span>
-                            )}
                             {group.main.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
-                                className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-0.5"
+                                className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-0.5 shrink-0"
                                 title="Toggle version revisions"
                               >
                                 {group.main.length} revs
@@ -1730,16 +1712,24 @@ export const Quotations: React.FC = () => {
                         </td>
 
                         {/* Customer / Company */}
-                        <td className="px-3.5 py-2.5 max-w-[220px]">
+                        <td className="px-3.5 py-2 max-w-[220px]">
                           <div className="flex flex-col min-w-0">
                             <span className="font-semibold text-primary truncate" title={group.leadCompany || group.leadName}>
                               {group.leadCompany || group.leadName}
                             </span>
-                            {group.leadCompany && group.leadName && (
-                              <span className="text-[11px] text-muted truncate">
-                                Attn: {group.leadName}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2 text-[11px] text-muted truncate">
+                              {group.leadCompany && group.leadName ? (
+                                <span>Attn: {group.leadName}</span>
+                              ) : null}
+                              {(latestMain?.customerPoNo || parsed.customerPoNo) && (
+                                <span 
+                                  className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
+                                  title={`Customer PO: ${latestMain?.customerPoNo || parsed.customerPoNo}`}
+                                >
+                                  <FileCheck size={10} /> PO: {latestMain?.customerPoNo || parsed.customerPoNo}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
 

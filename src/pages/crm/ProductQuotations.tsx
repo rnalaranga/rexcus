@@ -1106,33 +1106,24 @@ export const ProductQuotations: React.FC = () => {
                     <React.Fragment key={group.quoNo}>
                       <tr className={`hover:bg-surface2/40 transition-colors ${openActionId === group.quoNo ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
                         {/* Quote # & Version */}
-                        <td className="px-3.5 py-2.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <td className="px-3.5 py-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 flex-nowrap">
                             <button
                               type="button"
                               onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
-                              className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors"
+                              className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors whitespace-nowrap"
                               title="Click to open quotation in builder"
                             >
                               {group.quoNo}
                             </button>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle shrink-0">
                               v{latest?.version || 1}
                             </span>
-                            {(latest?.customerPoNo || parsed.customerPoNo) && (
-                              <span
-                                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
-                                title={`Customer PO: ${latest?.customerPoNo || parsed.customerPoNo}`}
-                              >
-                                <FileCheck size={10} className="shrink-0" />
-                                PO: #{latest?.customerPoNo || parsed.customerPoNo}
-                              </span>
-                            )}
                             {group.versions.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => setExpandedRevisions(p => ({ ...p, [group.quoNo]: !p[group.quoNo] }))}
-                                className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-0.5"
+                                className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 hover:bg-surface3 text-muted hover:text-primary border border-theme-subtle transition-colors flex items-center gap-0.5 shrink-0"
                                 title="Toggle version revisions"
                               >
                                 {group.versions.length} revs
@@ -1143,16 +1134,24 @@ export const ProductQuotations: React.FC = () => {
                         </td>
 
                         {/* Customer / Client */}
-                        <td className="px-3.5 py-2.5 max-w-[220px]">
+                        <td className="px-3.5 py-2 max-w-[220px]">
                           <div className="flex flex-col min-w-0">
                             <span className="font-semibold text-primary truncate" title={group.clientCompany || group.clientName}>
                               {group.clientCompany || group.clientName}
                             </span>
-                            {group.clientCompany && group.clientName && (
-                              <span className="text-[11px] text-muted truncate">
-                                Attn: {group.clientName}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2 text-[11px] text-muted truncate">
+                              {group.clientCompany && group.clientName ? (
+                                <span>Attn: {group.clientName}</span>
+                              ) : null}
+                              {(latest?.customerPoNo || parsed.customerPoNo) && (
+                                <span 
+                                  className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
+                                  title={`Customer PO: ${latest?.customerPoNo || parsed.customerPoNo}`}
+                                >
+                                  <FileCheck size={10} /> PO: {latest?.customerPoNo || parsed.customerPoNo}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
 
