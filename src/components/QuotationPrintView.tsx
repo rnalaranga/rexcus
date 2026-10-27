@@ -85,16 +85,65 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const t1Rate = Number(data.selectedProfile?.tax1_rate || 0) / 100;
   const t2Rate = Number(data.selectedProfile?.tax2_rate || 0) / 100;
 
+  const isProductQuote = Boolean(
+    data.isProductQuotation || 
+    data.quotationCategory === 'product' || 
+    data.isTaxInclusive ||
+    (data.quotationNo && data.quotationNo.startsWith('PQ-'))
+  );
+
   let multiplier = 1;
-  if (isSsclHidden && isVatHidden) {
-    // Option 1: Both SSCL & VAT absorbed into unit prices & total supply value
-    multiplier = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
-  } else if (isSsclHidden && !isVatHidden) {
-    // Option 2: SSCL absorbed into unit prices & supply value, VAT separate
-    multiplier = 1 + t1Rate;
+  let unitPriceDivisor = 1;
+  if (isProductQuote) {
+    if (isSsclHidden && !isVatHidden) {
+      // Option 2: SSCL absorbed into supply value, VAT separate (Standard 18%)
+      unitPriceDivisor = 1 + t2Rate;
+      multiplier = 1;
+    } else if (isSsclSeparate && isVatSeparate) {
+      // Option 3: Both SSCL & VAT separate
+      unitPriceDivisor = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
+      multiplier = 1;
+    } else {
+      unitPriceDivisor = 1;
+      multiplier = 1;
+    }
   } else {
-    // Option 3: Base unit prices, both taxes separate
-    multiplier = 1;
+    if (isSsclHidden && isVatHidden) {
+      // Option 1: Both SSCL & VAT absorbed into unit prices & total supply value
+      multiplier = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
+    } else if (isSsclHidden && !isVatHidden) {
+      // Option 2: SSCL absorbed into unit prices & supply value, VAT separate
+      multiplier = 1 + t1Rate;
+    } else {
+      // Option 3: Base unit prices, both taxes separate
+      multiplier = 1;
+    }
+  }
+
+  const rawWithSSCL = Number(custTotals.withSSCL || custTotals.total || 0);
+  let displaySscl = Number(data.custSscl || 0);
+  let displayVat = Number(data.custVat || 0);
+  let displaySubtotal = Number(custTotals.subtotal || 0);
+  let displayGrandTotal = quotationType === 'job' ? Number(jobTotals.withSSCL || 0) : rawWithSSCL;
+
+  if (isProductQuote && data.taxEnabled && data.selectedProfile && quotationType !== 'job') {
+    displayGrandTotal = rawWithSSCL;
+    if (isVatSeparate && !isSsclSeparate) {
+      // Option 2: VAT separate, SSCL absorbed into supply value
+      displaySubtotal = unitPriceDivisor > 0 ? (rawWithSSCL / unitPriceDivisor) : rawWithSSCL;
+      displayVat = rawWithSSCL - displaySubtotal;
+      displaySscl = 0;
+    } else if (isVatSeparate && isSsclSeparate) {
+      // Option 3: Both separate
+      displaySubtotal = unitPriceDivisor > 0 ? (rawWithSSCL / unitPriceDivisor) : rawWithSSCL;
+      displaySscl = displaySubtotal * t1Rate;
+      displayVat = data.selectedProfile?.tax2_compound ? ((displaySubtotal + displaySscl) * t2Rate) : (displaySubtotal * t2Rate);
+    } else {
+      // Option 1: Absorbed
+      displaySubtotal = rawWithSSCL;
+      displaySscl = 0;
+      displayVat = 0;
+    }
   }
   
   const custTerms = data.custTerms || data.terms || data.paymentTerms || ''
@@ -386,10 +435,10 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                       {Number(item.qty || 0).toFixed(2)}
                     </td>
                     <td className="p-1.5 border-r border-black text-right align-top font-mono">
-                      {((Number(item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      {((Number(item.unitPrice) || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </td>
                     <td className="p-1.5 text-right align-top font-mono font-semibold">
-                      {(((Number(item.qty) * Number(item.unitPrice)) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      {(((Number(item.qty) * Number(item.unitPrice)) || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </td>
                   </tr>
                 );
@@ -421,7 +470,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   {data.currency || 'LKR'}
                 </td>
                 <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
-                  {Number((quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  {Number(quotationType === 'job' ? jobTotals.totalCost : (isProductQuote ? displaySubtotal : (custTotals.subtotal || 0) * multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </td>
               </tr>
 
@@ -435,29 +484,29 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                       : `${Number(custDiscount || 0)} %`}
                   </td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
-                    {Number((custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {Number((custTotals.discount || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </td>
                 </tr>
               )}
 
               {/* SSCL */}
-              {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
+              {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : (isProductQuote ? displaySscl > 0 : data.custSscl > 0)) && (
                 <tr className="border-b border-black print-no-break h-6 text-[11px]">
                   <td colSpan={2} className="text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</td>
                   <td className="text-center border-l border-black">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
-                    {Number(quotationType === 'job' ? data.jobSscl : data.custSscl).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {Number(quotationType === 'job' ? data.jobSscl : (isProductQuote ? displaySscl : data.custSscl)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </td>
                 </tr>
               )}
 
               {/* VAT */}
-              {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
+              {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : (isProductQuote ? displayVat > 0 : data.custVat > 0)) && (
                 <tr className="border-b border-black print-no-break h-6 text-[11px]">
                   <td colSpan={2} className="text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</td>
                   <td className="text-center border-l border-black">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
-                    {Number(quotationType === 'job' ? data.jobVat : data.custVat).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {Number(quotationType === 'job' ? data.jobVat : (isProductQuote ? displayVat : data.custVat)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </td>
                 </tr>
               )}
@@ -467,7 +516,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 <td colSpan={2} className="text-right font-bold pr-6">Grand Total</td>
                 <td className="font-bold text-center border-l border-black">{data.currency || 'LKR'}</td>
                 <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
-                  {Number(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  {Number(displayGrandTotal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </td>
               </tr>
             </tfoot>
@@ -475,7 +524,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
 
           {/* Value in words */}
           <div className="py-1.5 px-3 border-b border-black text-[10.5px] font-bold print-no-break bg-gray-50/30">
-            <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL))}</span>
+            <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(displayGrandTotal))}</span>
           </div>
 
           {/* Footer Notes & Bank */}

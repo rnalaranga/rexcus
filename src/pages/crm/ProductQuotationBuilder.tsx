@@ -1054,32 +1054,51 @@ export const ProductQuotationBuilder: React.FC = () => {
     }
   };
 
-  // Taxes & Financials (Exact same formula as QuotationBuilder)
-  let jobTaxAmount = 0; let jobSscl = 0; let jobVat = 0;
-  let custTaxAmount = 0; let custSscl = 0; let custVat = 0;
+  // Taxes & Financials for Tax-Inclusive Finished Goods / Products
+  let unitPriceDivisor = 1;
+  let custBaseSupplyValue = custTotal;
+  let custSscl = 0;
+  let custVat = 0;
 
   const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
 
-  if (selectedProfile) {
+  if (selectedProfile && taxEnabled) {
     const t1 = Number(selectedProfile.tax1_rate) / 100;
     const t2 = Number(selectedProfile.tax2_rate) / 100;
+    const isSsclSep = selectedProfile.tax1_show_separately === 1;
+    const isVatSep = selectedProfile.tax2_show_separately === 1;
 
-    // Job Taxes (Internal Product Cost Basis)
-    jobSscl = jobTotalCost * t1;
-    jobVat = selectedProfile.tax2_compound ? (jobTotalCost + jobSscl) * t2 : jobTotalCost * t2;
-    jobTaxAmount = jobSscl + jobVat;
-
-    // Cust Taxes (Customer Selling Price Basis)
-    custSscl = custTotal * t1;
-    custVat = selectedProfile.tax2_compound ? (custTotal + custSscl) * t2 : custTotal * t2;
-    custTaxAmount = custSscl + custVat;
+    if (isSsclSep && isVatSep) {
+      // Option 3: Both SSCL & VAT Separate
+      unitPriceDivisor = selectedProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+      custBaseSupplyValue = unitPriceDivisor > 0 ? (custTotal / unitPriceDivisor) : custTotal;
+      custSscl = custBaseSupplyValue * t1;
+      custVat = selectedProfile.tax2_compound ? ((custBaseSupplyValue + custSscl) * t2) : (custBaseSupplyValue * t2);
+    } else if (!isSsclSep && isVatSep) {
+      // Option 2: SSCL Absorbed into supply value, VAT Separate (Standard 18%)
+      unitPriceDivisor = 1 + t2;
+      custBaseSupplyValue = unitPriceDivisor > 0 ? (custTotal / unitPriceDivisor) : custTotal;
+      custVat = custTotal - custBaseSupplyValue;
+      custSscl = 0;
+    } else {
+      // Option 1: Both Absorbed
+      unitPriceDivisor = 1;
+      custBaseSupplyValue = custTotal;
+      custSscl = 0;
+      custVat = 0;
+    }
   }
 
-  const jobWithSSCL = jobTotalCost + jobTaxAmount;
-  const custWithSSCL = custTotal + custTaxAmount;
+  // Final Total for Customer is ALWAYS the product's final tax-inclusive price (VAT is never added on top)
+  const custWithSSCL = custTotal;
+  const jobWithSSCL = jobTotalCost;
+  const jobSscl = 0;
+  const jobVat = 0;
 
-  const expectedProfit = custWithSSCL - jobWithSSCL;
-  const expectedMargin = custWithSSCL > 0 ? (expectedProfit / custWithSSCL) * 100 : 0;
+  // Financial calculations: Net revenue Rex keeps is the supply value excluding VAT
+  const netRevenue = (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal;
+  const expectedProfit = netRevenue - jobTotalCost;
+  const expectedMargin = netRevenue > 0 ? (expectedProfit / netRevenue) * 100 : 0;
 
   const restoreSnapshot = (snap: any) => {
     setDocNo(snap.docNo || 'FO/PD/02');
@@ -1126,6 +1145,7 @@ export const ProductQuotationBuilder: React.FC = () => {
       const snapshot: any = {
         isProductQuotation: true,
         quotationCategory: 'product',
+        isTaxInclusive: true,
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
         taxEnabled, selectedProfileId,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
@@ -1133,9 +1153,15 @@ export const ProductQuotationBuilder: React.FC = () => {
         selectedTermsPresetId,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
-        custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+        custTotals: {
+          subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
+          discount: custDiscountAmt,
+          total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+          withSSCL: custWithSSCL,
+          grossTotal: custTotal
+        },
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
-        productTotals: { totalCost: totalProductCost, revenue: custTotal, margin: expectedMargin, profit: expectedProfit },
+        productTotals: { totalCost: totalProductCost, revenue: netRevenue, margin: expectedMargin, profit: expectedProfit },
         selectedProfile, custSscl, custVat, jobSscl, jobVat,
         customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
         createdBy: user?.id || user?.username || '',
@@ -1254,15 +1280,22 @@ export const ProductQuotationBuilder: React.FC = () => {
       const snapshot: any = {
         isProductQuotation: true,
         quotationCategory: 'product',
+        isTaxInclusive: true,
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
         custDiscountType, custDiscountAmount,
         selectedTermsPresetId,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
-        custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+        custTotals: {
+          subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
+          discount: custDiscountAmt,
+          total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+          withSSCL: custWithSSCL,
+          grossTotal: custTotal
+        },
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
-        productTotals: { totalCost: totalProductCost, revenue: custTotal, margin: expectedMargin, profit: expectedProfit },
+        productTotals: { totalCost: totalProductCost, revenue: netRevenue, margin: expectedMargin, profit: expectedProfit },
         taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
         customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
         createdBy: user?.id || user?.username || '',
@@ -2281,14 +2314,14 @@ export const ProductQuotationBuilder: React.FC = () => {
               
               <div className="space-y-4 relative z-10">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-muted font-medium">Sub Total</span>
+                  <span className="text-muted font-medium">
+                    {taxEnabled && selectedProfile?.tax2_show_separately === 1 ? 'Supply Value (Excl. VAT)' : 'Sub Total'}
+                  </span>
                   <span className="font-mono font-semibold text-secondary text-sm">
                     {formatCurrency(
-                      taxEnabled && selectedProfile?.tax1_show_separately === 0 && selectedProfile?.tax2_show_separately === 0
-                        ? custWithSSCL
-                        : taxEnabled && selectedProfile?.tax1_show_separately === 0
-                          ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100))
-                          : custSubtotal
+                      taxEnabled && selectedProfile?.tax2_show_separately === 1
+                        ? custBaseSupplyValue
+                        : custSubtotal
                     )}
                   </span>
                 </div>
@@ -2315,7 +2348,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                       </div>
                     </div>
                     <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">
-                      -{formatCurrency(taxEnabled && selectedProfile?.tax1_show_separately === 0 ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100) : custDiscountAmt)}
+                      -{formatCurrency(taxEnabled && selectedProfile?.tax2_show_separately === 1 ? (custDiscountAmt / unitPriceDivisor) : custDiscountAmt)}
                     </span>
                   </div>
 
@@ -2362,8 +2395,8 @@ export const ProductQuotationBuilder: React.FC = () => {
                     )}
                     {(selectedProfile.tax2_show_separately === 1 && custVat > 0) && (
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted font-medium">{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}%)</span>
-                        <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custVat)}</span>
+                        <span className="text-muted font-medium">{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}% Extracted)</span>
+                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400 text-sm">{formatCurrency(custVat)}</span>
                       </div>
                     )}
                   </>
@@ -2371,7 +2404,10 @@ export const ProductQuotationBuilder: React.FC = () => {
 
                 <div className="pt-4 mt-2 border-t border-dashed border-theme-subtle/50">
                   <div className="flex justify-between items-center">
-                    <div className="text-[12px] font-bold text-secondary uppercase tracking-wider">Grand Total</div>
+                    <div>
+                      <div className="text-[12px] font-bold text-secondary uppercase tracking-wider">Grand Total</div>
+                      <div className="text-[9.5px] text-muted">Final Price (VAT Inclusive)</div>
+                    </div>
                     <div className="text-[24px] leading-none font-black text-emerald-600 dark:text-emerald-400 font-mono">
                       {formatCurrency(custWithSSCL)}
                     </div>
@@ -2462,8 +2498,8 @@ export const ProductQuotationBuilder: React.FC = () => {
                    <span className="font-mono text-muted">{formatCurrency(jobTotalCost)}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                   <span className="text-muted font-medium">Revenue</span>
-                   <span className="font-mono text-primary font-bold">{formatCurrency(custTotal)}</span>
+                   <span className="text-muted font-medium">{selectedProfile?.tax2_show_separately === 1 && taxEnabled ? 'Net Revenue (Excl. VAT)' : 'Revenue'}</span>
+                   <span className="font-mono text-primary font-bold">{formatCurrency(netRevenue)}</span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-theme-subtle/50">
                    <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Margin</span>
@@ -2513,8 +2549,17 @@ export const ProductQuotationBuilder: React.FC = () => {
                      <QuotationPrintView 
                         data={{
                            docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
+                           isProductQuotation: true,
+                           quotationCategory: 'product',
+                           isTaxInclusive: true,
                            custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
-                           custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+                           custTotals: {
+                             subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
+                             discount: custDiscountAmt,
+                             total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+                             withSSCL: custWithSSCL,
+                             grossTotal: custTotal
+                           },
                            jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
                            taxEnabled, selectedProfileId,
                            custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat,
@@ -2560,8 +2605,17 @@ export const ProductQuotationBuilder: React.FC = () => {
             <QuotationPrintView 
               data={{
                  docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, attention, subject,
+                 isProductQuotation: true,
+                 quotationCategory: 'product',
+                 isTaxInclusive: true,
                  custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
-                 custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
+                 custTotals: {
+                   subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
+                   discount: custDiscountAmt,
+                   total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+                   withSSCL: custWithSSCL,
+                   grossTotal: custTotal
+                 },
                  jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
                  taxEnabled, selectedProfileId,
                  custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat,

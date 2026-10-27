@@ -2636,13 +2636,13 @@ app.post('/api/deals', async (req, res) => {
 app.get('/api/quotations', async (req, res) => {
     try {
       const [rows] = await db.query(`SELECT q.*, 
-        COALESCE(c.name, l.name) as leadName, 
-        COALESCE(c.company, l.company) as leadCompany,
-        COALESCE(c.address, '') as leadAddress,
+        COALESCE(c.name, l.name, '') as leadName, 
+        COALESCE(c.company, l.company, '') as leadCompany,
+        COALESCE(c.address, l.address, '') as leadAddress,
         COALESCE(c.vat, l.vat, '') as leadVat,
         COALESCE(c.svat, l.svat, '') as leadSvat
       FROM quotations q 
-      LEFT JOIN leads l ON q.leadId = l.id 
+      LEFT JOIN leads l ON (q.leadId = l.id OR l.id = CONCAT('LEAD-', LPAD(q.leadId, 3, '0')) OR q.leadId = l.customerId OR q.leadId = REPLACE(l.id, 'LEAD-', ''))
       LEFT JOIN customers c ON (q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
       ORDER BY q.date DESC`);
       res.json(rows);
@@ -2655,7 +2655,14 @@ app.get('/api/quotations', async (req, res) => {
 app.get('/api/quotations/:leadId', async (req, res) => {
   try {
     const { leadId } = req.params;
-    const [rows]: any = await db.query('SELECT * FROM quotations WHERE leadId = ? ORDER BY type ASC, version DESC', [leadId]);
+    const [rows]: any = await db.query(`
+      SELECT * FROM quotations 
+      WHERE leadId = ? 
+         OR leadId = REPLACE(?, 'LEAD-', '') 
+         OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0'))
+         OR leadId IN (SELECT customerId FROM leads WHERE id = ?)
+      ORDER BY type ASC, version DESC
+    `, [leadId, leadId, leadId, leadId]);
     if (rows && rows.length > 0) {
       return res.json(rows);
     }

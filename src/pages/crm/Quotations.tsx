@@ -371,6 +371,7 @@ export const Quotations: React.FC = () => {
     }
   }, [searchParams])
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'custom' | 'product'>('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')
   const [startDate, setStartDate] = useState('')
@@ -458,76 +459,141 @@ export const Quotations: React.FC = () => {
   }, [quotations]);
 
   const groupedQuotations = useMemo(() => {
-
-
-
-
-  
-    const groups: Record<string, { quoNo: string, leadName: string, leadCompany: string, leadEmail?: string, leadAddress: string, leadVat: string, leadSvat: string, leadId: string, main: any[], job: any[], customer: any[], latestDate: string, salesRep?: string }> = {}
+    const groups: Record<string, { 
+      quoNo: string; 
+      leadName: string; 
+      leadCompany: string; 
+      leadEmail?: string; 
+      leadAddress: string; 
+      leadVat: string; 
+      leadSvat: string; 
+      leadId: string; 
+      customerId?: string;
+      isProduct: boolean;
+      main: any[]; 
+      job: any[]; 
+      customer: any[]; 
+      latestDate: string; 
+      salesRep?: string; 
+    }> = {};
     
     quotations.forEach(q => {
-       let parsed: any = {}
-       try { parsed = JSON.parse(q.data || '{}') } catch(e){}
-       if (q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product') return;
-
-       const repName = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || '';
-       const repId = q.createdBy || parsed.createdBy || '';
-       const repUname = parsed.createdByUsername || '';
-
-       // Access check: If not canViewAll, user can ONLY view their own quotations
-       if (!canViewAll) {
-         const uid = String(user?.id || '').trim().toLowerCase();
-         const uname = String(user?.username || '').trim().toLowerCase();
-         const uName = String(user?.name || '').trim().toLowerCase();
-         const uPrefix = String(user?.prefix || '').trim().toLowerCase();
-
-         const qCreatedBy = String(repId).trim().toLowerCase();
-         const qCreatedByName = String(repName).trim().toLowerCase();
-         const qCreatedByUname = String(repUname).trim().toLowerCase();
-         const quoNoLower = String(parsed.quotationNo || q.docNo || q.id || '').trim().toLowerCase();
-
-         const isOwn = (uid && qCreatedBy && qCreatedBy === uid) ||
-                       (uname && (qCreatedBy === uname || qCreatedByUname === uname)) ||
-                       (uName && qCreatedByName === uName) ||
-                       (uPrefix && quoNoLower.startsWith(uPrefix));
-
-         if (!isOwn) return;
-       }
-
-       const quoNo = parsed.quotationNo || q.id
-       
-       if (!groups[quoNo]) {
-          const cust = customers.find((c: any) => c.id === q.leadId);
-          const lead = leads.find((l: any) => l.id === q.leadId);
-          const leadCompany = q.leadCompany || cust?.company || lead?.company || '';
-          const leadName = q.leadName || cust?.name || lead?.name || parsed.customerName || 'Walk-in Customer';
-          const leadEmail = parsed.customerEmail || parsed.email || (cust as any)?.email || (lead as any)?.email || '';
-          const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || (lead as any)?.address || '';
-          const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || '';
-          const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || (cust as any)?.tin || lead?.svat || (lead as any)?.tin || '';
-          groups[quoNo] = { quoNo, leadName, leadCompany, leadEmail, leadAddress, leadVat, leadSvat, leadId: q.leadId, main: [], job: [], customer: [], latestDate: q.date, salesRep: repName };
+      let parsed: any = {};
+      try {
+        parsed = typeof q.data === "string" ? JSON.parse(q.data || "{}") : (q.data || {});
+        if (typeof parsed === "string") {
+          try { parsed = JSON.parse(parsed); } catch (e) {}
         }
-       
-       if (q.type === 'main') groups[quoNo].main.push(q)
-       else if (q.type === 'job') groups[quoNo].job.push(q)
-       else if (q.type === 'customer') groups[quoNo].customer.push(q)
-       else groups[quoNo].main.push(q)
-       
-       if (new Date(q.date) > new Date(groups[quoNo].latestDate)) {
-         groups[quoNo].latestDate = q.date
-       }
-    })
+      } catch (e) {}
+
+      const isProd = Boolean(
+        q.type === "product" || 
+        q.type === "product_draft" || 
+        parsed.isProductQuotation === true || 
+        parsed.quotationCategory === "product" ||
+        String(q.quotationNo || q.docNo || q.id || "").startsWith("PQ")
+      );
+
+      const repName = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || "";
+      const repId = q.createdBy || parsed.createdBy || "";
+      const repUname = parsed.createdByUsername || "";
+
+      // Access check: If not canViewAll, user can ONLY view their own quotations
+      if (!canViewAll) {
+        const uid = String(user?.id || "").trim().toLowerCase();
+        const uname = String(user?.username || "").trim().toLowerCase();
+        const uName = String(user?.name || "").trim().toLowerCase();
+        const uPrefix = String(user?.prefix || "").trim().toLowerCase();
+
+        const qCreatedBy = String(repId).trim().toLowerCase();
+        const qCreatedByName = String(repName).trim().toLowerCase();
+        const qCreatedByUname = String(repUname).trim().toLowerCase();
+        const quoNoLower = String(parsed.quotationNo || q.docNo || q.id || "").trim().toLowerCase();
+
+        const isOwn = (uid && qCreatedBy && qCreatedBy === uid) ||
+                      (uname && (qCreatedBy === uname || qCreatedByUname === uname)) ||
+                      (uName && (qCreatedByName === uName || String(parsed.salesRep || "").toLowerCase() === uName)) ||
+                      (uPrefix && quoNoLower.startsWith(uPrefix)) ||
+                      (!qCreatedBy && !qCreatedByName); // Don't hide unassigned or legacy quotes
+
+        if (!isOwn) return;
+      }
+
+      const quoNo = q.quotationNo || parsed.quotationNo || q.docNo || parsed.docNo || q.id;
+      
+      if (!groups[quoNo]) {
+        const numId = String(q.leadId || "").replace(/^LEAD-0*/i, "");
+        const lead = leads.find((l) => 
+          l.id === q.leadId || 
+          l.id === parsed.leadId || 
+          (numId && (l.id === `LEAD-${numId.padStart(3, "0")}` || String(l.id).replace(/^LEAD-0*/i, "") === numId)) ||
+          (q.customerId && l.customerId === q.customerId) ||
+          (parsed.company && l.company?.toLowerCase() === parsed.company?.toLowerCase())
+        );
+        const cust = customers.find((c) => 
+          c.id === q.leadId || 
+          c.id === parsed.leadId || 
+          c.id === q.customerId ||
+          (lead?.customerId && c.id === lead.customerId) ||
+          (parsed.company && (c.company?.toLowerCase() === parsed.company?.toLowerCase() || c.name?.toLowerCase() === parsed.company?.toLowerCase()))
+        );
+
+        const leadCompany = q.leadCompany || cust?.company || lead?.company || parsed.company || parsed.customerCompany || "";
+        const leadName = q.leadName || cust?.name || lead?.name || parsed.customerName || parsed.attention || "Walk-in Customer";
+        const leadEmail = parsed.customerEmail || parsed.email || cust?.email || lead?.email || "";
+        const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || lead?.address || "";
+        const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || "";
+        const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || cust?.tin || lead?.svat || lead?.tin || "";
+        const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
+
+        groups[quoNo] = { 
+          quoNo, 
+          leadName, 
+          leadCompany, 
+          leadEmail, 
+          leadAddress, 
+          leadVat, 
+          leadSvat, 
+          leadId: resolvedLeadId, 
+          customerId: cust?.id || lead?.customerId || q.customerId,
+          isProduct: isProd,
+          main: [], 
+          job: [], 
+          customer: [], 
+          latestDate: q.date || q.createdAt || new Date().toISOString(), 
+          salesRep: repName 
+        };
+      }
+      
+      if (q.type === "main") groups[quoNo].main.push(q);
+      else if (q.type === "job") groups[quoNo].job.push(q);
+      else if (q.type === "customer") {
+        groups[quoNo].customer.push(q);
+        if (!groups[quoNo].main.length) groups[quoNo].main.push(q);
+      } else {
+        groups[quoNo].main.push(q);
+      }
+      
+      const qTime = new Date(q.date || q.createdAt).getTime();
+      if (!isNaN(qTime) && qTime > new Date(groups[quoNo].latestDate).getTime()) {
+        groups[quoNo].latestDate = q.date || q.createdAt;
+      }
+    });
     
-    // Sort versions descending within each group
+    // Ensure main has at least 1 record for each group
     Object.values(groups).forEach(g => {
-      g.main.sort((a, b) => b.version - a.version)
-      g.job.sort((a, b) => b.version - a.version)
-      g.customer.sort((a, b) => b.version - a.version)
-    })
+      if (g.main.length === 0) {
+        if (g.customer.length > 0) g.main.push(...g.customer);
+        else if (g.job.length > 0) g.main.push(...g.job);
+      }
+      g.main.sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1));
+      g.job.sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1));
+      g.customer.sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1));
+    });
     
     // Sort groups by latest date descending
-    return Object.values(groups).sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
-  }, [quotations, customers, leads])
+    return Object.values(groups).sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
+  }, [quotations, customers, leads, canViewAll, user])
 
   // Active Drafts (Custom Engineering) - Only shown if a customer is selected!
   const activeDrafts = useMemo(() => {
@@ -548,8 +614,8 @@ export const Quotations: React.FC = () => {
     let draftsCount = 0;
 
     groupedQuotations.forEach(g => {
-      const m = g.main[0];
-      const val = Number(m?.totalAmount || 0);
+      const m = g.main[0] || g.customer[0] || g.job[0];
+      const val = Number(m?.totalAmount || m?.customAmount || 0);
       totalQuoted += val;
       const st = (m?.status || 'Draft').toLowerCase();
       if (st === 'approved' || st === 'accepted') approvedVal += val;
@@ -566,34 +632,43 @@ export const Quotations: React.FC = () => {
     const counts: Record<string, number> = {
       all: 0,
       draft: 0,
-      'pending approval': 0,
+      "pending approval": 0,
+      "po received": 0,
       approved: 0,
       sent: 0,
-      'in production': 0,
+      "in production": 0,
       rejected: 0
     };
     groupedQuotations.forEach(g => {
-      const latestMain = g.main[0];
-      const isAutoDraft = latestMain?.type === 'draft';
-      if (isAutoDraft && customerFilter === 'all') return;
+      if (categoryFilter !== "all") {
+        if (categoryFilter === "product" && !g.isProduct) return;
+        if (categoryFilter === "custom" && g.isProduct) return;
+      }
 
       counts.all++;
-      const s = (latestMain?.status || 'Draft').toLowerCase();
+      const latest = g.main[0] || g.customer[0] || g.job[0];
+      const s = (latest?.status || "Draft").toLowerCase();
       if (counts[s] !== undefined) counts[s]++;
     });
     return counts;
-  }, [groupedQuotations, customerFilter]);
+  }, [groupedQuotations, categoryFilter]);
 
   // Total Quoted Value
   const totalQuotedValue = useMemo(() => {
-    return groupedQuotations.reduce((sum, g) => sum + Number(g.main[0]?.totalAmount || 0), 0);
+    return groupedQuotations.reduce((sum, g) => sum + Number((g.main[0] || g.customer[0] || g.job[0])?.totalAmount || 0), 0);
   }, [groupedQuotations]);
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
 
   const filtered = groupedQuotations.filter(g => {
-    const latestMain = g.main[0];
-    const isAutoDraft = latestMain?.type === 'draft';
+    const latestMain = g.main[0] || g.customer[0] || g.job[0];
+    const isAutoDraft = latestMain?.type === "draft";
+
+    // Category filter
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "product" && !g.isProduct) return false;
+      if (categoryFilter === "custom" && g.isProduct) return false;
+    }
 
     // Search filter
     const q = search.toLowerCase();
@@ -601,34 +676,31 @@ export const Quotations: React.FC = () => {
     if (!searchMatch) return false;
 
     // Sales rep filter for management / sales head view
-    if (canViewAll && salesRepFilter !== 'all') {
-      const gRep = (g.salesRep || g.main[0]?.createdByName || '').trim().toLowerCase();
+    if (canViewAll && salesRepFilter !== "all") {
+      const gRep = (g.salesRep || g.main[0]?.createdByName || "").trim().toLowerCase();
       if (gRep !== salesRepFilter.trim().toLowerCase()) return false;
     }
 
-    // 1. Temporary autosaved drafts (type === 'draft') should only be shown if a customer is selected
-    if (isAutoDraft && customerFilter === 'all') {
-      return false;
-    }
-
-    // 2. Status filter
-    if (statusFilter !== 'all') {
-      const latestStatus = (latestMain?.status || 'Draft').toLowerCase();
-      if (statusFilter === 'draft') {
-        if (latestStatus !== 'draft' && !isAutoDraft) return false;
+    // Status filter
+    if (statusFilter !== "all") {
+      const latestStatus = (latestMain?.status || "Draft").toLowerCase();
+      if (statusFilter === "draft") {
+        if (latestStatus !== "draft" && !isAutoDraft) return false;
       } else {
         if (latestStatus !== statusFilter.toLowerCase()) return false;
       }
     }
 
     // Customer filter
-    if (customerFilter !== 'all') {
-      if (g.leadId !== customerFilter) return false;
+    if (customerFilter !== "all") {
+      const matchCust = g.leadId === customerFilter ||
+        (g.customerId && g.customerId === customerFilter);
+      if (!matchCust) return false;
     }
 
     // Date range filter
     let dateMatch = true;
-    const qDate = (g.latestDate || g.main[0]?.date || '').slice(0, 10);
+    const qDate = (g.latestDate || g.main[0]?.date || "").slice(0, 10);
     if (startDate && qDate) {
       dateMatch = dateMatch && qDate >= startDate;
     }
@@ -818,7 +890,12 @@ export const Quotations: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`);
+                const targetId = (latestMain || displayQ)?.id;
+                const leadParam = group.leadId || 'WALK-IN';
+                const url = group.isProduct
+                  ? `/crm/product-quotations/new/${leadParam}?quoteId=${targetId}`
+                  : `/crm/quotations/new/${leadParam}?quoteId=${targetId}`;
+                navigate(url);
                 setOpenActionId(null);
               }}
               className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
@@ -1305,10 +1382,48 @@ export const Quotations: React.FC = () => {
         {/* Row 1: Status Filter Tabs & Search */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            {/* Category Filter Toggle */}
+            <div className="flex items-center gap-1 pr-2 border-r border-theme-subtle shrink-0">
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('all')}
+                className={`px-2 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
+                  categoryFilter === 'all'
+                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                All Types
+              </button>
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('custom')}
+                className={`px-2 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
+                  categoryFilter === 'custom'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                Custom
+              </button>
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('product')}
+                className={`px-2 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
+                  categoryFilter === 'product'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                Products
+              </button>
+            </div>
+
             {[
               { id: 'all', label: 'All', count: statusCounts.all },
               { id: 'draft', label: 'Draft', count: statusCounts.draft },
               { id: 'pending approval', label: 'Pending Approval', count: statusCounts['pending approval'] },
+              { id: 'po received', label: 'PO Received', count: statusCounts['po received'] },
               { id: 'approved', label: 'Approved', count: statusCounts.approved },
               { id: 'sent', label: 'Sent', count: statusCounts.sent },
               { id: 'in production', label: 'In Production', count: statusCounts['in production'] },
@@ -1504,25 +1619,27 @@ export const Quotations: React.FC = () => {
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
                 {filtered.map((group, idx) => {
                   const latestMain = group.main[0];
-                  if (latestMain?.type === 'draft' && !group.job.length && !group.customer.length && group.main.length === 1) return null;
                   const latestJob = group.job[0];
                   const latestCust = group.customer[0];
-                  const displayQ = latestMain || latestCust || latestJob;
+                  const displayQ = latestMain || latestCust || latestJob || (group.main && group.main[0]);
                   if (!displayQ) return null;
 
                   let parsed: any = {};
                   try {
-                    parsed = typeof latestMain?.data === 'string' ? JSON.parse(latestMain.data || '{}') : (latestMain?.data || {});
+                    parsed = typeof displayQ?.data === 'string' ? JSON.parse(displayQ.data || '{}') : (displayQ?.data || {});
                   } catch (e) {}
 
-                  const status = latestMain?.status || 'Draft';
-                  const existingWO = getExistingWO(group, latestMain);
-                  const quoteReceipts = getQuoteReceipts(group, latestMain);
+                  const status = displayQ?.status || latestMain?.status || 'Draft';
+                  const existingWO = getExistingWO(group, displayQ);
+                  const quoteReceipts = getQuoteReceipts(group, displayQ);
                   const totalAdv = quoteReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
                   const latestRec = quoteReceipts.length > 0 ? quoteReceipts[quoteReceipts.length - 1] : null;
-                  const sampleGrns = quoteGrns[latestMain?.id] || [];
+                  const sampleGrns = quoteGrns[displayQ?.id] || quoteGrns[latestMain?.id] || [];
                   const itemsCount = parsed.custItems?.length || parsed.items?.length || parsed.boms?.length || 1;
                   const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
+                  const editUrl = group.isProduct
+                    ? `/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`
+                    : `/crm/quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`;
 
                   return (
                     <React.Fragment key={group.quoNo}>
@@ -1546,14 +1663,23 @@ export const Quotations: React.FC = () => {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <button
                               type="button"
-                              onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
+                              onClick={() => navigate(editUrl)}
                               className="font-mono font-bold text-xs text-rex-600 dark:text-rex-400 hover:underline hover:text-amber-500 cursor-pointer text-left transition-colors"
                               title="Click to open quotation in builder"
                             >
                               {group.quoNo}
                             </button>
+                            {group.isProduct ? (
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
+                                Product
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 font-semibold">
+                                Custom
+                              </span>
+                            )}
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
-                              v{latestMain?.version || 1}
+                              v{latestMain?.version || displayQ?.version || 1}
                             </span>
                             {(latestMain?.customerPoNo || parsed.customerPoNo) && (
                               <span
@@ -1631,7 +1757,7 @@ export const Quotations: React.FC = () => {
                         <td className="px-3.5 py-2.5 text-right">
                           <div className="flex flex-col items-end">
                             <span className="font-mono font-bold text-xs text-primary">
-                              {formatCurrency(Number(latestMain?.totalAmount || 0))}
+                              {formatCurrency(Number(latestMain?.totalAmount || displayQ?.totalAmount || parsed.total || 0))}
                             </span>
                             {totalAdv > 0 && latestRec && (
                               <button
@@ -1773,7 +1899,7 @@ export const Quotations: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               icon={FileEdit}
-                              onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
+                              onClick={() => navigate(editUrl)}
                               className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 font-semibold text-primary"
                               title="Edit in Quotation Builder"
                             >
@@ -1871,7 +1997,12 @@ export const Quotations: React.FC = () => {
                                           <Eye size={12} />
                                         </button>
                                         <button
-                                          onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${v.id}`)}
+                                          onClick={() => {
+                                            const vUrl = group.isProduct
+                                              ? `/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${v.id}`
+                                              : `/crm/quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${v.id}`;
+                                            navigate(vUrl);
+                                          }}
                                           className="p-1 text-primary hover:bg-surface2 rounded-none transition-colors"
                                           title={`Edit Version v${v.version}`}
                                         >
@@ -1897,25 +2028,27 @@ export const Quotations: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
           {filtered.map((group, idx) => {
             const latestMain = group.main[0];
-            if (latestMain?.type === 'draft' && !group.job.length && !group.customer.length && group.main.length === 1) return null;
             const latestJob = group.job[0];
             const latestCust = group.customer[0];
-            const displayQ = latestMain || latestCust || latestJob;
+            const displayQ = latestMain || latestCust || latestJob || (group.main && group.main[0]);
             if (!displayQ) return null;
 
             let parsed: any = {};
             try {
-              parsed = typeof latestMain?.data === 'string' ? JSON.parse(latestMain.data || '{}') : (latestMain?.data || {});
+              parsed = typeof displayQ?.data === 'string' ? JSON.parse(displayQ.data || '{}') : (displayQ?.data || {});
             } catch (e) {}
 
-            const status = latestMain?.status || 'Draft';
-            const existingWO = getExistingWO(group, latestMain);
-            const quoteReceipts = getQuoteReceipts(group, latestMain);
+            const status = displayQ?.status || latestMain?.status || 'Draft';
+            const existingWO = getExistingWO(group, displayQ);
+            const quoteReceipts = getQuoteReceipts(group, displayQ);
             const totalAdv = quoteReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
             const latestRec = quoteReceipts.length > 0 ? quoteReceipts[quoteReceipts.length - 1] : null;
-            const sampleGrns = quoteGrns[latestMain?.id] || [];
+            const sampleGrns = quoteGrns[displayQ?.id] || quoteGrns[latestMain?.id] || [];
             const itemsCount = parsed.custItems?.length || parsed.items?.length || parsed.boms?.length || 1;
             const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
+            const editUrl = group.isProduct
+              ? `/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`
+              : `/crm/quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`;
 
             return (
               <GlassCard
@@ -1940,14 +2073,23 @@ export const Quotations: React.FC = () => {
                       />
                       <button
                         type="button"
-                        onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
+                        onClick={() => navigate(editUrl)}
                         className="font-mono font-bold text-sm text-rex-600 dark:text-rex-400 hover:underline hover:text-amber-500 transition-colors cursor-pointer text-left"
                         title="Click to open quotation in builder"
                       >
                         {group.quoNo}
                       </button>
+                      {group.isProduct ? (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
+                          Product
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 font-semibold">
+                          Custom
+                        </span>
+                      )}
                       <span className="text-[10px] font-mono px-1.5 py-0.2 bg-surface2 text-muted border border-theme-subtle">
-                        v{latestMain?.version || 1}
+                        v{latestMain?.version || displayQ?.version || 1}
                       </span>
                       <span className={`text-[10px] uppercase font-semibold px-2 py-0.5 border ${getStatusColor(status)}`}>
                         {status}
@@ -2022,7 +2164,7 @@ export const Quotations: React.FC = () => {
                   <div>
                     <span className="text-[10px] uppercase font-semibold text-muted block tracking-wider">Total Amount</span>
                     <span className="text-sm font-bold font-mono text-primary block">
-                      {formatCurrency(Number(latestMain?.totalAmount || 0))}
+                      {formatCurrency(Number(latestMain?.totalAmount || displayQ?.totalAmount || parsed.total || 0))}
                     </span>
                   </div>
 
@@ -2041,7 +2183,7 @@ export const Quotations: React.FC = () => {
                       variant="ghost"
                       size="sm"
                       icon={FileEdit}
-                      onClick={() => navigate(`/crm/quotations/new/${group.leadId}?quoteId=${(latestMain || displayQ).id}`)}
+                      onClick={() => navigate(editUrl)}
                       className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2 font-semibold text-primary"
                       title="Edit in Builder"
                     >
