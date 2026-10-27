@@ -184,7 +184,11 @@ export const ProductQuotations: React.FC = () => {
     return quotations.filter((q: any) => {
       let parsed: any = {};
       try { parsed = JSON.parse(q.data || '{}'); } catch (e) {}
-      const isProduct = q.type === 'product' || q.type === 'product_draft' || parsed.isProductQuotation === true || parsed.quotationCategory === 'product';
+      const isProduct = q.type === 'product' || 
+                        q.type === 'product_draft' || 
+                        parsed.isProductQuotation === true || 
+                        parsed.quotationCategory === 'product' ||
+                        String(q.quotationNo || q.docNo || parsed.quotationNo || q.id || '').startsWith('PQ');
       if (!isProduct) return false;
 
       // Access check: If not canViewAll, user can ONLY view their own quotations
@@ -203,14 +207,15 @@ export const ProductQuotations: React.FC = () => {
         const isOwn = (uid && qCreatedBy && qCreatedBy === uid) ||
                       (uname && (qCreatedBy === uname || qCreatedByUname === uname)) ||
                       (uName && (qCreatedByName === uName || qSalesRep === uName)) ||
-                      (uPrefix && quoNoLower.startsWith(uPrefix));
+                      (uPrefix && quoNoLower.startsWith(uPrefix)) ||
+                      (!qCreatedBy && !qCreatedByName);
 
         if (!isOwn) return false;
       }
 
       return true;
     });
-  }, [quotations]);
+  }, [quotations, canViewAll, user]);
 
   // Group by Quotation Number / ID
   const groupedQuotes = useMemo(() => {
@@ -221,19 +226,38 @@ export const ProductQuotations: React.FC = () => {
       try { parsed = JSON.parse(q.data || '{}'); } catch (e) {}
       const quoNo = parsed.quotationNo || q.docNo || q.id;
 
-      const cust = customers.find((c: any) => c.id === q.leadId);
-      const lead = leads.find((l: any) => l.id === q.leadId);
+      const numId = String(q.leadId || "").replace(/^LEAD-0*/i, "");
+      const lead = leads.find((l: any) => 
+        l.id === q.leadId || 
+        l.id === parsed.leadId || 
+        (numId && (l.id === `LEAD-${numId.padStart(3, "0")}` || String(l.id).replace(/^LEAD-0*/i, "") === numId)) ||
+        (q.customerId && l.customerId === q.customerId) ||
+        (parsed.company && l.company?.toLowerCase() === parsed.company?.toLowerCase())
+      );
+      const cust = customers.find((c: any) => 
+        c.id === q.leadId || 
+        c.id === parsed.leadId || 
+        c.id === q.customerId ||
+        (lead?.customerId && c.id === lead.customerId) ||
+        (parsed.company && (c.company?.toLowerCase() === parsed.company?.toLowerCase() || c.name?.toLowerCase() === parsed.company?.toLowerCase()))
+      );
+
       const clientCompany = q.leadCompany || cust?.company || lead?.company || parsed.customerCompany || '';
       const clientName = q.leadName || cust?.name || lead?.name || parsed.customerName || 'Walk-in Customer';
       const clientEmail = parsed.customerEmail || (cust as any)?.email || (lead as any)?.email || '';
       const clientAddress = parsed.customerAddress || q.leadAddress || cust?.address || (lead as any)?.address || '';
       const clientVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || '';
       const clientSvat = parsed.tinNo || q.leadSvat || cust?.svat || (cust as any)?.tin || lead?.svat || '';
+      const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
 
-      if (!map[quoNo]) {
-        map[quoNo] = {
-          quoNo,
-          leadId: q.leadId,
+      const isDraft = q.type === "product_draft" || q.type === "draft";
+      const groupKey = isDraft ? (q.id || `${quoNo}_${resolvedLeadId}`) : (quoNo ? `${quoNo}_${resolvedLeadId}` : q.id);
+
+      if (!map[groupKey]) {
+        map[groupKey] = {
+          quoNo: quoNo || q.id,
+          leadId: resolvedLeadId,
+          customerId: cust?.id || lead?.customerId || q.customerId,
           clientName,
           clientCompany,
           clientEmail,
@@ -246,13 +270,13 @@ export const ProductQuotations: React.FC = () => {
         };
       }
 
-      map[quoNo].versions.push({
+      map[groupKey].versions.push({
         ...q,
         parsed
       });
 
-      if (new Date(q.date) > new Date(map[quoNo].latestDate)) {
-        map[quoNo].latestDate = q.date;
+      if (new Date(q.date) > new Date(map[groupKey].latestDate)) {
+        map[groupKey].latestDate = q.date;
       }
     });
 
@@ -264,13 +288,12 @@ export const ProductQuotations: React.FC = () => {
     return Object.values(map).sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
   }, [productQuotes, customers, leads]);
 
-  // Active Finished Goods Drafts - Only shown if customer is selected!
+  // Active Finished Goods Drafts
   const activeDrafts = useMemo(() => {
-    if (!customerFilter || customerFilter === 'all') return [];
     return groupedQuotes.filter((g: any) => {
-      if (g.leadId !== customerFilter) return false;
+      if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
       const latest = g.versions[0];
-      return latest?.type === 'product_draft';
+      return latest?.type === 'product_draft' || (latest?.status || '').toLowerCase() === 'draft';
     });
   }, [groupedQuotes, customerFilter]);
 
@@ -307,14 +330,17 @@ export const ProductQuotations: React.FC = () => {
     groupedQuotes.forEach((g: any) => {
       const latest = g.versions[0];
       const isAutoDraft = latest?.type === 'product_draft';
-      if (isAutoDraft && customerFilter === 'all') return;
 
       counts.all++;
       const s = (latest?.status || 'Draft').toLowerCase();
-      if (counts[s] !== undefined) counts[s]++;
+      if (isAutoDraft || s === 'draft') {
+        counts.draft++;
+      } else if (counts[s] !== undefined) {
+        counts[s]++;
+      }
     });
     return counts;
-  }, [groupedQuotes, customerFilter]);
+  }, [groupedQuotes]);
 
   // Total Quoted Value
   const totalQuotedValue = useMemo(() => {
@@ -328,12 +354,7 @@ export const ProductQuotations: React.FC = () => {
       const status = latest?.status || 'Draft';
       const isAutoDraft = latest?.type === 'product_draft';
 
-      // 1. Temporary autosaved drafts (type === 'product_draft') should only be shown if a customer is selected
-      if (isAutoDraft && customerFilter === 'all') {
-        return false;
-      }
-
-      // 2. Status filter
+      // 1. Status filter
       if (statusFilter !== 'all') {
         if (statusFilter === 'draft') {
           if (status.toLowerCase() !== 'draft' && !isAutoDraft) return false;
@@ -342,8 +363,15 @@ export const ProductQuotations: React.FC = () => {
         }
       }
 
-      // 3. Customer filter
-      if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
+      // 2. Customer filter
+      if (customerFilter !== 'all') {
+        const matchCust = g.leadId === customerFilter ||
+          (g.customerId && g.customerId === customerFilter) ||
+          (g.leadId && customerFilter && (
+            String(g.leadId).replace(/^LEAD-0*/i, '') === String(customerFilter).replace(/^LEAD-0*/i, '')
+          ));
+        if (!matchCust) return false;
+      }
 
       // Date range filter
       const qDate = (g.latestDate || latest?.date || '').slice(0, 10);
@@ -853,8 +881,8 @@ export const ProductQuotations: React.FC = () => {
         </div>
       </div>
 
-      {/* Prominent Active Product Drafts Showcase at the Top - Only shown if customer is selected */}
-      {customerFilter !== 'all' && activeDrafts.length > 0 && (
+      {/* Prominent Active Product Drafts Showcase at the Top */}
+      {activeDrafts.length > 0 && (
         <div className="border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent rounded-none p-3.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1099,8 +1127,8 @@ export const ProductQuotations: React.FC = () => {
         <div className="p-12 text-center text-muted border border-theme-subtle bg-surface">
           <PackageCheck size={32} className="mx-auto mb-2 opacity-30 text-emerald-500" />
           <p className="text-sm font-medium">
-            {statusFilter === 'draft' && customerFilter === 'all'
-              ? 'Please select a customer from the customer filter above to view active finished goods drafts.'
+            {statusFilter === 'draft'
+              ? 'No product quotation drafts found.'
               : 'No product quotations match your search or filter criteria.'}
           </p>
         </div>

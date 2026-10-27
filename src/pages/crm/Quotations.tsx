@@ -579,34 +579,36 @@ export const Quotations: React.FC = () => {
       }
 
       const quoNo = q.quotationNo || parsed.quotationNo || q.docNo || parsed.docNo || q.id;
-      
-      if (!groups[quoNo]) {
-        const numId = String(q.leadId || "").replace(/^LEAD-0*/i, "");
-        const lead = leads.find((l) => 
-          l.id === q.leadId || 
-          l.id === parsed.leadId || 
-          (numId && (l.id === `LEAD-${numId.padStart(3, "0")}` || String(l.id).replace(/^LEAD-0*/i, "") === numId)) ||
-          (q.customerId && l.customerId === q.customerId) ||
-          (parsed.company && l.company?.toLowerCase() === parsed.company?.toLowerCase())
-        );
-        const cust = customers.find((c) => 
-          c.id === q.leadId || 
-          c.id === parsed.leadId || 
-          c.id === q.customerId ||
-          (lead?.customerId && c.id === lead.customerId) ||
-          (parsed.company && (c.company?.toLowerCase() === parsed.company?.toLowerCase() || c.name?.toLowerCase() === parsed.company?.toLowerCase()))
-        );
+      const numId = String(q.leadId || "").replace(/^LEAD-0*/i, "");
+      const lead = leads.find((l) => 
+        l.id === q.leadId || 
+        l.id === parsed.leadId || 
+        (numId && (l.id === `LEAD-${numId.padStart(3, "0")}` || String(l.id).replace(/^LEAD-0*/i, "") === numId)) ||
+        (q.customerId && l.customerId === q.customerId) ||
+        (parsed.company && l.company?.toLowerCase() === parsed.company?.toLowerCase())
+      );
+      const cust = customers.find((c) => 
+        c.id === q.leadId || 
+        c.id === parsed.leadId || 
+        c.id === q.customerId ||
+        (lead?.customerId && c.id === lead.customerId) ||
+        (parsed.company && (c.company?.toLowerCase() === parsed.company?.toLowerCase() || c.name?.toLowerCase() === parsed.company?.toLowerCase()))
+      );
 
+      const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
+      const isDraft = q.type === "draft" || q.type === "product_draft";
+      const groupKey = isDraft ? (q.id || `${quoNo}_${resolvedLeadId}`) : (quoNo ? `${quoNo}_${resolvedLeadId}` : q.id);
+      
+      if (!groups[groupKey]) {
         const leadCompany = q.leadCompany || cust?.company || lead?.company || parsed.company || parsed.customerCompany || "";
         const leadName = q.leadName || cust?.name || lead?.name || parsed.customerName || parsed.attention || "Walk-in Customer";
         const leadEmail = parsed.customerEmail || parsed.email || cust?.email || lead?.email || "";
         const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || lead?.address || "";
         const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || "";
         const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || cust?.tin || lead?.svat || lead?.tin || "";
-        const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
 
-        groups[quoNo] = { 
-          quoNo, 
+        groups[groupKey] = { 
+          quoNo: quoNo || q.id, 
           leadName, 
           leadCompany, 
           leadEmail, 
@@ -624,18 +626,18 @@ export const Quotations: React.FC = () => {
         };
       }
       
-      if (q.type === "main") groups[quoNo].main.push(q);
-      else if (q.type === "job") groups[quoNo].job.push(q);
+      if (q.type === "main") groups[groupKey].main.push(q);
+      else if (q.type === "job") groups[groupKey].job.push(q);
       else if (q.type === "customer") {
-        groups[quoNo].customer.push(q);
-        if (!groups[quoNo].main.length) groups[quoNo].main.push(q);
+        groups[groupKey].customer.push(q);
+        if (!groups[groupKey].main.length) groups[groupKey].main.push(q);
       } else {
-        groups[quoNo].main.push(q);
+        groups[groupKey].main.push(q);
       }
       
       const qTime = new Date(q.date || q.createdAt).getTime();
-      if (!isNaN(qTime) && qTime > new Date(groups[quoNo].latestDate).getTime()) {
-        groups[quoNo].latestDate = q.date || q.createdAt;
+      if (!isNaN(qTime) && qTime > new Date(groups[groupKey].latestDate).getTime()) {
+        groups[groupKey].latestDate = q.date || q.createdAt;
       }
     });
     
@@ -654,13 +656,12 @@ export const Quotations: React.FC = () => {
     return Object.values(groups).sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
   }, [quotations, customers, leads, canViewAll, user])
 
-  // Active Drafts (Custom Engineering) - Only shown if a customer is selected!
+  // Active Drafts (Custom Engineering)
   const activeDrafts = useMemo(() => {
-    if (!customerFilter || customerFilter === 'all') return [];
     return groupedQuotations.filter((g: any) => {
-      if (g.leadId !== customerFilter) return false;
+      if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
       const main0 = g.main[0];
-      return main0?.type === 'draft';
+      return main0?.type === 'draft' || (main0?.status || '').toLowerCase() === 'draft';
     });
   }, [groupedQuotations, customerFilter]);
 
@@ -706,8 +707,13 @@ export const Quotations: React.FC = () => {
 
       counts.all++;
       const latest = g.main[0] || g.customer[0] || g.job[0];
+      const isAutoDraft = latest?.type === "draft";
       const s = (latest?.status || "Draft").toLowerCase();
-      if (counts[s] !== undefined) counts[s]++;
+      if (isAutoDraft || s === 'draft') {
+        counts.draft++;
+      } else if (counts[s] !== undefined) {
+        counts[s]++;
+      }
     });
     return counts;
   }, [groupedQuotations, categoryFilter]);
@@ -753,7 +759,10 @@ export const Quotations: React.FC = () => {
     // Customer filter
     if (customerFilter !== "all") {
       const matchCust = g.leadId === customerFilter ||
-        (g.customerId && g.customerId === customerFilter);
+        (g.customerId && g.customerId === customerFilter) ||
+        (g.leadId && customerFilter && (
+          String(g.leadId).replace(/^LEAD-0*/i, '') === String(customerFilter).replace(/^LEAD-0*/i, '')
+        ));
       if (!matchCust) return false;
     }
 
@@ -1362,8 +1371,8 @@ export const Quotations: React.FC = () => {
         </div>
       </div>
 
-      {/* Prominent Active Drafts Showcase at the Top - Only shown if customer is selected */}
-      {customerFilter !== 'all' && activeDrafts.length > 0 && (
+      {/* Prominent Active Drafts Showcase at the Top */}
+      {activeDrafts.length > 0 && (
         <div className="border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent rounded-none p-3.5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1642,8 +1651,8 @@ export const Quotations: React.FC = () => {
         <div className="p-12 text-center text-muted border border-theme-subtle bg-surface">
           <FileText size={32} className="mx-auto mb-2 opacity-30 text-secondary" />
           <p className="text-sm font-medium">
-            {statusFilter === 'draft' && customerFilter === 'all'
-              ? 'Please select a customer from the customer filter above to view active quotation drafts.'
+            {statusFilter === 'draft'
+              ? 'No quotation drafts found.'
               : 'No quotations match your search or filter criteria.'}
           </p>
         </div>

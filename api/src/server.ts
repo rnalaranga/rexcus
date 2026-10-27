@@ -2827,7 +2827,7 @@ app.post('/api/quotations', async (req, res) => {
       }
     }
 
-    // 2. Draft handling: update existing draft if matching by id, qNo or leadId
+    // 2. Draft handling: update existing draft if matching by id, or exact quotationNo/docNo
     if (qType === 'draft' || qType === 'product_draft') {
       let existingDraft: any = null;
       if (data.id) {
@@ -2841,20 +2841,6 @@ app.post('/api/quotations', async (req, res) => {
         const [rows]: any = await db.query(
           'SELECT id, version FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") LIMIT 1',
           [qNo, qNo]
-        );
-        if (rows && rows.length > 0) existingDraft = rows[0];
-      }
-      if (!existingDraft && data.leadId && data.leadId !== 'WALK-IN') {
-        const [rows]: any = await db.query(
-          'SELECT id, version FROM quotations WHERE leadId = ? AND type = ? ORDER BY date DESC LIMIT 1',
-          [data.leadId, qType]
-        );
-        if (rows && rows.length > 0) existingDraft = rows[0];
-      }
-      if (!existingDraft && createdBy) {
-        const [rows]: any = await db.query(
-          'SELECT id, version FROM quotations WHERE createdBy = ? AND type = ? AND date >= NOW() - INTERVAL 2 HOUR ORDER BY date DESC LIMIT 1',
-          [createdBy, qType]
         );
         if (rows && rows.length > 0) existingDraft = rows[0];
       }
@@ -2974,9 +2960,6 @@ app.post('/api/quotations', async (req, res) => {
         }
         if (cleanupNos.length > 0) {
           await db.query('DELETE FROM quotations WHERE (quotationNo IN (?) OR docNo IN (?)) AND type IN ("draft", "product_draft")', [cleanupNos, cleanupNos]);
-        }
-        if (data.leadId && data.leadId !== 'WALK-IN' && createdBy) {
-          await db.query('DELETE FROM quotations WHERE leadId = ? AND createdBy = ? AND type IN ("draft", "product_draft")', [data.leadId, createdBy]);
         }
       } catch (cleanupErr) {
         console.error('Error cleaning up drafts on quotation creation:', cleanupErr);
