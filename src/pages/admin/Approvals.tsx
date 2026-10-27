@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useQuotations, useLeads } from '@/hooks/useData'
-import { approveCreditLimit, approveQuotation, rejectQuotation, fetchApprovalLogs, fetchSubstituteRequests, approveMaterialSubstitute, rejectMaterialSubstitute, createMRForShortage } from '@/lib/api'
+import { approveCreditLimit, approveQuotation, rejectQuotation, approveQuotationEdit, rejectQuotationEdit, fetchApprovalLogs, fetchSubstituteRequests, approveMaterialSubstitute, rejectMaterialSubstitute, createMRForShortage } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -88,7 +88,7 @@ export default function Approvals() {
       const st = (q.status || '').toLowerCase().trim();
       const tp = (q.type || '').toLowerCase().trim();
       if (tp === 'draft' || tp === 'product_draft' || st === 'draft' || !st) return false;
-      if (st !== 'pending approval') return false;
+      if (st !== 'pending approval' && st !== 'pending edit approval') return false;
       if (!search.trim()) return true
       const term = search.toLowerCase()
       const quoNo = (parsed.quotationNo || q.docNo || q.id || '').toLowerCase()
@@ -174,6 +174,34 @@ export default function Approvals() {
       await loadApprovalLogs()
     } catch (e: any) {
       toast(e.message || 'Failed to approve quotation', 'error')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const handleApproveQuotationEdit = async (q: any) => {
+    setProcessing(q.id)
+    try {
+      await approveQuotationEdit(q.id, user?.name || 'Authorized Manager', 'Quotation edit unlocked')
+      toast(`Quotation ${q.id} unlocked for editing (set to Draft)!`, 'success')
+      await refetchQuotations()
+      await loadApprovalLogs()
+    } catch (e: any) {
+      toast(e.message || 'Failed to approve edit request', 'error')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const handleRejectQuotationEdit = async (q: any) => {
+    setProcessing(q.id)
+    try {
+      await rejectQuotationEdit(q.id, user?.name || 'Authorized Manager', 'Edit request denied')
+      toast(`Quotation edit request rejected. Quotation remains Approved.`, 'info')
+      await refetchQuotations()
+      await loadApprovalLogs()
+    } catch (e: any) {
+      toast(e.message || 'Failed to reject edit request', 'error')
     } finally {
       setProcessing(null)
     }
@@ -469,9 +497,15 @@ export default function Approvals() {
                           <span className="text-xs bg-surface2 text-secondary px-2 py-0.5 rounded-none border border-theme-subtle font-mono font-medium">
                             v{q.version || 1}
                           </span>
-                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
-                            {q.status || 'Pending Approval'}
-                          </span>
+                          {q.status === 'Pending Edit Approval' ? (
+                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30">
+                              Edit Approval Requested
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                              {q.status || 'Pending Approval'}
+                            </span>
+                          )}
                           <span className="text-xs text-muted flex items-center gap-1 font-mono">
                             <Clock size={11} /> {formatDate(q.date)}
                           </span>
@@ -481,6 +515,12 @@ export default function Approvals() {
                           Client: <span className="font-semibold text-primary">{clientName}</span>
                           {parsed.attention ? ` · Attn: ${parsed.attention}` : ''}
                         </p>
+
+                        {q.status === 'Pending Edit Approval' && q.rejectionReason && (
+                          <div className="p-2 bg-purple-500/10 border border-purple-500/20 text-xs text-purple-700 dark:text-purple-300 font-mono">
+                            <strong>Reason for Edit Request:</strong> {q.rejectionReason}
+                          </div>
+                        )}
 
                         {parsed.subject && (
                           <p className="text-xs text-muted truncate max-w-2xl">
@@ -510,28 +550,53 @@ export default function Approvals() {
                           </Button>
 
                           {canApproveQuotations ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setRejectDialog({ id: q.id, title: `Reject Quotation ${quoNo}`, type: 'quote' })}
-                                disabled={processing === q.id}
-                                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20 font-medium"
-                                title="Reject Quotation"
-                              >
-                                <X size={14} /> Reject
-                              </Button>
+                            q.status === 'Pending Edit Approval' ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRejectQuotationEdit(q)}
+                                  disabled={processing === q.id}
+                                  className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20 font-medium text-xs"
+                                  title="Deny Edit Request"
+                                >
+                                  <X size={14} /> Deny Edit
+                                </Button>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => handleApproveQuotationEdit(q)}
+                                  disabled={processing === q.id}
+                                  className="bg-purple-600 hover:bg-purple-500 text-white font-medium flex items-center gap-1 rounded-none text-xs"
+                                  title="Unlock Quotation to Draft so it can be edited"
+                                >
+                                  <Check size={14} /> Unlock to Edit
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setRejectDialog({ id: q.id, title: `Reject Quotation ${quoNo}`, type: 'quote' })}
+                                  disabled={processing === q.id}
+                                  className="text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-none border border-red-500/20 font-medium"
+                                  title="Reject Quotation"
+                                >
+                                  <X size={14} /> Reject
+                                </Button>
 
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleApproveQuotation(q)}
-                                disabled={processing === q.id}
-                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1 rounded-none"
-                              >
-                                <Check size={14} /> Approve
-                              </Button>
-                            </>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => handleApproveQuotation(q)}
+                                  disabled={processing === q.id}
+                                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1 rounded-none"
+                                >
+                                  <Check size={14} /> Approve
+                                </Button>
+                              </>
+                            )
                           ) : (
                             <span className="text-xs text-muted font-medium italic">Approval requires Manager role</span>
                           )}

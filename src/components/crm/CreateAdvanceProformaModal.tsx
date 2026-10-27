@@ -87,8 +87,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const [advancePercent, setAdvancePercent] = useState<number>(30);
   const [advanceBaseAmount, setAdvanceBaseAmount] = useState<number>(0);
   
-  // Tax Options: 'opt1' (Absorbed) | 'opt2' (SSCL Absorbed + VAT 18%) | 'opt3' (SSCL + VAT 2 Lines) | 'none'
-  const [taxOption, setTaxOption] = useState<'opt1' | 'opt2' | 'opt3' | 'none'>('opt2');
+  // Tax Options: 'none' (Advance Deposit - No extra tax) | 'opt1' (Absorbed) | 'opt2' (SSCL Absorbed + VAT 18% Extracted) | 'opt3' (SSCL + VAT Extracted)
+  const [taxOption, setTaxOption] = useState<'opt1' | 'opt2' | 'opt3' | 'none'>('none');
   const [itemDescription, setItemDescription] = useState<string>('');
   const [itemSpecification, setItemSpecification] = useState<string>('');
 
@@ -213,36 +213,44 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   };
 
   // Statutory Tax Calculations for Sri Lanka Inland Revenue
+  // Note: Advance payment is an advance deposit against the quotation/order.
+  // Tax MUST NOT be added on top of the advance payment (prevent double taxation).
+  // Total payable equals exactly the advanceBaseAmount.
   const calculation = useMemo(() => {
-    const subtotal = Math.max(0, advanceBaseAmount);
+    const totalPayable = Math.max(0, advanceBaseAmount);
+    let subtotal = totalPayable;
     let ssclAmount = 0;
     let vatAmount = 0;
-    let actualTaxProfileId = 'tp_opt2_sscl_absorbed_vat_sep';
+    let actualTaxProfileId = '';
 
-    if (taxOption === 'opt1') {
+    if (taxOption === 'none') {
+      // Advance Deposit - Non-taxable deposit (Taxes settled on final tax invoice)
+      actualTaxProfileId = '';
+      subtotal = totalPayable;
+      ssclAmount = 0;
+      vatAmount = 0;
+    } else if (taxOption === 'opt1') {
       // Option 1: VAT & SSCL Absorbed (Total Value includes taxes)
       actualTaxProfileId = 'tp_opt1_absorbed';
+      subtotal = totalPayable;
       ssclAmount = 0;
       vatAmount = 0;
     } else if (taxOption === 'opt2') {
-      // Option 2: SSCL (2.5%) Absorbed into Subtotal, VAT 18% Separate
+      // Option 2: SSCL (2.5%) Absorbed, VAT 18% Extracted from Advance (Not added on top)
       actualTaxProfileId = 'tp_opt2_sscl_absorbed_vat_sep';
       ssclAmount = 0;
-      vatAmount = Math.round((subtotal * 0.18) * 100) / 100;
+      vatAmount = Math.round((totalPayable * (18 / 118)) * 100) / 100;
+      subtotal = Math.round((totalPayable - vatAmount) * 100) / 100;
     } else if (taxOption === 'opt3') {
-      // Option 3: Both SSCL (2.5%) and VAT (18%) Separate (2 Lines)
+      // Option 3: Both SSCL (2.5%) and VAT (18%) Extracted (Not added on top)
       actualTaxProfileId = 'tp_opt3_both_separate';
-      ssclAmount = Math.round((subtotal * 0.025) * 100) / 100;
-      vatAmount = Math.round(((subtotal + ssclAmount) * 0.18) * 100) / 100;
-    } else {
-      // No Tax / Non-VAT
-      actualTaxProfileId = '';
-      ssclAmount = 0;
-      vatAmount = 0;
+      const base = totalPayable / 1.2095;
+      ssclAmount = Math.round((base * 0.025) * 100) / 100;
+      vatAmount = Math.round(((base + ssclAmount) * 0.18) * 100) / 100;
+      subtotal = Math.round((totalPayable - ssclAmount - vatAmount) * 100) / 100;
     }
 
     const totalTax = ssclAmount + vatAmount;
-    const totalPayable = subtotal + totalTax;
 
     return {
       subtotal,
@@ -592,22 +600,41 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Section 3: The 3 Statutory Tax Options (Sri Lanka Inland Revenue) */}
+          {/* Section 3: Statutory Tax Options (Sri Lanka Inland Revenue) */}
           <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between">
               <label className="block text-[11px] font-bold text-secondary uppercase tracking-wider">
-                Select Tax Option
+                Select Advance Tax Treatment
               </label>
-              <button
-                type="button"
-                onClick={() => setTaxOption(taxOption === 'none' ? 'opt2' : 'none')}
-                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
-              >
-                {taxOption === 'none' ? '← Enable Tax Options' : 'Non-VAT Client? (No Tax)'}
-              </button>
+              <span className="text-[10px] text-muted">
+                Advance Deposit: No tax added on top
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* Option: Advance Deposit (No Additional Tax) */}
+              <div
+                onClick={() => setTaxOption('none')}
+                className={`p-2.5 border rounded-none cursor-pointer transition-all ${
+                  taxOption === 'none'
+                    ? 'border-blue-600 bg-blue-500/10 text-primary shadow-xs'
+                    : 'border-theme-subtle bg-surface2/30 hover:bg-surface2 text-secondary'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-blue-600 dark:text-blue-400">Advance Deposit</span>
+                  <input
+                    type="radio"
+                    name="taxOpt"
+                    checked={taxOption === 'none'}
+                    onChange={() => setTaxOption('none')}
+                    className="text-blue-600"
+                  />
+                </div>
+                <p className="font-semibold text-primary mt-1 text-[11px]">No Extra Tax</p>
+                <p className="text-[10px] text-muted">Deposit against quote</p>
+              </div>
+
               {/* Option 1 */}
               <div
                 onClick={() => setTaxOption('opt1')}
@@ -628,7 +655,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                   />
                 </div>
                 <p className="font-semibold text-primary mt-1 text-[11px]">VAT & SSCL Absorbed</p>
-                <p className="text-[10px] text-muted">Taxes bundled in total value</p>
+                <p className="text-[10px] text-muted">Taxes bundled in total</p>
               </div>
 
               {/* Option 2 (Standard) */}
@@ -641,7 +668,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[11px] text-blue-600 dark:text-blue-400">Option 2 (Standard)</span>
+                  <span className="font-bold text-[11px]">Option 2</span>
                   <input
                     type="radio"
                     name="taxOpt"
@@ -650,8 +677,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     className="text-blue-600"
                   />
                 </div>
-                <p className="font-semibold text-primary mt-1 text-[11px]">SSCL Absorbed + VAT 18%</p>
-                <p className="text-[10px] text-muted">VAT 18% shown separately</p>
+                <p className="font-semibold text-primary mt-1 text-[11px]">VAT 18% Extracted</p>
+                <p className="text-[10px] text-muted">Extracted from advance</p>
               </div>
 
               {/* Option 3 */}
@@ -673,9 +700,14 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     className="text-blue-600"
                   />
                 </div>
-                <p className="font-semibold text-primary mt-1 text-[11px]">SSCL 2.5% + VAT 18%</p>
-                <p className="text-[10px] text-muted">2 separate statutory lines</p>
+                <p className="font-semibold text-primary mt-1 text-[11px]">SSCL + VAT Extracted</p>
+                <p className="text-[10px] text-muted">2 statutory lines</p>
               </div>
+            </div>
+
+            {/* Note alert */}
+            <div className="p-2 bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-700 dark:text-blue-300 font-medium">
+              💡 Advance payment is a deposit towards total quotation value. Tax is NOT added on top of the advance amount. Total payable is strictly {formatCurrency(calculation.totalPayable)}.
             </div>
 
             {/* Live Financial Breakdown */}

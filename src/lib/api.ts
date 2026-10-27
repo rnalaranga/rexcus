@@ -167,6 +167,39 @@ export const rejectQuotation = async (id: string, reason?: string) => {
   return data;
 };
 
+export const requestQuotationEditApproval = async (id: string | number, reason: string, requestedBy?: string) => {
+  const res = await fetch(`${API_URL}/quotations/${id}/request-edit-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, requestedBy })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to request edit approval');
+  return data;
+};
+
+export const approveQuotationEdit = async (id: string | number, approvedBy?: string, notes?: string) => {
+  const res = await fetch(`${API_URL}/quotations/${id}/approve-edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvedBy, notes })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to approve edit');
+  return data;
+};
+
+export const rejectQuotationEdit = async (id: string | number, rejectedBy?: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/quotations/${id}/reject-edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rejectedBy, reason })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to reject edit request');
+  return data;
+};
+
 export const deleteQuotation = async (id: string) => {
   const res = await fetch(`${API_URL}/quotations/${id}`, { method: 'DELETE' });
   return res.json();

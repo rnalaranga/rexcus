@@ -6,7 +6,7 @@ import {
   ChevronUp, User, RotateCcw, X, FileText, TrendingUp, Mail, FileDown, 
   Printer, Wand2, LineChart, Building2, UserCheck, Eye, ChevronLeft, 
   ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, 
-  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink, Wrench 
+  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink, Wrench, Lock, Unlock 
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
@@ -21,7 +21,7 @@ import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { 
   createQuotation, fetchQuotations, updateQuotation, deleteQuotation, 
   generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, 
-  approveQuotation, rejectQuotation, fetchNextDocumentNumber 
+  approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber 
 } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -509,6 +509,16 @@ export const ProductQuotationBuilder: React.FC = () => {
     const targetId = currentId || draftId;
     return savedVersions.find((v: any) => v.id === targetId) || null;
   }, [currentId, draftId, savedVersions])
+
+  const isApprovedLocked = useMemo(() => {
+    if (!currentQuote) return false;
+    const st = currentQuote.status || '';
+    return ['Approved', 'Accepted', 'In Production', 'PO Received', 'Pending Edit Approval'].includes(st);
+  }, [currentQuote]);
+
+  const [showRequestEditModal, setShowRequestEditModal] = useState(false);
+  const [editReasonInput, setEditReasonInput] = useState('');
+  const [isSubmittingEditRequest, setIsSubmittingEditRequest] = useState(false);
 
   const loadVersions = useCallback(async () => {
     try {
@@ -1137,6 +1147,7 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   useEffect(() => {
     const timer = setTimeout(async () => {
+      if (isApprovedLocked) return;
       if (!selectedLeadId) return; 
       if (currentIdRef.current) return; 
       if (quoteIdParam && !initialLoadedRef.current) return; // Wait until quote is fully loaded from URL
@@ -1271,6 +1282,10 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   // Save Quotation
   const handleSave = async () => {
+    if (isApprovedLocked) {
+      showToast('error', `Quotation is currently "${currentQuote?.status}" and locked. Please request an edit approval before saving changes.`);
+      return;
+    }
     if (!customerName.trim() && !selectedLeadId) {
       showToast('error', 'Please select or enter a Customer name first');
       return;
@@ -1476,8 +1491,91 @@ export const ProductQuotationBuilder: React.FC = () => {
                   Draft Mode
                 </span>
               ) : currentQuote.status === 'Approved' ? (
-                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
-                  <CheckCircle2 size={14} /> Approved {currentQuote.approvedBy ? `(${currentQuote.approvedBy})` : ''}
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
+                    <CheckCircle2 size={14} /> Approved {currentQuote.approvedBy ? `(${currentQuote.approvedBy})` : ''}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Lock}
+                    className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-semibold"
+                    onClick={() => {
+                      setEditReasonInput('');
+                      setShowRequestEditModal(true);
+                    }}
+                    title="Request manager approval to edit this approved quotation"
+                  >
+                    Request Edit Approval
+                  </Button>
+                  {canApprove && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Unlock}
+                      className="text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-500/30 font-bold"
+                      onClick={async () => {
+                        if (window.confirm('Unlock this product quotation for editing? Its status will be reset to Draft.')) {
+                          try {
+                            await approveQuotationEdit(currentQuote.id, user?.name || 'Manager', 'Product quotation unlocked by manager');
+                            showToast('success', 'Quotation unlocked! Status reset to Draft for editing.');
+                            await loadVersions();
+                          } catch (err: any) {
+                            showToast('error', err?.message || 'Failed to unlock quotation');
+                          }
+                        }
+                      }}
+                      title="Directly unlock this quotation for editing"
+                    >
+                      Unlock to Edit
+                    </Button>
+                  )}
+                </div>
+              ) : currentQuote.status === 'Pending Edit Approval' ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20 text-xs font-bold" title={currentQuote.rejectionReason}>
+                    <Clock size={14} /> Edit Approval Requested
+                  </span>
+                  {canApprove ? (
+                    <>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={CheckCircle2}
+                        className="text-xs bg-purple-600 hover:bg-purple-500 text-white border-none shadow-xs font-bold"
+                        onClick={async () => {
+                          try {
+                            await approveQuotationEdit(currentQuote.id, user?.name || 'Manager', 'Edit request approved');
+                            showToast('success', 'Edit request approved! Quotation is now in Draft mode for editing.');
+                            await loadVersions();
+                          } catch(err: any) {
+                            showToast('error', err?.message || 'Failed to approve edit request');
+                          }
+                        }}
+                      >
+                        Approve Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={XCircle}
+                        className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/30"
+                        onClick={async () => {
+                          try {
+                            await rejectQuotationEdit(currentQuote.id, user?.name || 'Manager', 'Edit request denied');
+                            showToast('success', 'Edit request denied. Quotation remains Approved.');
+                            await loadVersions();
+                          } catch(err: any) {
+                            showToast('error', err?.message || 'Failed to deny edit request');
+                          }
+                        }}
+                      >
+                        Deny Edit
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-muted italic">Awaiting Manager Review</span>
+                  )}
                 </div>
               ) : currentQuote.status === 'Pending Approval' ? (
                 <div className="flex items-center gap-1.5">
@@ -1585,11 +1683,46 @@ export const ProductQuotationBuilder: React.FC = () => {
             </div>
           )}
 
-          <Button variant="primary" icon={Save} onClick={() => handleSave()} disabled={isSaving} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-none shadow-sm">
-            {isSaving ? 'Saving...' : 'Save Quotation'}
+          <Button 
+            variant="primary" 
+            icon={isApprovedLocked ? Lock : Save} 
+            onClick={() => handleSave()} 
+            disabled={isSaving || isApprovedLocked} 
+            className={`text-xs ${isApprovedLocked ? 'opacity-60 cursor-not-allowed bg-slate-600 border-none' : 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-none shadow-sm'}`}
+            title={isApprovedLocked ? 'Quotation is locked. Request edit approval from management to make changes.' : 'Save Quotation'}
+          >
+            {isSaving ? 'Saving...' : isApprovedLocked ? 'Locked (Approved)' : 'Save Quotation'}
           </Button>
         </div>
       </div>
+
+      {/* LOCKED BANNER */}
+      {isApprovedLocked && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 flex items-center justify-between text-xs shrink-0">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-medium">
+            <Lock size={15} className="shrink-0" />
+            <span>
+              <strong>Product Quotation is {currentQuote?.status} & Locked:</strong> Direct editing is disabled.
+              {currentQuote?.status === 'Pending Edit Approval' 
+                ? ` Edit request (${currentQuote?.rejectionReason || 'Under Review'}) is awaiting manager approval.` 
+                : ' To modify this quotation, request edit approval from management.'}
+            </span>
+          </div>
+          {currentQuote?.status === 'Approved' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditReasonInput('');
+                setShowRequestEditModal(true);
+              }}
+              className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-300 font-bold rounded-none h-6 px-2.5"
+            >
+              Request Edit Approval
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* TOASTS */}
       {toast && (
@@ -3074,6 +3207,68 @@ export const ProductQuotationBuilder: React.FC = () => {
                 }}
               >
                 Confirm Rejection
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Request Edit Approval Modal */}
+      {showRequestEditModal && (
+        <Modal
+          isOpen={showRequestEditModal}
+          onClose={() => setShowRequestEditModal(false)}
+          title="Request Product Quotation Edit Approval"
+          size="sm"
+        >
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-secondary leading-relaxed">
+              Quotation <strong>{quotationNo || currentQuote?.quotationNo || docNo}</strong> has been approved and locked. To modify products, quantities, prices, or terms, please state the reason for revision. Management will review your request.
+            </p>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Reason for Revision / Modification *
+              </label>
+              <textarea
+                rows={3}
+                required
+                value={editReasonInput}
+                onChange={(e) => setEditReasonInput(e.target.value)}
+                placeholder="e.g. Customer requested price match, quantity change, or updated warranty terms..."
+                className="w-full p-2.5 text-xs bg-surface border border-theme-subtle rounded-lg text-primary focus:outline-none focus:border-rex-500 custom-scrollbar"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowRequestEditModal(false)}
+                disabled={isSubmittingEditRequest}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={isSubmittingEditRequest || !editReasonInput.trim()}
+                onClick={async () => {
+                  if (!currentQuote || !editReasonInput.trim()) return;
+                  setIsSubmittingEditRequest(true);
+                  try {
+                    await requestQuotationEditApproval(currentQuote.id, editReasonInput.trim(), user?.name || user?.username || 'Sales Executive');
+                    showToast('success', 'Edit approval request submitted to management!');
+                    setShowRequestEditModal(false);
+                    await loadVersions();
+                  } catch (err: any) {
+                    showToast('error', err?.message || 'Failed to submit request');
+                  } finally {
+                    setIsSubmittingEditRequest(false);
+                  }
+                }}
+                className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
+              >
+                {isSubmittingEditRequest ? 'Submitting...' : 'Submit Request'}
               </Button>
             </div>
           </div>

@@ -2901,6 +2901,21 @@ app.put('/api/quotations/update/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
+
+    // Prevent direct edits if quotation is Approved or locked in workflow without bypassApprovalLock
+    if (!data.bypassApprovalLock) {
+      const [existing]: any = await db.query('SELECT status FROM quotations WHERE id = ?', [id]);
+      if (existing && existing.length > 0) {
+        const curStatus = existing[0].status;
+        const lockedStatuses = ['Approved', 'Accepted', 'In Production', 'PO Received', 'Pending Edit Approval'];
+        if (lockedStatuses.includes(curStatus)) {
+          return res.status(403).json({
+            error: `Quotation is currently "${curStatus}" and locked against direct edits. Please submit an edit approval request to management before making revisions.`
+          });
+        }
+      }
+    }
+
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
     const qNo = data.quotationNo || qData.quotationNo || null;
@@ -3064,6 +3079,126 @@ app.post('/api/quotations/:id/reject', async (req, res) => {
     } catch (logErr) {}
 
     res.json({ success: true, id, status: 'Rejected' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Request Edit Approval for an Approved Quotation
+app.post('/api/quotations/:id/request-edit-approval', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, requestedBy } = req.body;
+
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const quote = rows[0];
+
+    await db.query(
+      "UPDATE quotations SET status = 'Pending Edit Approval', rejectionReason = ? WHERE id = ?",
+      [reason || 'Quotation edit requested by sales executive', id]
+    );
+
+    // Audit log
+    try {
+      let parsed: any = {};
+      if (quote?.data) {
+        try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
+      }
+      const recordNo = quote.quotationNo || parsed.quotationNo || quote.docNo || quote.id || id;
+      const entityName = parsed.customerCompany || parsed.customerName || quote.leadId || 'Customer';
+      const amount = Number(quote.totalAmount || parsed.custTotals?.total || 0);
+
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Edit Requested', ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, requestedBy || 'Sales Executive', reason || 'Quotation edit approval requested']
+      );
+    } catch (logErr) {}
+
+    res.json({ success: true, id, status: 'Pending Edit Approval' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Approve Edit Request: Unlocks Quotation by resetting to 'Draft' so it can be edited
+app.post('/api/quotations/:id/approve-edit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approvedBy, notes } = req.body;
+
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const quote = rows[0];
+
+    await db.query(
+      "UPDATE quotations SET status = 'Draft', approvedBy = NULL, approvedAt = NULL, rejectionReason = NULL WHERE id = ?",
+      [id]
+    );
+
+    // Audit log
+    try {
+      let parsed: any = {};
+      if (quote?.data) {
+        try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
+      }
+      const recordNo = quote.quotationNo || parsed.quotationNo || quote.docNo || quote.id || id;
+      const entityName = parsed.customerCompany || parsed.customerName || quote.leadId || 'Customer';
+      const amount = Number(quote.totalAmount || parsed.custTotals?.total || 0);
+
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Edit Approved', ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, approvedBy || 'Authorized Approver', notes || 'Quotation unlocked for editing by management']
+      );
+    } catch (logErr) {}
+
+    res.json({ success: true, id, status: 'Draft' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reject Edit Request: Keeps quotation Approved
+app.post('/api/quotations/:id/reject-edit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejectedBy, reason } = req.body;
+
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const quote = rows[0];
+
+    await db.query(
+      "UPDATE quotations SET status = 'Approved', rejectionReason = NULL WHERE id = ?",
+      [id]
+    );
+
+    // Audit log
+    try {
+      let parsed: any = {};
+      if (quote?.data) {
+        try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
+      }
+      const recordNo = quote.quotationNo || parsed.quotationNo || quote.docNo || quote.id || id;
+      const entityName = parsed.customerCompany || parsed.customerName || quote.leadId || 'Customer';
+      const amount = Number(quote.totalAmount || parsed.custTotals?.total || 0);
+
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'Edit Rejected', ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, rejectedBy || 'Authorized Approver', reason || 'Quotation edit request rejected by management']
+      );
+    } catch (logErr) {}
+
+    res.json({ success: true, id, status: 'Approved' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
