@@ -123,10 +123,12 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       customerEmail: group.clientEmail || group.leadEmail || '',
       deliveryAddress: group.clientAddress || group.leadAddress || quoteData.customerAddress || quoteData.deliveryAddress || '',
       paymentTerms: quoteData.custTerms || quoteData.terms || quoteData.paymentTerms || 'Standard Terms',
-      customerPoNo: quoteData.customerPoNo || quoteData.poNo || '',
-      customerPoDate: quoteData.customerPoDate || '',
-      customerPoAttachment: '',
-      customerPoAttachmentName: '',
+      customerPoNo: quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '',
+      customerPoDate: quotation.customerPoDate || quoteData.customerPoDate || '',
+      customerPoAttachment: quotation.customerPoAttachment || quoteData.customerPoAttachment || '',
+      customerPoAttachmentName: (quotation.customerPoAttachment || quoteData.customerPoAttachment)
+        ? `PO_${quotation.customerPoNo || quoteData.customerPoNo || 'Attachment'}.pdf`
+        : '',
       orderDate: new Date().toISOString().slice(0, 10),
       targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
       items: itemsList,
@@ -267,12 +269,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               <div className="flex items-center gap-2">
                 <FileText size={16} className="text-blue-600 dark:text-blue-400" />
                 <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                  Customer Purchase Order (PO) Details
+                  Customer Purchase Order (PO) {formData.customerPoNo ? '(Linked)' : '(Optional)'}
                 </span>
               </div>
-              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono font-semibold">
-                Customer PO Verification
-              </span>
+              {formData.customerPoNo ? (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-1">
+                  <CheckCircle2 size={11} /> PO Recorded on Quote
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted font-mono">
+                  Optional
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

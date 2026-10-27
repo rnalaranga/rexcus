@@ -1417,6 +1417,7 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN isProforma TINYINT(1) DEFAULT 0",
     "ALTER TABLE invoices ADD COLUMN invoiceType VARCHAR(50) DEFAULT 'tax_invoice'",
     "ALTER TABLE invoices ADD COLUMN orderId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
@@ -1616,6 +1617,10 @@ async function runDatabaseSync() {
     "ALTER TABLE finished_goods_orders ADD COLUMN materialAlert TEXT DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN createdBy VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN createdByName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN customerPoNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN customerPoDate VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN customerPoAttachment LONGTEXT DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN poReceivedAt DATETIME DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerAddress TEXT DEFAULT NULL",
@@ -3054,6 +3059,132 @@ app.post('/api/quotations/:id/reject', async (req, res) => {
     res.json({ success: true, id, status: 'Rejected' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Record Customer PO Received for Quotation
+app.post('/api/quotations/:id/po-received', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy } = req.body;
+
+    if (!customerPoNo) {
+      return res.status(400).json({ error: 'Customer PO Number is required' });
+    }
+
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+
+    const quote = rows[0];
+    let qData: any = {};
+    if (quote?.data) {
+      try {
+        qData = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data;
+      } catch (e) {}
+    }
+
+    qData.customerPoNo = customerPoNo;
+    qData.customerPoDate = customerPoDate || new Date().toISOString().slice(0, 10);
+    qData.customerPoAttachment = customerPoAttachment || null;
+    if (notes) qData.customerPoNotes = notes;
+
+    const newStatus = (quote.status === 'Approved' || quote.status === 'Sent' || quote.status === 'Draft') ? 'PO Received' : quote.status;
+
+    await db.query(
+      `UPDATE quotations SET 
+        customerPoNo = ?,
+        customerPoDate = ?,
+        customerPoAttachment = ?,
+        poReceivedAt = NOW(),
+        status = ?,
+        data = ?
+      WHERE id = ?`,
+      [
+        customerPoNo,
+        customerPoDate || new Date().toISOString().slice(0, 10),
+        customerPoAttachment ? String(customerPoAttachment) : null,
+        newStatus,
+        JSON.stringify(qData),
+        id
+      ]
+    );
+
+    // If a sales order or finished goods order exists for this quotation, sync PO
+    const qNo = quote.quotationNo || quote.docNo || id;
+    await db.query(
+      `UPDATE finished_goods_orders SET 
+        customerPoNo = ?, 
+        customerPoDate = ?, 
+        customerPoAttachment = COALESCE(?, customerPoAttachment),
+        updatedAt = NOW() 
+      WHERE quoteId = ? OR quotationNo = ?`,
+      [customerPoNo, customerPoDate || new Date().toISOString().slice(0, 10), customerPoAttachment || null, id, qNo]
+    ).catch(() => {});
+
+    // Log to approval logs
+    try {
+      const recordNo = qNo;
+      const entityName = qData.customerCompany || qData.customerName || quote?.leadId || 'Customer';
+      const amount = Number(quote?.totalAmount || qData.custTotals?.total || 0);
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'PO Received', ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, receivedBy || quote.createdByName || 'Sales Team', `Customer PO #${customerPoNo} recorded`]
+      );
+    } catch (e) {}
+
+    res.json({ 
+      success: true, 
+      id, 
+      status: newStatus,
+      customerPoNo, 
+      customerPoDate: customerPoDate || new Date().toISOString().slice(0, 10) 
+    });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// Fetch all POs under a Customer
+app.get('/api/customers/:id/pos', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [custRows]: any = await db.query('SELECT id, name, company FROM customers WHERE id = ?', [id]);
+    const cust = custRows && custRows[0] ? custRows[0] : null;
+    const names = [id];
+    if (cust) {
+      if (cust.name) names.push(cust.name);
+      if (cust.company) names.push(cust.company);
+    }
+
+    const [quotePos]: any = await db.query(
+      `SELECT id as quoteId, quotationNo, docNo, totalAmount, customerPoNo, customerPoDate, customerPoAttachment, poReceivedAt, status, createdAt
+       FROM quotations
+       WHERE (leadId = ? OR leadId IN (SELECT id FROM leads WHERE customerId = ?))
+         AND customerPoNo IS NOT NULL AND customerPoNo != ''
+       ORDER BY COALESCE(poReceivedAt, createdAt) DESC`,
+      [id, id]
+    ).catch(() => [[]]);
+
+    const [orderPos]: any = await db.query(
+      `SELECT id as orderId, orderNo, quotationNo, totalPrice as totalAmount, customerPoNo, customerPoDate, customerPoAttachment, status, createdAt
+       FROM finished_goods_orders
+       WHERE customerId = ?
+         AND customerPoNo IS NOT NULL AND customerPoNo != ''
+       ORDER BY createdAt DESC`,
+      [id]
+    ).catch(() => [[]]);
+
+    res.json({ 
+      quotePos: quotePos || [], 
+      orderPos: orderPos || [] 
+    });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
 
@@ -9879,6 +10010,35 @@ app.get('/api/notifications', async (req, res) => {
           time: 'Active',
           link: '/production',
           timestamp: wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now()
+        });
+      }
+    } catch(e) {}
+
+    // 5. Customer PO Received Notifications
+    try {
+      const [pos] = await db.query(
+        `SELECT id, quotationNo, docNo, customerPoNo, customerPoDate, createdBy, createdByName, poReceivedAt, totalAmount, data
+         FROM quotations 
+         WHERE customerPoNo IS NOT NULL AND customerPoNo != ''
+         ORDER BY COALESCE(poReceivedAt, createdAt) DESC LIMIT 10`
+      ) as any[];
+
+      for (const po of (pos || [])) {
+        let qData: any = {};
+        try { if (po.data) qData = typeof po.data === 'string' ? JSON.parse(po.data) : po.data; } catch(e){}
+        const custName = qData.customerCompany || qData.customerName || 'Customer';
+        const qNum = po.quotationNo || po.docNo || po.id;
+        list.push({
+          id: `po-${po.id}`,
+          type: 'po_received',
+          severity: 'success',
+          title: `Customer PO Received: ${po.customerPoNo}`,
+          message: `PO #${po.customerPoNo} received for Quote ${qNum} (${custName}) · ${po.createdByName ? 'Creator: ' + po.createdByName : ''}`,
+          time: po.customerPoDate || 'Recent',
+          link: '/crm/quotations',
+          createdBy: po.createdBy,
+          createdByName: po.createdByName,
+          timestamp: po.poReceivedAt ? new Date(po.poReceivedAt).getTime() : (po.createdAt ? new Date(po.createdAt).getTime() : Date.now())
         });
       }
     } catch(e) {}

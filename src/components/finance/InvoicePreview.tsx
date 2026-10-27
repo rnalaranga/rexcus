@@ -111,6 +111,7 @@ export interface InvoicePreviewProps {
   advanceDeducted?: number;
   receiptNos?: string;
   paymentTerms?: string;
+  isTaxInclusive?: boolean;
   [key: string]: any;
 }
 
@@ -144,7 +145,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   paymentTerms,
   isProforma: isProformaProp = false,
   invoiceType = '',
-  docTitle = ''
+  docTitle = '',
+  isTaxInclusive = false
 }) => {
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
@@ -314,15 +316,31 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
   // Multiplier for line items & supply value when taxes are absorbed
   let itemMultiplier = 1;
-  if (isSsclHidden && isVatHidden) {
-    // Option 1: Both SSCL & VAT absorbed into unit prices & supply value
-    itemMultiplier = taxProfile?.tax2_compound ? ((1 + t1Rate/100) * (1 + t2Rate/100)) : (1 + (t1Rate + t2Rate)/100);
-  } else if (isSsclHidden && !isVatHidden) {
-    // Option 2: SSCL absorbed into prices & supply value, VAT separate
-    itemMultiplier = 1 + t1Rate/100;
+  let unitPriceDivisor = 1;
+  if (isTaxInclusive) {
+    if (isSsclHidden && !isVatHidden) {
+      // Option 2: VAT separate, SSCL absorbed into supply value
+      unitPriceDivisor = 1 + t2Rate / 100;
+      itemMultiplier = 1;
+    } else if (isSsclSeparate && isVatSeparate) {
+      // Option 3: Both separate
+      unitPriceDivisor = taxProfile?.tax2_compound ? ((1 + t1Rate / 100) * (1 + t2Rate / 100)) : (1 + (t1Rate + t2Rate) / 100);
+      itemMultiplier = 1;
+    } else {
+      unitPriceDivisor = 1;
+      itemMultiplier = 1;
+    }
   } else {
-    // Option 3: Base unit prices, both taxes separate
-    itemMultiplier = 1;
+    if (isSsclHidden && isVatHidden) {
+      // Option 1: Both SSCL & VAT absorbed into unit prices & supply value
+      itemMultiplier = taxProfile?.tax2_compound ? ((1 + t1Rate/100) * (1 + t2Rate/100)) : (1 + (t1Rate + t2Rate)/100);
+    } else if (isSsclHidden && !isVatHidden) {
+      // Option 2: SSCL absorbed into prices & supply value, VAT separate
+      itemMultiplier = 1 + t1Rate/100;
+    } else {
+      // Option 3: Base unit prices, both taxes separate
+      itemMultiplier = 1;
+    }
   }
 
   const borderColor = '#000000';
@@ -603,7 +621,9 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         </thead>
         <tbody>
           {items.map((item: any, idx: number) => {
-            const lineExclVat = Number(item.qty || 0) * (Number(item.unitPrice || 0) * itemMultiplier);
+            const rawUnitPrice = Number(item.unitPrice || 0);
+            const lineUnitPriceExclVat = isTaxInclusive ? (rawUnitPrice / unitPriceDivisor) : (rawUnitPrice * itemMultiplier);
+            const lineExclVat = Number(item.qty || 0) * lineUnitPriceExclVat;
             return (
               <tr key={idx} style={{ borderBottom: tableBorder }}>
                 <td style={{ padding: '8px 4px', textAlign: 'center', borderRight: tableBorder, verticalAlign: 'top' }}>
@@ -628,7 +648,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                   {Number(item.qty).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', borderRight: tableBorder, verticalAlign: 'top' }}>
-                  {(Number(item.unitPrice) * itemMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {lineUnitPriceExclVat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', verticalAlign: 'top' }}>
                   {lineExclVat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -654,7 +674,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               Total Value of Supply:
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-              {(subtotal * itemMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {(isTaxInclusive ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
           </tr>
 

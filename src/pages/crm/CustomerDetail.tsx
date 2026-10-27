@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2, FileCheck, Eye } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -63,11 +63,29 @@ export const CustomerDetail: React.FC = () => {
       .then(data => setCurrencies(Array.isArray(data) ? data : [])).catch(console.error);
   }, []);
   
-  // Ledger View State
-  const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations' | 'samples'>('overview')
+  // Ledger & Tabs View State
+  const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations' | 'samples' | 'pos'>('overview')
   const [grns, setGrns] = useState<any[]>([])
+  const [customerPos, setCustomerPos] = useState<{ quotePos: any[], orderPos: any[] }>({ quotePos: [], orderPos: [] })
+  const [posLoading, setPosLoading] = useState(false)
 
   const customer = currentCustomer || customers?.find((c: any) => c.id === id)
+
+  React.useEffect(() => {
+    if (activeTab === 'pos' && id) {
+      setPosLoading(true);
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/pos`)
+        .then(res => res.json())
+        .then(data => {
+          setCustomerPos({
+            quotePos: Array.isArray(data?.quotePos) ? data.quotePos : [],
+            orderPos: Array.isArray(data?.orderPos) ? data.orderPos : []
+          });
+          setPosLoading(false);
+        })
+        .catch(() => setPosLoading(false));
+    }
+  }, [activeTab, id]);
   
   React.useEffect(() => {
     fetchAllCustomerGRNs().then(data => {
@@ -310,6 +328,12 @@ export const CustomerDetail: React.FC = () => {
                className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'samples' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
              >
                Customer Samples
+             </button>
+             <button 
+               onClick={() => setActiveTab('pos')}
+               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'pos' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+             >
+               Customer POs
              </button>
         </div>
         <Button variant="ghost" size="sm" icon={Edit2} onClick={() => handleEditOpen(false)}>Edit</Button>
@@ -749,6 +773,150 @@ export const CustomerDetail: React.FC = () => {
                    </div>
                  );
                })
+            )}
+          </div>
+        </GlassCard>
+      )}
+
+      {activeTab === 'pos' && (
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-4 border-b border-theme-subtle flex items-center justify-between">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+              <FileCheck size={14} className="text-emerald-500" />
+              Customer Purchase Orders (POs)
+            </h2>
+            <span className="text-[11px] font-mono text-muted">
+              {customerPos.quotePos.length + customerPos.orderPos.length} Recorded PO(s)
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            {posLoading ? (
+              <div className="p-8 text-center text-muted text-sm">Loading customer purchase orders...</div>
+            ) : (customerPos.quotePos.length === 0 && customerPos.orderPos.length === 0) ? (
+              <div className="p-8 text-center text-muted text-sm">
+                No Customer Purchase Orders recorded yet for this customer.
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead className="bg-surface2/60 border-b border-theme-subtle text-[11px] font-bold text-muted uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">PO Number</th>
+                    <th className="px-4 py-3">PO Date</th>
+                    <th className="px-4 py-3">Linked Document</th>
+                    <th className="px-4 py-3 text-right">Order Value</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-center">Attachment</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle">
+                  {/* Quote POs */}
+                  {customerPos.quotePos.map((po, idx) => (
+                    <tr key={`qpo-${idx}`} className="hover:bg-surface2/40 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-primary">
+                        <div className="flex items-center gap-2">
+                          <FileCheck size={14} className="text-emerald-500 shrink-0" />
+                          <span>{po.customerPoNo}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted font-mono">
+                        {po.customerPoDate ? formatDate(po.customerPoDate) : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-mono">
+                          <span className="text-muted">Quotation:</span>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/crm/quotations`)}
+                            className="font-bold text-rex-600 dark:text-rex-400 hover:underline"
+                          >
+                            {po.quotationNo || po.docNo || po.quoteId}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                        {formatCurrency(Number(po.totalAmount || 0))}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                          {po.status || 'PO Received'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {po.customerPoAttachment ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const w = window.open();
+                              if (w) {
+                                w.document.write(`<iframe src="${po.customerPoAttachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 border border-blue-500/30 transition-colors"
+                          >
+                            <Eye size={12} /> View Document
+                          </button>
+                        ) : (
+                          <span className="text-muted text-[11px]">No file</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Order POs (if not duplicate of quote) */}
+                  {customerPos.orderPos.filter((opo) => !customerPos.quotePos.some((qpo) => qpo.customerPoNo === opo.customerPoNo)).map((po, idx) => (
+                    <tr key={`opo-${idx}`} className="hover:bg-surface2/40 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-primary">
+                        <div className="flex items-center gap-2">
+                          <FileCheck size={14} className="text-blue-500 shrink-0" />
+                          <span>{po.customerPoNo}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted font-mono">
+                        {po.customerPoDate ? formatDate(po.customerPoDate) : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-mono">
+                          <span className="text-muted">Sales Order:</span>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/crm/sales-orders`)}
+                            className="font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            {po.orderNo || po.orderId}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                        {formatCurrency(Number(po.totalAmount || 0))}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                          {po.status || 'Confirmed'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {po.customerPoAttachment ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const w = window.open();
+                              if (w) {
+                                w.document.write(`<iframe src="${po.customerPoAttachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 border border-blue-500/30 transition-colors"
+                          >
+                            <Eye size={12} /> View Document
+                          </button>
+                        ) : (
+                          <span className="text-muted text-[11px]">No file</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </GlassCard>

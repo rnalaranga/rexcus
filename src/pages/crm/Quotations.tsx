@@ -19,7 +19,7 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportPdf } from '@/lib/exportPdf'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch } from 'lucide-react'
+import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
@@ -31,6 +31,7 @@ import { printElement } from '@/lib/printElement'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
+import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 
 
 export const Quotations: React.FC = () => {
@@ -60,6 +61,7 @@ export const Quotations: React.FC = () => {
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
+  const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
 
   // Rejection modal state
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
@@ -113,6 +115,7 @@ export const Quotations: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Sent': return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/50';
+      case 'PO Received': return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 font-bold';
       case 'Approved': return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50';
       case 'Pending Approval': return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50';
       case 'Rejected': return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50';
@@ -296,6 +299,10 @@ export const Quotations: React.FC = () => {
   
   const handlePaymentRequest = (group: any, latestMain: any) => {
     navigate(`/finance/invoices/new?quoteId=${latestMain.id}`);
+  };
+
+  const handleRecordCustomerPo = (group: any, latestMain: any) => {
+    setRecordPoModalData({ group, quotation: latestMain, type: 'custom' });
   };
 
   const handleCreateSalesOrder = (group: any, latestMain: any) => {
@@ -841,12 +848,24 @@ export const Quotations: React.FC = () => {
             </button>
 
             {/* Commercial & Production Actions */}
-            {(latestMain?.status === 'Approved' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted' || latestMain?.status === 'In Production') && (
+            {(latestMain?.status === 'Approved' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted' || latestMain?.status === 'In Production' || latestMain?.status === 'PO Received') && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                 <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
                   Commercial & Production
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRecordCustomerPo(group, latestMain);
+                    setOpenActionId(null);
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
+                >
+                  <FileCheck size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>PO Received</span>
+                </button>
 
                 <button
                   type="button"
@@ -1536,6 +1555,15 @@ export const Quotations: React.FC = () => {
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
                               v{latestMain?.version || 1}
                             </span>
+                            {(latestMain?.customerPoNo || parsed.customerPoNo) && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+                                title={`Customer PO: ${latestMain?.customerPoNo || parsed.customerPoNo}`}
+                              >
+                                <FileCheck size={10} className="shrink-0" />
+                                PO: #{latestMain?.customerPoNo || parsed.customerPoNo}
+                              </span>
+                            )}
                             {group.main.length > 1 && (
                               <button
                                 type="button"
@@ -2867,6 +2895,16 @@ export const Quotations: React.FC = () => {
         isOpen={Boolean(salesOrderModalData)}
         onClose={() => setSalesOrderModalData(null)}
         quotationData={salesOrderModalData}
+      />
+
+      {/* ── RECORD CUSTOMER PO MODAL ── */}
+      <RecordCustomerPoModal
+        isOpen={Boolean(recordPoModalData)}
+        onClose={() => setRecordPoModalData(null)}
+        quotationData={recordPoModalData}
+        onSuccess={() => {
+          refetch();
+        }}
       />
     </div>
   )

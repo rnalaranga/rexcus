@@ -45,6 +45,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [taxEnabled, setTaxEnabled] = useState(true);
   const [taxProfileId, setTaxProfileId] = useState('tp_opt2_sscl_absorbed_vat_sep');
+  const [isTaxInclusive, setIsTaxInclusive] = useState(false);
 
   useEffect(() => {
     if (taxProfiles && taxProfiles.length > 0) {
@@ -286,6 +287,19 @@ export const InvoiceBuilder: React.FC = () => {
             if (parsed.selectedProfileId || parsed.taxProfileId) setTaxProfileId(parsed.selectedProfileId || parsed.taxProfileId);
             if (parsed.taxEnabled !== undefined) setTaxEnabled(Boolean(parsed.taxEnabled));
             if (parsed.bankDetailId) setBankDetailId(parsed.bankDetailId);
+
+            // Auto-detect Product Quotation (prices are tax inclusive)
+            const isProdQuote = Boolean(
+              q.isProductQuotation ||
+              parsed.isProductQuotation ||
+              q.quotationCategory === 'product' ||
+              parsed.quotationCategory === 'product' ||
+              String(qNo).startsWith('PQ') ||
+              Array.isArray(parsed.custItems)
+            );
+            if (isProdQuote) {
+              setIsTaxInclusive(true);
+            }
 
             // Extract Line items
             const rawCustItems = parsed.custItems || parsed.items || [];
@@ -655,22 +669,63 @@ export const InvoiceBuilder: React.FC = () => {
   };
 
   const getTaxRate = (id: string) => { return 0; /* Line item taxes no longer used in compound mode, absorbed to global */ };
-  const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const grossAmount = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0), 0);
   
+  let subtotal = grossAmount;
   let taxAmount = 0;
   let taxBreakdown = { tax1Amount: 0, tax2Amount: 0 };
   const selectedTaxProfile = taxProfiles?.find((p: any) => p.id === taxProfileId);
   
   if (taxEnabled && selectedTaxProfile) {
-    const t1Amount = subtotal * (Number(selectedTaxProfile.tax1_rate) / 100);
-    const baseForT2 = selectedTaxProfile.tax2_compound ? (subtotal + t1Amount) : subtotal;
-    const t2Amount = baseForT2 * (Number(selectedTaxProfile.tax2_rate || 0) / 100);
-    
-    taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
-    taxAmount = t1Amount + t2Amount;
+    const t1 = Number(selectedTaxProfile.tax1_rate || 0) / 100;
+    const t2 = Number(selectedTaxProfile.tax2_rate || 0) / 100;
+
+    const isSsclHidden = Boolean(Number(selectedTaxProfile.tax1_rate) > 0 && selectedTaxProfile.tax1_show_separately === 0);
+    const isVatSeparate = Boolean(Number(selectedTaxProfile.tax2_rate) > 0 ? selectedTaxProfile.tax2_show_separately === 1 : true);
+    const isSsclSeparate = Boolean(Number(selectedTaxProfile.tax1_rate) > 0 && selectedTaxProfile.tax1_show_separately === 1);
+
+    if (isTaxInclusive) {
+      // Prices already include taxes: back out base and taxes so subtotal + tax = grossAmount
+      let baseSubtotal = grossAmount;
+      let t1Amount = 0;
+      let t2Amount = 0;
+
+      if (isSsclHidden && isVatSeparate) {
+        // Option 2: VAT separate, SSCL absorbed into supply value
+        baseSubtotal = grossAmount / (1 + t2);
+        t2Amount = grossAmount - baseSubtotal;
+        t1Amount = 0;
+      } else if (isSsclSeparate && isVatSeparate) {
+        // Option 3: Both separate
+        const divisor = selectedTaxProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+        baseSubtotal = grossAmount / divisor;
+        t1Amount = baseSubtotal * t1;
+        const baseForT2 = selectedTaxProfile.tax2_compound ? (baseSubtotal + t1Amount) : baseSubtotal;
+        t2Amount = baseForT2 * t2;
+      } else {
+        // Option 1: Both absorbed
+        baseSubtotal = grossAmount;
+        t1Amount = 0;
+        t2Amount = 0;
+      }
+
+      subtotal = Math.round(baseSubtotal * 100) / 100;
+      t1Amount = Math.round(t1Amount * 100) / 100;
+      t2Amount = Math.round((grossAmount - subtotal - t1Amount) * 100) / 100;
+      taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
+      taxAmount = t1Amount + t2Amount;
+    } else {
+      // Standard: tax added on top of base subtotal
+      const t1Amount = subtotal * t1;
+      const baseForT2 = selectedTaxProfile.tax2_compound ? (subtotal + t1Amount) : subtotal;
+      const t2Amount = baseForT2 * t2;
+      
+      taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
+      taxAmount = t1Amount + t2Amount;
+    }
   }
   
-  const total = subtotal + taxAmount;
+  const total = isTaxInclusive ? grossAmount : (subtotal + taxAmount);
   const isSsclSeparate = Boolean(selectedTaxProfile && selectedTaxProfile.tax1_show_separately === 1);
   const isVatSeparate = Boolean(selectedTaxProfile ? selectedTaxProfile.tax2_show_separately === 1 : (taxAmount > 0));
   const isTaxShownSeparately = Boolean(
@@ -744,6 +799,7 @@ export const InvoiceBuilder: React.FC = () => {
         taxType, 
         taxProfileId, 
         taxBreakdown: JSON.stringify(taxBreakdown),
+        isTaxInclusive: isTaxInclusive ? 1 : 0,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null)
       });
@@ -801,6 +857,7 @@ export const InvoiceBuilder: React.FC = () => {
     taxType, 
     taxProfile: selectedTaxProfile, 
     taxBreakdown, 
+    isTaxInclusive,
     attention,
     bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
     advanceDeducted,
@@ -1304,9 +1361,15 @@ export const InvoiceBuilder: React.FC = () => {
               </h2>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted">Subtotal</span>
-                  <span className="font-mono text-sm">{formatCurrency(subtotal)}</span>
+                  <span className="text-sm text-muted">{isTaxInclusive ? 'Base Supply Value (Excl. VAT)' : 'Subtotal'}</span>
+                  <span className="font-mono text-sm font-semibold">{formatCurrency(subtotal)}</span>
                 </div>
+                {isTaxInclusive && (
+                  <div className="flex justify-between items-center text-xs text-muted">
+                    <span>Quoted Gross Total</span>
+                    <span className="font-mono">{formatCurrency(grossAmount)}</span>
+                  </div>
+                )}
                 <div className="py-2 border-t border-theme-subtle space-y-3 mt-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
@@ -1362,6 +1425,21 @@ export const InvoiceBuilder: React.FC = () => {
                           <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
                       </select>
+
+                      <div className="pt-2 border-t border-theme-subtle/50 flex items-center justify-between">
+                        <div>
+                          <div className="text-[11px] font-semibold text-primary">Tax Inclusive Pricing</div>
+                          <div className="text-[9.5px] text-muted">Prices include VAT/SSCL (extract without adding on top)</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsTaxInclusive(!isTaxInclusive)}
+                          className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isTaxInclusive ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'}`}
+                          title="Toggle tax inclusive pricing"
+                        >
+                          <span className={`block w-3 h-3 rounded-full bg-white shadow transition-transform mx-0.5 ${isTaxInclusive ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1378,19 +1456,19 @@ export const InvoiceBuilder: React.FC = () => {
                         {selectedTaxProfile.tax1_show_separately === 1 && (
                           <div className="flex justify-between items-center text-muted">
                             <span>{selectedTaxProfile.tax1_name} ({selectedTaxProfile.tax1_rate}%)</span>
-                            <span className="font-mono text-amber-500">+{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                            <span className="font-mono text-amber-500">{isTaxInclusive ? '' : '+'}{formatCurrency(taxBreakdown.tax1Amount)}</span>
                           </div>
                         )}
                         {selectedTaxProfile.tax1_show_separately === 0 && (
                           <div className="flex justify-between items-center text-muted">
                             <span>{selectedTaxProfile.tax1_name} ({selectedTaxProfile.tax1_rate}%)</span>
-                            <span className="font-mono text-emerald-500">+{formatCurrency(taxBreakdown.tax1Amount)} (Absorbed)</span>
+                            <span className="font-mono text-emerald-500">{formatCurrency(taxBreakdown.tax1Amount)} (Absorbed)</span>
                           </div>
                         )}
                         {selectedTaxProfile.tax2_show_separately === 1 && (
                           <div className="flex justify-between items-center text-muted">
-                            <span>{selectedTaxProfile.tax2_name} ({selectedTaxProfile.tax2_rate}%)</span>
-                            <span className="font-mono text-amber-500">+{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                            <span>{selectedTaxProfile.tax2_name} ({selectedTaxProfile.tax2_rate}%{isTaxInclusive ? ' Extracted' : ''})</span>
+                            <span className="font-mono text-blue-500 font-semibold">{isTaxInclusive ? '' : '+'}{formatCurrency(taxBreakdown.tax2Amount)}</span>
                           </div>
                         )}
                       </>

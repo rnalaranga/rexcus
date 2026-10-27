@@ -5,7 +5,7 @@ import {
   UserCheck, Shield, Users, FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
-  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List
+  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -31,6 +31,7 @@ import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBann
 import { printElement } from '@/lib/printElement'
 import { exportPdf } from '@/lib/exportPdf'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
+import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 
 export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
@@ -71,6 +72,7 @@ export const ProductQuotations: React.FC = () => {
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
+  const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -148,6 +150,7 @@ export const ProductQuotations: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Sent': return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/50';
+      case 'PO Received': return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 font-bold';
       case 'Approved': return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50';
       case 'Pending Approval': return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50';
       case 'Rejected': return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50';
@@ -385,6 +388,11 @@ export const ProductQuotations: React.FC = () => {
     navigate(`/finance/invoices/new?quoteId=${latest.id}`);
   };
 
+  // Record Customer PO for Product Quotation
+  const handleRecordCustomerPo = (group: any, latest: any) => {
+    setRecordPoModalData({ group, quotation: latest, type: 'product' });
+  };
+
   // Create Sales Order from Approved Product Quotation
   const handleCreateSalesOrder = (group: any, latest: any) => {
     setSalesOrderModalData({ group, quotation: latest, type: 'product' });
@@ -579,13 +587,22 @@ export const ProductQuotations: React.FC = () => {
               <span>Send via Email</span>
             </button>
 
-            {/* Commercial Actions (If Approved / Sent / Accepted) */}
-            {(status === 'Approved' || status === 'Sent' || status === 'Accepted') && (
+            {/* Commercial Actions (If Approved / Sent / Accepted / PO Received) */}
+            {(status === 'Approved' || status === 'Sent' || status === 'Accepted' || status === 'PO Received') && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                 <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
                   Commercial Operations
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => { handleRecordCustomerPo(group, latest); setOpenActionId(null); setActionCoords(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <FileCheck size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>PO Received</span>
+                </button>
 
                 <button
                   type="button"
@@ -1102,6 +1119,15 @@ export const ProductQuotations: React.FC = () => {
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle">
                               v{latest?.version || 1}
                             </span>
+                            {(latest?.customerPoNo || parsed.customerPoNo) && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+                                title={`Customer PO: ${latest?.customerPoNo || parsed.customerPoNo}`}
+                              >
+                                <FileCheck size={10} className="shrink-0" />
+                                PO: #{latest?.customerPoNo || parsed.customerPoNo}
+                              </span>
+                            )}
                             {group.versions.length > 1 && (
                               <button
                                 type="button"
@@ -1787,6 +1813,16 @@ export const ProductQuotations: React.FC = () => {
         isOpen={Boolean(salesOrderModalData)}
         onClose={() => setSalesOrderModalData(null)}
         quotationData={salesOrderModalData}
+      />
+
+      {/* ── RECORD CUSTOMER PO MODAL ── */}
+      <RecordCustomerPoModal
+        isOpen={Boolean(recordPoModalData)}
+        onClose={() => setRecordPoModalData(null)}
+        quotationData={recordPoModalData}
+        onSuccess={() => {
+          refetch();
+        }}
       />
     </div>
   )

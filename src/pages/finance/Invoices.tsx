@@ -939,6 +939,7 @@ export const Invoices: React.FC = () => {
                 subtotal={Number(viewInvoice.subtotal)}
                 taxAmount={Number(viewInvoice.taxAmount || viewInvoice.tax || 0)}
                 total={Number(viewInvoice.total)}
+                isTaxInclusive={Boolean(viewInvoice.isTaxInclusive)}
                 notes={viewInvoice.notes || ''}
                 company={settings}
                 getTaxRate={() => 0}
