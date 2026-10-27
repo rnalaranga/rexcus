@@ -131,6 +131,31 @@ export const Quotations: React.FC = () => {
       toast(`A Work Order (${existing.orderNo || existing.id}) already exists for Quotation ${group.quoNo}! Duplicate work orders are not allowed.`, 'warning');
       return;
     }
+
+    // Check if customer registration conditions mandate an advance deposit
+    const lead = leads.find((l: any) => l.id === group.leadId);
+    const custId = group.leadId || (lead as any)?.customerId;
+    const cust = customers.find((c: any) => c.id === custId || (c.name && group.clientName && c.name.toLowerCase() === group.clientName.toLowerCase()));
+
+    const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
+
+    if (customerRequiresAdvance) {
+      const hasAdvance = allInvoices.some((inv: any) => 
+        (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+        (String(inv.quotationId) === String(latestMain.id) || String(inv.quotationNo) === String(group.quoNo) || String(inv.orderNo) === String(group.quoNo))
+      );
+
+      const hasApprovedOrder = allOrders.some((ord: any) => 
+        (String(ord.quoteId) === String(latestMain.id) || String(ord.quotationNo) === String(group.quoNo)) &&
+        ord.status === 'Confirmed'
+      );
+
+      if (!hasAdvance && !hasApprovedOrder) {
+        toast(`Customer "${cust?.company || cust?.name || 'Client'}" requires an advance deposit as per registration conditions. Please issue an Advance Proforma Invoice or obtain Admin approval via Sales Orders before initiating a Work Order.`, 'warning');
+        return;
+      }
+    }
+
     setWoDialog({ type: 'confirm', group, latestMain });
   }
 

@@ -80,6 +80,42 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     )
   );
 
+  // Match the customer from registration to inspect their condition
+  const matchedCustomer = useMemo(() => {
+    if (!quotationData) return null;
+    const { group, quotation } = quotationData;
+    const qLeadId = group?.leadId || quotation?.leadId;
+    const lead = leads.find((l: any) => l.id === qLeadId);
+    const custId = qLeadId || (lead as any)?.customerId;
+
+    if (custId) {
+      const found = customers.find((c: any) => c.id === custId || c.id === (lead as any)?.customerId);
+      if (found) return found;
+    }
+
+    const cName = group?.clientName || group?.clientCompany || group?.leadCompany || group?.leadName;
+    if (cName) {
+      const found = customers.find((c: any) => 
+        (c.name && c.name.toLowerCase() === cName.toLowerCase()) || 
+        (c.company && c.company.toLowerCase() === cName.toLowerCase())
+      );
+      if (found) return found;
+    }
+
+    return null;
+  }, [quotationData, customers, leads]);
+
+  // Is Advance explicitly requested in this customer's registration conditions?
+  const isAdvanceRequiredByCustomer = useMemo(() => {
+    if (!matchedCustomer) {
+      return false; // Customer has not been set to require advance
+    }
+    return Boolean(matchedCustomer.requiresAdvance === true || matchedCustomer.requiresAdvance === 1);
+  }, [matchedCustomer]);
+
+  // Advance is missing ONLY if customer registration mandates it AND no advance proforma exists
+  const isAdvanceMissing = isAdvanceRequiredByCustomer && !hasAdvance;
+
   // Form State
   const [formData, setFormData] = useState({
     orderNo: '',
@@ -213,23 +249,24 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       return;
     }
 
-    if (!hasAdvance && !adminOverrideWaiver && !advanceWaiverReason.trim()) {
-      toast('Please enter a reason for bypassing the advance payment requirement.', 'warning');
+    if (isAdvanceMissing && !adminOverrideWaiver && !advanceWaiverReason.trim()) {
+      toast('Please enter a reason for bypassing the customer advance payment requirement.', 'warning');
       return;
     }
 
     setSubmitting(true);
     try {
-      const isWaiver = !hasAdvance;
-      const orderStatus = (isWaiver && !adminOverrideWaiver) ? 'Pending Advance Approval' : 'Confirmed';
+      const orderStatus = (isAdvanceMissing && !adminOverrideWaiver) ? 'Pending Advance Approval' : 'Confirmed';
 
       let waiverNote = '';
-      if (isWaiver) {
+      if (isAdvanceMissing) {
         if (adminOverrideWaiver) {
           waiverNote = `\n[Advance Waived by Admin ${user?.name || user?.username || 'Authorized Approver'}: ${advanceWaiverReason || 'Admin Override'}]`;
         } else {
           waiverNote = `\n[Advance Waiver Requested: ${advanceWaiverReason || 'Pending Management Authorization'}]`;
         }
+      } else if (!isAdvanceRequiredByCustomer) {
+        waiverNote = `\n[Terms: Direct Order - No Advance Required as per Customer Registration Conditions]`;
       } else if (linkedProforma) {
         waiverNote = `\n[Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}]`;
       }
@@ -333,8 +370,27 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
             </div>
           </div>
 
-          {/* ── ADVANCE PAYMENT & PROFORMA VERIFICATION SECTION ── */}
-          {hasAdvance ? (
+          {/* ── ADVANCE PAYMENT & CUSTOMER REGISTRATION VERIFICATION SECTION ── */}
+          {!isAdvanceRequiredByCustomer ? (
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                  <ShieldCheck size={16} />
+                </div>
+                <div>
+                  <span className="font-bold text-primary block">
+                    Customer Registration Terms: No Advance Required
+                  </span>
+                  <span className="text-muted text-[11px]">
+                    As per registration conditions for <strong>{matchedCustomer?.company || matchedCustomer?.name || 'this client'}</strong>, advance payment is not mandatory. Sales Order can be confirmed directly without approval.
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-600 text-white uppercase font-mono">
+                Direct Order OK
+              </span>
+            </div>
+          ) : hasAdvance ? (
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-1.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
@@ -351,7 +407,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 </div>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-600 text-white uppercase font-mono">
-                Advance OK
+                Advance Verified
               </span>
             </div>
           ) : (
@@ -363,33 +419,33 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-amber-800 dark:text-amber-300 block">
-                      Advance Payment Required (Approval Workflow)
+                      Advance Payment Required (Customer Registration Mandate)
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 uppercase font-mono">
                       Approval Needed
                     </span>
                   </div>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                    Rex ERP policy requires an Advance Deposit / Proforma Invoice before a Sales Order can be confirmed. No advance proforma was found for quotation <strong>{formData.quotationNo}</strong>.
+                    Customer <strong>{matchedCustomer?.company || matchedCustomer?.name || formData.customerName}</strong> registration is set to <strong>"Requires Advance Payment"</strong>. No advance proforma invoice was found for quotation <strong>{formData.quotationNo}</strong>.
                   </p>
                 </div>
               </div>
 
               <div className="pt-2 border-t border-amber-500/20 space-y-2">
                 <p className="text-[11px] text-secondary">
-                  To proceed without an advance payment, an <strong>Advance Waiver Approval Request</strong> will be routed to the <strong>Central Approval Hub</strong> for Admin / Management authorization.
+                  To proceed without an advance deposit, an <strong>Advance Waiver Approval Request</strong> will be routed to the <strong>Central Approval Hub</strong> for Admin / Management authorization.
                 </p>
 
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-muted mb-1">
-                    Reason for Bypassing Advance Deposit *
+                    Reason for Bypassing Customer Advance Requirement *
                   </label>
                   <input
                     type="text"
-                    required={!hasAdvance && !adminOverrideWaiver}
+                    required={isAdvanceMissing && !adminOverrideWaiver}
                     value={advanceWaiverReason}
                     onChange={(e) => setAdvanceWaiverReason(e.target.value)}
-                    placeholder="e.g. Corporate client with 30-day PO credit term, approved by Director"
+                    placeholder="e.g. Corporate PO credit term approved by Director, urgent production dispatch"
                     className="w-full h-8 px-2.5 text-xs bg-surface border border-amber-500/40 text-primary focus:outline-none focus:border-amber-600 font-medium"
                   />
                 </div>
@@ -403,7 +459,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       className="rounded-none text-rex-600 focus:ring-0"
                     />
                     <span className="text-xs font-semibold text-primary">
-                      Direct Admin Override: Waive advance deposit and Confirm order immediately
+                      Direct Admin Override: Waive customer advance condition and Confirm order immediately
                     </span>
                   </label>
                 )}
@@ -621,14 +677,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               variant="primary"
               disabled={submitting}
               className={`font-bold px-5 ${
-                (!hasAdvance && !adminOverrideWaiver)
+                (isAdvanceMissing && !adminOverrideWaiver)
                   ? 'bg-amber-600 hover:bg-amber-500 text-white'
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
               {submitting
                 ? 'Processing...'
-                : (!hasAdvance && !adminOverrideWaiver)
+                : (isAdvanceMissing && !adminOverrideWaiver)
                   ? 'Request Admin Approval & Submit Order'
                   : 'Confirm & Create Sales Order'}
             </Button>
