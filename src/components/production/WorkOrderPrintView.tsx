@@ -70,11 +70,43 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const companyEmail = settings?.company_email || 'info@rexgroup.lk';
 
   return (
-    <div
-      id="work-order-print-section"
-      className="bg-white text-black mx-auto border border-black shadow-sm"
-      style={{ width: '210mm', minHeight: '297mm', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', lineHeight: 1.35 }}
-    >
+    <>
+      <style>{`
+        #work-order-print-section {
+          width: 100% !important;
+          max-width: 794px !important;
+          margin: 0 auto !important;
+          font-family: Arial, Helvetica, sans-serif !important;
+          color: #000000 !important;
+          background: #ffffff !important;
+          border: 1px solid #000000 !important;
+          box-sizing: border-box !important;
+        }
+        #work-order-print-section * {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        #work-order-print-section table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+        #work-order-print-section .border-b { border-bottom: 1px solid #000000 !important; }
+        #work-order-print-section .border-r { border-right: 1px solid #000000 !important; }
+        #work-order-print-section .border-t { border-top: 1px solid #000000 !important; }
+        #work-order-print-section .flex { display: flex !important; }
+        #work-order-print-section .bg-gray-100 { background-color: #f3f4f6 !important; }
+        #work-order-print-section .bg-gray-50 { background-color: #f9fafb !important; }
+        @media print {
+          @page { size: A4 portrait; margin: 6mm 8mm; }
+          html, body { background: #fff !important; color: #000 !important; }
+        }
+      `}</style>
+      <div
+        id="work-order-print-section"
+        className="bg-white text-black mx-auto border border-black shadow-sm"
+        style={{ width: '100%', maxWidth: '794px', minHeight: '1050px', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', lineHeight: 1.35 }}
+      >
         {/* ── 1. LETTERHEAD & HEADER ────────────────────────────────────────── */}
         <div className="flex border-b border-black">
           <div className="w-[30%] flex items-center justify-center p-3 border-r border-black bg-white">
@@ -329,5 +361,6 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
           <span>ISO 9001:2015 COMPLIANT</span>
         </div>
       </div>
-    );
-  };
+    </>
+  );
+};

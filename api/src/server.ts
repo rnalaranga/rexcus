@@ -241,12 +241,56 @@ app.post('/api/export-pdf', async (req, res) => {
               page-break-inside: avoid !important;
               break-inside: avoid !important;
             }
-            #print-section {
+            #print-section,
+            #sales-order-print-section,
+            #work-order-print-section,
+            #gatepass-print-section,
+            #grn-print-section,
+            #receipt-print-section,
+            #invoice-preview,
+            .printable-document {
               margin: 0 auto !important;
               width: 100% !important;
               max-width: 794px !important;
               box-sizing: border-box !important;
+              color: #000000 !important;
+              background-color: #ffffff !important;
             }
+            .border { border: 1px solid #000000 !important; }
+            .border-b { border-bottom: 1px solid #000000 !important; }
+            .border-t { border-top: 1px solid #000000 !important; }
+            .border-r { border-right: 1px solid #000000 !important; }
+            .border-l { border-left: 1px solid #000000 !important; }
+            .border-black { border-color: #000000 !important; }
+            .border-black\\/20 { border-color: rgba(0, 0, 0, 0.2) !important; }
+            .border-b-2 { border-bottom: 2px solid #000000 !important; }
+            .flex { display: flex !important; }
+            .flex-col { flex-direction: column !important; }
+            .flex-1 { flex: 1 1 0% !important; }
+            .items-center { align-items: center !important; }
+            .items-start { align-items: flex-start !important; }
+            .items-end { align-items: flex-end !important; }
+            .justify-center { justify-content: center !important; }
+            .justify-between { justify-content: space-between !important; }
+            .bg-gray-50, .bg-gray-50\\/50, .bg-gray-50\\/30 { background-color: #f9fafb !important; }
+            .bg-gray-100 { background-color: #f3f4f6 !important; }
+            .text-center { text-align: center !important; }
+            .text-right { text-align: right !important; }
+            .text-left { text-align: left !important; }
+            .font-bold { font-weight: 700 !important; }
+            .font-semibold { font-weight: 600 !important; }
+            .font-medium { font-weight: 500 !important; }
+            .font-mono { font-family: 'JetBrains Mono', Courier, monospace !important; }
+            .w-\\[30\\%\\] { width: 30% !important; }
+            .w-\\[70\\%\\] { width: 70% !important; }
+            .w-\\[50\\%\\] { width: 50% !important; }
+            .w-\\[32\\%\\] { width: 32% !important; }
+            .w-\\[68\\%\\] { width: 68% !important; }
+            .w-\\[55\\%\\] { width: 55% !important; }
+            .w-\\[45\\%\\] { width: 45% !important; }
+            .w-\\[52\\%\\] { width: 52% !important; }
+            .w-\\[48\\%\\] { width: 48% !important; }
+            .w-full { width: 100% !important; }
           </style>
           ${stylesHtml}
         </head>

@@ -152,15 +152,44 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
         {/* Workspace Canvas (Neutral Studio Backdrop to View Actual A4 Sheet) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-950 flex justify-center items-start">
           <div id="receipt-print-wrapper" className="flex justify-center w-full">
+            <style>{`
+              #receipt-print-section {
+                width: 100% !important;
+                max-width: 794px !important;
+                margin: 0 auto !important;
+                font-family: Arial, sans-serif !important;
+                color: #0f172a !important;
+                background: #ffffff !important;
+                box-sizing: border-box !important;
+              }
+              #receipt-print-section * {
+                box-sizing: border-box !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              #receipt-print-section table {
+                border-collapse: collapse !important;
+                width: 100% !important;
+              }
+              #receipt-print-section .border-b-2 { border-bottom: 2px solid #1e293b !important; }
+              #receipt-print-section .border-b { border-bottom: 1px solid #cbd5e1 !important; }
+              #receipt-print-section .border { border: 1px solid #cbd5e1 !important; }
+              #receipt-print-section .flex { display: flex !important; }
+              #receipt-print-section .bg-slate-50 { background-color: #f8fafc !important; }
+              @media print {
+                @page { size: A4 portrait; margin: 6mm 8mm; }
+                html, body { background: #fff !important; color: #000 !important; }
+              }
+            `}</style>
             {/* EXACT A4 SHEET: 210mm x 297mm */}
             <div
               id="receipt-print-section"
               ref={printSectionRef}
               className="bg-white text-slate-900 shadow-2xl box-border flex flex-col justify-between"
               style={{
-                width: "210mm",
-                minHeight: "297mm",
-                maxHeight: "297mm",
+                width: "100%",
+                maxWidth: "794px",
+                minHeight: "1050px",
                 padding: "14mm 16mm",
                 fontFamily: "Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                 fontSize: "11px",

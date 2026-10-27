@@ -26,7 +26,38 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
   }
 
   return (
-    <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col justify-between shadow-sm" style={{ width: '100%', maxWidth: '794px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+    <>
+      <style>{`
+        #grn-print-section {
+          width: 100% !important;
+          max-width: 794px !important;
+          margin: 0 auto !important;
+          font-family: Arial, sans-serif !important;
+          color: #000000 !important;
+          background: #ffffff !important;
+          border: 1px solid #000000 !important;
+          box-sizing: border-box !important;
+        }
+        #grn-print-section * {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        #grn-print-section table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+        #grn-print-section .border-b { border-bottom: 1px solid #000000 !important; }
+        #grn-print-section .border-r { border-right: 1px solid #000000 !important; }
+        #grn-print-section .border-t { border-top: 1px solid #000000 !important; }
+        #grn-print-section .flex { display: flex !important; }
+        #grn-print-section .bg-gray-100 { background-color: #f3f4f6 !important; }
+        @media print {
+          @page { size: A4 portrait; margin: 6mm 8mm; }
+          html, body { background: #fff !important; color: #000 !important; }
+        }
+      `}</style>
+      <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col justify-between shadow-sm" style={{ width: '100%', maxWidth: '794px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
       
       {/* Header Row */}
       <div className="flex border-b border-black">
@@ -178,5 +209,6 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
         </div>
       </div>
     </div>
+    </>
   );
 };
