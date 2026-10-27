@@ -193,6 +193,157 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   return (
     <>
       <style>{`
+        /* Self-contained styling for QuotationPrintView - ensures 100% exact preview & vector PDF rendering in Puppeteer/print */
+        #print-section {
+          font-family: Arial, Helvetica, sans-serif !important;
+          color: #000000 !important;
+          background-color: #ffffff !important;
+          width: 100% !important;
+          max-width: 794px !important;
+          margin: 0 auto !important;
+          box-sizing: border-box !important;
+          font-size: 11px !important;
+          line-height: 1.35 !important;
+        }
+        #print-section * {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        #print-section table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+        #print-section .border {
+          border: 1px solid #000000 !important;
+        }
+        #print-section .border-b {
+          border-bottom: 1px solid #000000 !important;
+        }
+        #print-section .border-t {
+          border-top: 1px solid #000000 !important;
+        }
+        #print-section .border-r {
+          border-right: 1px solid #000000 !important;
+        }
+        #print-section .border-l {
+          border-left: 1px solid #000000 !important;
+        }
+        #print-section .border-black {
+          border-color: #000000 !important;
+        }
+        #print-section .border-black\\/20 {
+          border-color: rgba(0, 0, 0, 0.2) !important;
+        }
+        #print-section .flex {
+          display: flex !important;
+        }
+        #print-section .flex-col {
+          flex-direction: column !important;
+        }
+        #print-section .flex-1 {
+          flex: 1 1 0% !important;
+        }
+        #print-section .items-center {
+          align-items: center !important;
+        }
+        #print-section .items-start {
+          align-items: flex-start !important;
+        }
+        #print-section .items-end {
+          align-items: flex-end !important;
+        }
+        #print-section .justify-center {
+          justify-content: center !important;
+        }
+        #print-section .justify-between {
+          justify-content: space-between !important;
+        }
+        #print-section .bg-gray-50, 
+        #print-section .bg-gray-50\\/50, 
+        #print-section .bg-gray-50\\/30 {
+          background-color: #f9fafb !important;
+        }
+        #print-section .bg-gray-100 {
+          background-color: #f3f4f6 !important;
+        }
+        #print-section .text-center {
+          text-align: center !important;
+        }
+        #print-section .text-right {
+          text-align: right !important;
+        }
+        #print-section .text-left {
+          text-align: left !important;
+        }
+        #print-section .font-bold {
+          font-weight: 700 !important;
+        }
+        #print-section .font-semibold {
+          font-weight: 600 !important;
+        }
+        #print-section .font-medium {
+          font-weight: 500 !important;
+        }
+        #print-section .font-mono {
+          font-family: 'JetBrains Mono', Courier, monospace !important;
+        }
+        #print-section .italic {
+          font-style: italic !important;
+        }
+        #print-section .underline {
+          text-decoration: underline !important;
+        }
+        #print-section .uppercase {
+          text-transform: uppercase !important;
+        }
+        #print-section .leading-tight { line-height: 1.25 !important; }
+        #print-section .leading-snug { line-height: 1.375 !important; }
+        #print-section .p-1 { padding: 4px !important; }
+        #print-section .p-1\\.5 { padding: 6px !important; }
+        #print-section .p-2 { padding: 8px !important; }
+        #print-section .p-3 { padding: 12px !important; }
+        #print-section .p-4 { padding: 16px !important; }
+        #print-section .px-3 { padding-left: 12px !important; padding-right: 12px !important; }
+        #print-section .py-1 { padding-top: 4px !important; padding-bottom: 4px !important; }
+        #print-section .py-1\\.5 { padding-top: 6px !important; padding-bottom: 6px !important; }
+        #print-section .pl-3 { padding-left: 12px !important; }
+        #print-section .pr-2 { padding-right: 8px !important; }
+        #print-section .pr-6 { padding-right: 24px !important; }
+        #print-section .mb-0\\.5 { margin-bottom: 2px !important; }
+        #print-section .mb-1 { margin-bottom: 4px !important; }
+        #print-section .mt-0\\.5 { margin-top: 2px !important; }
+        #print-section .mt-2 { margin-top: 8px !important; }
+        #print-section .mt-6 { margin-top: 24px !important; }
+        #print-section .mt-auto { margin-top: auto !important; }
+        #print-section .w-\\[32\\%\\] { width: 32% !important; }
+        #print-section .w-\\[68\\%\\] { width: 68% !important; }
+        #print-section .w-\\[55\\%\\] { width: 55% !important; }
+        #print-section .w-\\[45\\%\\] { width: 45% !important; }
+        #print-section .w-\\[52\\%\\] { width: 52% !important; }
+        #print-section .w-\\[48\\%\\] { width: 48% !important; }
+        #print-section .w-14 { width: 56px !important; }
+        #print-section .w-16 { width: 64px !important; }
+        #print-section .w-20 { width: 80px !important; }
+        #print-section .w-24 { width: 96px !important; }
+        #print-section .w-28 { width: 112px !important; }
+        #print-section .w-full { width: 100% !important; }
+        #print-section .max-h-20 { max-height: 80px !important; }
+        #print-section .object-contain { object-fit: contain !important; }
+        #print-section .whitespace-pre-line { white-space: pre-line !important; }
+        #print-section .whitespace-pre-wrap { white-space: pre-wrap !important; }
+        #print-section .align-top { vertical-align: top !important; }
+        #print-section .gap-1 { gap: 4px !important; }
+        #print-section .shrink-0 { flex-shrink: 0 !important; }
+        #print-section .mr-1 { margin-right: 4px !important; }
+        #print-section .mr-1\\.5 { margin-right: 6px !important; }
+        #print-section .h-6 { height: 24px !important; }
+        #print-section .h-7 { height: 28px !important; }
+        #print-section .h-full { height: 100% !important; }
+        #print-section .tracking-widest { letter-spacing: 0.1em !important; }
+        #print-section .tracking-tighter { letter-spacing: -0.05em !important; }
+        #print-section .print-no-break { page-break-inside: avoid !important; break-inside: avoid !important; }
+
         @media print {
           @page {
             size: A4 portrait;
@@ -245,10 +396,6 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             min-height: 0 !important;
             flex: none !important;
             display: block !important;
-          }
-          .print-no-break {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
           }
         }
       `}</style>

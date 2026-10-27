@@ -193,6 +193,7 @@ app.post('/api/export-pdf', async (req, res) => {
       height: isLandscape ? 794 : 1123, 
       deviceScaleFactor: 2 
     });
+    await page.emulateMediaType('screen');
 
     const stylesHtml = Array.isArray(styles) 
       ? styles.map((s: any) => (typeof s === 'string' && s.trim().startsWith('<')) ? s : `<style>${s}</style>`).join('\n')

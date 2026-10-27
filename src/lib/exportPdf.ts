@@ -18,16 +18,47 @@ export interface ExportPdfOptions {
 function collectDocumentStyles(): string[] {
   const styles: string[] = [];
 
-  // 1. Gather all inline and Tailwind style tags
+  // 1. Gather all CSS rules from loaded document stylesheets (inlines compiled Tailwind & custom CSS)
+  try {
+    for (let i = 0; i < document.styleSheets.length; i++) {
+      const sheet = document.styleSheets[i];
+      try {
+        const rules = sheet.cssRules || sheet.rules;
+        if (rules && rules.length > 0) {
+          let sheetCss = '';
+          for (let j = 0; j < rules.length; j++) {
+            sheetCss += rules[j].cssText + '\n';
+          }
+          if (sheetCss) {
+            styles.push(sheetCss);
+            continue;
+          }
+        }
+      } catch (e) {
+        // Cross-origin stylesheet
+        const href = sheet.href;
+        if (href) {
+          styles.push(`<link rel="stylesheet" href="${href}">`);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading styleSheets:', e);
+  }
+
+  // 2. Gather all inline style tags
   document.querySelectorAll('style').forEach(s => {
-    if (s.textContent) {
+    if (s.textContent && !styles.includes(s.textContent)) {
       styles.push(s.textContent);
     }
   });
 
-  // 2. Gather all external stylesheets (e.g. index.css, Google Fonts)
+  // 3. Gather external stylesheet absolute links
   document.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
-    styles.push((l as HTMLLinkElement).outerHTML);
+    const link = l as HTMLLinkElement;
+    if (link.href) {
+      styles.push(`<link rel="stylesheet" href="${link.href}">`);
+    }
   });
 
   return styles;

@@ -2810,10 +2810,14 @@ export const ProductQuotationBuilder: React.FC = () => {
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
             
             <Button variant="ghost" icon={FileDown} onClick={async () => {
-              await exportPdf('print-section', `Product_Quotation_${quotationNo || 'PQ'}.pdf`);
+              const target = (document.getElementById('product-quote-print-container')?.querySelector('#print-section') as HTMLElement) || document.getElementById('print-section') || 'print-section';
+              await exportPdf(target, `Product_Quotation_${quotationNo || 'PQ'}.pdf`);
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
             
-            <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Product_Quotation')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>
+            <Button variant="primary" icon={Printer} onClick={() => {
+              const target = (document.getElementById('product-quote-print-container')?.querySelector('#print-section') as HTMLElement) || document.getElementById('print-section');
+              printElement(target ? (target.id || 'print-section') : 'print-section', quotationNo || 'Product_Quotation');
+            }} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>
           </div>
         </div>
       </Modal>
