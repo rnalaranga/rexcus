@@ -2638,7 +2638,7 @@ app.get('/api/quotations', async (req, res) => {
       const [rows] = await db.query(`SELECT q.*, 
         COALESCE(c.name, l.name, '') as leadName, 
         COALESCE(c.company, l.company, '') as leadCompany,
-        COALESCE(c.address, l.address, '') as leadAddress,
+        COALESCE(c.address, '') as leadAddress,
         COALESCE(c.vat, l.vat, '') as leadVat,
         COALESCE(c.svat, l.svat, '') as leadSvat
       FROM quotations q 
