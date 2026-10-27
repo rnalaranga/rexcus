@@ -3133,20 +3133,67 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
     const { approvedBy } = req.body;
+
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const quote = rows[0];
+
+    // Promote type if it was a draft so it becomes a permanent official quotation
+    let newType = quote.type;
+    if (quote.type === 'draft') newType = 'main';
+    else if (quote.type === 'product_draft') newType = 'product';
+
     await db.query(
-      "UPDATE quotations SET status = 'Approved', approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?",
-      [approvedBy || 'Authorized Approver', id]
+      "UPDATE quotations SET status = 'Approved', type = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?",
+      [newType, approvedBy || 'Authorized Approver', id]
     );
 
-    // Audit log
+    // Auto-advance sequence for this quotation number so the next number is properly reserved
     try {
-      const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
-      const quote = rows[0];
       let parsed: any = {};
       if (quote?.data) {
         try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
       }
-      const recordNo = parsed.quotationNo || quote?.docNo || quote?.id || id;
+      const recordNo = quote.quotationNo || parsed.quotationNo || quote.docNo || quote.id || id;
+      const numMatch = String(recordNo).match(/(\d+)$/);
+      if (numMatch) {
+        const usedNum = parseInt(numMatch[1], 10);
+        let userPfx = '';
+        const createdBy = quote.createdBy || parsed.createdBy;
+        if (createdBy) {
+          const [uRow]: any = await db.query('SELECT prefix FROM users WHERE id = ? OR username = ? LIMIT 1', [createdBy, createdBy]);
+          if (uRow && uRow[0]?.prefix) userPfx = uRow[0].prefix.trim().toUpperCase();
+        }
+        if (!userPfx && parsed.userPrefix) {
+          userPfx = String(parsed.userPrefix).trim().toUpperCase();
+        }
+        if (userPfx) {
+          await db.query(
+            `INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) 
+             VALUES (?, ?, ?, NOW()) 
+             ON DUPLICATE KEY UPDATE next_number = GREATEST(next_number, VALUES(next_number)), updated_at = NOW()`,
+            [userPfx, createdBy || null, usedNum + 1]
+          );
+        } else {
+          await db.query(
+            "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'quotation'",
+            [usedNum + 1]
+          );
+        }
+      }
+    } catch (seqErr) {
+      console.error('Error auto-advancing quotation sequence on approval:', seqErr);
+    }
+
+    // Audit log
+    try {
+      let parsed: any = {};
+      if (quote?.data) {
+        try { parsed = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data; } catch (e) {}
+      }
+      const recordNo = quote.quotationNo || parsed.quotationNo || quote?.docNo || quote?.id || id;
       const entityName = parsed.customerCompany || parsed.customerName || quote?.leadId || 'Customer';
       const amount = Number(quote?.totalAmount || parsed.custTotals?.total || 0);
 
@@ -3157,7 +3204,7 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
       );
     } catch (logErr) {}
 
-    res.json({ success: true, id, status: 'Approved' });
+    res.json({ success: true, id, status: 'Approved', type: newType });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -3523,6 +3570,14 @@ app.post('/api/approval-logs', async (req, res) => {
 app.delete('/api/quotations/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    // Safety check: Prevent deleting Approved or PO Received quotations directly
+    const [rows]: any = await db.query('SELECT id, status, quotationNo FROM quotations WHERE id = ?', [id]);
+    if (rows && rows.length > 0) {
+      const q = rows[0];
+      if (q.status === 'Approved' || q.status === 'PO Received') {
+        return res.status(400).json({ error: `Cannot delete quotation ${q.quotationNo || id} because it is already '${q.status}'. Please reject or cancel it first.` });
+      }
+    }
     await db.query('DELETE FROM quotations WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (error: any) {
