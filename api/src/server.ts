@@ -1666,6 +1666,8 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN customerPoDate VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN customerPoAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN poReceivedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN deletedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN deletedBy VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN customerAddress TEXT DEFAULT NULL",
@@ -2921,17 +2923,17 @@ app.post('/api/quotations', async (req, res) => {
     
     await db.query('INSERT INTO quotations SET ?', newQuotation);
 
-    // If new draft was inserted, ensure no older duplicate drafts exist for the same quote number or customer
+    // If new draft was inserted, ensure older duplicate drafts are moved to trash
     if (isDraft) {
       if (newQuotation.quotationNo) {
         await db.query(
-          'DELETE FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ?',
+          'UPDATE quotations SET deletedAt = NOW(), deletedBy = "System Cleanup" WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ? AND deletedAt IS NULL',
           [newQuotation.quotationNo, newQuotation.quotationNo, newQuotation.id]
         );
       }
       if (data.leadId && data.leadId !== 'WALK-IN') {
         await db.query(
-          'DELETE FROM quotations WHERE leadId = ? AND type = ? AND id != ?',
+          'UPDATE quotations SET deletedAt = NOW(), deletedBy = "System Cleanup" WHERE leadId = ? AND type = ? AND id != ? AND deletedAt IS NULL',
           [data.leadId, qType, newQuotation.id]
         );
       }
@@ -3053,10 +3055,10 @@ app.put('/api/quotations/update/:id', async (req, res) => {
       try {
         const cleanupNos = [qNo, data.docNo].filter(Boolean);
         if (data.draftId) {
-          await db.query('DELETE FROM quotations WHERE id = ? AND type IN ("draft", "product_draft")', [data.draftId]);
+          await db.query('UPDATE quotations SET deletedAt = NOW(), deletedBy = "System Cleanup" WHERE id = ? AND type IN ("draft", "product_draft") AND deletedAt IS NULL', [data.draftId]);
         }
         if (cleanupNos.length > 0) {
-          await db.query('DELETE FROM quotations WHERE (quotationNo IN (?) OR docNo IN (?)) AND type IN ("draft", "product_draft") AND id != ?', [cleanupNos, cleanupNos, id]);
+          await db.query('UPDATE quotations SET deletedAt = NOW(), deletedBy = "System Cleanup" WHERE (quotationNo IN (?) OR docNo IN (?)) AND type IN ("draft", "product_draft") AND id != ? AND deletedAt IS NULL', [cleanupNos, cleanupNos, id]);
         }
       } catch (cleanupErr) {
         console.error('Error cleaning up drafts on update:', cleanupErr);
@@ -3570,6 +3572,7 @@ app.post('/api/approval-logs', async (req, res) => {
 app.delete('/api/quotations/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user } = req.query as any;
     // Safety check: Prevent deleting Approved or PO Received quotations directly
     const [rows]: any = await db.query('SELECT id, status, quotationNo FROM quotations WHERE id = ?', [id]);
     if (rows && rows.length > 0) {
@@ -3578,11 +3581,36 @@ app.delete('/api/quotations/:id', async (req, res) => {
         return res.status(400).json({ error: `Cannot delete quotation ${q.quotationNo || id} because it is already '${q.status}'. Please reject or cancel it first.` });
       }
     }
-    await db.query('DELETE FROM quotations WHERE id = ?', [id]);
-    res.json({ success: true });
+    // Soft delete so it moves to Trash and can be restored at any time directly from the system
+    await db.query('UPDATE quotations SET deletedAt = NOW(), deletedBy = ? WHERE id = ?', [user || 'User', id]);
+    res.json({ success: true, message: 'Quotation moved to trash' });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// Restore soft-deleted quotation from Trash
+app.post('/api/quotations/:id/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('UPDATE quotations SET deletedAt = NULL, deletedBy = NULL WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Quotation restored successfully from trash' });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to restore quotation' });
+  }
+});
+
+// Permanent deletion from Trash (Hard Delete)
+app.delete('/api/quotations/:id/permanent', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM quotations WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Quotation permanently deleted' });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Failed to permanently delete quotation' });
   }
 });
 

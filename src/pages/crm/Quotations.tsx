@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -529,6 +529,9 @@ export const Quotations: React.FC = () => {
       leadId: string; 
       customerId?: string;
       isProduct: boolean;
+      isDeleted?: boolean;
+      deletedAt?: string;
+      deletedBy?: string;
       main: any[]; 
       job: any[]; 
       customer: any[]; 
@@ -600,7 +603,9 @@ export const Quotations: React.FC = () => {
       const isAutoPregenNo = !quoNo || quoNo.startsWith('QT-DRAFT-') || quoNo.startsWith('PQ-DRAFT-') || quoNo === 'QT-2206' || quoNo === 'PQ-2206';
 
       let groupKey: string;
-      if (quoNo && !isAutoPregenNo) {
+      if (q.deletedAt) {
+        groupKey = `DELETED_${q.id}`;
+      } else if (quoNo && !isAutoPregenNo) {
         groupKey = `${quoNo}_${resolvedLeadId}`;
       } else if (isDraft && resolvedLeadId !== 'WALK-IN') {
         groupKey = `DRAFT_${resolvedLeadId}`;
@@ -627,6 +632,9 @@ export const Quotations: React.FC = () => {
           leadId: resolvedLeadId, 
           customerId: cust?.id || lead?.customerId || q.customerId,
           isProduct: isProd,
+          isDeleted: Boolean(q.deletedAt),
+          deletedAt: q.deletedAt,
+          deletedBy: q.deletedBy,
           main: [], 
           job: [], 
           customer: [], 
@@ -644,7 +652,9 @@ export const Quotations: React.FC = () => {
         }
       }
       
-      if (q.type === "main") {
+      if (q.deletedAt) {
+        if (!groups[groupKey].main.length) groups[groupKey].main.push(q);
+      } else if (q.type === "main") {
         if (!groups[groupKey].main.some(m => m.id === q.id)) {
           groups[groupKey].main.push(q);
         }
@@ -737,12 +747,18 @@ export const Quotations: React.FC = () => {
       approved: 0,
       sent: 0,
       "in production": 0,
-      rejected: 0
+      rejected: 0,
+      trash: 0
     };
     groupedQuotations.forEach(g => {
       if (categoryFilter !== "all") {
         if (categoryFilter === "product" && !g.isProduct) return;
         if (categoryFilter === "custom" && g.isProduct) return;
+      }
+
+      if (g.isDeleted) {
+        counts.trash++;
+        return;
       }
 
       const latestMain = g.main[0] || g.customer[0] || g.job[0];
@@ -790,16 +806,21 @@ export const Quotations: React.FC = () => {
       if (gRep !== salesRepFilter.trim().toLowerCase()) return false;
     }
 
-    // Status filter
-    const latestStatus = (latestMain?.status || "Draft").toLowerCase();
-    const isDraft = isAutoDraft || latestStatus === "draft";
-    if (statusFilter === "all") {
-      // Hide drafts from the main list so "All" stays clean for confirmed/real quotations
-      if (isDraft) return false;
-    } else if (statusFilter === "draft") {
-      if (!isDraft) return false;
+    // Trash filter vs normal status filters
+    if (statusFilter.toLowerCase() === 'trash') {
+      if (!g.isDeleted) return false;
     } else {
-      if (latestStatus !== statusFilter.toLowerCase()) return false;
+      if (g.isDeleted) return false;
+      const latestStatus = (latestMain?.status || "Draft").toLowerCase();
+      const isDraft = isAutoDraft || latestStatus === "draft";
+      if (statusFilter === "all") {
+        // Hide drafts from the main list so "All" stays clean for confirmed/real quotations
+        if (isDraft) return false;
+      } else if (statusFilter === "draft") {
+        if (!isDraft) return false;
+      } else {
+        if (latestStatus !== statusFilter.toLowerCase()) return false;
+      }
     }
 
     // Customer filter
@@ -1281,6 +1302,34 @@ export const Quotations: React.FC = () => {
     );
   };
 
+  const handleRestoreQuotation = async (quoteId: string, quoteNo: string) => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${quoteId}/restore`, {
+        method: 'POST'
+      });
+      if (!res.ok) throw new Error('Failed to restore quotation');
+      toast(`Quotation ${quoteNo} successfully restored from Trash!`, 'success');
+      refetch();
+    } catch (err: any) {
+      toast(err.message || 'Error restoring quotation', 'error');
+    }
+  };
+
+  const handlePermanentDelete = async (quoteId: string, quoteNo: string) => {
+    if (await showConfirm(`Permanently delete quotation ${quoteNo}? This cannot be undone.`, 'Permanent Deletion', { confirmLabel: 'Delete Forever' })) {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${quoteId}/permanent`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Failed to permanently delete');
+        toast(`Quotation ${quoteNo} permanently deleted`, 'success');
+        refetch();
+      } catch (err: any) {
+        toast(err.message || 'Error deleting quotation', 'error');
+      }
+    }
+  };
+
   return (
     <div className="space-y-4 animate-fade-in pb-10">
       {/* Top Header */}
@@ -1468,19 +1517,20 @@ export const Quotations: React.FC = () => {
               { id: 'sent', label: 'Sent', count: statusCounts.sent },
               { id: 'in production', label: 'In Production', count: statusCounts['in production'] },
               { id: 'rejected', label: 'Rejected', count: statusCounts.rejected },
+              { id: 'trash', label: '🗑️ Trash', count: statusCounts.trash, isTrash: true },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
                 className={`px-2.5 py-1 text-xs font-semibold rounded-none transition-all uppercase tracking-wider shrink-0 flex items-center gap-1.5 ${
                   statusFilter.toLowerCase() === tab.id
-                    ? 'bg-rex-600 text-white font-bold shadow-xs'
-                    : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
+                    ? (tab.isTrash ? 'bg-rose-600 text-white font-bold shadow-xs' : 'bg-rex-600 text-white font-bold shadow-xs')
+                    : (tab.isTrash ? 'bg-surface border border-rose-500/30 text-rose-500/80 hover:text-rose-600 hover:border-rose-500' : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme')
                 }`}
               >
                 <span>{tab.label}</span>
                 <span className={`text-xs font-mono font-medium px-1.5 py-0.5 rounded-none ${
-                  statusFilter.toLowerCase() === tab.id ? 'bg-black/20 text-white' : 'bg-surface2 text-muted'
+                  statusFilter.toLowerCase() === tab.id ? 'bg-black/20 text-white' : (tab.isTrash ? 'bg-rose-500/10 text-rose-500' : 'bg-surface2 text-muted')
                 }`}>
                   {tab.count || 0}
                 </span>
@@ -1968,24 +2018,39 @@ export const Quotations: React.FC = () => {
 
                         {/* Status */}
                         <td className="px-3 py-2.5 text-center">
-                          <span className={`inline-block text-[10px] uppercase font-semibold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
-                            {status}
-                          </span>
-                          {(latestMain?.materialStatus || existingWO?.materialStatus) && (
-                            <div className="mt-1">
-                              <span 
-                                title={latestMain?.materialAlert || existingWO?.materialAlert || 'Material shortage/substitute status'}
-                                className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 border ${
-                                  (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('Shortage') || (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('Pending')
-                                    ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
-                                    : (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('MR')
-                                    ? 'bg-blue-500/10 text-blue-600 border-blue-500/30'
-                                    : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                                }`}
-                              >
-                                ⚠️ {latestMain?.materialStatus || existingWO?.materialStatus}
+                          {group.isDeleted ? (
+                            <div>
+                              <span className="inline-block text-[10px] uppercase font-bold px-2 py-0.5 bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                                🗑️ In Trash
                               </span>
+                              {group.deletedAt && (
+                                <span className="block text-[9px] text-muted font-mono mt-0.5">
+                                  {formatDate(group.deletedAt)}
+                                </span>
+                              )}
                             </div>
+                          ) : (
+                            <>
+                              <span className={`inline-block text-[10px] uppercase font-semibold px-2 py-0.5 rounded-none border ${getStatusColor(status)}`}>
+                                {status}
+                              </span>
+                              {(latestMain?.materialStatus || existingWO?.materialStatus) && (
+                                <div className="mt-1">
+                                  <span 
+                                    title={latestMain?.materialAlert || existingWO?.materialAlert || 'Material shortage/substitute status'}
+                                    className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 border ${
+                                      (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('Shortage') || (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('Pending')
+                                        ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                        : (latestMain?.materialStatus || existingWO?.materialStatus || '').includes('MR')
+                                        ? 'bg-blue-500/10 text-blue-600 border-blue-500/30'
+                                        : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                    }`}
+                                  >
+                                    ⚠️ {latestMain?.materialStatus || existingWO?.materialStatus}
+                                  </span>
+                                </div>
+                              )}
+                            </>
                           )}
                         </td>
 
@@ -2072,7 +2137,41 @@ export const Quotations: React.FC = () => {
 
                         {/* Actions */}
                         <td className={`px-4 py-2.5 text-right ${openActionId === group.quoNo ? 'relative z-50' : 'relative z-0'}`}>
-                          <div className="flex items-center justify-end gap-1.5 quotation-action-menu-container">
+                          {group.isDeleted ? (
+                            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={Eye}
+                                onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                                className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                                title="View Document Preview"
+                              >
+                                View
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={RotateCcw}
+                                onClick={() => handleRestoreQuotation(displayQ.id, group.quoNo)}
+                                className="h-7 text-xs px-2.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-none hover:bg-emerald-500/25 font-bold"
+                                title="Restore quotation to active list"
+                              >
+                                Restore
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={Trash2}
+                                onClick={() => handlePermanentDelete(displayQ.id, group.quoNo)}
+                                className="h-7 text-xs px-2 text-rose-500 border border-rose-500/30 rounded-none hover:bg-rose-500/10"
+                                title="Delete Permanently"
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5 quotation-action-menu-container">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -2140,6 +2239,7 @@ export const Quotations: React.FC = () => {
 
                             {renderActionsDropdown(group, latestMain, displayQ, parsed, existingWO, sampleGrns, idx)}
                           </div>
+                          )}
                         </td>
                       </tr>
 
@@ -2356,7 +2456,41 @@ export const Quotations: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5 quotation-action-menu-container">
+                  {group.isDeleted ? (
+                    <div className="flex items-center gap-1.5 flex-nowrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={Eye}
+                        onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                        className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
+                        title="View Document Preview"
+                      >
+                        View
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={RotateCcw}
+                        onClick={() => handleRestoreQuotation(displayQ.id, group.quoNo)}
+                        className="h-7 text-xs px-2.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-none hover:bg-emerald-500/25 font-bold"
+                        title="Restore quotation to active list"
+                      >
+                        Restore
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={Trash2}
+                        onClick={() => handlePermanentDelete(displayQ.id, group.quoNo)}
+                        className="h-7 text-xs px-2 text-rose-500 border border-rose-500/30 rounded-none hover:bg-rose-500/10"
+                        title="Delete Permanently"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 quotation-action-menu-container">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -2423,6 +2557,7 @@ export const Quotations: React.FC = () => {
 
                     {renderActionsDropdown(group, latestMain, displayQ, parsed, existingWO, sampleGrns, idx)}
                   </div>
+                  )}
                 </div>
               </GlassCard>
             );
