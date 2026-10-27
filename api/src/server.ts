@@ -6137,7 +6137,8 @@ const handleInvoiceDelete = async (req: any, res: any) => {
     }
     
     // Finally delete the invoice
-    await db.query('DELETE FROM invoices WHERE id = ? OR invoiceNo = ?', [invoice.id, invoice.id]);
+    const invNo = invoice.invoiceNo || invoice.id;
+    await db.query('DELETE FROM invoices WHERE id = ? OR invoiceNo = ? OR id = ? OR invoiceNo = ?', [invoice.id, invoice.id, invNo, invNo]);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Invoice deletion error:', error);

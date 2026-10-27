@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, Download, X, FileText, ExternalLink, Calendar, Building2 } from 'lucide-react';
+import { Printer, Download, X, FileText, ExternalLink, Calendar, Building2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { InvoicePreview } from '@/components/finance/InvoicePreview';
 import { useTaxProfiles } from '@/hooks/useFinance';
@@ -14,13 +14,17 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   settings?: any;
+  order?: any;
+  onDelete?: (invoice: any) => void;
 }
 
 export const ProformaInvoicePrintModal: React.FC<Props> = ({
   invoice,
   isOpen,
   onClose,
-  settings
+  settings,
+  order,
+  onDelete
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
   const { data: taxProfiles = [] } = useTaxProfiles();
@@ -147,6 +151,18 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
             >
               Download PDF
             </Button>
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={Trash2}
+                onClick={() => onDelete(invoice)}
+                className="h-7 text-xs px-2.5 rounded-none text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/20"
+                title="Delete Proforma Invoice"
+              >
+                Delete PI
+              </Button>
+            )}
             <button
               type="button"
               onClick={onClose}

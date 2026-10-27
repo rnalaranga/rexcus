@@ -37,7 +37,8 @@ import {
   deleteFinishedGoodsOrder,
   createWorkOrder,
   fetchWorkOrders,
-  fetchPaymentReceipts
+  fetchPaymentReceipts,
+  deleteInvoice
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -50,14 +51,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   onOpenProductBOM
 }) => {
   const navigate = useNavigate()
-  const { toast } = useDialog()
+  const { toast, showConfirm } = useDialog()
   const { settings } = useSettings()
   const { data: orders, loading, refetch } = useFinishedGoodsOrders()
   const { data: inventory, refetch: refetchInventory } = useInventory()
   const { data: customers = [] } = useCustomers()
   const { data: leads = [] } = useLeads()
   const { data: rawQuotations = [] } = useQuotations()
-  const { data: allInvoices = [] } = useInvoices()
+  const { data: allInvoices = [], refetch: refetchInvoices } = useInvoices()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
@@ -149,6 +150,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
     setActivePrintProforma(enriched)
   }
+
+  const handleDeleteProforma = async (proforma: any) => {
+    if (!proforma) return;
+    const proformaDocNo = proforma.invoiceNo || proforma.id;
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete Advance Proforma Invoice "${proformaDocNo}"? This action cannot be undone.`,
+      'Delete Advance Proforma'
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteInvoice(proforma.id || proforma.invoiceNo);
+      toast(`Proforma invoice ${proformaDocNo} deleted successfully`, 'success');
+      if (activePrintProforma && (activePrintProforma.id === proforma.id || activePrintProforma.invoiceNo === proforma.invoiceNo)) {
+        setActivePrintProforma(null);
+      }
+      refetchInvoices();
+    } catch (err: any) {
+      console.error('Failed to delete proforma invoice:', err);
+      toast(err.message || 'Failed to delete proforma invoice', 'error');
+    }
+  };
 
   const loadPaymentReceipts = useCallback(async () => {
     try {
@@ -898,19 +921,33 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
             {/* 1. Advance Proforma Invoice */}
             {linkedProforma ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenActionOrderId(null)
-                  handleOpenPrintProforma(linkedProforma, order)
-                }}
-                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-blue-600 dark:text-blue-400 font-medium"
-              >
-                <span className="flex items-center gap-2">
-                  <FileText size={13} /> View Advance Proforma
-                </span>
-                <span className="text-[10px] font-mono px-1 py-0.2 bg-blue-500/10 border border-blue-500/20">PI</span>
-              </button>
+              <div className="flex items-center justify-between hover:bg-surface2 transition-colors border-b border-theme-subtle/30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionOrderId(null)
+                    handleOpenPrintProforma(linkedProforma, order)
+                  }}
+                  className="flex-1 px-3 py-2 text-xs flex items-center justify-between text-blue-600 dark:text-blue-400 font-medium text-left"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileText size={13} /> View Advance Proforma
+                  </span>
+                  <span className="text-[10px] font-mono px-1 py-0.2 bg-blue-500/10 border border-blue-500/20">PI</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setOpenActionOrderId(null)
+                    handleDeleteProforma(linkedProforma)
+                  }}
+                  className="p-2 text-muted hover:text-rose-600 transition-colors"
+                  title="Delete Advance Proforma"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -1273,7 +1310,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </td>
 
                       <td className="px-4 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
                             variant="primary"
                             size="sm"
@@ -1281,6 +1318,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded-none flex items-center gap-1"
                           >
                             <Printer size={12} /> View / Print Proforma
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteProforma(pi)}
+                            className="text-xs text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-theme-subtle hover:border-rose-500/30 font-bold py-1 px-2.5 rounded-none flex items-center gap-1 transition-colors"
+                            title="Delete Proforma Invoice"
+                          >
+                            <Trash2 size={12} /> Delete
                           </Button>
                         </div>
                       </td>
@@ -2545,6 +2591,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           onClose={() => setActivePrintProforma(null)}
           invoice={activePrintProforma}
           settings={settings}
+          onDelete={handleDeleteProforma}
         />
       )}
 

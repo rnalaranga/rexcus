@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Download, Plus, Filter, ArrowUpRight, Receipt, FileText, 
   CheckCircle2, Clock, AlertTriangle, CreditCard, DollarSign,
-  Building2, ExternalLink, Search, RefreshCw, X
+  Building2, ExternalLink, Search, RefreshCw, X, Trash2
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +16,7 @@ import { useInvoices, useCustomers } from '@/hooks/useData';
 import { useAccounts } from '@/hooks/useFinance';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { addInvoicePayment, fetchPaymentReceipts } from '@/lib/api';
+import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
@@ -26,7 +26,7 @@ type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
 export const ReceivablesHub: React.FC = () => {
   const navigate = useNavigate();
-  const { toast } = useDialog();
+  const { toast, showConfirm } = useDialog();
   const { settings } = useSettings();
   const { data: allInvoices = [], loading: loadingInvoices, refetch: refetchInvoices } = useInvoices();
   const { data: customers = [] } = useCustomers();
@@ -207,6 +207,28 @@ export const ReceivablesHub: React.FC = () => {
       customerVat: proforma.customerVat || matchedCustomer?.taxNumber || matchedCustomer?.vatNumber || ''
     };
     setActivePrintProforma(enriched);
+  };
+
+  const handleDeleteProforma = async (proforma: any) => {
+    if (!proforma) return;
+    const proformaDocNo = proforma.invoiceNo || proforma.id;
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete Advance Proforma Invoice "${proformaDocNo}"? This action cannot be undone.`,
+      'Delete Advance Proforma'
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteInvoice(proforma.id || proforma.invoiceNo);
+      toast(`Proforma invoice ${proformaDocNo} deleted successfully`, 'success');
+      if (activePrintProforma && (activePrintProforma.id === proforma.id || activePrintProforma.invoiceNo === proforma.invoiceNo)) {
+        setActivePrintProforma(null);
+      }
+      refetchInvoices();
+    } catch (err: any) {
+      console.error('Failed to delete proforma invoice:', err);
+      toast(err.message || 'Failed to delete proforma invoice', 'error');
+    }
   };
 
   // Open Direct Payment Modal for an Invoice
@@ -730,6 +752,14 @@ export const ReceivablesHub: React.FC = () => {
                                 Record Advance
                               </Button>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Trash2}
+                              className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20"
+                              onClick={() => handleDeleteProforma(pi)}
+                              title="Delete Proforma Invoice"
+                            />
                           </div>
                         </td>
                       </tr>
@@ -992,6 +1022,7 @@ export const ReceivablesHub: React.FC = () => {
           onClose={() => setActivePrintProforma(null)}
           invoice={activePrintProforma}
           settings={settings}
+          onDelete={handleDeleteProforma}
         />
       )}
     </div>
