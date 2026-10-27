@@ -2782,10 +2782,17 @@ app.post('/api/quotations', async (req, res) => {
       }
     }
 
-    // 2. Draft handling: update existing draft if matching by qNo or leadId
+    // 2. Draft handling: update existing draft if matching by id, qNo or leadId
     if (qType === 'draft' || qType === 'product_draft') {
       let existingDraft: any = null;
-      if (qNo) {
+      if (data.id) {
+        const [rows]: any = await db.query(
+          'SELECT id, version FROM quotations WHERE id = ? LIMIT 1',
+          [data.id]
+        );
+        if (rows && rows.length > 0) existingDraft = rows[0];
+      }
+      if (!existingDraft && qNo) {
         const [rows]: any = await db.query(
           'SELECT id, version FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") LIMIT 1',
           [qNo, qNo]
@@ -2796,6 +2803,13 @@ app.post('/api/quotations', async (req, res) => {
         const [rows]: any = await db.query(
           'SELECT id, version FROM quotations WHERE leadId = ? AND type = ? ORDER BY date DESC LIMIT 1',
           [data.leadId, qType]
+        );
+        if (rows && rows.length > 0) existingDraft = rows[0];
+      }
+      if (!existingDraft && createdBy) {
+        const [rows]: any = await db.query(
+          'SELECT id, version FROM quotations WHERE createdBy = ? AND type = ? AND date >= NOW() - INTERVAL 2 HOUR ORDER BY date DESC LIMIT 1',
+          [createdBy, qType]
         );
         if (rows && rows.length > 0) existingDraft = rows[0];
       }
@@ -2816,6 +2830,13 @@ app.post('/api/quotations', async (req, res) => {
             draftId
           ]
         );
+        // Clean up any other duplicate drafts matching qNo or docNo
+        if (qNo) {
+          await db.query(
+            'DELETE FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ?',
+            [qNo, qNo, draftId]
+          );
+        }
         return res.json({
           success: true,
           quotation: {
@@ -2838,7 +2859,7 @@ app.post('/api/quotations', async (req, res) => {
     const prefix = (qType === 'product' || qType === 'product_draft') ? 'PQ' : 'QT';
     
     const newQuotation = {
-      id: `${prefix}-${Date.now().toString().slice(-6)}`,
+      id: data.id || `${prefix}-${Date.now().toString().slice(-6)}`,
       leadId: data.leadId,
       version: nextVersion,
       date: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -2855,6 +2876,14 @@ app.post('/api/quotations', async (req, res) => {
     };
     
     await db.query('INSERT INTO quotations SET ?', newQuotation);
+
+    // If new draft was inserted, ensure no older duplicate drafts exist for the same quote number
+    if (isDraft && newQuotation.quotationNo) {
+      await db.query(
+        'DELETE FROM quotations WHERE (quotationNo = ? OR docNo = ?) AND type IN ("draft", "product_draft") AND id != ?',
+        [newQuotation.quotationNo, newQuotation.quotationNo, newQuotation.id]
+      );
+    }
 
     // Auto-advance sequence for quotation numbers upon official creation
     if (qType !== 'draft' && qType !== 'product_draft' && newQuotation.quotationNo) {
@@ -2887,6 +2916,25 @@ app.post('/api/quotations', async (req, res) => {
         }
       } catch (seqErr) {
         console.error('Error auto-advancing quotation sequence:', seqErr);
+      }
+    }
+
+    // Clean up any drafts associated with this finalized quotation
+    if (qType !== 'draft' && qType !== 'product_draft') {
+      try {
+        const cleanupIds = [data.draftId, data.id].filter(Boolean);
+        const cleanupNos = [newQuotation.quotationNo, newQuotation.docNo, data.quotationNo, data.docNo].filter(Boolean);
+        if (cleanupIds.length > 0) {
+          await db.query('DELETE FROM quotations WHERE id IN (?) AND type IN ("draft", "product_draft")', [cleanupIds]);
+        }
+        if (cleanupNos.length > 0) {
+          await db.query('DELETE FROM quotations WHERE (quotationNo IN (?) OR docNo IN (?)) AND type IN ("draft", "product_draft")', [cleanupNos, cleanupNos]);
+        }
+        if (data.leadId && data.leadId !== 'WALK-IN' && createdBy) {
+          await db.query('DELETE FROM quotations WHERE leadId = ? AND createdBy = ? AND type IN ("draft", "product_draft")', [data.leadId, createdBy]);
+        }
+      } catch (cleanupErr) {
+        console.error('Error cleaning up drafts on quotation creation:', cleanupErr);
       }
     }
 
@@ -2950,6 +2998,22 @@ app.put('/api/quotations/update/:id', async (req, res) => {
         id
       ]
     );
+
+    // Clean up any drafts associated with this quotation if it is finalized
+    if (data.type && data.type !== 'draft' && data.type !== 'product_draft') {
+      try {
+        const cleanupNos = [qNo, data.docNo].filter(Boolean);
+        if (data.draftId) {
+          await db.query('DELETE FROM quotations WHERE id = ? AND type IN ("draft", "product_draft")', [data.draftId]);
+        }
+        if (cleanupNos.length > 0) {
+          await db.query('DELETE FROM quotations WHERE (quotationNo IN (?) OR docNo IN (?)) AND type IN ("draft", "product_draft") AND id != ?', [cleanupNos, cleanupNos, id]);
+        }
+      } catch (cleanupErr) {
+        console.error('Error cleaning up drafts on update:', cleanupErr);
+      }
+    }
+
     res.json({ success: true, id });
   } catch (error: any) {
     console.error(error);

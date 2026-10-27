@@ -266,6 +266,7 @@ export const QuotationBuilder: React.FC = () => {
   const initialLoadedRef = useRef(false)
   const draftIdRef = useRef<string | null>(quoteIdParam || null)
   const currentIdRef = useRef<string | null>(null)
+  const isAutoSavingRef = useRef(false)
 
   const currentQuote = useMemo(() => {
     if (!currentId && !draftId) return null;
@@ -976,7 +977,9 @@ export const QuotationBuilder: React.FC = () => {
       if (!selectedLeadId) return; // Only auto-save if a customer is explicitly selected 
       if (currentIdRef.current) return; // If we are editing an active version, don't auto-save as draft
       if (quoteIdParam && !initialLoadedRef.current) return; // Wait until quote is fully loaded from URL
+      if (isAutoSavingRef.current) return; // Mutex: prevent duplicate concurrent auto-saves
       
+      isAutoSavingRef.current = true;
       setSaveStatus('saving');
       const snapshot: any = {
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
@@ -1004,17 +1007,21 @@ export const QuotationBuilder: React.FC = () => {
       
       try {
         if (!draftIdRef.current) {
+          const pregenDraftId = `QT-DRAFT-${Date.now().toString().slice(-6)}`;
+          draftIdRef.current = pregenDraftId;
+          setDraftId(pregenDraftId);
+          const curLead = selectedLeadId || 'WALK-IN';
+          window.history.replaceState(null, '', `/crm/quotations/new/${curLead}?quoteId=${pregenDraftId}`);
+
           const res = await createQuotation({
-            id: draftIdRef.current || undefined,
+            id: pregenDraftId,
             quotationNo: quotationNo || null,
             leadId: selectedLeadId || 'WALK-IN', type: 'draft', data: snapshot,
             totalAmount: am, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate
           });
-          if (res.success && res.quotation) {
+          if (res.success && res.quotation?.id) {
              setDraftId(res.quotation.id);
              draftIdRef.current = res.quotation.id;
-             const curLead = selectedLeadId || 'WALK-IN';
-             window.history.replaceState(null, '', `/crm/quotations/new/${curLead}?quoteId=${res.quotation.id}`);
           }
         } else {
           await updateQuotation(draftIdRef.current, {
@@ -1029,6 +1036,8 @@ export const QuotationBuilder: React.FC = () => {
         }, 2000);
       } catch (err) {
         setSaveStatus('idle');
+      } finally {
+        isAutoSavingRef.current = false;
       }
     }, 2500)
     
@@ -1324,6 +1333,8 @@ export const QuotationBuilder: React.FC = () => {
         result = await updateQuotation(currentId, {
           leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
           totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+          quotationNo: quotationNo || null,
+          draftId: draftIdRef.current || undefined,
           createdBy: user?.id || user?.username || '',
           createdByName: user?.name || user?.username || ''
         });
@@ -1340,6 +1351,8 @@ export const QuotationBuilder: React.FC = () => {
         }
       } else {
         result = await createQuotation({
+          draftId: draftIdRef.current || undefined,
+          quotationNo: quotationNo || null,
           leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
           totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
           createdBy: user?.id || user?.username || '',
