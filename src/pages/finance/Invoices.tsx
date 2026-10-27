@@ -20,6 +20,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
+import { exportToPdf } from '@/lib/exportToPdf'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -1106,21 +1107,7 @@ export const Invoices: React.FC = () => {
                     variant="ghost" 
                     className="h-9 text-xs border border-blue-500/30 text-blue-500 hover:bg-blue-500/10" 
                     onClick={() => {
-                      const el = document.getElementById('invoice-preview');
-                      if (!el) return;
-                      // @ts-ignore
-                      import('html2pdf.js').then((html2pdfModule) => {
-                        const html2pdf = html2pdfModule.default || html2pdfModule;
-                        const opt: any = {
-                          margin: [6, 8, 6, 8],
-                          filename: `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}.pdf`,
-                          image: { type: 'jpeg', quality: 0.98 },
-                          html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                        };
-                        html2pdf().set(opt).from(el).save();
-                      });
+                      exportToPdf('invoice-preview', `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}.pdf`);
                     }}
                   >
                     Export PDF

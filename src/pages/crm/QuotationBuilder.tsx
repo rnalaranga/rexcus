@@ -6,6 +6,8 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
+import { exportToPdf } from '@/lib/exportToPdf'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
@@ -201,6 +203,7 @@ export const QuotationBuilder: React.FC = () => {
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [rejectReasonInput, setRejectReasonInput] = useState('')
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
   const navigate = useNavigate()
   const { showConfirm } = useDialog()
   const [useAiPolish, setUseAiPolish] = useState(true)
@@ -2958,30 +2961,32 @@ export const QuotationBuilder: React.FC = () => {
                   return;
                 }
               }
-              const email = (currentEntity || lead)?.email || '';
-              const subj = encodeURIComponent(`Quotation ${quotationNo} - ${subject}`);
-              const body = encodeURIComponent(`Dear ${attention || lead?.name || customerName || 'Customer'},\n\nPlease find our Quotation ${quotationNo} attached.\n\nThank you,\n${user?.name || 'Rex Industries'}`);
-              window.open(`mailto:${email}?subject=${subj}&body=${body}`);
-            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2">Email Customer</Button>
+              setEmailModalOpen(true);
+            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
             
             <Button variant="ghost" icon={FileDown} onClick={() => {
-              const element = document.getElementById('print-section');
-              if (!element) return;
-              const opt: any = {
-                margin:       [6, 8, 6, 8],
-                filename:     `Quotation_${quotationNo || 'Q'}.pdf`,
-                image:        { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
-              };
-              html2pdf().set(opt).from(element).save();
-            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2">Export PDF</Button>
+              exportToPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
+            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
             
             <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Quotation')}>Print Quotation</Button>
           </div>
         </div>
       </Modal>
+
+      {/* SEND EMAIL MODAL */}
+      {emailModalOpen && (
+        <SendDocumentEmailModal
+          isOpen={emailModalOpen}
+          onClose={() => setEmailModalOpen(false)}
+          documentType="quotation"
+          documentNumber={quotationNo || 'Quotation'}
+          customerEmail={(currentEntity || lead)?.email || ''}
+          customerName={attention || lead?.name || customerName || 'Customer'}
+          totalAmount={custWithSSCL || custTotal || 0}
+          validityDays={custValidity || '30'}
+          elementIdToPdf="print-section"
+        />
+      )}
 
       <Modal isOpen={showMarginModal} onClose={() => setShowMarginModal(false)} title="✨ AI Quote Generation & Profit Margin" size="md">
         <div className="p-5 space-y-4">

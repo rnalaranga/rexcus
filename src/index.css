@@ -367,7 +367,7 @@
 
 /* ── Universal Document Print Rules ──────────────────────────── */
 @media print {
-  /* 1. Hide application UI chrome, navigation, headers, sidebars, modals overlay, toasts */
+  /* 1. Hide application UI chrome, navigation, headers, sidebars, toasts */
   nav,
   aside,
   header,
@@ -377,11 +377,20 @@
   .print\:hidden,
   [data-no-print],
   button:not(.printable-document button),
-  .bg-ice-blur,
-  .modal-ice-backdrop,
   .toast,
   #toast-root {
     display: none !important;
+  }
+
+  /* Reset any modal backdrops when printing directly */
+  .modal-ice-backdrop {
+    display: none !important;
+  }
+
+  .bg-ice-blur {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
   /* 2. Reset html & body for high-precision A4 printing */
@@ -418,6 +427,7 @@
   #receipt-print-section,
   #grn-print-section,
   #gin-print-section,
+  #product-quote-print-container,
   .printable-document {
     display: block !important;
     width: 210mm !important;
@@ -432,13 +442,17 @@
   /* 5. Standard A4 page sizing */
   @page {
     size: A4 portrait;
-    margin: 8mm 10mm;
+    margin: 8mm 8mm;
   }
 
   /* 6. Avoid breaking tables or signatures mid-block */
-  tr, .print-avoid-break {
+  tr, .print-avoid-break, .print-no-break {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
   }
 }
 

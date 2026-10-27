@@ -632,37 +632,17 @@ export const AssetRegistryHub: React.FC<AssetRegistryHubProps> = ({
         </div>
       )}
 
-      {/* Register / Edit Asset In-Page Studio */}
-      {modalOpen && (
-        <GlassCard className="p-6 mb-6 border-t-4 border-t-rex-600 animate-fade-in shadow-xl">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-theme-subtle">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={ArrowLeft}
-                onClick={() => setModalOpen(false)}
-                type="button"
-                className="text-xs font-semibold"
-              >
-                Back to Asset List
-              </Button>
-              <div>
-                <h3 className="text-base font-bold text-primary">
-                  {editingItem ? `Edit Asset: ${editingItem.name}` : "Register New Company Asset Studio"}
-                </h3>
-                <p className="text-xs text-muted">Fixed asset registry, capitalization, depreciation, and custodian tracking.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" type="button" onClick={() => setModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" type="button" onClick={handleSubmit} disabled={saving}>
-                {saving ? 'Saving Asset...' : editingItem ? 'Save Asset Changes' : 'Register Asset to Fleet'}
-              </Button>
-            </div>
-          </div>
+      {/* Register / Edit Asset Studio Modal */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingItem ? `Edit Asset: ${editingItem.name}` : "Register New Company Asset Studio"}
+        size="2xl"
+      >
+        <div className="p-1 space-y-4">
+          <p className="text-xs text-muted pb-3 border-b border-theme-subtle">
+            Fixed asset registry, capitalization, depreciation, and custodian tracking.
+          </p>
           <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -965,8 +945,8 @@ export const AssetRegistryHub: React.FC<AssetRegistryHubProps> = ({
             </Button>
           </div>
         </form>
-      </GlassCard>
-      )}
+      </div>
+    </Modal>
 
       {/* Delete Confirmation Modal */}
       <Modal

@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { Printer, Download, X, FileText, Factory } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { WorkOrderPrintView } from './WorkOrderPrintView';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { printElement } from '@/lib/printElement';
+import { exportToPdf } from '@/lib/exportToPdf';
 
 interface WorkOrderPrintModalProps {
   workOrder: any | null;
@@ -24,20 +24,11 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
   if (!isOpen || !workOrder) return null;
 
   const handlePrint = () => {
-    window.print();
+    printElement('work-order-print-section', `Job_Traveler_${workOrder.id || 'WO'}`);
   };
 
   const handleDownloadPDF = () => {
-    const el = document.getElementById('work-order-print-section');
-    if (!el) return;
-    const opt: any = {
-      margin: [5, 5, 5, 5],
-      filename: `Job_Traveler_${workOrder.id || 'WO'}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().set(opt).from(el).save();
+    exportToPdf('work-order-print-section', `Job_Traveler_${workOrder.id || 'WO'}.pdf`);
   };
 
   return createPortal(

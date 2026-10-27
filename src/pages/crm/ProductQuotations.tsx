@@ -29,8 +29,7 @@ import { GitBranch } from 'lucide-react'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
+import { exportToPdf } from '@/lib/exportToPdf'
 
 export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
@@ -1671,19 +1670,8 @@ export const ProductQuotations: React.FC = () => {
                 size="sm"
                 icon={Download}
                 onClick={() => {
-                  const element = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
-                  if (element) {
-                    const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
-                    const opt: any = {
-                      margin: [6, 8, 6, 8],
-                      filename: `Quotation_${quoteNo}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                    };
-                    html2pdf().from(element).set(opt).save();
-                  }
+                  const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
+                  exportToPdf('print-section', `Quotation_${quoteNo}.pdf`);
                 }}
                 className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
               >

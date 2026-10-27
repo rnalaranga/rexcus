@@ -28,8 +28,8 @@ import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
+import { printElement } from '@/lib/printElement'
+import { exportToPdf } from '@/lib/exportToPdf'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -2150,16 +2150,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   size="sm"
                   icon={Download}
                   onClick={() => {
-                    const el = document.getElementById('sales-order-print-section');
-                    if (!el) return;
-                    const opt: any = {
-                      margin: 0,
-                      filename: `Sales_Order_${printOrder.orderNo}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2, useCORS: true },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    };
-                    html2pdf().set(opt).from(el).save();
+                    exportToPdf('sales-order-print-section', `Sales_Order_${printOrder.orderNo}.pdf`);
                   }}
                   className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
                 >
@@ -2169,7 +2160,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   variant="primary"
                   size="sm"
                   icon={Printer}
-                  onClick={() => window.print()}
+                  onClick={() => printElement('sales-order-print-section', `Sales_Order_${printOrder.orderNo}`)}
                   className="text-xs"
                 >
                   Print Order
@@ -2207,16 +2198,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   size="sm"
                   icon={Download}
                   onClick={() => {
-                    const el = document.getElementById('gatepass-print-section');
-                    if (!el) return;
-                    const opt: any = {
-                      margin: 0,
-                      filename: `Gate_Pass_${printGatePass.id}.pdf`,
-                      image: { type: 'jpeg', quality: 0.98 },
-                      html2canvas: { scale: 2, useCORS: true },
-                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    };
-                    html2pdf().set(opt).from(el).save();
+                    exportToPdf('gatepass-print-section', `Gate_Pass_${printGatePass.id}.pdf`);
                   }}
                   className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
                 >
@@ -2226,7 +2208,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   variant="primary"
                   size="sm"
                   icon={Printer}
-                  onClick={() => window.print()}
+                  onClick={() => printElement('gatepass-print-section', `Gate_Pass_${printGatePass.id}`)}
                   className="text-xs"
                 >
                   Print Gate Pass

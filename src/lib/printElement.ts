@@ -1,11 +1,13 @@
 /**
- * Utility to reliably print an HTML element in an isolated iframe.
+ * Universal utility to reliably print an HTML element in an isolated iframe.
  * Eliminates modal positioning artifacts (fixed/flex centering), scroll offsets,
- * and ensures the document starts cleanly at the top of an A4 page (100% width).
+ * prevents dark mode / background bleed, and ensures the document starts cleanly
+ * at the top of an A4 page with high-precision colors and typography.
  */
 export function printElement(elementId: string, docTitle: string = 'Document') {
   const el = document.getElementById(elementId);
   if (!el) {
+    console.warn(`[printElement] Element #${elementId} not found, falling back to window.print()`);
     window.print();
     return;
   }
@@ -62,15 +64,30 @@ export function printElement(elementId: string, docTitle: string = 'Document') {
       height: auto !important;
       font-family: Arial, Helvetica, sans-serif !important;
     }
-    #print-section, #invoice-preview, #grn-print-section {
+    #print-section,
+    #invoice-preview,
+    #grn-print-section,
+    #gatepass-print-section,
+    #sales-order-print-section,
+    #work-order-print-section,
+    #receipt-print-section,
+    #gin-print-section,
+    #product-quote-print-container,
+    .printable-document {
       width: 100% !important;
       max-width: 100% !important;
       margin: 0 auto !important;
       padding: 0 !important;
       position: static !important;
       display: block !important;
+      box-shadow: none !important;
+      background: #ffffff !important;
+      color: #000000 !important;
     }
-    .print-no-break {
+    table {
+      border-collapse: collapse !important;
+    }
+    tr, .print-no-break, .print-avoid-break {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }

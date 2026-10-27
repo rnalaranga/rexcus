@@ -207,7 +207,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               <h1 className="text-[19px] font-black mb-1 leading-tight" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>
                 {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
               </h1>
-              <table className="text-[11px] leading-tight w-full" style={{fontFamily: 'Courier New, Courier, monospace'}}>
+              <table className="text-[11px] leading-tight w-full" style={{fontFamily: 'Arial, Helvetica, sans-serif'}}>
                 <tbody>
                   <tr>
                     <td className="font-bold w-14 align-top">Office</td>
@@ -328,23 +328,29 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             </div>
           </div>
 
-          {/* Table Headers */}
-          <div className="flex font-bold border-b border-black text-center bg-gray-50 text-[11px] print-no-break">
-            <div className="w-[55%] p-1.5 border-r border-black">DESCRIPTION</div>
-            <div className="w-[10%] p-1.5 border-r border-black">QTY</div>
-            <div className="w-[15%] p-1.5 border-r border-black leading-tight">UNIT PRICE<br/>({data.currency || 'LKR'})</div>
-            <div className="w-[20%] p-1.5 leading-tight">AMOUNT<br/>({data.currency || 'LKR'})</div>
-          </div>
-
-          {/* Table Body - Sizes naturally to avoid pushing content to page 2 */}
-          <div className="min-h-0 text-[11.5px] bg-white flex flex-col">
-            <div className="flex flex-col">
+          {/* Table Container - Uses true HTML table with fixed layout for 100% pixel-perfect column alignment */}
+          <table className="w-full text-[11px] border-collapse" style={{ tableLayout: 'fixed', borderSpacing: 0 }}>
+            <colgroup>
+              <col style={{ width: '55%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '20%' }} />
+            </colgroup>
+            <thead>
+              <tr className="font-bold border-b border-black text-center bg-gray-50 print-no-break">
+                <th className="p-1.5 border-r border-black font-bold text-center">DESCRIPTION</th>
+                <th className="p-1.5 border-r border-black font-bold text-center">QTY</th>
+                <th className="p-1.5 border-r border-black font-bold text-center leading-tight">UNIT PRICE<br/>({data.currency || 'LKR'})</th>
+                <th className="p-1.5 font-bold text-center leading-tight">AMOUNT<br/>({data.currency || 'LKR'})</th>
+              </tr>
+            </thead>
+            <tbody>
               {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
                 const { titleLine, detailLines } = cleanDescLines(item.desc || '');
 
                 return (
-                  <div key={idx} className="flex border-b border-black/20 min-h-[30px] items-stretch print-no-break">
-                    <div className="w-[55%] p-1.5 border-r border-black whitespace-pre-wrap">
+                  <tr key={idx} className="border-b border-black/20 print-no-break">
+                    <td className="p-1.5 border-r border-black align-top whitespace-pre-wrap">
                       <div className="font-semibold text-gray-900 leading-tight">
                         {titleLine}
                       </div>
@@ -354,92 +360,100 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                         </div>
                       )}
                       {item.note && <div className="text-[10px] text-gray-500 italic mt-0.5">{item.note}</div>}
-                    </div>
-                    <div className="w-[10%] p-1.5 border-r border-black text-center pt-1.5 font-mono font-medium">
+                    </td>
+                    <td className="p-1.5 border-r border-black text-center align-top font-mono font-medium">
                       {Number(item.qty || 0).toFixed(2)}
-                    </div>
-                    <div className="w-[15%] p-1.5 border-r border-black text-right pt-1.5 font-mono">
+                    </td>
+                    <td className="p-1.5 border-r border-black text-right align-top font-mono">
                       {((Number(item.unitPrice) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </div>
-                    <div className="w-[20%] p-1.5 text-right pt-1.5 font-mono font-semibold">
+                    </td>
+                    <td className="p-1.5 text-right align-top font-mono font-semibold">
                       {(((Number(item.qty) * Number(item.unitPrice)) || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </div>
-                  </div>
+                    </td>
+                  </tr>
                 );
               })}
               {quotationType === 'job' && (
-                <div className="font-bold italic text-gray-500 text-center mt-6 p-4">
-                  [Internal Job Items / Costing - Use Customer Quote for Print]
-                </div>
+                <tr>
+                  <td colSpan={4} className="font-bold italic text-gray-500 text-center py-6">
+                    [Internal Job Items / Costing - Use Customer Quote for Print]
+                  </td>
+                </tr>
               )}
               {custItems.length === 0 && quotationType !== 'job' && (
-                <div className="p-4 text-center text-gray-400 italic text-[11px] border-b border-black/20">
-                  No line items entered.
-                </div>
+                <tr>
+                  <td colSpan={4} className="p-4 text-center text-gray-400 italic text-[11px] border-b border-black/20">
+                    No line items entered.
+                  </td>
+                </tr>
               )}
-            </div>
-          </div>
+            </tbody>
+            <tfoot>
+              {/* Sub Total */}
+              <tr className="border-t border-b border-black print-no-break h-6 text-[11px]">
+                <td colSpan={2} className="text-right font-bold pr-6">
+                  {isSsclHidden && isVatHidden 
+                    ? 'Total Value of Supply' 
+                    : 'Sub Total'}
+                </td>
+                <td className="font-bold text-center border-l border-black">
+                  {data.currency || 'LKR'}
+                </td>
+                <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
+                  {Number((quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </td>
+              </tr>
 
-          {/* Totals */}
-          <div className="border-t border-black flex flex-col print-no-break">
-            <div className="flex border-b border-black items-center h-6 text-[11px]">
-              <div className="w-[65%] text-right font-bold pr-6">
-                {isSsclHidden && isVatHidden 
-                  ? 'Total Value of Supply' 
-                  : 'Sub Total'}
-              </div>
-              <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
-              <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
-                {Number((quotationType === 'job' ? jobTotals.totalCost : custTotals.subtotal || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-              </div>
-            </div>
-            
-            {/* Discount */}
-            {quotationType !== 'job' && custTotals.discount > 0 && (
-               <div className="flex border-b border-black items-center h-6 text-[11px]">
-                 <div className="w-[65%] text-right pr-6">Discount</div>
-                 <div className="w-[15%] text-center">
-                   {custDiscountType === 'amount'
-                     ? `${(custTotals.subtotal > 0 ? (custTotals.discount / custTotals.subtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
-                     : `${Number(custDiscount || 0)} %`}
-                 </div>
-                 <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
-                   {Number((custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                 </div>
-               </div>
-            )}
+              {/* Discount */}
+              {quotationType !== 'job' && custTotals.discount > 0 && (
+                <tr className="border-b border-black print-no-break h-6 text-[11px]">
+                  <td colSpan={2} className="text-right pr-6">Discount</td>
+                  <td className="text-center border-l border-black">
+                    {custDiscountType === 'amount'
+                      ? `${(custTotals.subtotal > 0 ? (custTotals.discount / custTotals.subtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
+                      : `${Number(custDiscount || 0)} %`}
+                  </td>
+                  <td className="text-right p-1 border-l border-black pr-2 font-mono">
+                    {Number((custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </td>
+                </tr>
+              )}
 
-            {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
-                 <div className="flex border-b border-black items-center h-6 text-[11px]">
-                   <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</div>
-                   <div className="w-[15%] text-center">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</div>
-                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
-                     {Number(quotationType === 'job' ? data.jobSscl : data.custSscl).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                   </div>
-                 </div>
-            )}
-            
-            {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
-                 <div className="flex border-b border-black items-center h-6 text-[11px]">
-                   <div className="w-[65%] text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</div>
-                   <div className="w-[15%] text-center">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</div>
-                   <div className="w-[20%] text-right p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
-                     {Number(quotationType === 'job' ? data.jobVat : data.custVat).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                   </div>
-                 </div>
-            )}
+              {/* SSCL */}
+              {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : data.custSscl > 0) && (
+                <tr className="border-b border-black print-no-break h-6 text-[11px]">
+                  <td colSpan={2} className="text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</td>
+                  <td className="text-center border-l border-black">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</td>
+                  <td className="text-right p-1 border-l border-black pr-2 font-mono">
+                    {Number(quotationType === 'job' ? data.jobSscl : data.custSscl).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </td>
+                </tr>
+              )}
 
-            <div className="flex items-center h-7 bg-gray-100 text-[11.5px]">
-              <div className="w-[65%] text-right font-bold pr-6">Grand Total</div>
-              <div className="w-[15%] font-bold text-center">{data.currency || 'LKR'}</div>
-              <div className="w-[20%] text-right font-bold p-1 border-l border-black pr-2 h-full flex items-center justify-end font-mono">
-                {Number(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-              </div>
-            </div>
-          </div>
+              {/* VAT */}
+              {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : data.custVat > 0) && (
+                <tr className="border-b border-black print-no-break h-6 text-[11px]">
+                  <td colSpan={2} className="text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</td>
+                  <td className="text-center border-l border-black">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</td>
+                  <td className="text-right p-1 border-l border-black pr-2 font-mono">
+                    {Number(quotationType === 'job' ? data.jobVat : data.custVat).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </td>
+                </tr>
+              )}
+
+              {/* Grand Total */}
+              <tr className="border-b border-black print-no-break h-7 bg-gray-100 text-[11.5px]">
+                <td colSpan={2} className="text-right font-bold pr-6">Grand Total</td>
+                <td className="font-bold text-center border-l border-black">{data.currency || 'LKR'}</td>
+                <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
+                  {Number(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
 
           {/* Value in words */}
-          <div className="py-1 px-2 border-b border-t border-black text-[10.5px] font-bold print-no-break">
+          <div className="py-1.5 px-3 border-b border-black text-[10.5px] font-bold print-no-break bg-gray-50/30">
             <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(quotationType === 'job' ? jobTotals.withSSCL : custTotals.withSSCL))}</span>
           </div>
 

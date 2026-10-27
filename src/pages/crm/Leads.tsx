@@ -17,6 +17,7 @@ import { useLeads, useFollowups, useCustomers, useQuotations } from '@/hooks/use
 import { useSettings } from '@/contexts/SettingsContext'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { printElement } from '@/lib/printElement'
+import { exportToPdf } from '@/lib/exportToPdf'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -2532,23 +2533,10 @@ export const Leads: React.FC = () => {
                   variant="ghost" 
                   size="sm"
                   onClick={() => {
-                    const element = document.getElementById('print-section');
-                    if (!element) return;
                     const quoteNo = previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || 'Quote';
-                    import('html2pdf.js').then((html2pdfModule: any) => {
-                      const html2pdf = html2pdfModule.default || html2pdfModule;
-                      const opt: any = {
-                        margin: [6, 8, 6, 8],
-                        filename: `Quotation_${quoteNo}.pdf`,
-                        image: { type: 'jpeg', quality: 0.98 },
-                        html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                      };
-                      html2pdf().set(opt).from(element).save();
-                    });
+                    exportToPdf('print-section', `Quotation_${quoteNo}.pdf`);
                   }} 
-                  className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs"
+                  className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
                 >
                   Export PDF
                 </Button>

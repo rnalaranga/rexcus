@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, numberToWords } from "@/lib/utils";
 // @ts-ignore
-import html2pdf from "html2pdf.js";
+import { printElement } from "@/lib/printElement";
+import { exportToPdf } from "@/lib/exportToPdf";
 
 export interface PaymentReceiptData {
   id?: string;
@@ -90,140 +91,16 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
 
   // PDF Export
   const handleExportPDF = () => {
-    const el = document.getElementById("receipt-print-section");
-    if (!el) return;
-    const opt: any = {
-      margin: 0,
-      filename: `Payment_Receipt_${receipt.receiptNo}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
-    };
-    html2pdf().set(opt).from(el).save();
+    exportToPdf("receipt-print-section", `Payment_Receipt_${receipt.receiptNo}.pdf`);
   };
 
   // Browser Print
   const handlePrint = () => {
-    const el = document.getElementById("receipt-print-section");
-    if (!el) {
-      window.print();
-      return;
-    }
-
-    const win = window.open("", "_blank", "width=850,height=900");
-    if (!win) {
-      window.print();
-      return;
-    }
-
-    win.document.open();
-    win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Payment Receipt - ${receipt.receiptNo}</title>
-  <style>
-    @page {
-      size: A4 portrait;
-      margin: 0mm;
-    }
-    * {
-      box-sizing: border-box !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    html, body {
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #ffffff !important;
-      color: #0f172a !important;
-      font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-    }
-    .print-page {
-      width: 210mm;
-      height: 297mm;
-      max-height: 297mm;
-      padding: 12mm 15mm;
-      margin: 0 auto;
-      box-sizing: border-box;
-      background: #ffffff;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      page-break-after: avoid !important;
-      page-break-inside: avoid !important;
-    }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { box-sizing: border-box; }
-  </style>
-</head>
-<body>
-  <div class="print-page">
-    ${el.innerHTML}
-  </div>
-</body>
-</html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => {
-      win.print();
-    }, 350);
+    printElement("receipt-print-section", `Payment_Receipt_${receipt.receiptNo}`);
   };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
-      <style>{`
-        @page {
-          size: A4 portrait;
-          margin: 0mm;
-        }
-        @media print {
-          html, body {
-            width: 210mm !important;
-            height: 297mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #0f172a !important;
-            overflow: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body * {
-            visibility: hidden !important;
-          }
-          #receipt-print-wrapper,
-          #receipt-print-wrapper * {
-            visibility: visible !important;
-          }
-          #receipt-print-wrapper {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 210mm !important;
-            height: 297mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-          }
-          #receipt-print-section {
-            width: 210mm !important;
-            height: 297mm !important;
-            max-height: 297mm !important;
-            margin: 0 !important;
-            padding: 12mm 15mm !important;
-            box-sizing: border-box !important;
-            border: none !important;
-            box-shadow: none !important;
-            page-break-inside: avoid !important;
-            page-break-after: avoid !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
       {/* Modal Dialog Window */}
       <div className="bg-slate-900 border border-slate-700/80 rounded-lg max-w-5xl w-full max-h-[96vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in my-auto">
         {/* Top Control Bar (Clean, Minimal, Monochrome Dark) */}

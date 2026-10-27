@@ -7,8 +7,7 @@ import { useTaxProfiles } from '@/hooks/useFinance';
 import { useCustomers, useLeads } from '@/hooks/useData';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { printElement } from '@/lib/printElement';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { exportToPdf } from '@/lib/exportToPdf';
 
 interface Props {
   invoice: any | null;
@@ -36,15 +35,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
 
   const handleDownloadPDF = () => {
     if (!printRef.current) return;
-    const opt: any = {
-      margin: [6, 8, 6, 8],
-      filename: `Proforma_Invoice_${invoice.invoiceNo || invoice.id || 'PI'}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, letterRendering: true, scrollY: 0 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-    };
-    html2pdf().set(opt).from(printRef.current).save();
+    exportToPdf(printRef.current, `Proforma_Invoice_${invoice.invoiceNo || invoice.id || 'PI'}.pdf`);
   };
 
   // Resolve numeric values safely

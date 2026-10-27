@@ -29,6 +29,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
+import { exportToPdf } from '@/lib/exportToPdf'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 
@@ -2183,19 +2184,9 @@ export const Quotations: React.FC = () => {
                 Email Quotation
               </Button>
               <Button variant="ghost" onClick={() => {
-                const element = document.getElementById('print-section');
-                if (!element) return;
                 const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
-                const opt: any = {
-                  margin: [6, 8, 6, 8],
-                  filename: `Quotation_${quoteNo}.pdf`,
-                  image: { type: 'jpeg', quality: 0.98 },
-                  html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                  jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                  pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                };
-                html2pdf().set(opt).from(element).save();
-              }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
+                exportToPdf('print-section', `Quotation_${quoteNo}.pdf`);
+              }} className="bg-surface border border-theme-subtle hover:bg-surface2 font-semibold">Export PDF</Button>
               <Button variant="primary" onClick={() => printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation')}>Print Quotation</Button>
             </div>
           </div>

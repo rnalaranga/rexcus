@@ -27,35 +27,6 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
 
   return (
     
-      <>
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 6mm 8mm;
-          }
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-          }
-          body * { visibility: hidden !important; }
-          #grn-print-section, #grn-print-section * { visibility: visible !important; }
-          #grn-print-section { 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 100% !important; 
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            box-sizing: border-box !important;
-          }
-        }
-      `}</style>
     <div id="grn-print-section" className="bg-white mx-auto border border-black flex flex-col" style={{ width: '100%', maxWidth: '750px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
       
       {/* Header Row */}
@@ -70,65 +41,104 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
           )}
         </div>
         <div className="w-[70%] p-4 pl-6 text-[13px] leading-tight">
-          <h1 className="text-[22px] font-black uppercase text-black mb-1">REX INDUSTRIES (PVT) LTD</h1>
-          <table className="w-full text-[13px]">
+          <h1 className="text-[20px] font-black uppercase text-black mb-1">
+            {settings?.company_name || 'REX INDUSTRIES (PVT) LTD'}
+          </h1>
+          <table className="w-full text-[12px] leading-tight">
             <tbody>
-              <tr><td className="font-bold align-top w-16 pb-1">Office</td><td className="pb-1">:No.451/2,Chilaw Road,, Kattuwa,<br/>:Negombo,11500,Sri Lanka</td></tr>
-              <tr><td className="font-bold pb-1">Tel.</td><td className="pb-1">:0094-31-2233117 / 2233315 / 2223136</td></tr>
-              <tr><td className="font-bold pb-1">E-mail</td><td className="pb-1">:info@rexgroup.lk</td></tr>
-              <tr><td className="font-bold">Web</td><td>:www.rexgroup.lk</td></tr>
+              <tr>
+                <td className="font-bold align-top w-16 pb-1">Office</td>
+                <td className="pb-1">: {settings?.company_address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}</td>
+              </tr>
+              <tr>
+                <td className="font-bold pb-1">Tel.</td>
+                <td className="pb-1">: {settings?.company_phone || '0094-31-2233117 / 2233315 / 2223136'}</td>
+              </tr>
+              <tr>
+                <td className="font-bold pb-1">E-mail</td>
+                <td className="pb-1">: {settings?.company_email || 'info@rexgroup.lk'}</td>
+              </tr>
+              <tr>
+                <td className="font-bold">Web</td>
+                <td>: {settings?.company_web || 'www.rexgroup.lk'}</td>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
 
       {/* Title Bar */}
-      <div className="bg-gray-100 border-b border-black text-center py-2 font-bold text-[15px] uppercase tracking-wide">
+      <div className="bg-gray-100 border-b border-black text-center py-2 font-bold text-[14px] uppercase tracking-wide">
         SAMPLE GOODS RECEIPT NOTE
       </div>
 
       {/* Details Section */}
-      <div className="flex border-b border-black">
-        <div className="w-[50%] p-3 pl-4 border-r border-black text-[14px]">
-          <span className="font-bold italic underline mb-2 block">Supplier Details :</span>
+      <div className="flex border-b border-black text-[13px]">
+        <div className="w-[50%] p-3 pl-4 border-r border-black">
+          <span className="font-bold italic underline mb-1 block">Supplier Details :</span>
           <div className="leading-snug">
-            {group?.leadCompany || grn?.customerCompany || group?.leadName || grn?.customerName || group?.company || group?.name || 'N/A'}<br/>
-            {group?.address || ''}<br/>
-            {group?.phone || ''}<br/>
-            {group?.email || ''}
+            <span className="font-bold text-black">{group?.leadCompany || grn?.customerCompany || group?.leadName || grn?.customerName || group?.company || group?.name || 'N/A'}</span><br/>
+            {group?.address && <>{group.address}<br/></>}
+            {group?.phone && <>{group.phone}<br/></>}
+            {group?.email && <>{group.email}</>}
           </div>
         </div>
-        <div className="w-[50%] p-3 pl-4 text-[14px]">
-          <table className="w-full">
+        <div className="w-[50%] p-3 pl-4">
+          <table className="w-full leading-snug">
             <tbody>
-              <tr><td className="w-32 pb-1">GRN No.</td><td>: {grn.id}</td></tr>
-              <tr><td className="pb-1">Dated</td><td>: {formatDate(grn.receivedAt || grn.createdAt)}</td></tr>
-              <tr><td className="pb-1">Supplier Bill No</td><td>: {group?.quoNo || ''}</td></tr>
+              <tr><td className="w-32 font-bold pb-1">GRN No.</td><td>: <span className="font-mono font-bold">{grn.id}</span></td></tr>
+              <tr><td className="font-bold pb-1">Dated</td><td>: {formatDate(grn.receivedAt || grn.createdAt)}</td></tr>
+              <tr><td className="font-bold pb-1">Supplier Bill No</td><td>: {group?.quoNo || '-'}</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Table Area (Flex to stretch lines) */}
-      <div className="flex-1 flex flex-col min-h-[500px]">
-        {/* Table Header */}
-        <div className="flex border-b border-black text-center font-bold text-[14px]">
-          <div className="flex-1 py-2 border-r border-black">Item & Description</div>
-          <div className="w-32 py-2 border-r border-black">Qty.</div>
-          <div className="w-32 py-2">unit</div>
-        </div>
-        {/* Table Body */}
-        <div className="flex flex-1">
-          <div className="flex-1 p-4 border-r border-black text-[14px] whitespace-pre-wrap leading-relaxed">
-            {itemsList.length > 0 ? itemsList.map((i:any) => i.description || i.items).join('\n') : grn.items}
-          </div>
-          <div className="w-32 p-4 border-r border-black text-[14px] text-center leading-relaxed">
-            {itemsList.length > 0 ? itemsList.map((i:any) => Number(i.qty || 1).toFixed(2)).join('\n') : '1.00'}
-          </div>
-          <div className="w-32 p-4 text-[14px] text-center leading-relaxed">
-            {itemsList.length > 0 ? itemsList.map((i:any) => i.unit || 'Nos').join('\n') : 'Nos'}
-          </div>
-        </div>
+      {/* Table Area with real HTML table for perfect row alignment */}
+      <div className="flex-1 min-h-[350px]">
+        <table className="w-full text-[13px] border-collapse" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '65%' }} />
+            <col style={{ width: '18%' }} />
+            <col style={{ width: '17%' }} />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-black text-center font-bold bg-gray-50 text-[13px]">
+              <th className="py-2 px-3 border-r border-black text-left">Item & Description</th>
+              <th className="py-2 px-3 border-r border-black text-center">Qty.</th>
+              <th className="py-2 px-3 text-center">Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itemsList.length > 0 ? (
+              itemsList.map((item: any, idx: number) => (
+                <tr key={idx} className="border-b border-gray-300">
+                  <td className="py-2.5 px-3 border-r border-black font-medium align-top whitespace-pre-wrap">
+                    {item.description || item.items || item.name || 'Sample Item'}
+                  </td>
+                  <td className="py-2.5 px-3 border-r border-black text-center align-top font-mono font-bold">
+                    {Number(item.qty || 1).toFixed(2)}
+                  </td>
+                  <td className="py-2.5 px-3 text-center align-top font-medium">
+                    {item.unit || item.uom || 'Nos'}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr className="border-b border-gray-300">
+                <td className="py-2.5 px-3 border-r border-black font-medium align-top whitespace-pre-wrap">
+                  {grn.items || 'Sample Goods'}
+                </td>
+                <td className="py-2.5 px-3 border-r border-black text-center align-top font-mono font-bold">
+                  1.00
+                </td>
+                <td className="py-2.5 px-3 text-center align-top font-medium">
+                  Nos
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Attached Inspection Photos if present */}
@@ -169,6 +179,5 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
         </div>
       </div>
     </div>
-    </>
   );
 };

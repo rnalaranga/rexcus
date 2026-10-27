@@ -28,29 +28,11 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
   const email = gatePass.email || gatePass.customerEmail || '';
 
   return (
-    <>
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          #gatepass-print-section, #gatepass-print-section * { visibility: visible !important; }
-          #gatepass-print-section { 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 210mm !important; 
-            margin: 0 !important; 
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-          }
-        }
-      `}</style>
-      
-      <div 
-        id="gatepass-print-section" 
-        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm" 
-        style={{ width: '210mm', minHeight: '297mm', color: '#000', fontFamily: 'Arial, sans-serif' }}
-      >
+    <div 
+      id="gatepass-print-section" 
+      className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm" 
+      style={{ width: '210mm', minHeight: '297mm', color: '#000', fontFamily: 'Arial, sans-serif' }}
+    >
         {/* Header Row */}
         <div className="flex border-b border-black">
           <div className="w-[30%] flex items-center justify-center p-4 border-r border-black bg-white">
@@ -246,6 +228,5 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
           </div>
         </div>
       </div>
-    </>
-  );
+    );
 };

@@ -26,11 +26,10 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { printElement } from '@/lib/printElement'
+import { exportToPdf } from '@/lib/exportToPdf'
 
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
@@ -2607,17 +2606,7 @@ export const ProductQuotationBuilder: React.FC = () => {
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
             
             <Button variant="ghost" icon={FileDown} onClick={() => {
-              const element = document.getElementById('print-section') || document.getElementById('product-quote-print-container');
-              if (!element) return;
-              const opt: any = {
-                margin:       [6, 8, 6, 8],
-                filename:     `Product_Quotation_${quotationNo || 'PQ'}.pdf`,
-                image:        { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
-              };
-              html2pdf().set(opt).from(element).save();
+              exportToPdf('print-section', `Product_Quotation_${quotationNo || 'PQ'}.pdf`);
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
             
             <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Product_Quotation')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>

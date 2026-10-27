@@ -3,8 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
-  CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt
+  CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt, FileDown
 } from 'lucide-react';
+import { printElement } from '@/lib/printElement';
+import { exportToPdf } from '@/lib/exportToPdf';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -766,68 +768,11 @@ export const InvoiceBuilder: React.FC = () => {
   };
 
   const handlePrint = () => {
-    const content = document.getElementById('invoice-preview');
-    if (!content) return;
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>${docNo}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      background: #fff;
-      color: #000;
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', Arial, Helvetica, sans-serif;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    body {
-      display: block !important;
-      width: 100%;
-    }
-    #invoice-preview {
-      width: 210mm !important;
-      min-height: 297mm !important;
-      padding: 12mm 15mm !important;
-      margin: 0 auto !important;
-      box-sizing: border-box !important;
-      background: #fff !important;
-    }
-    @page {
-      size: A4 portrait;
-      margin: 0;
-    }
-    @media print {
-      body {
-        margin: 0 !important;
-        padding: 0 !important;
-        display: block !important;
-        background: #fff !important;
-      }
-      #invoice-preview {
-        width: 210mm !important;
-        margin: 0 auto !important;
-        padding: 12mm 15mm !important;
-        box-shadow: none !important;
-      }
-    }
-  </style>
-</head>
-<body>
-  ${content.outerHTML}
-</body>
-</html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => {
-      win.print();
-    }, 350);
+    printElement('invoice-preview', docNo || 'Invoice');
+  };
+
+  const handleExportPDF = () => {
+    exportToPdf('invoice-preview', `${docNo || 'Invoice'}.pdf`);
   };
 
   const previewProps = { 
@@ -890,6 +835,9 @@ export const InvoiceBuilder: React.FC = () => {
           <button onClick={() => setShowPreview(p => !p)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ${showPreview ? 'bg-surface2 border-blue-500/50 text-blue-500' : 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2'}`}>
             <Eye size={14} /> Preview
           </button>
+          <button onClick={handleExportPDF} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors">
+            <FileDown size={14} /> Export PDF
+          </button>
           <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle text-muted hover:text-primary hover:bg-surface2 transition-colors">
             <Printer size={14} /> Print
           </button>
@@ -898,6 +846,13 @@ export const InvoiceBuilder: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Offscreen preview container so Print / Export PDF work even while in Builder mode */}
+      {!showPreview && (
+        <div style={{ position: 'fixed', left: '-99999px', top: 0, width: '210mm', opacity: 0, pointerEvents: 'none' }}>
+          <InvoicePreview {...previewProps} />
+        </div>
+      )}
 
       {/* ── MAIN CONTENT ── */}
       {showPreview ? (

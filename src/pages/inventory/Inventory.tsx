@@ -21,8 +21,9 @@ import { StockLedgerHub } from '@/components/inventory/StockLedgerHub'
 import { ItemFormStudio } from '@/components/inventory/ItemFormStudio'
 import { ItemDetailModal } from '@/components/inventory/ItemDetailModal'
 import { LinearStockCutStudio } from '@/components/inventory/LinearStockCutStudio'
-import html2pdf from 'html2pdf.js'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { printElement } from '@/lib/printElement'
+import { exportToPdf } from '@/lib/exportToPdf'
 
 type TabType = 'raw_material' | 'finished_product' | 'company_asset' | 'service' | 'customer_sample' | 'stock_ledger' | 'linear_remnants' | 'all'
 
@@ -1912,18 +1913,9 @@ export const Inventory: React.FC = () => {
             />
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-gray-200 pt-6">
               <Button variant="ghost" onClick={() => {
-                const element = document.getElementById('grn-print-section');
-                if (!element) return;
-                const opt: any = {
-                  margin: 0.5,
-                  filename: `GRN-${printGrnData.id}.pdf`,
-                  image: { type: 'jpeg', quality: 0.98 },
-                  html2canvas: { scale: 2, useCORS: true },
-                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-                };
-                html2pdf().set(opt).from(element).save();
+                exportToPdf('grn-print-section', `GRN-${printGrnData.id}.pdf`);
               }} className="bg-gray-100 border border-gray-300 hover:bg-gray-200 text-gray-800">Export PDF</Button>
-              <Button variant="primary" onClick={() => window.print()}>Print GRN</Button>
+              <Button variant="primary" onClick={() => printElement('grn-print-section', `GRN_${printGrnData.id}`)}>Print GRN</Button>
             </div>
           </div>
         )}
@@ -1939,18 +1931,9 @@ export const Inventory: React.FC = () => {
             />
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-gray-200 pt-6">
               <Button variant="ghost" onClick={() => {
-                const element = document.getElementById('gatepass-print-section');
-                if (!element) return;
-                const opt: any = {
-                  margin: 0.5,
-                  filename: `GatePass-${printGatePassData.id}.pdf`,
-                  image: { type: 'jpeg', quality: 0.98 },
-                  html2canvas: { scale: 2, useCORS: true },
-                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-                };
-                html2pdf().set(opt).from(element).save();
+                exportToPdf('gatepass-print-section', `GatePass-${printGatePassData.id}.pdf`);
               }} className="bg-gray-100 border border-gray-300 hover:bg-gray-200 text-gray-800">Export PDF</Button>
-              <Button variant="primary" onClick={() => window.print()}>Print Gate Pass</Button>
+              <Button variant="primary" onClick={() => printElement('gatepass-print-section', `GatePass_${printGatePassData.id}`)}>Print Gate Pass</Button>
             </div>
           </div>
         )}

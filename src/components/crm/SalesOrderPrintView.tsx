@@ -73,29 +73,11 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
   const totalPrice = Number(order.totalPrice) || (subtotal + taxAmount);
 
   return (
-    <>
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          #sales-order-print-section, #sales-order-print-section * { visibility: visible !important; }
-          #sales-order-print-section { 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 210mm !important; 
-            margin: 0 !important; 
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-          }
-        }
-      `}</style>
-
-      <div 
-        id="sales-order-print-section"
-        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm"
-        style={{ width: '210mm', minHeight: '297mm', color: '#000', fontFamily: 'Arial, sans-serif' }}
-      >
+    <div 
+      id="sales-order-print-section"
+      className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm"
+      style={{ width: '210mm', minHeight: '297mm', color: '#000', fontFamily: 'Arial, sans-serif' }}
+    >
         {/* Top Letterhead Header */}
         <div className="flex border-b border-black">
           <div className="w-[30%] flex items-center justify-center p-4 border-r border-black bg-white">
@@ -107,25 +89,27 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
               </div>
             )}
           </div>
-          <div className="w-[70%] p-4 pl-6 text-[13px] leading-tight bg-white">
-            <h1 className="text-[22px] font-black uppercase text-black mb-1">REX INDUSTRIES (PVT) LTD</h1>
-            <table className="w-full text-[13px]">
+          <div className="w-[70%] p-4 pl-6 text-[12px] leading-tight bg-white">
+            <h1 className="text-[20px] font-black uppercase text-black mb-1">
+              {settings?.company_name || 'REX INDUSTRIES (PVT) LTD'}
+            </h1>
+            <table className="w-full text-[12px] leading-tight">
               <tbody>
                 <tr>
                   <td className="font-bold align-top w-16 pb-1">Office</td>
-                  <td className="pb-1">: No.451/2, Chilaw Road, Kattuwa,<br />: Negombo, 11500, Sri Lanka</td>
+                  <td className="pb-1">: {settings?.company_address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}</td>
                 </tr>
                 <tr>
                   <td className="font-bold pb-1">Tel.</td>
-                  <td className="pb-1">: 0094-31-2233117 / 2233315 / 2223136</td>
+                  <td className="pb-1">: {settings?.company_phone || '0094-31-2233117 / 2233315 / 2223136'}</td>
                 </tr>
                 <tr>
                   <td className="font-bold pb-1">E-mail</td>
-                  <td className="pb-1">: info@rexgroup.lk</td>
+                  <td className="pb-1">: {settings?.company_email || 'info@rexgroup.lk'}</td>
                 </tr>
                 <tr>
                   <td className="font-bold">Web</td>
-                  <td>: www.rexgroup.lk</td>
+                  <td>: {settings?.company_web || 'www.rexgroup.lk'}</td>
                 </tr>
               </tbody>
             </table>
@@ -214,79 +198,86 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
           </div>
         </div>
 
-        {/* Line Items Table */}
-        <div className="flex-1 flex flex-col min-h-[440px]">
-          {/* Table Header */}
-          <div className="flex border-b border-black text-center font-bold text-[13px] bg-gray-50">
-            <div className="w-12 py-2 border-r border-black">#</div>
-            <div className="flex-1 py-2 border-r border-black text-left px-3">Item Description & Specification</div>
-            <div className="w-20 py-2 border-r border-black">Qty</div>
-            <div className="w-32 py-2 border-r border-black text-right px-3">Unit Price (Rs)</div>
-            <div className="w-36 py-2 text-right px-3">Amount (Rs)</div>
-          </div>
+        {/* Line Items Table with true HTML table for exact column alignment */}
+        <div className="flex-1 min-h-[360px]">
+          <table className="w-full text-[12px] border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '48%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '18%' }} />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-black text-center font-bold text-[12.5px] bg-gray-50">
+                <th className="py-2 border-r border-black text-center">#</th>
+                <th className="py-2 border-r border-black text-left px-3">Item Description & Specification</th>
+                <th className="py-2 border-r border-black text-center">Qty</th>
+                <th className="py-2 border-r border-black text-right px-3">Unit Price (Rs)</th>
+                <th className="py-2 text-right px-3">Amount (Rs)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itemsList.map((item: any, idx: number) => {
+                const itemQty = Number(item.qty) || 1;
+                const itemUnitPrice = Number(item.unitPrice) || 0;
+                const lineTotal = Number(item.amount) || (itemQty * itemUnitPrice);
+                const desc = item.description || item.productName || 'Order Item';
 
-          {/* Table Rows */}
-          <div className="flex-1 flex flex-col">
-            {itemsList.map((item: any, idx: number) => {
-              const itemQty = Number(item.qty) || 1;
-              const itemUnitPrice = Number(item.unitPrice) || 0;
-              const lineTotal = Number(item.amount) || (itemQty * itemUnitPrice);
-              const desc = item.description || item.productName || 'Order Item';
-
-              return (
-                <div key={idx} className="flex border-b border-gray-300 text-[12px] leading-snug">
-                  <div className="w-12 py-2.5 text-center border-r border-black font-semibold">
-                    {idx + 1}
+                return (
+                  <tr key={idx} className="border-b border-gray-300 text-[12px] leading-snug">
+                    <td className="py-2.5 text-center border-r border-black font-semibold align-top font-mono">
+                      {idx + 1}
+                    </td>
+                    <td className="py-2.5 px-3 border-r border-black align-top">
+                      <div className="font-bold text-[12.5px] text-black whitespace-pre-line">{desc}</div>
+                      {item.productSku && (
+                        <div className="text-[11px] font-mono text-gray-600 mt-0.5">SKU: {item.productSku}</div>
+                      )}
+                      {item.notes && (
+                        <div className="text-[11px] italic text-gray-500 mt-0.5">{item.notes}</div>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-center border-r border-black font-mono font-bold align-top">
+                      {itemQty} {item.uom || 'Nos'}
+                    </td>
+                    <td className="py-2.5 px-3 text-right border-r border-black font-mono align-top">
+                      {formatCurrency(itemUnitPrice)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold align-top">
+                      {formatCurrency(lineTotal)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              {/* Financial Summary & Totals */}
+              <tr className="border-t border-black bg-gray-50 text-[12.5px]">
+                <td colSpan={3} className="p-3 border-r border-black align-middle">
+                  <span className="font-semibold text-gray-700 italic">
+                    Amount in words: <strong className="text-black font-bold not-italic">{toWords(totalPrice)}</strong>
+                  </span>
+                </td>
+                <td colSpan={2} className="p-0 align-top">
+                  <div className="flex justify-between py-1.5 px-4 border-b border-gray-200 text-xs">
+                    <span className="font-semibold text-gray-700">Subtotal:</span>
+                    <span className="font-mono font-bold">{formatCurrency(subtotal)}</span>
                   </div>
-                  <div className="flex-1 py-2.5 px-3 border-r border-black">
-                    <div className="font-bold text-[13px] text-black whitespace-pre-line">{desc}</div>
-                    {item.productSku && (
-                      <div className="text-[11px] font-mono text-gray-600 mt-0.5">SKU: {item.productSku}</div>
-                    )}
-                    {item.notes && (
-                      <div className="text-[11px] italic text-gray-500 mt-0.5">{item.notes}</div>
-                    )}
+                  {taxAmount > 0 && (
+                    <div className="flex justify-between py-1.5 px-4 border-b border-gray-200 text-xs">
+                      <span className="font-semibold text-gray-700">Taxes (VAT / SSCL):</span>
+                      <span className="font-mono font-bold">{formatCurrency(taxAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-2 px-4 bg-gray-200 font-bold text-[13px]">
+                    <span>Total Order Value:</span>
+                    <span className="font-mono text-blue-900">{formatCurrency(totalPrice)}</span>
                   </div>
-                  <div className="w-20 py-2.5 text-center border-r border-black font-mono font-bold">
-                    {itemQty} {item.uom || 'Nos'}
-                  </div>
-                  <div className="w-32 py-2.5 px-3 text-right border-r border-black font-mono">
-                    {formatCurrency(itemUnitPrice)}
-                  </div>
-                  <div className="w-36 py-2.5 px-3 text-right font-mono font-bold">
-                    {formatCurrency(lineTotal)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Financial Summary & Totals */}
-          <div className="border-t border-black bg-gray-50 text-[13px]">
-            <div className="flex border-b border-gray-300">
-              <div className="flex-1 p-3 border-r border-black flex items-center">
-                <span className="font-semibold text-gray-700 italic">
-                  Amount in words: <strong className="text-black font-bold not-italic">{toWords(totalPrice)}</strong>
-                </span>
-              </div>
-              <div className="w-68">
-                <div className="flex justify-between py-1.5 px-4 border-b border-gray-200">
-                  <span className="font-semibold text-gray-700">Subtotal:</span>
-                  <span className="font-mono font-bold">{formatCurrency(subtotal)}</span>
-                </div>
-                {taxAmount > 0 && (
-                  <div className="flex justify-between py-1.5 px-4 border-b border-gray-200">
-                    <span className="font-semibold text-gray-700">Taxes (VAT / SSCL):</span>
-                    <span className="font-mono font-bold">{formatCurrency(taxAmount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between py-2 px-4 bg-gray-200 font-bold text-[14px]">
-                  <span>Total Order Value:</span>
-                  <span className="font-mono text-blue-900">{formatCurrency(totalPrice)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
 
         {/* Order Terms & Notes */}
@@ -320,6 +311,5 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
           </div>
         </div>
       </div>
-    </>
-  );
+    );
 };

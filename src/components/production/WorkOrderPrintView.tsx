@@ -70,29 +70,11 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const companyEmail = settings?.company_email || 'info@rexgroup.lk';
 
   return (
-    <>
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          #work-order-print-section, #work-order-print-section * { visibility: visible !important; }
-          #work-order-print-section {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 210mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-          }
-        }
-      `}</style>
-
-      <div
-        id="work-order-print-section"
-        className="bg-white text-black mx-auto border border-black shadow-sm"
-        style={{ width: '210mm', minHeight: '297mm', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', lineHeight: 1.35 }}
-      >
+    <div
+      id="work-order-print-section"
+      className="bg-white text-black mx-auto border border-black shadow-sm"
+      style={{ width: '210mm', minHeight: '297mm', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', lineHeight: 1.35 }}
+    >
         {/* ── 1. LETTERHEAD & HEADER ────────────────────────────────────────── */}
         <div className="flex border-b border-black">
           <div className="w-[30%] flex items-center justify-center p-3 border-r border-black bg-white">
@@ -347,6 +329,5 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
           <span>ISO 9001:2015 COMPLIANT</span>
         </div>
       </div>
-    </>
-  );
-};
+    );
+  };

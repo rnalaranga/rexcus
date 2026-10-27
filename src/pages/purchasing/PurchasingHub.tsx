@@ -4,8 +4,8 @@ import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Pa
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
 import { useSettings } from '@/contexts/SettingsContext';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { printElement } from '@/lib/printElement';
+import { exportToPdf } from '@/lib/exportToPdf';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -920,18 +920,9 @@ export const PurchasingHub: React.FC = () => {
             />
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
               <Button variant="ghost" onClick={() => {
-                const element = document.getElementById('grn-print-section');
-                if (!element) return;
-                const opt: any = {
-                  margin: 0.5,
-                  filename: `GRN-${printGrnData.grn.id}.pdf`,
-                  image: { type: 'jpeg', quality: 0.98 },
-                  html2canvas: { scale: 2, useCORS: true },
-                  jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-                };
-                html2pdf().set(opt).from(element).save();
+                exportToPdf('grn-print-section', `GRN-${printGrnData.grn.id}.pdf`);
               }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
-              <Button variant="primary" onClick={() => window.print()}>Print</Button>
+              <Button variant="primary" onClick={() => printElement('grn-print-section', `GRN_${printGrnData.grn.id}`)}>Print</Button>
             </div>
           </div>
         )}
