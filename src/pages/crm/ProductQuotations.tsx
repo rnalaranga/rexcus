@@ -5,7 +5,7 @@ import {
   UserCheck, Shield, Users, FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
-  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck
+  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -69,6 +69,8 @@ export const ProductQuotations: React.FC = () => {
 
   const [openActionId, setOpenActionId] = useState<string | null>(null)
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
+  const [openInfoId, setOpenInfoId] = useState<string | null>(null)
+  const [infoCoords, setInfoCoords] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null)
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
@@ -81,14 +83,20 @@ export const ProductQuotations: React.FC = () => {
         setOpenActionId(null);
         setActionCoords(null);
       }
+      if (!target.closest('.product-quotation-info-menu-dropdown') && !target.closest('.product-quotation-info-trigger-btn')) {
+        setOpenInfoId(null);
+        setInfoCoords(null);
+      }
     };
 
     const handleScrollOrResize = (e: Event) => {
-      if (e.target && (e.target as HTMLElement).closest?.('.product-quote-action-menu')) {
+      if (e.target && ((e.target as HTMLElement).closest?.('.product-quote-action-menu') || (e.target as HTMLElement).closest?.('.product-quotation-info-menu-dropdown'))) {
         return;
       }
       setOpenActionId(null);
       setActionCoords(null);
+      setOpenInfoId(null);
+      setInfoCoords(null);
     };
 
     document.addEventListener('mousedown', handleOutsideClick);
@@ -1102,6 +1110,42 @@ export const ProductQuotations: React.FC = () => {
                   const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
                   const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
 
+                  const cust = customers.find((c: any) =>
+                    (group.leadId && c.leadId && String(c.leadId) === String(group.leadId)) ||
+                    (group.clientCompany && c.company && c.company.toLowerCase() === group.clientCompany.toLowerCase()) ||
+                    (group.clientName && c.name && c.name.toLowerCase() === group.clientName.toLowerCase())
+                  );
+                  const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
+
+                  const isInfoOpen = openInfoId === group.quoNo;
+                  let infoMenuStyle: React.CSSProperties = {};
+                  if (isInfoOpen && infoCoords) {
+                    const PADDING = 8;
+                    const MENU_WIDTH = 290;
+
+                    let left = infoCoords.left;
+                    if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+                      left = window.innerWidth - MENU_WIDTH - PADDING;
+                    }
+                    if (left < PADDING) left = PADDING;
+
+                    const spaceBelow = window.innerHeight - infoCoords.bottom - PADDING;
+                    const spaceAbove = infoCoords.top - PADDING;
+                    const openUpwards = spaceBelow < 300 && spaceAbove > spaceBelow;
+
+                    infoMenuStyle = {
+                      position: 'fixed',
+                      left: `${left}px`,
+                      width: `${MENU_WIDTH}px`,
+                      zIndex: 99999,
+                      maxHeight: openUpwards ? `${Math.min(420, spaceAbove)}px` : `${Math.min(420, spaceBelow)}px`,
+                      ...(openUpwards 
+                        ? { bottom: `${window.innerHeight - infoCoords.top + 4}px` } 
+                        : { top: `${infoCoords.bottom + 4}px` }
+                      )
+                    };
+                  }
+
                   return (
                     <React.Fragment key={group.quoNo}>
                       <tr className={`hover:bg-surface2/40 transition-colors ${openActionId === group.quoNo ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
@@ -1119,6 +1163,33 @@ export const ProductQuotations: React.FC = () => {
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle shrink-0">
                               v{latest?.version || 1}
                             </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (openInfoId === group.quoNo) {
+                                  setOpenInfoId(null);
+                                  setInfoCoords(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setOpenInfoId(group.quoNo);
+                                  setInfoCoords({
+                                    top: rect.top,
+                                    bottom: rect.bottom,
+                                    left: rect.left,
+                                    right: rect.right,
+                                  });
+                                }
+                              }}
+                              className={`product-quotation-info-trigger-btn p-1 rounded-none border transition-colors shrink-0 ${
+                                isInfoOpen
+                                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40'
+                                  : 'bg-surface2 hover:bg-surface3 text-muted hover:text-primary border-theme-subtle'
+                              }`}
+                              title="View Quote Info & Tags"
+                            >
+                              <Info size={11} className="shrink-0" />
+                            </button>
                             {group.versions.length > 1 && (
                               <button
                                 type="button"
@@ -1131,6 +1202,95 @@ export const ProductQuotations: React.FC = () => {
                               </button>
                             )}
                           </div>
+
+                          {/* Info Dropdown Portal */}
+                          {isInfoOpen && infoCoords && typeof document !== 'undefined' && createPortal(
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={infoMenuStyle}
+                              className="product-quotation-info-menu-dropdown bg-surface dark:bg-zinc-900 border border-theme-subtle shadow-2xl p-3 text-left rounded-none overflow-y-auto custom-scrollbar"
+                            >
+                              {/* Header */}
+                              <div className="flex items-center justify-between pb-2 mb-2 border-b border-theme-subtle">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-bold text-xs text-primary">{group.quoNo}</span>
+                                  <span className="text-[10px] font-mono px-1 py-0.2 bg-surface2 text-muted border border-theme-subtle">
+                                    v{latest?.version || 1}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
+                                  Product Quote
+                                </span>
+                              </div>
+
+                              {/* Metadata list */}
+                              <div className="space-y-2.5 text-xs">
+                                {/* Customer PO */}
+                                <div className="p-2 bg-surface2/60 border border-theme-subtle">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] font-semibold text-muted uppercase tracking-wider">Customer PO</span>
+                                    {(latest?.customerPoNo || parsed.customerPoNo) ? (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1 py-0.2 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                                        <CheckCircle2 size={9} /> Recorded
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenInfoId(null);
+                                          setRecordPoModalData({ group, quotation: latest, type: 'product' });
+                                        }}
+                                        className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                      >
+                                        + Record PO
+                                      </button>
+                                    )}
+                                  </div>
+                                  {(latest?.customerPoNo || parsed.customerPoNo) ? (
+                                    <div className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                      <FileCheck size={12} className="shrink-0" />
+                                      PO: #{latest?.customerPoNo || parsed.customerPoNo}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-muted italic">
+                                      No PO attached yet
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Customer Terms & Registration */}
+                                <div>
+                                  <span className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">Customer / Client</span>
+                                  <div className="font-semibold text-primary text-xs truncate">
+                                    {group.clientCompany || group.clientName || 'Direct Customer'}
+                                  </div>
+                                  {group.clientCompany && group.clientName && (
+                                    <div className="text-[11px] text-muted truncate">
+                                      Attn: {group.clientName}
+                                    </div>
+                                  )}
+                                  <div className="mt-1">
+                                    {customerRequiresAdvance ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20 font-medium">
+                                        ⚠️ Advance Required (Registration)
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 border border-emerald-500/20 font-medium">
+                                        ✓ No Advance Required (Direct Order)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Revisions & Date */}
+                                <div className="pt-2 border-t border-theme-subtle flex items-center justify-between text-[11px] text-muted">
+                                  <span>Revisions: <strong className="text-primary">{group.versions.length}</strong></span>
+                                  <span>Date: <strong className="text-primary">{formatDate(latest?.date || latest?.createdAt)}</strong></span>
+                                </div>
+                              </div>
+                            </div>,
+                            document.body
+                          )}
                         </td>
 
                         {/* Customer / Client */}

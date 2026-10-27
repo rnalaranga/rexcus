@@ -19,7 +19,7 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportPdf } from '@/lib/exportPdf'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck } from 'lucide-react'
+import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
@@ -357,6 +357,8 @@ export const Quotations: React.FC = () => {
   const { data: allOrders = [] } = useFinishedGoodsOrders()
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null);
+  const [openInfoId, setOpenInfoId] = useState<string | null>(null);
+  const [infoCoords, setInfoCoords] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -366,14 +368,20 @@ export const Quotations: React.FC = () => {
         setOpenActionId(null);
         setActionCoords(null);
       }
+      if (!target.closest('.quotation-info-menu-dropdown') && !target.closest('.quotation-info-trigger-btn')) {
+        setOpenInfoId(null);
+        setInfoCoords(null);
+      }
     };
 
     const handleScrollOrResize = (e: Event) => {
-      if (e.target && (e.target as HTMLElement).closest?.('.quotation-action-menu-dropdown')) {
+      if (e.target && ((e.target as HTMLElement).closest?.('.quotation-action-menu-dropdown') || (e.target as HTMLElement).closest?.('.quotation-info-menu-dropdown'))) {
         return;
       }
       setOpenActionId(null);
       setActionCoords(null);
+      setOpenInfoId(null);
+      setInfoCoords(null);
     };
 
     document.addEventListener('mousedown', handleOutsideClick);
@@ -1666,6 +1674,42 @@ export const Quotations: React.FC = () => {
                     ? `/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`
                     : `/crm/quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`;
 
+                  const cust = customers.find((c: any) =>
+                    (group.leadId && c.leadId && String(c.leadId) === String(group.leadId)) ||
+                    (group.leadCompany && c.company && c.company.toLowerCase() === group.leadCompany.toLowerCase()) ||
+                    (group.leadName && c.name && c.name.toLowerCase() === group.leadName.toLowerCase())
+                  );
+                  const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
+
+                  const isInfoOpen = openInfoId === group.quoNo;
+                  let infoMenuStyle: React.CSSProperties = {};
+                  if (isInfoOpen && infoCoords) {
+                    const PADDING = 8;
+                    const MENU_WIDTH = 290;
+
+                    let left = infoCoords.left;
+                    if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+                      left = window.innerWidth - MENU_WIDTH - PADDING;
+                    }
+                    if (left < PADDING) left = PADDING;
+
+                    const spaceBelow = window.innerHeight - infoCoords.bottom - PADDING;
+                    const spaceAbove = infoCoords.top - PADDING;
+                    const openUpwards = spaceBelow < 300 && spaceAbove > spaceBelow;
+
+                    infoMenuStyle = {
+                      position: 'fixed',
+                      left: `${left}px`,
+                      width: `${MENU_WIDTH}px`,
+                      zIndex: 99999,
+                      maxHeight: openUpwards ? `${Math.min(420, spaceAbove)}px` : `${Math.min(420, spaceBelow)}px`,
+                      ...(openUpwards 
+                        ? { bottom: `${window.innerHeight - infoCoords.top + 4}px` } 
+                        : { top: `${infoCoords.bottom + 4}px` }
+                      )
+                    };
+                  }
+
                   return (
                     <React.Fragment key={group.quoNo}>
                       <tr className={`hover:bg-surface2/40 transition-colors ${openActionId === group.quoNo ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
@@ -1697,6 +1741,33 @@ export const Quotations: React.FC = () => {
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle shrink-0">
                               v{latestMain?.version || displayQ?.version || 1}
                             </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (openInfoId === group.quoNo) {
+                                  setOpenInfoId(null);
+                                  setInfoCoords(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setOpenInfoId(group.quoNo);
+                                  setInfoCoords({
+                                    top: rect.top,
+                                    bottom: rect.bottom,
+                                    left: rect.left,
+                                    right: rect.right,
+                                  });
+                                }
+                              }}
+                              className={`quotation-info-trigger-btn p-1 rounded-none border transition-colors shrink-0 ${
+                                isInfoOpen
+                                  ? 'bg-rex-500/20 text-rex-600 dark:text-rex-400 border-rex-500/40'
+                                  : 'bg-surface2 hover:bg-surface3 text-muted hover:text-primary border-theme-subtle'
+                              }`}
+                              title="View Quote Info & Tags"
+                            >
+                              <Info size={11} className="shrink-0" />
+                            </button>
                             {group.main.length > 1 && (
                               <button
                                 type="button"
@@ -1709,6 +1780,101 @@ export const Quotations: React.FC = () => {
                               </button>
                             )}
                           </div>
+
+                          {/* Info Dropdown Portal */}
+                          {isInfoOpen && infoCoords && typeof document !== 'undefined' && createPortal(
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={infoMenuStyle}
+                              className="quotation-info-menu-dropdown bg-surface dark:bg-zinc-900 border border-theme-subtle shadow-2xl p-3 text-left rounded-none overflow-y-auto custom-scrollbar"
+                            >
+                              {/* Header */}
+                              <div className="flex items-center justify-between pb-2 mb-2 border-b border-theme-subtle">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-bold text-xs text-primary">{group.quoNo}</span>
+                                  <span className="text-[10px] font-mono px-1 py-0.2 bg-surface2 text-muted border border-theme-subtle">
+                                    v{latestMain?.version || displayQ?.version || 1}
+                                  </span>
+                                </div>
+                                {group.isProduct ? (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
+                                    Product Quote
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 font-semibold">
+                                    Custom Fabrication
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Metadata list */}
+                              <div className="space-y-2.5 text-xs">
+                                {/* Customer PO */}
+                                <div className="p-2 bg-surface2/60 border border-theme-subtle">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] font-semibold text-muted uppercase tracking-wider">Customer PO</span>
+                                    {(latestMain?.customerPoNo || parsed.customerPoNo) ? (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1 py-0.2 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                                        <CheckCircle2 size={9} /> Recorded
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenInfoId(null);
+                                          setRecordPoModalData({ group, quotation: latestMain, type: 'custom' });
+                                        }}
+                                        className="text-[10px] font-semibold text-rex-600 dark:text-rex-400 hover:underline cursor-pointer"
+                                      >
+                                        + Record PO
+                                      </button>
+                                    )}
+                                  </div>
+                                  {(latestMain?.customerPoNo || parsed.customerPoNo) ? (
+                                    <div className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                      <FileCheck size={12} className="shrink-0" />
+                                      PO: #{latestMain?.customerPoNo || parsed.customerPoNo}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-muted italic">
+                                      No PO attached yet
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Customer Terms & Registration */}
+                                <div>
+                                  <span className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">Customer / Client</span>
+                                  <div className="font-semibold text-primary text-xs truncate">
+                                    {group.leadCompany || group.leadName || 'Direct Customer'}
+                                  </div>
+                                  {group.leadCompany && group.leadName && (
+                                    <div className="text-[11px] text-muted truncate">
+                                      Attn: {group.leadName}
+                                    </div>
+                                  )}
+                                  <div className="mt-1">
+                                    {customerRequiresAdvance ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20 font-medium">
+                                        ⚠️ Advance Required (Registration)
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 border border-emerald-500/20 font-medium">
+                                        ✓ No Advance Required (Direct Order)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Revisions & Date */}
+                                <div className="pt-2 border-t border-theme-subtle flex items-center justify-between text-[11px] text-muted">
+                                  <span>Revisions: <strong className="text-primary">{group.main.length}</strong></span>
+                                  <span>Date: <strong className="text-primary">{formatDate(latestMain?.date || latestMain?.createdAt)}</strong></span>
+                                </div>
+                              </div>
+                            </div>,
+                            document.body
+                          )}
                         </td>
 
                         {/* Customer / Company */}
