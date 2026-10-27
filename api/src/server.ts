@@ -3208,10 +3208,18 @@ app.post('/api/quotations/:id/reject-edit', async (req, res) => {
 app.post('/api/quotations/:id/po-received', async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy } = req.body;
+    let { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy, poStatus } = req.body;
 
-    if (!customerPoNo) {
-      return res.status(400).json({ error: 'Customer PO Number is required' });
+    if (poStatus === 'PO Pending') {
+      customerPoNo = customerPoNo?.trim() || 'PO PENDING';
+    } else if (poStatus === 'Without PO') {
+      customerPoNo = customerPoNo?.trim() || 'WITHOUT PO';
+    } else {
+      poStatus = customerPoNo ? 'PO Received' : 'PO Received';
+    }
+
+    if (!customerPoNo && !poStatus) {
+      return res.status(400).json({ error: 'Customer PO Number or PO Status (PO Pending / Without PO) is required' });
     }
 
     const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
@@ -3228,11 +3236,19 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
     }
 
     qData.customerPoNo = customerPoNo;
+    qData.poStatus = poStatus;
     qData.customerPoDate = customerPoDate || new Date().toISOString().slice(0, 10);
     qData.customerPoAttachment = customerPoAttachment || null;
     if (notes) qData.customerPoNotes = notes;
 
-    const newStatus = (quote.status === 'Approved' || quote.status === 'Sent' || quote.status === 'Draft') ? 'PO Received' : quote.status;
+    let newStatus = quote.status;
+    if (poStatus === 'PO Pending') {
+      newStatus = 'PO Pending';
+    } else if (poStatus === 'Without PO') {
+      newStatus = 'Without PO';
+    } else if (quote.status === 'Approved' || quote.status === 'Sent' || quote.status === 'Draft' || !quote.status) {
+      newStatus = 'PO Received';
+    }
 
     await db.query(
       `UPDATE quotations SET 
@@ -3270,19 +3286,24 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
       const recordNo = qNo;
       const entityName = qData.customerCompany || qData.customerName || quote?.leadId || 'Customer';
       const amount = Number(quote?.totalAmount || qData.custTotals?.total || 0);
+      const actionName = poStatus === 'PO Pending' ? 'PO Pending' : poStatus === 'Without PO' ? 'Without PO' : 'PO Received';
+      const logNote = notes || (poStatus === 'PO Pending' ? 'Customer PO is Pending' : poStatus === 'Without PO' ? 'Approved Without Customer PO' : `Customer PO #${customerPoNo} recorded`);
       await db.query(
         `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
-         VALUES (?, ?, ?, ?, ?, 'PO Received', ?, NOW(), ?, NOW())`,
-        ['Quotation', id, recordNo, entityName, amount, receivedBy || quote.createdByName || 'Sales Team', `Customer PO #${customerPoNo} recorded`]
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, NOW())`,
+        ['Quotation', id, recordNo, entityName, amount, actionName, receivedBy || quote.createdByName || 'Sales Team', logNote]
       );
     } catch (e) {}
 
     res.json({ 
       success: true, 
       id, 
+      quotationId: id,
       status: newStatus,
       customerPoNo, 
-      customerPoDate: customerPoDate || new Date().toISOString().slice(0, 10) 
+      poStatus,
+      customerPoDate: customerPoDate || new Date().toISOString().slice(0, 10),
+      data: qData
     });
   } catch (error: any) {
     console.error(error);

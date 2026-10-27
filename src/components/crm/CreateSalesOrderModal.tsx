@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   X, ShoppingBag, FileText, Calendar, Building2, User, Phone, 
   MapPin, UploadCloud, Eye, Trash2, CheckCircle2, AlertCircle, 
-  Package, DollarSign, AlertTriangle, ShieldCheck, Lock
+  Package, DollarSign, AlertTriangle, ShieldCheck, Lock, Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -38,6 +38,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const { data: allInvoices = [] } = useInvoices();
 
   const [submitting, setSubmitting] = useState(false);
+  const [poMode, setPoMode] = useState<'received' | 'pending' | 'without_po'>('received');
+  const [withoutPoReason, setWithoutPoReason] = useState('Verbal / Phone Confirmation');
   const [adminOverrideWaiver, setAdminOverrideWaiver] = useState(false);
   const [advanceWaiverReason, setAdvanceWaiverReason] = useState('');
 
@@ -218,6 +220,19 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       status: 'Confirmed',
       notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
     });
+
+    const existingPo = quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '';
+    const existingStatus = quotation.poStatus || quoteData.poStatus || quotation.status;
+
+    if (existingPo === 'PO PENDING' || existingStatus === 'PO Pending') {
+      setPoMode('pending');
+    } else if (existingPo === 'WITHOUT PO' || existingStatus === 'Without PO') {
+      setPoMode('without_po');
+    } else if (existingPo) {
+      setPoMode('received');
+    } else {
+      setPoMode('received');
+    }
   }, [isOpen, quotationData, customers, leads]);
 
   if (!isOpen || !quotationData) return null;
@@ -249,6 +264,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       return;
     }
 
+    // PO Validation Check: Customer PO or explicit PO Pending / Without PO status is required
+    const isPoSatisfied = Boolean(
+      (poMode === 'received' && formData.customerPoNo.trim()) ||
+      poMode === 'pending' ||
+      poMode === 'without_po'
+    );
+
+    if (!isPoSatisfied) {
+      toast('Customer PO is required to create a Sales Order. Please enter the PO Number or select "PO Pending" / "Without PO".', 'error');
+      return;
+    }
+
     if (isAdvanceMissing && !adminOverrideWaiver && !advanceWaiverReason.trim()) {
       toast('Please enter a reason for bypassing the customer advance payment requirement.', 'warning');
       return;
@@ -257,6 +284,13 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     setSubmitting(true);
     try {
       const orderStatus = (isAdvanceMissing && !adminOverrideWaiver) ? 'Pending Advance Approval' : 'Confirmed';
+
+      let finalCustomerPoNo = formData.customerPoNo.trim();
+      if (poMode === 'pending' && (!finalCustomerPoNo || finalCustomerPoNo === 'PO PENDING')) {
+        finalCustomerPoNo = 'PO PENDING';
+      } else if (poMode === 'without_po' && (!finalCustomerPoNo || finalCustomerPoNo === 'WITHOUT PO')) {
+        finalCustomerPoNo = 'WITHOUT PO';
+      }
 
       let waiverNote = '';
       if (isAdvanceMissing) {
@@ -274,14 +308,32 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       const payload = {
         ...formData,
         status: orderStatus,
-        customerPoNo: formData.customerPoNo.trim() || null,
+        customerPoNo: finalCustomerPoNo || null,
         customerPoDate: formData.customerPoDate || null,
-        customerPoAttachment: formData.customerPoAttachment || null,
-        notes: `${formData.notes || ''}${waiverNote}`.trim()
+        customerPoAttachment: poMode === 'received' ? (formData.customerPoAttachment || null) : null,
+        notes: `${formData.notes || ''}${waiverNote}${poMode === 'pending' ? ' [PO Pending]' : poMode === 'without_po' ? ` [Without PO: ${withoutPoReason}]` : ''}`.trim()
       };
 
       const res = await createFinishedGoodsOrder(payload);
       if (res && res.error) throw new Error(res.error);
+
+      // Sync PO status back to quotation
+      if (quotationData?.quotation?.id) {
+        try {
+          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${quotationData.quotation.id}/po-received`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customerPoNo: finalCustomerPoNo,
+              poStatus: poMode === 'pending' ? 'PO Pending' : poMode === 'without_po' ? 'Without PO' : 'PO Received',
+              customerPoDate: formData.customerPoDate || null,
+              customerPoAttachment: poMode === 'received' ? (formData.customerPoAttachment || null) : null,
+              notes: poMode === 'without_po' ? `Without PO: ${withoutPoReason}` : (poMode === 'pending' ? 'PO Pending' : null),
+              receivedBy: user?.name || (user as any)?.email || 'Sales Team'
+            })
+          });
+        } catch (e) {}
+      }
 
       if (orderStatus === 'Pending Advance Approval') {
         toast(`Sales Order ${formData.orderNo} submitted! Awaiting Admin Approval in Central Approval Hub.`, 'info');
@@ -468,119 +520,189 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
           )}
 
           {/* ── CUSTOMER PURCHASE ORDER (PO) SECTION ── */}
-          <div className="p-4 bg-blue-500/5 border border-blue-500/25 space-y-3">
-            <div className="flex items-center justify-between border-b border-blue-500/20 pb-2">
+          <div className="p-4 bg-surface2/60 border border-theme-subtle space-y-3">
+            <div className="flex items-center justify-between border-b border-theme-subtle pb-2">
               <div className="flex items-center gap-2">
                 <FileText size={16} className="text-blue-600 dark:text-blue-400" />
                 <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                  Customer Purchase Order (PO) {formData.customerPoNo ? '(Linked)' : '(Optional)'}
+                  Customer Purchase Order (PO) <span className="text-rose-500">*</span>
                 </span>
               </div>
-              {formData.customerPoNo ? (
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-1">
-                  <CheckCircle2 size={11} /> PO Recorded on Quote
-                </span>
-              ) : (
-                <span className="text-[10px] text-muted font-mono">
-                  Optional
-                </span>
-              )}
+              <span className="text-[10px] text-muted font-mono">
+                Mandatory for Sales Order
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-secondary mb-1">
-                  Customer PO Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.customerPoNo}
-                  onChange={e => setFormData({ ...formData, customerPoNo: e.target.value })}
-                  placeholder="e.g. PO/2026/0891 or CUST-PO-774"
-                  className="w-full input-base font-mono text-xs font-semibold focus:border-blue-500"
-                />
-              </div>
+            {/* PO Mode Selector */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setPoMode('received')}
+                className={`p-2 text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                  poMode === 'received'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-surface hover:bg-surface3 border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                <CheckCircle2 size={13} className={poMode === 'received' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted'} />
+                <span>PO Received</span>
+              </button>
 
-              <div>
-                <label className="block text-xs font-medium text-secondary mb-1">
-                  Customer PO Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.customerPoDate}
-                  onChange={e => setFormData({ ...formData, customerPoDate: e.target.value })}
-                  className="w-full input-base text-xs focus:border-blue-500"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setPoMode('pending')}
+                className={`p-2 text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                  poMode === 'pending'
+                    ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300'
+                    : 'bg-surface hover:bg-surface3 border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                <Clock size={13} className={poMode === 'pending' ? 'text-amber-600 dark:text-amber-400' : 'text-muted'} />
+                <span>PO Pending</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPoMode('without_po')}
+                className={`p-2 text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                  poMode === 'without_po'
+                    ? 'bg-blue-500/15 border-blue-500 text-blue-700 dark:text-blue-300'
+                    : 'bg-surface hover:bg-surface3 border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                <ShieldCheck size={13} className={poMode === 'without_po' ? 'text-blue-600 dark:text-blue-400' : 'text-muted'} />
+                <span>Without PO</span>
+              </button>
             </div>
 
-            {/* PO Document Attachment (Upload) */}
-            <div>
-              <label className="block text-xs font-medium text-secondary mb-1.5">
-                Customer PO Document (Upload PDF or Image)
-              </label>
-
-              {formData.customerPoAttachment ? (
-                <div className="flex items-center justify-between p-2.5 bg-surface border border-blue-500/30">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 border border-blue-500/20">
-                      {formData.customerPoAttachment.startsWith('data:image/') ? (
-                        <img src={formData.customerPoAttachment} alt="PO Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <FileText size={16} />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-xs font-bold text-primary block truncate">
-                        {formData.customerPoAttachmentName || (formData.customerPoNo ? `Customer_PO_${formData.customerPoNo}` : 'Customer_PO_Document')}
-                      </span>
-                      <span className="text-[10px] text-emerald-600 font-mono font-medium flex items-center gap-1">
-                        <CheckCircle2 size={10} /> Document attached
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const win = window.open();
-                        if (win) {
-                          win.document.write(`<iframe src="${formData.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                        }
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-700 p-1.5 h-auto flex items-center gap-1"
-                    >
-                      <Eye size={13} /> View
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setFormData({ ...formData, customerPoAttachment: '', customerPoAttachmentName: '' })}
-                      className="text-xs text-rose-600 hover:text-rose-700 p-1.5 h-auto flex items-center gap-1"
-                    >
-                      <Trash2 size={13} /> Remove
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative">
-                  <label className="flex flex-col items-center justify-center p-4 border border-dashed border-blue-500/40 hover:border-blue-500 bg-surface/60 hover:bg-blue-500/5 cursor-pointer transition-colors text-center">
-                    <UploadCloud size={20} className="text-blue-500 mb-1" />
-                    <span className="text-xs font-semibold text-primary">Click to upload customer's PO file (PDF, PNG, JPG)</span>
-                    <span className="text-[10px] text-muted mt-0.5">Recommended max file size: 15MB</span>
+            {poMode === 'received' && (
+              <div className="space-y-3 pt-1 animate-fade-in">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">
+                      Customer PO Number <span className="text-rose-500">*</span>
+                    </label>
                     <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={handleFileUpload}
+                      type="text"
+                      required={poMode === 'received'}
+                      value={formData.customerPoNo === 'PO PENDING' || formData.customerPoNo === 'WITHOUT PO' ? '' : formData.customerPoNo}
+                      onChange={e => setFormData({ ...formData, customerPoNo: e.target.value })}
+                      placeholder="e.g. PO/2026/0891 or CUST-PO-774"
+                      className="w-full input-base font-mono text-xs font-semibold focus:border-emerald-500"
                     />
-                  </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">
+                      Customer PO Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.customerPoDate}
+                      onChange={e => setFormData({ ...formData, customerPoDate: e.target.value })}
+                      className="w-full input-base text-xs focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {/* PO Document Attachment (Upload) */}
+                <div>
+                  <label className="block text-xs font-medium text-secondary mb-1.5">
+                    Customer PO Document (Upload PDF or Image)
+                  </label>
+
+                  {formData.customerPoAttachment ? (
+                    <div className="flex items-center justify-between p-2.5 bg-surface border border-emerald-500/30">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                          {formData.customerPoAttachment.startsWith('data:image/') ? (
+                            <img src={formData.customerPoAttachment} alt="PO Preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <FileText size={16} />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-primary block truncate">
+                            {formData.customerPoAttachmentName || (formData.customerPoNo ? `Customer_PO_${formData.customerPoNo}` : 'Customer_PO_Document')}
+                          </span>
+                          <span className="text-[10px] text-emerald-600 font-mono font-medium flex items-center gap-1">
+                            <CheckCircle2 size={10} /> Document attached
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const win = window.open();
+                            if (win) {
+                              win.document.write(`<iframe src="${formData.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 p-1.5 h-auto flex items-center gap-1"
+                        >
+                          <Eye size={13} /> View
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setFormData({ ...formData, customerPoAttachment: '', customerPoAttachmentName: '' })}
+                          className="text-xs text-rose-600 hover:text-rose-700 p-1.5 h-auto flex items-center gap-1"
+                        >
+                          <Trash2 size={13} /> Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <label className="flex flex-col items-center justify-center p-3.5 border border-dashed border-theme-subtle hover:border-emerald-500 bg-surface/60 hover:bg-emerald-500/5 cursor-pointer transition-colors text-center">
+                        <UploadCloud size={18} className="text-emerald-500 mb-1" />
+                        <span className="text-xs font-semibold text-primary">Click to upload customer's PO file (PDF, PNG, JPG)</span>
+                        <span className="text-[10px] text-muted mt-0.5">Recommended max file size: 15MB</span>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="hidden"
+                          onChange={handleFileUpload}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {poMode === 'pending' && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 animate-fade-in">
+                <strong className="block font-bold mb-0.5">Customer PO is Pending:</strong>
+                Order will be registered with <strong>PO Pending</strong> status. You can update the PO Number and document later once received.
+              </div>
+            )}
+
+            {poMode === 'without_po' && (
+              <div className="space-y-2 p-3 bg-blue-500/10 border border-blue-500/30 text-xs text-blue-800 dark:text-blue-300 animate-fade-in">
+                <strong className="block font-bold">Proceeding Without Customer PO:</strong>
+                <div>
+                  <label className="block text-[11px] font-semibold text-secondary mb-1">
+                    Confirmation / Authorization Method:
+                  </label>
+                  <select
+                    value={withoutPoReason}
+                    onChange={e => setWithoutPoReason(e.target.value)}
+                    className="w-full input-base text-xs"
+                  >
+                    <option value="Verbal / Phone Confirmation">Verbal / Phone Confirmation</option>
+                    <option value="Email Approval">Email Approval</option>
+                    <option value="Walk-in Cash Customer">Walk-in Cash / Retail Customer</option>
+                    <option value="Company Director Authorized">Company Director Authorized</option>
+                    <option value="Contractual / Tender Agreement">Contractual / Tender Agreement</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Order Details Grid */}

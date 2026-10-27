@@ -5,7 +5,7 @@ import {
   UserCheck, Shield, Users, FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
-  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info
+  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info, ShieldCheck
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -74,7 +74,7 @@ export const ProductQuotations: React.FC = () => {
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
-  const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
+  const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -403,6 +403,26 @@ export const ProductQuotations: React.FC = () => {
 
   // Create Sales Order from Approved Product Quotation
   const handleCreateSalesOrder = (group: any, latest: any) => {
+    const parsed = latest?.parsed || {};
+    const hasPo = Boolean(
+      (latest?.customerPoNo && latest.customerPoNo.trim()) ||
+      (parsed?.customerPoNo && parsed.customerPoNo.trim()) ||
+      latest?.status === 'PO Received' ||
+      latest?.status === 'PO Pending' ||
+      latest?.status === 'Without PO'
+    );
+
+    if (!hasPo) {
+      toast('Customer PO is required to create a Sales Order. Please record PO, PO Pending, or Without PO.', 'info');
+      setRecordPoModalData({
+        group,
+        quotation: latest,
+        type: 'product',
+        proceedToSalesOrder: true
+      });
+      return;
+    }
+
     setSalesOrderModalData({ group, quotation: latest, type: 'product' });
   };
 
@@ -1979,8 +1999,20 @@ export const ProductQuotations: React.FC = () => {
         isOpen={Boolean(recordPoModalData)}
         onClose={() => setRecordPoModalData(null)}
         quotationData={recordPoModalData}
-        onSuccess={() => {
+        onSuccess={(updatedQuote, proceedToSalesOrder) => {
           refetch();
+          if (recordPoModalData && (proceedToSalesOrder || recordPoModalData.proceedToSalesOrder)) {
+            const enrichedQuote = {
+              ...recordPoModalData.quotation,
+              ...(updatedQuote || {}),
+              customerPoNo: updatedQuote?.customerPoNo || recordPoModalData.quotation?.customerPoNo
+            };
+            setSalesOrderModalData({
+              group: recordPoModalData.group,
+              quotation: enrichedQuote,
+              type: recordPoModalData.type
+            });
+          }
         }}
       />
     </div>

@@ -19,7 +19,7 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportPdf } from '@/lib/exportPdf'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info } from 'lucide-react'
+import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info, ShieldCheck } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
@@ -61,7 +61,7 @@ export const Quotations: React.FC = () => {
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
-  const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
+  const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
 
   // Rejection modal state
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
@@ -331,6 +331,32 @@ export const Quotations: React.FC = () => {
   };
 
   const handleCreateSalesOrder = (group: any, latestMain: any) => {
+    const parsed = latestMain?.parsed || {};
+    let qData: any = {};
+    try {
+      qData = typeof latestMain?.data === 'string' ? JSON.parse(latestMain.data) : (latestMain?.data || {});
+    } catch (e) {}
+
+    const hasPo = Boolean(
+      (latestMain?.customerPoNo && latestMain.customerPoNo.trim()) ||
+      (parsed?.customerPoNo && parsed.customerPoNo.trim()) ||
+      (qData?.customerPoNo && qData.customerPoNo.trim()) ||
+      latestMain?.status === 'PO Received' ||
+      latestMain?.status === 'PO Pending' ||
+      latestMain?.status === 'Without PO'
+    );
+
+    if (!hasPo) {
+      toast('Customer PO is required to create a Sales Order. Please record PO, PO Pending, or Without PO.', 'info');
+      setRecordPoModalData({
+        group,
+        quotation: latestMain,
+        type: group.isProduct ? 'product' : 'custom',
+        proceedToSalesOrder: true
+      });
+      return;
+    }
+
     setSalesOrderModalData({ group, quotation: latestMain, type: 'custom' });
   };
 
@@ -3225,8 +3251,20 @@ export const Quotations: React.FC = () => {
         isOpen={Boolean(recordPoModalData)}
         onClose={() => setRecordPoModalData(null)}
         quotationData={recordPoModalData}
-        onSuccess={() => {
+        onSuccess={(updatedQuote, proceedToSalesOrder) => {
           refetch();
+          if (recordPoModalData && (proceedToSalesOrder || recordPoModalData.proceedToSalesOrder)) {
+            const enrichedQuote = {
+              ...recordPoModalData.quotation,
+              ...(updatedQuote || {}),
+              customerPoNo: updatedQuote?.customerPoNo || recordPoModalData.quotation?.customerPoNo
+            };
+            setSalesOrderModalData({
+              group: recordPoModalData.group,
+              quotation: enrichedQuote,
+              type: recordPoModalData.type
+            });
+          }
         }}
       />
     </div>
