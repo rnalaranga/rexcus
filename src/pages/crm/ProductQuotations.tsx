@@ -330,10 +330,13 @@ export const ProductQuotations: React.FC = () => {
     groupedQuotes.forEach((g: any) => {
       const latest = g.versions[0];
       const isAutoDraft = latest?.type === 'product_draft';
-
-      counts.all++;
       const s = (latest?.status || 'Draft').toLowerCase();
-      if (isAutoDraft || s === 'draft') {
+      const isDraft = isAutoDraft || s === 'draft';
+
+      if (!isDraft) {
+        counts.all++;
+      }
+      if (isDraft) {
         counts.draft++;
       } else if (counts[s] !== undefined) {
         counts[s]++;
@@ -353,14 +356,16 @@ export const ProductQuotations: React.FC = () => {
       const latest = g.versions[0];
       const status = latest?.status || 'Draft';
       const isAutoDraft = latest?.type === 'product_draft';
+      const s = status.toLowerCase();
+      const isDraft = isAutoDraft || s === 'draft';
 
       // 1. Status filter
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'draft') {
-          if (status.toLowerCase() !== 'draft' && !isAutoDraft) return false;
-        } else {
-          if (status.toLowerCase() !== statusFilter.toLowerCase()) return false;
-        }
+      if (statusFilter === 'all') {
+        if (isDraft) return false;
+      } else if (statusFilter === 'draft') {
+        if (!isDraft) return false;
+      } else {
+        if (s !== statusFilter.toLowerCase()) return false;
       }
 
       // 2. Customer filter
@@ -880,81 +885,6 @@ export const ProductQuotations: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Prominent Active Product Drafts Showcase at the Top */}
-      {activeDrafts.length > 0 && (
-        <div className="border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent rounded-none p-3.5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-none bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center border border-orange-500/30">
-                <FileEdit size={15} />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
-                  Active Finished Goods Drafts
-                  <span className="px-1.5 py-0.2 text-[10px] bg-orange-500/20 text-orange-700 dark:text-orange-300 font-mono font-bold">
-                    {activeDrafts.length}
-                  </span>
-                </h3>
-                <p className="text-[11px] text-muted">Unfinished finished goods product quotation drafts ready to resume</p>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {activeDrafts.map((g: any) => {
-              const latest = g.versions[0];
-              const snap = latest?.parsed || {};
-              const pCount = snap?.custItems?.length || 1;
-              return (
-                <div key={latest.id} className="bg-surface border border-orange-500/30 rounded-none p-3 hover:border-orange-500/60 transition-all hover:shadow-md relative group flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-start mb-1.5">
-                      <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-500/15 px-2 py-0.5 rounded-none uppercase tracking-wider font-mono">
-                        Draft • {g.quoNo || 'UNSAVED'}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-muted font-mono">{String(latest.date).slice(0, 10)}</span>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (await showConfirm('Are you sure you want to delete this product draft?', 'Delete Draft', { confirmLabel: 'Delete' })) {
-                              await deleteQuotation(latest.id);
-                              refetch();
-                            }
-                          }}
-                          className="text-red-500/70 hover:text-red-500 p-0.5 hover:bg-red-500/10 transition-colors"
-                          title="Delete Draft"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                    <h4 className="font-bold text-xs text-primary truncate" title={g.clientCompany || g.clientName}>
-                      {g.clientCompany || g.clientName || 'Unknown Customer'}
-                    </h4>
-                    {snap?.subject ? (
-                      <p className="text-[11px] text-muted truncate mt-0.5">{snap.subject}</p>
-                    ) : (
-                      <p className="text-[11px] text-muted italic mt-0.5">{pCount} Product Line(s) in draft</p>
-                    )}
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-theme-subtle flex items-center justify-between gap-2">
-                    <span className="text-xs font-mono font-bold text-primary">
-                      {formatCurrency(Number(latest.totalAmount || 0))}
-                    </span>
-                    <button
-                      onClick={() => navigate(`/crm/product-quotations/new/${g.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
-                      className="px-2.5 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-none transition-colors flex items-center gap-1 shadow-xs"
-                    >
-                      Resume Draft <ArrowRight size={11} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Comprehensive Filter Toolbar (Unified & Professional) */}
       <GlassCard className="p-3 space-y-3 rounded-none">
