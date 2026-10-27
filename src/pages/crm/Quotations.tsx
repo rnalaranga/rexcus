@@ -30,6 +30,7 @@ import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBann
 import { printElement } from '@/lib/printElement'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
 
 
 export const Quotations: React.FC = () => {
@@ -58,6 +59,7 @@ export const Quotations: React.FC = () => {
   const [activePrintReceipt, setActivePrintReceipt] = useState<any>(null)
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
+  const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
 
   // Rejection modal state
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
@@ -296,73 +298,8 @@ export const Quotations: React.FC = () => {
     navigate(`/finance/invoices/new?quoteId=${latestMain.id}`);
   };
 
-  const handleCreateSalesOrder = async (group: any, latestMain: any) => {
-    try {
-      const quoteData = typeof latestMain.data === 'string' ? JSON.parse(latestMain.data) : (latestMain.data || {});
-      const rawItems = quoteData.custItems || quoteData.items || [];
-      const itemsList = rawItems.map((ci: any) => ({
-        productId: ci.productId || ci.inventoryId || 'CUSTOM-JOB',
-        productName: ci.desc || ci.description || ci.name || 'Quoted Item',
-        productSku: ci.sku || '',
-        description: ci.desc || ci.description || ci.name || '',
-        qty: Number(ci.qty) || 1,
-        unitPrice: Number(ci.unitPrice) || 0,
-        amount: Number(ci.amount) || ((Number(ci.qty) || 1) * Number(ci.unitPrice || 0)),
-        uom: ci.uom || ci.unit || 'Nos'
-      }));
-
-      // Fallback if no items extracted
-      if (itemsList.length === 0) {
-        itemsList.push({
-          productId: 'CUSTOM-JOB',
-          productName: quoteData.subject || `Quotation ${group.quoNo} Job`,
-          description: quoteData.subject || `Quotation ${group.quoNo} Machining / Production`,
-          qty: 1,
-          unitPrice: Number(latestMain.totalAmount || 0),
-          amount: Number(latestMain.totalAmount || 0),
-          uom: 'Lot'
-        });
-      }
-
-      const subtotal = Number(quoteData.custTotals?.subtotal) || itemsList.reduce((acc: number, it: any) => acc + it.amount, 0);
-      const total = Number(latestMain.totalAmount) || Number(quoteData.custTotals?.total) || subtotal;
-      const taxAmount = total - subtotal > 0 ? (total - subtotal) : 0;
-
-      const cust = customers.find((c: any) => c.id === group.leadId);
-      const lead = leads.find((l: any) => l.id === group.leadId);
-      const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
-
-      const soPayload = {
-        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
-        quoteId: latestMain.id,
-        quotationNo: group.quoNo,
-        customerId: custId,
-        customerName: group.leadCompany || group.leadName || 'Customer',
-        attention: quoteData.attention || latestMain.attention || group.leadContact || (cust as any)?.name || group.leadName || '',
-        customerPhone: group.leadPhone || '',
-        customerEmail: group.leadEmail || '',
-        deliveryAddress: group.leadAddress || quoteData.customerAddress || '',
-        paymentTerms: quoteData.custTerms || quoteData.terms || 'Standard Terms',
-        customerPoNo: quoteData.customerPoNo || quoteData.poNo || null,
-        customerPoDate: quoteData.customerPoDate || null,
-        orderDate: new Date().toISOString().slice(0, 10),
-        targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-        items: itemsList,
-        subtotal,
-        taxAmount,
-        totalPrice: total,
-        status: 'Confirmed',
-        notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
-      };
-
-      const res = await createFinishedGoodsOrder(soPayload);
-      if (res && res.error) throw new Error(res.error);
-
-      toast(`Sales Order ${soPayload.orderNo} created successfully!`, 'success');
-      navigate('/crm/sales-orders');
-    } catch (e: any) {
-      toast(e?.message || 'Failed to create sales order', 'error');
-    }
+  const handleCreateSalesOrder = (group: any, latestMain: any) => {
+    setSalesOrderModalData({ group, quotation: latestMain, type: 'custom' });
   };
 
   const handleStatusChange = async (id: string, status: string, currentStatus?: string) => {
@@ -2923,6 +2860,13 @@ export const Quotations: React.FC = () => {
         onClose={() => setActiveViewingPhotos(null)}
         photos={activeViewingPhotos?.photos || []}
         title={activeViewingPhotos?.title || 'Sample Photos'}
+      />
+
+      {/* ── CREATE SALES ORDER MODAL WITH CUSTOMER PO ── */}
+      <CreateSalesOrderModal
+        isOpen={Boolean(salesOrderModalData)}
+        onClose={() => setSalesOrderModalData(null)}
+        quotationData={salesOrderModalData}
       />
     </div>
   )
