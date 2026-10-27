@@ -26,10 +26,10 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
+import { exportPdf } from '@/lib/exportPdf'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { printElement } from '@/lib/printElement'
-import { exportToPdf } from '@/lib/exportToPdf'
 
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-emerald-500 px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
@@ -1438,7 +1438,11 @@ export const ProductQuotationBuilder: React.FC = () => {
           {/* Approval Workflow Actions */}
           {currentQuote && (
             <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-theme-subtle">
-              {currentQuote.status === 'Approved' ? (
+              {(currentQuote.type === 'product_draft' || currentQuote.type === 'draft' || !currentId) ? (
+                <span className="text-xs text-muted font-medium px-2 py-1 bg-surface2 border border-theme-subtle rounded">
+                  Draft Mode
+                </span>
+              ) : currentQuote.status === 'Approved' ? (
                 <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
                   <CheckCircle2 size={14} /> Approved {currentQuote.approvedBy ? `(${currentQuote.approvedBy})` : ''}
                 </div>
@@ -2605,8 +2609,8 @@ export const ProductQuotationBuilder: React.FC = () => {
               setEmailModalOpen(true);
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
             
-            <Button variant="ghost" icon={FileDown} onClick={() => {
-              exportToPdf('print-section', `Product_Quotation_${quotationNo || 'PQ'}.pdf`);
+            <Button variant="ghost" icon={FileDown} onClick={async () => {
+              await exportPdf('print-section', `Product_Quotation_${quotationNo || 'PQ'}.pdf`);
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
             
             <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Product_Quotation')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Print Quotation</Button>

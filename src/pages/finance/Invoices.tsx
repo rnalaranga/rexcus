@@ -20,7 +20,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
-import { exportToPdf } from '@/lib/exportToPdf'
+import { exportPdf } from '@/lib/exportPdf'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
@@ -1107,7 +1107,7 @@ export const Invoices: React.FC = () => {
                     variant="ghost" 
                     className="h-9 text-xs border border-blue-500/30 text-blue-500 hover:bg-blue-500/10" 
                     onClick={() => {
-                      exportToPdf('invoice-preview', `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}.pdf`);
+                      exportPdf('invoice-preview', `Invoice_${viewInvoice.invoiceNo || viewInvoice.id || 'INV'}.pdf`);
                     }}
                   >
                     Export PDF

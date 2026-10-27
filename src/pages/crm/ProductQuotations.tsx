@@ -29,7 +29,7 @@ import { GitBranch } from 'lucide-react'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
-import { exportToPdf } from '@/lib/exportToPdf'
+import { exportPdf } from '@/lib/exportPdf'
 
 export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
@@ -678,7 +678,7 @@ export const ProductQuotations: React.FC = () => {
             )}
 
             {/* Approval Actions */}
-            {((status === 'Draft' || !status || status === 'Rejected') || (canApprove && (status === 'Pending Approval' || status === 'Draft'))) && (
+            {latest?.type !== 'draft' && latest?.type !== 'product_draft' && ((status === 'Draft' || !status || status === 'Rejected') || (canApprove && status === 'Pending Approval')) && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                 <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
@@ -706,7 +706,7 @@ export const ProductQuotations: React.FC = () => {
                   </button>
                 )}
 
-                {canApprove && (status === 'Pending Approval' || status === 'Draft') && (
+                {canApprove && status === 'Pending Approval' && (
                   <button
                     type="button"
                     onClick={async () => {
@@ -1669,9 +1669,12 @@ export const ProductQuotations: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 icon={Download}
-                onClick={() => {
-                  const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
-                  exportToPdf('print-section', `Quotation_${quoteNo}.pdf`);
+                onClick={async () => {
+                  const el = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
+                  if (el) {
+                    const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
+                    await exportPdf(el, `Quotation_${quoteNo}.pdf`);
+                  }
                 }}
                 className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
               >

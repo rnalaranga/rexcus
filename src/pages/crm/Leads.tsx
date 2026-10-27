@@ -2532,10 +2532,11 @@ export const Leads: React.FC = () => {
                 <Button 
                   variant="ghost" 
                   size="sm"
-                  onClick={() => {
+                  onClick={async () => {
                     const quoteNo = previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || 'Quote';
-                    exportToPdf('print-section', `Quotation_${quoteNo}.pdf`);
-                  }} 
+                    const { exportPdf } = await import('@/lib/exportPdf');
+                    await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
+                  }}
                   className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
                 >
                   Export PDF

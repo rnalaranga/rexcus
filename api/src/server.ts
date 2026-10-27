@@ -1,3 +1,6 @@
+import puppeteer from 'puppeteer-core';
+import { execSync } from 'child_process';
+import { resolveBuildId, Browser, detectBrowserPlatform, install } from '@puppeteer/browsers';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -23,6 +26,334 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+function findBinaryRecursively(dir: string, binaryName: string): string | null {
+  if (!fs.existsSync(dir)) return null;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findBinaryRecursively(fullPath, binaryName);
+        if (found) return found;
+      } else if (entry.name === binaryName) {
+        return fullPath;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+let cachedChromePath: string | null = null;
+
+async function getChromeExecutablePath(): Promise<string | null> {
+  if (cachedChromePath && fs.existsSync(cachedChromePath)) {
+    return cachedChromePath;
+  }
+
+  const possiblePaths = [
+    process.env.CHROME_BIN,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/snap/bin/chromium',
+    '/usr/local/bin/chromium',
+    '/usr/local/bin/chrome'
+  ];
+
+  for (const p of possiblePaths) {
+    if (p && fs.existsSync(p)) {
+      cachedChromePath = p;
+      return p;
+    }
+  }
+
+  // Check via which on Unix
+  try {
+    const whichRes = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null || which google-chrome-stable 2>/dev/null').toString().trim();
+    if (whichRes && fs.existsSync(whichRes)) {
+      cachedChromePath = whichRes;
+      return whichRes;
+    }
+  } catch (e) {}
+
+  // Check custom chrome-bin directories using recursive pure node search
+  const checkDirs = [
+    path.resolve(process.cwd(), 'chrome-bin'),
+    path.resolve(process.cwd(), 'api/chrome-bin'),
+    path.resolve(__dirname, '../chrome-bin'),
+    path.resolve(__dirname, '../../chrome-bin'),
+    '/var/www/rexnw/api/chrome-bin',
+    '/var/www/rexnw/chrome-bin',
+    path.join(process.env.HOME || '/root', '.cache/puppeteer')
+  ];
+
+  const binName = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+  for (const dir of checkDirs) {
+    const found = findBinaryRecursively(dir, binName);
+    if (found && fs.existsSync(found)) {
+      cachedChromePath = found;
+      return found;
+    }
+  }
+
+  // Auto-install stable Chrome if missing
+  try {
+    const platform = detectBrowserPlatform();
+    if (platform) {
+      const installDir = path.resolve(process.cwd(), 'chrome-bin');
+      const buildId = await resolveBuildId(Browser.CHROME, platform, 'stable');
+
+      // Clean up half-downloaded or corrupted folder if executable is missing
+      if (fs.existsSync(installDir)) {
+        const binName = platform.includes('win') ? 'chrome.exe' : 'chrome';
+        const existingBin = findBinaryRecursively(installDir, binName);
+        if (!existingBin) {
+          console.log(`[Rex PDF] Incomplete chrome folder found in ${installDir}. Cleaning up...`);
+          try { fs.rmSync(installDir, { recursive: true, force: true }); } catch (e) {}
+        } else {
+          cachedChromePath = existingBin;
+          return existingBin;
+        }
+      }
+
+      console.log(`[Rex PDF] Auto-installing stable Chrome for platform ${platform} into ${installDir}...`);
+      const installed = await install({
+        browser: Browser.CHROME,
+        buildId,
+        cacheDir: installDir,
+        platform
+      });
+      if (installed && installed.executablePath && fs.existsSync(installed.executablePath)) {
+        console.log(`[Rex PDF] Chrome installed successfully: ${installed.executablePath}`);
+        cachedChromePath = installed.executablePath;
+        return installed.executablePath;
+      }
+    }
+  } catch (err: any) {
+    console.error('[Rex PDF] Failed auto-installing Chrome:', err.message);
+    try {
+      const installDir = path.resolve(process.cwd(), 'chrome-bin');
+      fs.rmSync(installDir, { recursive: true, force: true });
+    } catch(e) {}
+  }
+
+  return null;
+}
+
+// ==========================
+// HIGH-PRECISION VECTOR PDF EXPORT (PUPPETEER CHROMIUM)
+// ==========================
+app.post('/api/export-pdf', async (req, res) => {
+  let browser = null;
+  try {
+    const { 
+      html, 
+      styles = [], 
+      filename = 'document.pdf', 
+      orientation = 'portrait',
+      margin = '6mm',
+      returnBase64 = false 
+    } = req.body;
+
+    if (!html) {
+      return res.status(400).json({ error: 'HTML content is required' });
+    }
+
+    const chromePath = await getChromeExecutablePath();
+    if (!chromePath) {
+      return res.status(500).json({ error: 'Chrome/Chromium executable not found on server' });
+    }
+
+    browser = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+    const isLandscape = orientation === 'landscape';
+    await page.setViewport({ 
+      width: isLandscape ? 1123 : 794, 
+      height: isLandscape ? 794 : 1123, 
+      deviceScaleFactor: 2 
+    });
+
+    const stylesHtml = Array.isArray(styles) 
+      ? styles.map((s: any) => (typeof s === 'string' && s.trim().startsWith('<')) ? s : `<style>${s}</style>`).join('\n')
+      : (styles ? `<style>${styles}</style>` : '');
+
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+          <style>
+            @page {
+              size: A4 ${orientation};
+              margin: ${margin};
+            }
+            * {
+              box-sizing: border-box !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              font-family: 'Inter', Arial, Helvetica, sans-serif;
+              font-size: 11px;
+            }
+            .font-mono {
+              font-family: 'JetBrains Mono', Courier, monospace !important;
+            }
+            table {
+              border-collapse: collapse !important;
+              width: 100% !important;
+            }
+            img, svg {
+              max-width: 100%;
+              image-rendering: -webkit-optimize-contrast;
+            }
+            .avoid-break, tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            #print-section {
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 794px !important;
+              box-sizing: border-box !important;
+            }
+          </style>
+          ${stylesHtml}
+        </head>
+        <body>
+          ${html}
+        </body>
+      </html>
+    `;
+
+    await page.setContent(fullHtml, { waitUntil: ['load', 'networkidle0'], timeout: 20000 });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      landscape: isLandscape,
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: {
+        top: margin,
+        bottom: margin,
+        left: '8mm',
+        right: '8mm'
+      }
+    });
+
+    await browser.close();
+    browser = null;
+
+    if (returnBase64) {
+      const base64 = Buffer.from(pdfBuffer).toString('base64');
+      return res.json({ success: true, base64: `data:application/pdf;base64,${base64}` });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.end(Buffer.from(pdfBuffer));
+
+  } catch (err: any) {
+    if (browser) {
+      try { await browser.close(); } catch(e) {}
+    }
+    console.error('PDF export error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate PDF' });
+  }
+});
+
+app.get('/api/pdf-diagnostics', async (req, res) => {
+  const result: any = {
+    platform: process.platform,
+    arch: process.arch,
+    cwd: process.cwd(),
+    dirname: __dirname,
+    cachedChromePath,
+    env: {
+      CHROME_BIN: process.env.CHROME_BIN,
+      PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH
+    }
+  };
+
+  try {
+    result.whichChromium = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null || which google-chrome-stable 2>/dev/null').toString().trim();
+  } catch (e: any) {
+    result.whichChromium = 'none';
+  }
+
+  const checkDirs = [
+    '/var/www/rexnw/api/chrome-bin',
+    '/var/www/rexnw/chrome-bin',
+    path.resolve(process.cwd(), 'chrome-bin')
+  ];
+  result.dirs = checkDirs.map(d => ({
+    dir: d,
+    exists: fs.existsSync(d),
+    content: fs.existsSync(d) ? fs.readdirSync(d) : []
+  }));
+
+  try {
+    const plat = detectBrowserPlatform();
+    result.detectedPlatform = plat;
+    const bId = await resolveBuildId(Browser.CHROME, plat, 'stable');
+    result.buildId = bId;
+    const installDir = '/var/www/rexnw/api/chrome-bin';
+    result.tryingInstallTo = installDir;
+    if (fs.existsSync(installDir)) {
+      const existing = findBinaryRecursively(installDir, plat.includes('win') ? 'chrome.exe' : 'chrome');
+      if (!existing) {
+        fs.rmSync(installDir, { recursive: true, force: true });
+      }
+    }
+    const installed = await install({
+      browser: Browser.CHROME,
+      buildId: bId,
+      cacheDir: installDir,
+      platform: plat
+    });
+    result.installedResult = installed;
+    result.executableExists = installed ? fs.existsSync(installed.executablePath) : false;
+    if (installed && installed.executablePath && fs.existsSync(installed.executablePath)) {
+      cachedChromePath = installed.executablePath;
+    }
+  } catch (e: any) {
+    result.installError = e.message;
+    result.installStack = e.stack;
+  }
+
+  res.json(result);
+});
+
 
 
 // ==========================
@@ -2637,6 +2968,14 @@ app.put('/api/quotations/status/:id', async (req, res) => {
 app.post('/api/quotations/:id/submit-approval', async (req, res) => {
   try {
     const { id } = req.params;
+    const [rows]: any = await db.query('SELECT id, type, status FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const q = rows[0];
+    if (q.type === 'draft' || q.type === 'product_draft') {
+      return res.status(400).json({ error: 'Quotation drafts cannot be submitted for approval. Please save the quotation first.' });
+    }
     await db.query(
       "UPDATE quotations SET status = 'Pending Approval', rejectionReason = NULL WHERE id = ?",
       [id]

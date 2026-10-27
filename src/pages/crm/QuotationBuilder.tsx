@@ -7,7 +7,6 @@ import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
-import { exportToPdf } from '@/lib/exportToPdf'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
@@ -18,8 +17,7 @@ import { useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { createQuotation, fetchQuotations, updateQuotation, deleteQuotation, generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation, fetchNextDocumentNumber } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
+import { exportPdf } from '@/lib/exportPdf'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { printElement } from '@/lib/printElement'
@@ -1607,7 +1605,11 @@ export const QuotationBuilder: React.FC = () => {
           {/* Approval Workflow Actions */}
           {!isTemplateMode && currentQuote && (
             <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-theme-subtle">
-              {currentQuote.status === 'Approved' ? (
+              {(currentQuote.type === 'draft' || !currentId) ? (
+                <span className="text-xs text-muted font-medium px-2 py-1 bg-surface2 border border-theme-subtle rounded">
+                  Draft Mode
+                </span>
+              ) : currentQuote.status === 'Approved' ? (
                 <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
                   <CheckCircle2 size={14} /> Approved {currentQuote.approvedBy ? `(${currentQuote.approvedBy})` : ''}
                 </div>
@@ -2964,8 +2966,8 @@ export const QuotationBuilder: React.FC = () => {
               setEmailModalOpen(true);
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
             
-            <Button variant="ghost" icon={FileDown} onClick={() => {
-              exportToPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
+            <Button variant="ghost" icon={FileDown} onClick={async () => {
+              await exportPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
             }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
             
             <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Quotation')}>Print Quotation</Button>

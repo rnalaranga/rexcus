@@ -7,7 +7,7 @@ import { useTaxProfiles } from '@/hooks/useFinance';
 import { useCustomers, useLeads } from '@/hooks/useData';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { printElement } from '@/lib/printElement';
-import { exportToPdf } from '@/lib/exportToPdf';
+import { exportPdf } from '@/lib/exportPdf';
 
 interface Props {
   invoice: any | null;
@@ -33,9 +33,9 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
     printElement('invoice-preview', `Proforma_Invoice_${invoice.invoiceNo || invoice.id || 'PI'}`);
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!printRef.current) return;
-    exportToPdf(printRef.current, `Proforma_Invoice_${invoice.invoiceNo || invoice.id || 'PI'}.pdf`);
+    await exportPdf(printRef.current, `Proforma_Invoice_${invoice.invoiceNo || invoice.id || 'PI'}.pdf`);
   };
 
   // Resolve numeric values safely

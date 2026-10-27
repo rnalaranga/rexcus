@@ -174,18 +174,28 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             overflow: visible !important;
           }
           #print-section, #print-section * { visibility: visible !important; }
-          #print-section { 
-            position: fixed !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 100% !important; 
-            max-width: 100% !important; 
-            margin: 0 !important; 
+          #print-section {
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
             padding: 0 !important;
-            color: #000000 !important; 
-            background: #ffffff !important; 
+            color: #000000 !important;
+            background: #ffffff !important;
             box-sizing: border-box !important;
-            z-index: 999999 !important;
+            display: block !important;
+            min-height: 0 !important;
+            height: auto !important;
+          }
+          #print-section > div {
+            min-height: 0 !important;
+            height: auto !important;
+            display: block !important;
+          }
+          #print-section .table-body-container {
+            min-height: 0 !important;
+            flex: none !important;
+            display: block !important;
           }
           .print-no-break {
             page-break-inside: avoid !important;
@@ -193,8 +203,19 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           }
         }
       `}</style>
-      <div id="print-section" className="mx-auto w-full bg-white text-black leading-snug" style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: '750px', fontSize: '11px', boxSizing: 'border-box' }}>
-        <div className="border border-black flex flex-col">
+      <div
+        id="print-section"
+        className="mx-auto w-full bg-white text-black leading-snug flex flex-col shadow-sm print:shadow-none print:m-0 print:p-0 print:border-none print:w-full print:max-w-none print:min-h-0 print:h-auto"
+        style={{
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          maxWidth: '794px',
+          width: '100%',
+          minHeight: '1050px',
+          fontSize: '11px',
+          boxSizing: 'border-box'
+        }}
+      >
+        <div className="border border-black flex flex-col flex-1 justify-between print:min-h-0 print:h-auto print:block print:border-black" style={{ minHeight: '1040px' }}>
           
           {/* Header */}
           <div className="flex p-3 border-b border-black items-center print-no-break">

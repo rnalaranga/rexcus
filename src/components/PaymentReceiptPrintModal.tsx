@@ -14,7 +14,7 @@ import {
 import { formatCurrency, formatDate, numberToWords } from "@/lib/utils";
 // @ts-ignore
 import { printElement } from "@/lib/printElement";
-import { exportToPdf } from "@/lib/exportToPdf";
+import { exportPdf } from '@/lib/exportPdf';
 
 export interface PaymentReceiptData {
   id?: string;
@@ -90,8 +90,8 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
   const companyVat = settings?.vat_number || settings?.company_vat || settings?.tin || "102837490-7000";
 
   // PDF Export
-  const handleExportPDF = () => {
-    exportToPdf("receipt-print-section", `Payment_Receipt_${receipt.receiptNo}.pdf`);
+  const handleExportPDF = async () => {
+    await exportPdf("receipt-print-section", `Payment_Receipt_${receipt.receiptNo}.pdf`);
   };
 
   // Browser Print

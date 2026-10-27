@@ -29,7 +29,7 @@ import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProfor
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
-import { exportToPdf } from '@/lib/exportToPdf'
+import { exportPdf } from '@/lib/exportPdf'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -2149,8 +2149,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   variant="ghost"
                   size="sm"
                   icon={Download}
-                  onClick={() => {
-                    exportToPdf('sales-order-print-section', `Sales_Order_${printOrder.orderNo}.pdf`);
+                  onClick={async () => {
+                    await exportPdf('sales-order-print-section', `Sales_Order_${printOrder.orderNo}.pdf`);
                   }}
                   className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
                 >
@@ -2197,8 +2197,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   variant="ghost"
                   size="sm"
                   icon={Download}
-                  onClick={() => {
-                    exportToPdf('gatepass-print-section', `Gate_Pass_${printGatePass.id}.pdf`);
+                  onClick={async () => {
+                    await exportPdf('gatepass-print-section', `Gate_Pass_${printGatePass.id}.pdf`);
                   }}
                   className="bg-surface2 border border-theme-subtle text-xs hover:bg-surface"
                 >

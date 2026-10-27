@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Mail, Send, Paperclip, CheckCircle2, AlertCircle, RefreshCw, FileText } from 'lucide-react';
-import { generatePdfDataUri } from '@/lib/exportToPdf';
+import { exportPdfDataUri } from '@/lib/exportPdf';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -143,7 +143,7 @@ Finance & Accounts Department
         if (element) {
           setPdfGenerating(true);
           try {
-            const pdfDataUri: string = await generatePdfDataUri(element, `${docLabel}-${documentNumber}.pdf`);
+            const pdfDataUri: string = await exportPdfDataUri(element);
             if (pdfDataUri) {
               attachments.push({
                 filename: `${docLabel}-${documentNumber}.pdf`,
