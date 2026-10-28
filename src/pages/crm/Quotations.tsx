@@ -657,9 +657,7 @@ export const Quotations: React.FC = () => {
       const lead = leads.find((l) => 
         l.id === q.leadId || 
         l.id === parsed.leadId || 
-        (numId && (l.id === `LEAD-${numId.padStart(3, "0")}` || String(l.id).replace(/^LEAD-0*/i, "") === numId)) ||
-        (q.customerId && l.customerId === q.customerId) ||
-        (parsed.company && l.company?.toLowerCase() === parsed.company?.toLowerCase())
+        (numId && (l.id === `LEAD-${numId.padStart(3, "0")}` || String(l.id).replace(/^LEAD-0*/i, "") === numId))
       );
       const cust = customers.find((c) => 
         c.id === q.leadId || 

@@ -175,13 +175,10 @@ export const Leads: React.FC = () => {
         date: q.date || q.createdAt
       };
 
+      // Strictly index quotations by explicit lead ID to avoid bleeding past lead/company quotes into new leads
       const keys = [
         q.leadId, 
         parsed.leadId, 
-        q.customerId, 
-        parsed.customerId,
-        q.leadCompany ? String(q.leadCompany).trim().toLowerCase() : null,
-        parsed.company ? String(parsed.company).trim().toLowerCase() : null,
         q.leadId ? String(q.leadId).replace(/^LEAD-0*/i, '') : null
       ].filter(Boolean);
 
@@ -198,14 +195,13 @@ export const Leads: React.FC = () => {
 
   const getLeadQuotes = React.useCallback((lead: any) => {
     if (!lead) return [];
+    // Strictly isolate quotations to this specific lead ID only
     const directQuotes = leadQuotesMap[String(lead.id)] || [];
-    const customerQuotes = lead.customerId ? (leadQuotesMap[String(lead.customerId)] || []) : [];
-    const companyQuotes = lead.company ? (leadQuotesMap[String(lead.company).trim().toLowerCase()] || []) : [];
     const numId = String(lead.id).replace(/^LEAD-0*/i, '');
     const numQuotes = numId ? (leadQuotesMap[numId] || []) : [];
     
     const combined = [...directQuotes];
-    [...customerQuotes, ...companyQuotes, ...numQuotes].forEach(q => {
+    numQuotes.forEach(q => {
       if (!combined.some(c => String(c.id) === String(q.id))) {
         combined.push(q);
       }

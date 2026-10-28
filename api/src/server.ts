@@ -2793,11 +2793,10 @@ app.get('/api/quotations/:leadId', async (req, res) => {
       SELECT * FROM quotations 
       WHERE (leadId = ? 
          OR leadId = REPLACE(?, 'LEAD-', '') 
-         OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0'))
-         OR leadId IN (SELECT customerId FROM leads WHERE id = ?))
+         OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0')))
          AND deletedAt IS NULL
       ORDER BY type ASC, version DESC
-    `, [leadId, leadId, leadId, leadId]);
+    `, [leadId, leadId, leadId]);
     if (rows && rows.length > 0) {
       return res.json(rows);
     }
