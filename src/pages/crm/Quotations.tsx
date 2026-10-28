@@ -1043,6 +1043,11 @@ export const Quotations: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                const isApprovedStatus = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status);
+                if (!isApprovedStatus) {
+                  toast(`Quotation is currently "${latestMain?.status || 'Draft'}". Must be Approved before emailing customer.`, 'error');
+                  return;
+                }
                 setEmailModalData({
                   documentNumber: group.quoNo,
                   customerEmail: group.leadEmail || '',
@@ -2594,30 +2599,69 @@ export const Quotations: React.FC = () => {
                settings={settings}
             />
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
-              <Button 
-                variant="primary" 
-                icon={Mail} 
-                onClick={() => {
-                  let parsed: any = {};
-                  try { parsed = JSON.parse(previewData.quotation?.data || '{}'); } catch(e){}
-                  setEmailModalData({
-                    documentNumber: parsed.quotationNo || previewData.quotation.id,
-                    customerName: previewData.lead?.company || previewData.lead?.name || parsed.customerName || 'Customer',
-                    customerEmail: previewData.lead?.email || parsed.customerEmail || '',
-                    totalAmount: previewData.quotation.totalAmount || parsed.total || 0,
-                    validityDays: parsed.validity || '30',
-                    elementIdToPdf: 'print-section'
-                  });
-                }} 
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
-              >
-                Email Quotation
-              </Button>
-              <Button variant="ghost" onClick={async () => {
-                const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
-                await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
-              }} className="bg-surface border border-theme-subtle hover:bg-surface2 font-semibold">Export PDF</Button>
-              <Button variant="primary" onClick={() => printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation')}>Print Quotation</Button>
+              {(() => {
+                const isQuoteApproved = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(previewData?.quotation?.status);
+                return (
+                  <>
+                    <Button 
+                      variant="primary" 
+                      icon={Mail} 
+                      disabled={!isQuoteApproved}
+                      onClick={() => {
+                        if (!isQuoteApproved) {
+                          toast(`Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before emailing.`, 'error');
+                          return;
+                        }
+                        let parsed: any = {};
+                        try { parsed = JSON.parse(previewData.quotation?.data || '{}'); } catch(e){}
+                        setEmailModalData({
+                          documentNumber: parsed.quotationNo || previewData.quotation.id,
+                          customerName: previewData.lead?.company || previewData.lead?.name || parsed.customerName || 'Customer',
+                          customerEmail: previewData.lead?.email || parsed.customerEmail || '',
+                          totalAmount: previewData.quotation.totalAmount || parsed.total || 0,
+                          validityDays: parsed.validity || '30',
+                          elementIdToPdf: 'print-section'
+                        });
+                      }} 
+                      className={`text-white font-bold text-xs ${!isQuoteApproved ? 'opacity-40 cursor-not-allowed bg-blue-600/50' : 'bg-blue-600 hover:bg-blue-700'}`}
+                      title={!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to email.` : 'Email Quotation'}
+                    >
+                      Email Quotation
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      disabled={!isQuoteApproved}
+                      onClick={async () => {
+                        if (!isQuoteApproved) {
+                          toast(`Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before exporting.`, 'error');
+                          return;
+                        }
+                        const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
+                        await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
+                      }} 
+                      className={`bg-surface border border-theme-subtle font-semibold ${!isQuoteApproved ? 'opacity-40 cursor-not-allowed text-muted' : 'hover:bg-surface2'}`}
+                      title={!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to export.` : 'Export PDF'}
+                    >
+                      Export PDF
+                    </Button>
+                    <Button 
+                      variant="primary" 
+                      disabled={!isQuoteApproved}
+                      onClick={() => {
+                        if (!isQuoteApproved) {
+                          toast(`Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before printing.`, 'error');
+                          return;
+                        }
+                        printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation');
+                      }}
+                      className={!isQuoteApproved ? 'opacity-40 cursor-not-allowed' : ''}
+                      title={!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to print.` : 'Print Quotation'}
+                    >
+                      Print Quotation
+                    </Button>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

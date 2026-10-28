@@ -280,6 +280,13 @@ export const QuotationBuilder: React.FC = () => {
     return ['Approved', 'Accepted', 'In Production', 'PO Received', 'Pending Edit Approval'].includes(st);
   }, [currentQuote]);
 
+  const isApproved = useMemo(() => {
+    if (isTemplateMode) return true;
+    if (!currentQuote) return false;
+    const st = currentQuote.status || '';
+    return ['Approved', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(st);
+  }, [isTemplateMode, currentQuote]);
+
   const [showRequestEditModal, setShowRequestEditModal] = useState(false);
   const [editReasonInput, setEditReasonInput] = useState('');
   const [isSubmittingEditRequest, setIsSubmittingEditRequest] = useState(false);
@@ -327,7 +334,10 @@ export const QuotationBuilder: React.FC = () => {
               setSelectedLeadId(target.leadId);
             }
             if (previewParam) {
-              setShowPreview(true);
+              const isTargetApproved = target.status === 'Approved' || ['Accepted', 'In Production', 'PO Received', 'Without PO'].includes(target.status);
+              if (isTargetApproved) {
+                setShowPreview(true);
+              }
             }
           }
         } else if (!quoteIdParam && !initialLoadedRef.current && data.length > 0) {
@@ -1637,8 +1647,22 @@ export const QuotationBuilder: React.FC = () => {
           >
             <Eye size={14} /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
           </button>
-          <button onClick={() => setShowPreview(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
+          <button 
+            disabled={!isApproved}
+            onClick={() => {
+              if (!isApproved) {
+                showToast('error', `Quotation status is "${currentQuote?.status || 'Draft'}". Preview is disabled until formally approved.`);
+                return;
+              }
+              setShowPreview(true);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ${
+              !isApproved 
+                ? 'border-theme-subtle/30 text-muted/40 cursor-not-allowed bg-surface2/20' 
+                : 'border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2'
+            }`}
+            title={!isApproved ? `Quotation status is "${currentQuote?.status || 'Draft'}". Preview is disabled until approved.` : 'Preview Quotation'}
+          >
             <Download size={14} /> Preview
           </button>
 
@@ -3089,11 +3113,11 @@ export const QuotationBuilder: React.FC = () => {
             settings={settings}
           />
           
-          {currentQuote && currentQuote.status !== 'Approved' && (
+          {currentQuote && !isApproved && (
             <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="shrink-0 text-amber-600" />
-                <span>Status is <strong>{currentQuote.status || 'Draft'}</strong>. Quotation should be formally approved before issuing or sending to customer.</span>
+                <span>Status is <strong>{currentQuote.status || 'Draft'}</strong>. Export PDF, Email Customer, and Print are disabled until this quotation is formally approved.</span>
               </div>
               {canApprove && (
                 <button
@@ -3106,7 +3130,7 @@ export const QuotationBuilder: React.FC = () => {
                       showToast('error', err?.message || 'Failed to approve');
                     }
                   }}
-                  className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shrink-0 shadow-xs"
+                  className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shrink-0 shadow-xs cursor-pointer"
                 >
                   Approve Now
                 </button>
@@ -3115,20 +3139,64 @@ export const QuotationBuilder: React.FC = () => {
           )}
 
           <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
-            <Button variant="ghost" icon={Mail} onClick={() => {
-              if (currentQuote && currentQuote.status !== 'Approved') {
-                if (!window.confirm(`Notice: This quotation is currently "${currentQuote.status || 'Draft'}" and has not been formally approved yet. Do you still wish to email the customer?`)) {
+            <Button 
+              variant="ghost" 
+              icon={Mail} 
+              disabled={!isApproved}
+              onClick={() => {
+                if (!isApproved) {
+                  showToast('error', `Quotation is currently "${currentQuote?.status || 'Draft'}". Must be Approved before emailing customer.`);
                   return;
                 }
-              }
-              setEmailModalOpen(true);
-            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
+                setEmailModalOpen(true);
+              }} 
+              className={`bg-surface border border-theme-subtle/40 font-semibold ${
+                !isApproved 
+                  ? 'opacity-40 cursor-not-allowed text-muted' 
+                  : 'hover:bg-surface2 text-blue-600'
+              }`}
+              title={!isApproved ? `Quotation is "${currentQuote?.status || 'Draft'}". Must be Approved to email.` : 'Email Customer'}
+            >
+              Email Customer
+            </Button>
             
-            <Button variant="ghost" icon={FileDown} onClick={async () => {
-              await exportPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
-            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
+            <Button 
+              variant="ghost" 
+              icon={FileDown} 
+              disabled={!isApproved}
+              onClick={async () => {
+                if (!isApproved) {
+                  showToast('error', `Quotation is currently "${currentQuote?.status || 'Draft'}". Must be Approved before exporting.`);
+                  return;
+                }
+                await exportPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
+              }} 
+              className={`bg-surface border border-theme-subtle/40 font-semibold ${
+                !isApproved 
+                  ? 'opacity-40 cursor-not-allowed text-muted' 
+                  : 'hover:bg-surface2'
+              }`}
+              title={!isApproved ? `Quotation is "${currentQuote?.status || 'Draft'}". Must be Approved to export PDF.` : 'Export PDF'}
+            >
+              Export PDF
+            </Button>
             
-            <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Quotation')}>Print Quotation</Button>
+            <Button 
+              variant="primary" 
+              icon={Printer} 
+              disabled={!isApproved}
+              onClick={() => {
+                if (!isApproved) {
+                  showToast('error', `Quotation is currently "${currentQuote?.status || 'Draft'}". Must be Approved before printing.`);
+                  return;
+                }
+                printElement('print-section', quotationNo || 'Quotation');
+              }}
+              className={!isApproved ? 'opacity-40 cursor-not-allowed' : ''}
+              title={!isApproved ? `Quotation is "${currentQuote?.status || 'Draft'}". Must be Approved to print.` : 'Print Quotation'}
+            >
+              Print Quotation
+            </Button>
           </div>
         </div>
       </Modal>
