@@ -705,7 +705,10 @@ async function runDatabaseSync() {
       gatePassId VARCHAR(50) NULL,
       dispatchedAt DATETIME NULL,
       customerName VARCHAR(255) NULL,
-      customerCompany VARCHAR(255) NULL
+      customerCompany VARCHAR(255) NULL,
+      customerPhone VARCHAR(100) NULL,
+      customerEmail VARCHAR(150) NULL,
+      photos LONGTEXT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS gate_passes (
       id VARCHAR(50) PRIMARY KEY,
@@ -1477,6 +1480,8 @@ async function runDatabaseSync() {
     "ALTER TABLE customer_grns ADD COLUMN customerName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE customer_grns ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE customer_grns ADD COLUMN photos LONGTEXT DEFAULT NULL",
+    "ALTER TABLE customer_grns ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE customer_grns ADD COLUMN customerEmail VARCHAR(150) DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN type VARCHAR(50) DEFAULT 'customer_sample'",
     "ALTER TABLE gate_passes ADD COLUMN attention VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE gate_passes ADD COLUMN carrier VARCHAR(255) DEFAULT NULL",
@@ -3819,6 +3824,14 @@ app.post('/api/crm/grns', async (req, res) => {
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
     
+    // Auto-migrate column if missing
+    try {
+      await db.query('ALTER TABLE customer_grns ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE customer_grns ADD COLUMN customerEmail VARCHAR(150) DEFAULT NULL');
+    } catch (e) {}
+
     // Auto-generate GRN ID (S-XXXX)
     let grnId = data.id;
     if (!grnId) {
@@ -3833,9 +3846,20 @@ app.post('/api/crm/grns', async (req, res) => {
       status: data.status || 'In Stock',
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     };
-    await db.query('INSERT INTO customer_grns SET ?', item);
-    res.json({ success: true, item });
-  } catch (error) {
+
+    // Whitelist and insert only valid database columns
+    const [cols]: any = await db.query('SHOW COLUMNS FROM customer_grns');
+    const validCols = new Set(cols.map((c: any) => c.Field));
+    const cleanItem: Record<string, any> = {};
+    for (const [k, v] of Object.entries(item)) {
+      if (validCols.has(k)) {
+        cleanItem[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO customer_grns SET ?', cleanItem);
+    res.json({ success: true, item: cleanItem });
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
@@ -3849,9 +3873,28 @@ app.put('/api/crm/grns/:id', async (req, res) => {
     delete data.isExisting;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
-    await db.query('UPDATE customer_grns SET ? WHERE id = ?', [data, id]);
+
+    // Auto-migrate column if missing
+    try {
+      await db.query('ALTER TABLE customer_grns ADD COLUMN customerPhone VARCHAR(100) DEFAULT NULL');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE customer_grns ADD COLUMN customerEmail VARCHAR(150) DEFAULT NULL');
+    } catch (e) {}
+
+    // Whitelist and update only valid database columns
+    const [cols]: any = await db.query('SHOW COLUMNS FROM customer_grns');
+    const validCols = new Set(cols.map((c: any) => c.Field));
+    const cleanData: Record<string, any> = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validCols.has(k)) {
+        cleanData[k] = v;
+      }
+    }
+
+    await db.query('UPDATE customer_grns SET ? WHERE id = ?', [cleanData, id]);
     res.json({ success: true, id });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
@@ -4472,7 +4515,10 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     const data = { ...req.body };
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const id = data.id || `FGO-${Date.now().toString().slice(-6)}`;
-    const orderNo = data.orderNo || `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    const currentYY = String(new Date().getFullYear()).slice(-2);
+    let orderNo = (data.orderNo || `SO-${currentYY}-${Date.now().toString().slice(-4)}`).trim();
+    // Shorten any 4-digit year (YYYY) in Sales Order number to 2-digit (YY)
+    orderNo = orderNo.replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3').replace(/^SO-20(\d{2})-/i, 'SO-$1-');
     
     // Parse items if provided
     let itemsList: any[] = [];

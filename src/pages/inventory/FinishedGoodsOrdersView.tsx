@@ -327,10 +327,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const handleOpenCreateModal = (preselectedProduct?: any) => {
     setEditingOrder(null)
     const initialProduct = preselectedProduct
+    const currentYY = String(new Date().getFullYear()).slice(-2);
     if (initialProduct) {
       setFormData({
         ...initialForm,
-        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        orderNo: `SO-${currentYY}-${Date.now().toString().slice(-4)}`,
         orderSource: 'ready_made',
         productId: initialProduct?.id || '',
         productName: initialProduct?.name || '',
@@ -340,7 +341,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     } else {
       setFormData({
         ...initialForm,
-        orderNo: `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        orderNo: `SO-${currentYY}-${Date.now().toString().slice(-4)}`,
         orderSource: 'from_quote'
       })
     }
@@ -609,8 +610,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       ? (hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock')
       : (formData.orderSource === 'from_quote' ? 'Quoted Spec' : 'Custom Production');
 
+    const cleanOrderNo = (formData.orderNo || '')
+      .trim()
+      .replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3')
+      .replace(/^SO-20(\d{2})-/i, 'SO-$1-');
+
     const payload = {
       ...formData,
+      orderNo: cleanOrderNo || formData.orderNo,
       items: itemsList,
       qty: itemsList.length > 1 && formData.orderSource === 'from_quote'
         ? itemsList.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)

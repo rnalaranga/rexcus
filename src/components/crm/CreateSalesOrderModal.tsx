@@ -190,7 +190,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const lead = leads.find((l: any) => l.id === group.leadId);
     const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
 
-    const generatedOrderNo = `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    const currentYY = String(new Date().getFullYear()).slice(-2);
+    const generatedOrderNo = `SO-${currentYY}-${Date.now().toString().slice(-4)}`;
     const custName = group.clientName || group.clientCompany || group.leadCompany || group.leadName || 'Customer';
     const attn = quoteData.attention || quotation.attention || group.clientContact || group.leadContact || (cust as any)?.name || '';
 
@@ -305,8 +306,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         waiverNote = `\n[Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}]`;
       }
 
+      const cleanOrderNo = (formData.orderNo || '')
+        .trim()
+        .replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3')
+        .replace(/^SO-20(\d{2})-/i, 'SO-$1-');
+
       const payload = {
         ...formData,
+        orderNo: cleanOrderNo,
         status: orderStatus,
         customerPoNo: finalCustomerPoNo || null,
         customerPoDate: formData.customerPoDate || null,
