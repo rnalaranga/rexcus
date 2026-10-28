@@ -334,10 +334,7 @@ export const QuotationBuilder: React.FC = () => {
               setSelectedLeadId(target.leadId);
             }
             if (previewParam) {
-              const isTargetApproved = target.status === 'Approved' || ['Accepted', 'In Production', 'PO Received', 'Without PO'].includes(target.status);
-              if (isTargetApproved) {
-                setShowPreview(true);
-              }
+              setShowPreview(true);
             }
           }
         } else if (!quoteIdParam && !initialLoadedRef.current && data.length > 0) {
@@ -1660,22 +1657,12 @@ export const QuotationBuilder: React.FC = () => {
             <Eye size={14} /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
           </button>
           <button 
-            disabled={!isApproved}
-            onClick={() => {
-              if (!isApproved) {
-                showToast('error', `Quotation status is "${currentQuote?.status || 'Draft'}". Preview is disabled until formally approved.`);
-                return;
-              }
-              setShowPreview(true);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ${
-              !isApproved 
-                ? 'border-theme-subtle/30 text-muted/40 cursor-not-allowed bg-surface2/20' 
-                : 'border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2'
-            }`}
-            title={!isApproved ? `Quotation status is "${currentQuote?.status || 'Draft'}". Preview is disabled until approved.` : 'Preview Quotation'}
+            type="button"
+            onClick={() => setShowPreview(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors cursor-pointer"
+            title="Preview Quotation Document"
           >
-            <Download size={14} /> Preview
+            <Eye size={14} /> Preview
           </button>
 
           {/* Approval Workflow Actions */}
