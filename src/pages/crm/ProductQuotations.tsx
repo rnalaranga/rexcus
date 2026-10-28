@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
-  UserCheck, Shield, Users, FileText, AlertCircle, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
+  UserCheck, Shield, Users, FileText, AlertCircle, Camera, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
   ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info, ShieldCheck
@@ -14,13 +14,15 @@ import { Modal } from '@/components/ui/Modal'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
+import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useQuotations, useLeads, useCustomers, useInvoices, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts, submitQuotationForApproval, approveQuotation, rejectQuotation } from '@/lib/api'
+import { deleteQuotation, updateQuotationStatus, createInvoice, createFinishedGoodsOrder, fetchPaymentReceipts, submitQuotationForApproval, approveQuotation, rejectQuotation, fetchAllCustomerGRNs } from '@/lib/api'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { QuotationStageSnapshotModal } from '@/components/crm/QuotationStageSnapshotModal'
@@ -66,6 +68,12 @@ export const ProductQuotations: React.FC = () => {
   const [endDate, setEndDate] = useState('')
   const [previewData, setPreviewData] = useState<{ quotation: any, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
+  const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
+  const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
+
+  useEffect(() => {
+    fetchAllCustomerGRNs().then(setAllCustomerGrns).catch(() => {});
+  }, [])
 
   const [openActionId, setOpenActionId] = useState<string | null>(null)
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
@@ -653,6 +661,35 @@ export const ProductQuotations: React.FC = () => {
               <Edit3 size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
               <span>Edit in Quotation Builder</span>
             </button>
+
+            {/* View Sample Photos */}
+            {(() => {
+              const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
+                id: latest?.id,
+                quoteId: latest?.id,
+                quoNo: group.quoNo,
+                leadId: group.leadId,
+                customerName: group.clientName || group.leadCompany || group.leadName
+              }, allCustomerGrns);
+              if (sPhotos.length === 0) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveViewingPhotos({
+                      photos: sPhotos,
+                      title: `Sample Photos - Quotation ${group.quoNo} (${matchedGrns.map(g => g.id).join(', ')})`
+                    });
+                    setOpenActionId(null);
+                    setActionCoords(null);
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <Camera size={14} className="shrink-0 text-amber-500" />
+                  <span>View Sample Photos ({sPhotos.length})</span>
+                </button>
+              );
+            })()}
 
             {/* 3. Send Email */}
             <button
@@ -1867,6 +1904,14 @@ export const ProductQuotations: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Sample Photos Lightbox Viewer */}
+      <SamplePhotoViewerModal
+        isOpen={!!activeViewingPhotos}
+        onClose={() => setActiveViewingPhotos(null)}
+        photos={activeViewingPhotos?.photos || []}
+        title={activeViewingPhotos?.title || 'Sample Photos'}
+      />
 
       {/* Email Modal */}
       {emailModalData && (

@@ -27,6 +27,7 @@ import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
 const STAGE_LABELS: Record<string, string> = {
@@ -864,6 +865,23 @@ export const Leads: React.FC = () => {
       align: 'right',
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+          {(() => {
+            const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({ id: row.id, leadId: row.id }, leadGrns);
+            if (sPhotos.length === 0) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => setActiveViewingPhotos({
+                  photos: sPhotos,
+                  title: `Sample Photos - ${row.company || row.name} (${matchedGrns.map(g => g.id).join(', ')})`
+                })}
+                className="px-2 py-1 text-xs font-semibold rounded-none bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                title={`View ${sPhotos.length} Customer Sample Photo(s)`}
+              >
+                <Camera size={12} className="text-amber-500" /> Photos ({sPhotos.length})
+              </button>
+            );
+          })()}
           <button
             type="button"
             onClick={() => openCollectSampleModal(row)}
@@ -1422,6 +1440,26 @@ export const Leads: React.FC = () => {
 
                         {/* Action buttons on kanban card */}
                         <div className="mt-2 pt-1.5 border-t border-theme-subtle flex items-center gap-1.5">
+                          {(() => {
+                            const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({ id: lead.id, leadId: lead.id }, leadGrns);
+                            if (sPhotos.length === 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveViewingPhotos({
+                                    photos: sPhotos,
+                                    title: `Sample Photos - ${lead.company || lead.name} (${matchedGrns.map(g => g.id).join(', ')})`
+                                  });
+                                }}
+                                className="text-[10px] font-semibold py-1 px-1.5 rounded-none bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                title={`View ${sPhotos.length} Sample Photos`}
+                              >
+                                <Camera size={11} className="text-amber-500" /> Photos ({sPhotos.length})
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openCollectSampleModal(lead); }}
