@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
 import { 
   Network, ChevronDown, ExternalLink, X, FileText, ShoppingBag, 
   Factory, Truck, Receipt, ShoppingCart, PackageCheck, DollarSign,
@@ -47,18 +48,51 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
   className = ''
 }) => {
   const navigate = useNavigate()
+  const { user, can } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const [coords, setCoords] = useState<{ top: number; left: number; openUpwards: boolean } | null>(null)
 
-  const hasTraces = traces.length > 0
+  const canAccessTrace = (type: TraceNode['type']): boolean => {
+    switch (type) {
+      case 'quotation':
+        return can('quotations.view') || can('quotations.view_all') || can('quotations.view_own')
+      case 'order':
+        return can('crm.customers.view') || can('quotations.view') || can('inventory.items.view')
+      case 'work_order':
+        return can('production.work_orders.view')
+      case 'gate_pass':
+        return can('inventory.gatepass.manage') || can('inventory.items.view')
+      case 'invoice':
+      case 'proforma':
+        return can('finance.invoices.view') || can('finance.reports.view')
+      case 'receipt':
+        return can('finance.payments.record') || can('finance.invoices.view')
+      case 'po':
+        return can('purchasing.po.manage') || can('purchasing.suppliers.view')
+      case 'grn':
+        return can('purchasing.grn.manage') || can('inventory.customer_grn.manage') || can('inventory.items.view')
+      case 'bill':
+        return can('purchasing.bills.manage') || can('finance.invoices.view')
+      case 'mr':
+        return can('purchasing.mr.manage') || can('inventory.items.view')
+      default:
+        return true
+    }
+  }
+
+  const accessibleTraces = React.useMemo(() => {
+    return (traces || []).filter(t => canAccessTrace(t.type))
+  }, [traces, can])
+
+  const hasTraces = accessibleTraces.length > 0
 
   // Calculate portal coordinates
   const calculatePosition = () => {
     if (!buttonRef.current) return
     const rect = buttonRef.current.getBoundingClientRect()
     const DROPDOWN_WIDTH = 340
-    const ESTIMATED_HEIGHT = Math.min(380, 70 + traces.length * 58)
+    const ESTIMATED_HEIGHT = Math.min(380, 70 + accessibleTraces.length * 58)
     const PADDING = 12
 
     let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
@@ -223,7 +257,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
             ? 'bg-surface2/80 hover:bg-surface3 text-primary border-theme-subtle hover:border-theme shadow-xs'
             : 'bg-surface2/40 hover:bg-surface2/70 text-muted hover:text-primary border-theme-subtle/80 opacity-60 hover:opacity-100'
         }`}
-        title={hasTraces ? `${traces.length} linked trace document(s). Click to view chain.` : 'No linked documents found.'}
+        title={hasTraces ? `${accessibleTraces.length} linked trace document(s). Click to view chain.` : 'No linked documents found.'}
       >
         {/* Lamp / Indicator Light: Small Red Dot */}
         {hasTraces ? (
@@ -291,7 +325,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                     ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25' 
                     : 'bg-surface2 text-muted border-theme-subtle'
                 }`}>
-                  {traces.length} linked
+                  {accessibleTraces.length} linked
                 </span>
                 <button
                   type="button"
@@ -317,7 +351,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                   </p>
                 </div>
               ) : (
-                traces.map((trace, idx) => {
+                accessibleTraces.map((trace, idx) => {
                   const meta = getTraceMeta(trace.type)
                   const Icon = meta.icon
 
@@ -329,8 +363,18 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                       let url = trace.navigateUrl
                       const rawRef = (trace.reference || '').replace(/\(.*\)/g, '').trim()
 
-                      // If navigating to a list route without an existing search param, automatically append ?search=
-                      if (rawRef && !url.includes('search=') && !url.includes('id=') && !url.match(/\/[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+$/)) {
+                      // Normalize any direct detail or builder URL into the module's list URL filtered by this record reference
+                      if (url.startsWith('/production/work-orders/') && !url.includes('?')) {
+                        url = `/production/work-orders?search=${encodeURIComponent(rawRef)}`
+                      } else if (url.startsWith('/crm/customers/') && !url.includes('?')) {
+                        url = `/crm/customers?search=${encodeURIComponent(rawRef)}`
+                      } else if (url.startsWith('/crm/quotations/new')) {
+                        url = `/crm/quotations?search=${encodeURIComponent(rawRef)}`
+                      } else if (url.startsWith('/crm/product-quotations/new')) {
+                        url = `/crm/product-quotations?search=${encodeURIComponent(rawRef)}`
+                      } else if (url.startsWith('/finance/invoices') && url.includes('id=')) {
+                        url = `/finance/invoices?search=${encodeURIComponent(rawRef)}`
+                      } else if (rawRef && !url.includes('search=')) {
                         const separator = url.includes('?') ? '&' : '?'
                         if (
                           url.startsWith('/crm/sales-orders') ||
@@ -339,7 +383,8 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                           url.startsWith('/crm/quotations') ||
                           url.startsWith('/crm/product-quotations') ||
                           url.startsWith('/crm/leads') ||
-                          url.startsWith('/purchasing')
+                          url.startsWith('/purchasing') ||
+                          url.startsWith('/inventory')
                         ) {
                           url = `${url}${separator}search=${encodeURIComponent(rawRef)}`
                         }

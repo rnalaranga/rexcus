@@ -4,12 +4,13 @@ import {
   Bell, Search, ChevronRight, Sun, Moon, X,
   CheckCircle2, TrendingUp, AlertCircle, AlertTriangle, Star, Banknote,
   Users, FileText, Package, Wrench, Truck, Building2, CheckCheck, Clock,
-  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck, HelpCircle
+  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck, HelpCircle, ShoppingBag
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import { HelpGuideModal } from '@/components/help/HelpGuideModal'
 import { useTheme } from '@/store/theme'
 import { useCurrencies } from '@/hooks/useFinance'
+import { useAuth } from '@/contexts/AuthContext'
 
 const breadcrumbMap: Record<string, string> = {
   '/crm':             'Dashboard',
@@ -43,23 +44,26 @@ interface QuickPage {
   category: string
   desc: string
   icon: any
+  permission?: string
 }
 
 const QUICK_PAGES: QuickPage[] = [
-  { title: 'Invoices', path: '/finance/invoices', category: 'Finance', desc: 'Invoices, payments, and settlements', icon: FileText },
-  { title: 'Quotations', path: '/crm/quotations', category: 'CRM', desc: 'Create and track customer quotes', icon: FileText },
-  { title: 'Customers', path: '/crm/customers', category: 'CRM', desc: 'Directory, credit limits & accounts', icon: Users },
-  { title: 'Contact Directory', path: '/crm/contacts', category: 'CRM', desc: 'All customer contacts & decision makers', icon: Contact2 },
-  { title: 'Leads & Inquiries', path: '/crm/leads', category: 'CRM', desc: 'Manage incoming leads & pipeline', icon: TrendingUp },
-  { title: 'Stock & Inventory', path: '/inventory', category: 'Inventory', desc: 'Raw materials and finished goods', icon: Package },
-  { title: 'Material Issue Station', path: '/inventory/material-issue', category: 'Inventory', desc: 'Issue raw materials & BOM items to Work Orders', icon: PackageCheck },
-  { title: 'Suppliers & Vendors', path: '/inventory/suppliers', category: 'Purchasing', desc: 'Supplier database & ledger', icon: Truck },
-  { title: 'Production Jobs', path: '/production', category: 'Production', desc: 'Work orders and machine planning', icon: Wrench },
-  { title: 'Purchasing & GRN', path: '/purchasing', category: 'Purchasing', desc: 'Purchase orders, bills & GRNs', icon: Truck },
-  { title: 'Banking & Cash', path: '/finance/banking', category: 'Finance', desc: 'Bank accounts and statement feeds', icon: Banknote },
-  { title: 'General Accounting', path: '/finance/accounting', category: 'Finance', desc: 'Chart of accounts and journals', icon: Building2 },
-  { title: 'Roles & Permissions', path: '/admin/roles', category: 'Admin', desc: 'User roles & permission matrix', icon: Shield },
-  { title: 'System Settings', path: '/admin/settings', category: 'Admin', desc: 'Company VAT, profile & preferences', icon: Building2 },
+  { title: 'Invoices', path: '/finance/invoices', category: 'Finance', desc: 'Invoices, payments, and settlements', icon: FileText, permission: 'finance.invoices.view' },
+  { title: 'Quotations', path: '/crm/quotations', category: 'CRM', desc: 'Create and track customer quotes', icon: FileText, permission: 'quotations.view' },
+  { title: 'Product Quotations', path: '/crm/product-quotations', category: 'CRM', desc: 'Product quote builder & catalog', icon: PackageCheck, permission: 'quotations.view' },
+  { title: 'Sales Orders', path: '/crm/sales-orders', category: 'CRM', desc: 'Finished goods & customer sales orders', icon: ShoppingBag, permission: 'crm.customers.view' },
+  { title: 'Customers', path: '/crm/customers', category: 'CRM', desc: 'Directory, credit limits & accounts', icon: Users, permission: 'crm.customers.view' },
+  { title: 'Contact Directory', path: '/crm/contacts', category: 'CRM', desc: 'All customer contacts & decision makers', icon: Contact2, permission: 'crm.customers.view' },
+  { title: 'Leads & Inquiries', path: '/crm/leads', category: 'CRM', desc: 'Manage incoming leads & pipeline', icon: TrendingUp, permission: 'crm.leads.view' },
+  { title: 'Stock & Inventory', path: '/inventory', category: 'Inventory', desc: 'Raw materials and finished goods', icon: Package, permission: 'inventory.items.view' },
+  { title: 'Material Issue Station', path: '/inventory/material-issue', category: 'Inventory', desc: 'Issue raw materials & BOM items to Work Orders', icon: PackageCheck, permission: 'inventory.items.view' },
+  { title: 'Suppliers & Vendors', path: '/inventory/suppliers', category: 'Purchasing', desc: 'Supplier database & ledger', icon: Truck, permission: 'purchasing.suppliers.view' },
+  { title: 'Production Jobs', path: '/production', category: 'Production', desc: 'Work orders and machine planning', icon: Wrench, permission: 'production.work_orders.view' },
+  { title: 'Purchasing & GRN', path: '/purchasing', category: 'Purchasing', desc: 'Purchase orders, bills & GRNs', icon: Truck, permission: 'purchasing.po.manage' },
+  { title: 'Banking & Cash', path: '/finance/banking', category: 'Finance', desc: 'Bank accounts and statement feeds', icon: Banknote, permission: 'finance.banking.view' },
+  { title: 'General Accounting', path: '/finance/accounting', category: 'Finance', desc: 'Chart of accounts and journals', icon: Building2, permission: 'finance.accounting.view' },
+  { title: 'Roles & Permissions', path: '/admin/roles', category: 'Admin', desc: 'User roles & permission matrix', icon: Shield, permission: 'admin.roles.manage' },
+  { title: 'System Settings', path: '/admin/settings', category: 'Admin', desc: 'Company VAT, profile & preferences', icon: Building2, permission: 'admin.settings.manage' },
 ]
 
 const NOTIFS_STORAGE_KEY = 'rex_read_notifications';
@@ -68,6 +72,17 @@ export const TopBar: React.FC = () => {
   const location  = useLocation()
   const navigate  = useNavigate()
   const { isDark, toggle } = useTheme()
+  const { user, token, can } = useAuth()
+
+  // Permission evaluation for search scoping
+  const canViewCrm = can('crm.customers.view') || can('crm.leads.view')
+  const canViewQuotations = can('quotations.view') || can('quotations.view_all') || can('quotations.view_own')
+  const canViewAllQuotations = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'crm_manager' || user?.role === 'sales_head' || user?.role === 'manager'
+  const canViewSalesOrders = can('crm.customers.view') || can('quotations.view') || can('inventory.items.view')
+  const canViewProduction = can('production.work_orders.view')
+  const canViewFinance = can('finance.invoices.view') || can('finance.reports.view') || can('finance.banking.view') || can('finance.accounting.view')
+  const canViewInventory = can('inventory.items.view')
+  const canViewSuppliers = can('purchasing.suppliers.view') || can('purchasing.po.manage')
 
   const [showNotif,  setShowNotif]  = useState(false)
   const [showHelp,   setShowHelp]   = useState(false)
@@ -102,6 +117,7 @@ export const TopBar: React.FC = () => {
     contacts?: any[]
     invoices?: any[]
     quotations?: any[]
+    salesOrders?: any[]
     workOrders?: any[]
     inventory?: any[]
     suppliers?: any[]
@@ -190,7 +206,9 @@ export const TopBar: React.FC = () => {
 
     setIsSearching(true)
     const timer = setTimeout(() => {
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/search?q=${encodeURIComponent(q)}`)
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/search?q=${encodeURIComponent(q)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
         .then(r => r.json())
         .then(data => {
           setSearchResults(data || {})
@@ -222,25 +240,65 @@ export const TopBar: React.FC = () => {
   const unreadCount = notificationsList.filter(n => !readIds.includes(n.id)).length
   const displayedNotifs = notificationsList.filter(n => notifFilter === 'all' || !readIds.includes(n.id))
 
-  // Search Results filtering
+  // Scoped Search Results filtering based on user permissions
+  const authorizedQuotations = React.useMemo(() => {
+    if (!canViewQuotations) return []
+    const list = searchResults.quotations || []
+    if (canViewAllQuotations) return list
+
+    const uId = String(user?.id || '').toLowerCase().trim()
+    const uName = String(user?.username || '').toLowerCase().trim()
+    const uFullName = String(user?.name || '').toLowerCase().trim()
+    const uPrefix = String(user?.prefix || '').toLowerCase().trim()
+
+    return list.filter(quo => {
+      const qCreatedBy = String(quo.createdBy || '').toLowerCase().trim()
+      const qCreatedByName = String(quo.createdByName || '').toLowerCase().trim()
+      const qNo = String(quo.quotationNo || '').toLowerCase().trim()
+
+      let parsed: any = {}
+      try { parsed = typeof quo.data === 'string' ? JSON.parse(quo.data) : (quo.data || {}) } catch {}
+      const dCreatedBy = String(parsed.createdBy || '').toLowerCase().trim()
+      const dCreatedByName = String(parsed.createdByName || '').toLowerCase().trim()
+
+      return (
+        (uId && (qCreatedBy === uId || dCreatedBy === uId)) ||
+        (uName && (qCreatedBy === uName || dCreatedBy === uName)) ||
+        (uFullName && (qCreatedByName === uFullName || dCreatedByName === uFullName)) ||
+        (uPrefix && qNo.startsWith(uPrefix))
+      )
+    })
+  }, [searchResults.quotations, canViewQuotations, canViewAllQuotations, user])
+
+  const authorizedCustomers = canViewCrm ? (searchResults.customers || []) : []
+  const authorizedContacts = canViewCrm ? (searchResults.contacts || []) : []
+  const authorizedSalesOrders = canViewSalesOrders ? (searchResults.salesOrders || []) : []
+  const authorizedWorkOrders = canViewProduction ? (searchResults.workOrders || []) : []
+  const authorizedInvoices = canViewFinance ? (searchResults.invoices || []) : []
+  const authorizedInventory = canViewInventory ? (searchResults.inventory || []) : []
+  const authorizedSuppliers = canViewSuppliers ? (searchResults.suppliers || []) : []
+
+  // Quick pages filtered by permission and search query
   const filteredQuickPages = React.useMemo(() => {
-    if (!searchVal.trim()) return QUICK_PAGES
+    const accessiblePages = QUICK_PAGES.filter(p => !p.permission || can(p.permission))
+    if (!searchVal.trim()) return accessiblePages
     const q = searchVal.toLowerCase()
-    return QUICK_PAGES.filter(p =>
+    return accessiblePages.filter(p =>
       p.title.toLowerCase().includes(q) ||
       p.category.toLowerCase().includes(q) ||
       p.desc.toLowerCase().includes(q)
     )
-  }, [searchVal])
+  }, [searchVal, can])
 
   const totalResultsCount =
-    (searchResults.customers?.length || 0) +
-    (searchResults.contacts?.length || 0) +
-    (searchResults.invoices?.length || 0) +
-    (searchResults.quotations?.length || 0) +
-    (searchResults.workOrders?.length || 0) +
-    (searchResults.inventory?.length || 0) +
-    (searchResults.suppliers?.length || 0) +
+    authorizedCustomers.length +
+    authorizedContacts.length +
+    authorizedInvoices.length +
+    authorizedQuotations.length +
+    authorizedSalesOrders.length +
+    authorizedWorkOrders.length +
+    authorizedInventory.length +
+    authorizedSuppliers.length +
     (searchVal.trim() ? filteredQuickPages.length : 0)
 
   const handleSelectResult = (path: string) => {
@@ -412,17 +470,17 @@ export const TopBar: React.FC = () => {
                 )}
 
                 {/* 2. Customers */}
-                {searchResults.customers && searchResults.customers.length > 0 && (
+                {authorizedCustomers.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Customers ({searchResults.customers.length})</span>
+                      <span>Customers ({authorizedCustomers.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/customers?search=${encodeURIComponent(searchVal.trim())}` : '/crm/customers')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.customers.map(c => (
+                      {authorizedCustomers.map(c => (
                         <div
                           key={c.id}
-                          onClick={() => handleSelectResult(`/crm/customers/${c.id}`)}
+                          onClick={() => handleSelectResult(`/crm/customers?search=${encodeURIComponent(c.company || c.name || c.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -442,17 +500,17 @@ export const TopBar: React.FC = () => {
                 )}
 
                 {/* 2b. Contacts */}
-                {searchResults.contacts && searchResults.contacts.length > 0 && (
+                {authorizedContacts.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Contacts ({searchResults.contacts.length})</span>
+                      <span>Contacts ({authorizedContacts.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/contacts?search=${encodeURIComponent(searchVal.trim())}` : '/crm/contacts')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.contacts.map((contact: any) => (
+                      {authorizedContacts.map((contact: any) => (
                         <div
                           key={contact.id}
-                          onClick={() => handleSelectResult(contact.customerId ? `/crm/customers/${contact.customerId}` : `/crm/contacts?search=${encodeURIComponent(contact.name || contact.email || contact.phone || '')}`)}
+                          onClick={() => handleSelectResult(`/crm/contacts?search=${encodeURIComponent(contact.name || contact.company || contact.phone || '')}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -474,17 +532,17 @@ export const TopBar: React.FC = () => {
                 )}
 
                 {/* 3. Invoices */}
-                {searchResults.invoices && searchResults.invoices.length > 0 && (
+                {authorizedInvoices.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Invoices ({searchResults.invoices.length})</span>
+                      <span>Invoices ({authorizedInvoices.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/finance/invoices?search=${encodeURIComponent(searchVal.trim())}` : '/finance/invoices')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.invoices.map(inv => (
+                      {authorizedInvoices.map(inv => (
                         <div
                           key={inv.id}
-                          onClick={() => handleSelectResult(`/finance/invoices?id=${encodeURIComponent(inv.id)}&search=${encodeURIComponent(inv.invoiceNo || inv.id)}`)}
+                          onClick={() => handleSelectResult(`/finance/invoices?search=${encodeURIComponent(inv.invoiceNo || inv.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -509,7 +567,7 @@ export const TopBar: React.FC = () => {
                             <span className="text-xs font-mono font-semibold text-primary block">
                               {formatCurrency(Number(inv.total || 0))}
                             </span>
-                            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Open Invoice →</span>
+                            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">View in Invoices →</span>
                           </div>
                         </div>
                       ))}
@@ -518,22 +576,21 @@ export const TopBar: React.FC = () => {
                 )}
 
                 {/* 4. Quotations */}
-                {searchResults.quotations && searchResults.quotations.length > 0 && (
+                {authorizedQuotations.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Quotations ({searchResults.quotations.length})</span>
+                      <span>Quotations ({authorizedQuotations.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/quotations?search=${encodeURIComponent(searchVal.trim())}` : '/crm/quotations')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.quotations.map(quo => {
+                      {authorizedQuotations.map(quo => {
                         let parsed: any = {}
                         try { parsed = JSON.parse(quo.data || '{}') } catch {}
                         const quoNo = quo.quotationNo || parsed.quotationNo || quo.id
                         const isProduct = quo.type === 'product' || quo.type === 'product_draft' || parsed.isProductQuotation || parsed.type === 'product'
-                        const targetLeadId = quo.leadId || parsed.leadId || 'WALK-IN'
                         const targetUrl = isProduct
-                          ? `/crm/product-quotations/new/${encodeURIComponent(targetLeadId)}?quoteId=${encodeURIComponent(quo.id)}`
-                          : `/crm/quotations/new/${encodeURIComponent(targetLeadId)}?quoteId=${encodeURIComponent(quo.id)}`
+                          ? `/crm/product-quotations?search=${encodeURIComponent(quoNo || quo.id)}`
+                          : `/crm/quotations?search=${encodeURIComponent(quoNo || quo.id)}`
 
                         return (
                           <div
@@ -564,7 +621,7 @@ export const TopBar: React.FC = () => {
                               <span className="text-xs font-mono font-semibold text-primary block">
                                 {quo.totalAmount ? formatCurrency(Number(quo.totalAmount)) : 'Draft'}
                               </span>
-                              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Open Quote →</span>
+                              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">View in Quotes →</span>
                             </div>
                           </div>
                         )
@@ -573,18 +630,60 @@ export const TopBar: React.FC = () => {
                   </div>
                 )}
 
-                {/* 5. Work Orders */}
-                {searchResults.workOrders && searchResults.workOrders.length > 0 && (
+                {/* 4b. Sales Orders */}
+                {authorizedSalesOrders.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Work Orders ({searchResults.workOrders.length})</span>
+                      <span>Sales Orders ({authorizedSalesOrders.length})</span>
+                      <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/crm/sales-orders?search=${encodeURIComponent(searchVal.trim())}` : '/crm/sales-orders')}>View All</span>
+                    </p>
+                    <div className="space-y-1">
+                      {authorizedSalesOrders.map(so => (
+                        <div
+                          key={so.id}
+                          onClick={() => handleSelectResult(`/crm/sales-orders?search=${encodeURIComponent(so.orderNo || so.id)}`)}
+                          className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded bg-indigo-500/10 text-indigo-500 flex items-center justify-center flex-shrink-0">
+                              <ShoppingBag size={14} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-primary truncate">{so.orderNo || so.id}</p>
+                                {so.status && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] uppercase font-mono bg-theme-subtle text-secondary">
+                                    {so.status}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted truncate">{so.customerName || so.productName || 'Sales Order'}</p>
+                            </div>
+                          </div>
+                          <div className="text-right ml-2 flex-shrink-0">
+                            <span className="text-xs font-mono font-semibold text-primary block">
+                              {so.totalPrice ? formatCurrency(Number(so.totalPrice)) : '-'}
+                            </span>
+                            <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium">View in Orders →</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Work Orders */}
+                {authorizedWorkOrders.length > 0 && (
+                  <div className="p-2">
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
+                      <span>Work Orders ({authorizedWorkOrders.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/production/work-orders?search=${encodeURIComponent(searchVal.trim())}` : '/production/work-orders')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.workOrders.map(wo => (
+                      {authorizedWorkOrders.map(wo => (
                         <div
                           key={wo.id}
-                          onClick={() => handleSelectResult(`/production/work-orders/${encodeURIComponent(wo.id)}`)}
+                          onClick={() => handleSelectResult(`/production/work-orders?search=${encodeURIComponent(wo.orderNo || wo.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -600,7 +699,7 @@ export const TopBar: React.FC = () => {
                             <span className="px-2 py-0.5 rounded text-[9px] uppercase font-mono font-bold bg-theme-subtle text-secondary block mb-0.5">
                               {wo.status || 'Active'}
                             </span>
-                            <span className="text-[9px] text-purple-600 dark:text-purple-400 font-medium">Open Order →</span>
+                            <span className="text-[9px] text-purple-600 dark:text-purple-400 font-medium">View in Work Orders →</span>
                           </div>
                         </div>
                       ))}
@@ -609,17 +708,17 @@ export const TopBar: React.FC = () => {
                 )}
 
                 {/* 6. Inventory Items */}
-                {searchResults.inventory && searchResults.inventory.length > 0 && (
+                {authorizedInventory.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Inventory & Products ({searchResults.inventory.length})</span>
+                      <span>Inventory & Products ({authorizedInventory.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/inventory?search=${encodeURIComponent(searchVal.trim())}` : '/inventory')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.inventory.map(item => (
+                      {authorizedInventory.map(item => (
                         <div
                           key={item.id}
-                          onClick={() => handleSelectResult(`/inventory?itemId=${encodeURIComponent(item.id)}&search=${encodeURIComponent(item.sku || item.name)}`)}
+                          onClick={() => handleSelectResult(`/inventory?search=${encodeURIComponent(item.sku || item.name)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -635,7 +734,7 @@ export const TopBar: React.FC = () => {
                             <span className="text-xs font-mono font-bold text-emerald-500 block">
                               Qty: {item.quantity || 0}
                             </span>
-                            <span className="text-[9px] text-blue-500 font-medium">Open Item →</span>
+                            <span className="text-[9px] text-blue-500 font-medium">View in Stock →</span>
                           </div>
                         </div>
                       ))}
@@ -644,17 +743,17 @@ export const TopBar: React.FC = () => {
                 )}
 
                 {/* 7. Suppliers */}
-                {searchResults.suppliers && searchResults.suppliers.length > 0 && (
+                {authorizedSuppliers.length > 0 && (
                   <div className="p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
-                      <span>Suppliers ({searchResults.suppliers.length})</span>
+                      <span>Suppliers ({authorizedSuppliers.length})</span>
                       <span className="text-[9px] text-blue-500 hover:underline cursor-pointer" onClick={() => handleSelectResult(searchVal.trim() ? `/inventory/suppliers?search=${encodeURIComponent(searchVal.trim())}` : '/inventory/suppliers')}>View All</span>
                     </p>
                     <div className="space-y-1">
-                      {searchResults.suppliers.map(sup => (
+                      {authorizedSuppliers.map(sup => (
                         <div
                           key={sup.id}
-                          onClick={() => handleSelectResult(`/inventory/suppliers/${encodeURIComponent(sup.id)}`)}
+                          onClick={() => handleSelectResult(`/inventory/suppliers?search=${encodeURIComponent(sup.name || sup.contactPerson || sup.id)}`)}
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-surface2 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -666,7 +765,7 @@ export const TopBar: React.FC = () => {
                               <p className="text-[10px] text-muted truncate">{sup.email || sup.phone || 'Supplier'}</p>
                             </div>
                           </div>
-                          <span className="text-[10px] font-mono text-muted">Vendor →</span>
+                          <span className="text-[10px] font-mono text-muted">View in Suppliers →</span>
                         </div>
                       ))}
                     </div>

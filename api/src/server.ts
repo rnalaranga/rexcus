@@ -10511,7 +10511,7 @@ app.get('/api/search', async (req, res) => {
   try {
     const q = (req.query.q as string || '').trim();
     if (!q || q.length < 1) {
-      return res.json({ customers: [], contacts: [], invoices: [], quotations: [], workOrders: [], inventory: [], suppliers: [] });
+      return res.json({ customers: [], contacts: [], invoices: [], quotations: [], salesOrders: [], workOrders: [], inventory: [], suppliers: [] });
     }
     const like = `%${q}%`;
     const queryLower = q.toLowerCase();
@@ -10608,7 +10608,7 @@ app.get('/api/search', async (req, res) => {
     let quotations: any[] = [];
     try {
       const [qRows] = await db.query(
-        `SELECT id, status, type, quotationNo, totalAmount, data, leadId FROM quotations 
+        `SELECT id, status, type, quotationNo, totalAmount, data, leadId, createdBy, createdByName FROM quotations 
          WHERE id LIKE ? OR quotationNo LIKE ? OR data LIKE ? LIMIT 6`,
         [like, like, like]
       ) as any[];
@@ -10645,11 +10645,22 @@ app.get('/api/search', async (req, res) => {
       suppliers = sups || [];
     } catch(e) {}
 
+    let salesOrders: any[] = [];
+    try {
+      const [sos] = await db.query(
+        SELECT id, orderNo, customerName, productName, quotationNo, customerPoNo, totalPrice, status FROM finished_goods_orders \
+         WHERE id LIKE ? OR orderNo LIKE ? OR customerName LIKE ? OR quotationNo LIKE ? OR customerPoNo LIKE ? OR productName LIKE ? LIMIT 6,
+        [like, like, like, like, like, like]
+      ) as any[];
+      salesOrders = sos || [];
+    } catch(e) {}
+
     res.json({
       customers,
       contacts,
       invoices,
       quotations,
+      salesOrders,
       workOrders,
       inventory,
       suppliers
