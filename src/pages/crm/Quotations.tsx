@@ -1062,35 +1062,18 @@ export const Quotations: React.FC = () => {
                 });
                 setOpenActionId(null);
               }}
-              className={`w-full px-3.5 py-2 text-xs font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left ${
-                !['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status)
-                  ? 'text-zinc-400 dark:text-zinc-600 opacity-60 cursor-not-allowed'
-                  : 'text-zinc-800 dark:text-zinc-100'
-              }`}
-              title={!['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status) ? `Quotation is "${latestMain?.status || 'Draft'}". Must be Approved before emailing.` : 'Send via Email'}
-            >
-                setEmailModalData({
-                  documentNumber: group.quoNo,
-                  customerEmail: group.leadEmail || '',
-                  customerName: group.leadCompany || group.leadName || 'Customer',
-                  totalAmount: latestMain?.totalAmount || '0.00',
-                  validityDays: parsed.validity || '30',
-                  elementIdToPdf: 'print-section'
-                });
-                setOpenActionId(null);
-              }}
               className={`w-full px-3.5 py-2 text-xs font-semibold flex items-center gap-2.5 transition-colors text-left ${
-                latestMain?.status === 'Pending Approval'
+                !['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status)
                   ? 'text-zinc-400 dark:text-zinc-600 cursor-not-allowed bg-zinc-50 dark:bg-zinc-900/50'
                   : 'text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer'
               }`}
-              title={latestMain?.status === 'Pending Approval' ? 'Cannot email: Quotation is Pending Approval' : 'Send Quotation via Email'}
+              title={!['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status) ? `Quotation is "${latestMain?.status || 'Draft'}". Must be Approved before emailing.` : 'Send Quotation via Email'}
             >
-              <Mail size={14} className={latestMain?.status === 'Pending Approval' ? 'text-zinc-400 shrink-0' : 'text-indigo-600 dark:text-indigo-400 shrink-0'} />
+              <Mail size={14} className={!['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status) ? 'text-zinc-400 shrink-0' : 'text-indigo-600 dark:text-indigo-400 shrink-0'} />
               <span>Send via Email</span>
-              {latestMain?.status === 'Pending Approval' && (
+              {!['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(latestMain?.status) && (
                 <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                  Pending Approval
+                  {latestMain?.status || 'Draft'}
                 </span>
               )}
             </button>
