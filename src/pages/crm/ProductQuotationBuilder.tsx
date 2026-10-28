@@ -540,6 +540,7 @@ export const ProductQuotationBuilder: React.FC = () => {
       if (effectiveLeadId && effectiveLeadId !== 'WALK-IN') {
         const rawData = await fetchQuotations(effectiveLeadId);
         data = (rawData || []).filter((q: any) => {
+          if (q.deletedAt) return false;
           let snap: any = {};
           try { snap = JSON.parse(q.data || '{}'); } catch(e){}
           return q.type === 'product' || q.type === 'product_draft' || snap.isProductQuotation === true || snap.quotationCategory === 'product';
@@ -1443,8 +1444,11 @@ export const ProductQuotationBuilder: React.FC = () => {
     try {
       await deleteQuotation(v.id);
       showToast('success', `Deleted Version v${v.version}`);
-      if (currentId === v.id) {
+      if (currentId === v.id || draftId === v.id) {
         setCurrentId(null);
+        setDraftId(null);
+        draftIdRef.current = null;
+        currentIdRef.current = null;
       }
       await loadVersions();
     } catch (err: any) {

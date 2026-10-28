@@ -190,6 +190,7 @@ export const ProductQuotations: React.FC = () => {
 
   const productQuotes = useMemo(() => {
     return quotations.filter((q: any) => {
+      if (q.deletedAt) return false;
       let parsed: any = {};
       try { parsed = JSON.parse(q.data || '{}'); } catch (e) {}
       const isProduct = q.type === 'product' || 
@@ -448,13 +449,25 @@ export const ProductQuotations: React.FC = () => {
   };
 
   // Delete
-  const handleDelete = async (id: string) => {
-    const ok = await showConfirm('Delete Product Quotation', 'Are you sure you want to delete this product quotation version?');
+  const handleDelete = async (group: any, latest: any) => {
+    const qLabel = group?.quoNo || latest?.quotationNo || latest?.id;
+    const isDraft = latest?.type === 'product_draft' || latest?.type === 'draft' || latest?.status === 'Draft';
+    const msg = isDraft 
+      ? `Are you sure you want to delete product quotation draft "${qLabel}"?`
+      : `Are you sure you want to delete product quotation "${qLabel}"?`;
+
+    const ok = await showConfirm(msg, 'Delete Product Quotation', { confirmLabel: 'Delete' });
     if (!ok) return;
     try {
-      await deleteQuotation(id);
-      toast('Quotation deleted successfully', 'success');
-      refetch();
+      const idsToDelete = (group?.versions && group.versions.length > 0)
+        ? group.versions.map((v: any) => v.id).filter(Boolean)
+        : [latest?.id].filter(Boolean);
+
+      for (const id of idsToDelete) {
+        await deleteQuotation(id);
+      }
+      toast(`${isDraft ? 'Draft' : 'Quotation'} deleted successfully`, 'success');
+      await refetch();
     } catch (e: any) {
       toast(e?.message || 'Failed to delete quotation', 'error');
     }
@@ -847,7 +860,7 @@ export const ProductQuotations: React.FC = () => {
             <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
             <button
               type="button"
-              onClick={() => { handleDelete(latest.id); setOpenActionId(null); setActionCoords(null); }}
+              onClick={() => { handleDelete(group, latest); setOpenActionId(null); setActionCoords(null); }}
               className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
             >
               <Trash2 size={14} className="shrink-0 text-rose-500" />

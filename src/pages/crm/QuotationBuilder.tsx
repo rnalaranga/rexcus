@@ -308,7 +308,8 @@ export const QuotationBuilder: React.FC = () => {
         const effectiveLeadId = targetQuote?.leadId || leadId || selectedLeadId;
         let data: any[] = [];
         if (effectiveLeadId && effectiveLeadId !== 'WALK-IN') {
-          data = await fetchQuotations(effectiveLeadId);
+          const raw = await fetchQuotations(effectiveLeadId);
+          data = (raw || []).filter((q: any) => !q.deletedAt);
           setSavedVersions(data);
         }
 
@@ -1437,8 +1438,11 @@ export const QuotationBuilder: React.FC = () => {
     try {
       await deleteQuotation(v.id);
       showToast('success', `Version v${v.version} deleted successfully`);
-      if (currentId === v.id) {
+      if (currentId === v.id || draftId === v.id) {
         setCurrentId(null);
+        setDraftId(null);
+        draftIdRef.current = null;
+        currentIdRef.current = null;
       }
       await loadVersions();
     } catch (err: any) {

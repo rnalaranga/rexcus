@@ -2734,10 +2734,11 @@ app.get('/api/quotations/:leadId', async (req, res) => {
     const { leadId } = req.params;
     const [rows]: any = await db.query(`
       SELECT * FROM quotations 
-      WHERE leadId = ? 
+      WHERE (leadId = ? 
          OR leadId = REPLACE(?, 'LEAD-', '') 
          OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0'))
-         OR leadId IN (SELECT customerId FROM leads WHERE id = ?)
+         OR leadId IN (SELECT customerId FROM leads WHERE id = ?))
+         AND deletedAt IS NULL
       ORDER BY type ASC, version DESC
     `, [leadId, leadId, leadId, leadId]);
     if (rows && rows.length > 0) {
@@ -3607,14 +3608,19 @@ app.delete('/api/quotations/:id', async (req, res) => {
     const { id } = req.params;
     const { user } = req.query as any;
     // Safety check: Prevent deleting Approved or PO Received quotations directly
-    const [rows]: any = await db.query('SELECT id, status, quotationNo FROM quotations WHERE id = ?', [id]);
+    const [rows]: any = await db.query('SELECT id, status, quotationNo, type FROM quotations WHERE id = ?', [id]);
     if (rows && rows.length > 0) {
       const q = rows[0];
       if (q.status === 'Approved' || q.status === 'PO Received') {
         return res.status(400).json({ error: `Cannot delete quotation ${q.quotationNo || id} because it is already '${q.status}'. Please reject or cancel it first.` });
       }
+      // Drafts should be hard deleted permanently so they never linger or resurrect
+      if (q.type === 'draft' || q.type === 'product_draft' || q.status === 'Draft') {
+        await db.query('DELETE FROM quotations WHERE id = ?', [id]);
+        return res.json({ success: true, message: 'Draft quotation deleted permanently' });
+      }
     }
-    // Soft delete so it moves to Trash and can be restored at any time directly from the system
+    // Soft delete for confirmed quotations so it moves to Trash and can be restored at any time
     await db.query('UPDATE quotations SET deletedAt = NOW(), deletedBy = ? WHERE id = ?', [user || 'User', id]);
     res.json({ success: true, message: 'Quotation moved to trash' });
   } catch (error: any) {

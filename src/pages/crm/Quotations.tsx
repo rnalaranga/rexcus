@@ -1357,11 +1357,14 @@ export const Quotations: React.FC = () => {
               onClick={async () => {
                 setOpenActionId(null);
                 setActionCoords(null);
-                if (await showConfirm(`Delete entire quotation group ${group.quoNo}?`, 'Delete Quotation Group', { confirmLabel: 'Delete' })) {
-                  for (const q of [...group.main, ...group.job, ...group.customer]) {
-                    await deleteQuotation(q.id);
+                const isDraftGroup = group.main.some((m: any) => m.type === 'draft' || m.type === 'product_draft' || m.status === 'Draft');
+                const label = isDraftGroup ? `draft "${group.quoNo}"` : `quotation group "${group.quoNo}"`;
+                if (await showConfirm(`Are you sure you want to delete ${label}?`, 'Delete Quotation', { confirmLabel: 'Delete' })) {
+                  const allIds = Array.from(new Set([...group.main, ...group.job, ...group.customer].map((q: any) => q.id).filter(Boolean)));
+                  for (const id of allIds) {
+                    await deleteQuotation(id);
                   }
-                  toast(`Quotation group ${group.quoNo} deleted successfully`, 'success');
+                  toast(`Deleted ${label} successfully`, 'success');
                   refetch();
                 }
               }}
