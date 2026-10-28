@@ -28,6 +28,7 @@ import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
+import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { printElement } from '@/lib/printElement'
 import { exportPdf } from '@/lib/exportPdf'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
@@ -83,6 +84,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }, [searchParams])
   // Order Actions Dropdown state
   const [openActionOrderId, setOpenActionOrderId] = useState<string | null>(null)
+  const [printWorkOrderTarget, setPrintWorkOrderTarget] = useState<any | null>(null)
+  const [createWoModalOrder, setCreateWoModalOrder] = useState<any | null>(null)
+  const [createWoModalItems, setCreateWoModalItems] = useState<any[]>([])
+  const [createWoPriority, setCreateWoPriority] = useState<string>('Normal')
+  const [createWoJobTitle, setCreateWoJobTitle] = useState<string>('')
+  const [createWoNotes, setCreateWoNotes] = useState<string>('')
+  const [createWoSubmitting, setCreateWoSubmitting] = useState<boolean>(false)
   const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
 
@@ -722,6 +730,148 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     loadWorkOrders()
   }, [loadWorkOrders])
 
+  const resolveOrderLineItems = (order: any, rawOrderItems: any[]) => {
+    if (Array.isArray(rawOrderItems) && rawOrderItems.length > 0) {
+      return rawOrderItems.map((it: any) => ({
+        description: it.description || it.productName || it.name || order.productName || 'Order Item',
+        qty: Number(it.qty) || 1,
+        uom: it.uom || 'Nos'
+      }));
+    }
+    const quoteRef = order.quoteId || order.quotationNo;
+    const linkedQ = (rawQuotations || []).find((q: any) =>
+      (quoteRef && (String(q.id) === String(quoteRef) || String(q.quotationNo) === String(quoteRef))) ||
+      (order.orderNo && q.orderNo && String(q.orderNo) === String(order.orderNo))
+    );
+    if (linkedQ) {
+      let parsed: any = {};
+      try { parsed = typeof linkedQ.data === 'string' ? JSON.parse(linkedQ.data) : (linkedQ.data || {}) } catch {}
+      if (Array.isArray(parsed.custItems) && parsed.custItems.length > 0) {
+        return parsed.custItems.map((ci: any) => ({
+          description: ci.desc || ci.description || ci.name || 'Quoted Item',
+          qty: Number(ci.qty) || 1,
+          uom: 'Nos'
+        }));
+      }
+    }
+    return [{
+      description: order.productName || 'Precision Machined Component as per given instruction',
+      qty: Math.max(1, Number(order.qty) || 1),
+      uom: 'Nos'
+    }];
+  };
+
+  const openCreateWorkOrderPrompt = (order: any, rawItems: any[]) => {
+    try {
+      if (order.status === 'Pending Advance Approval') {
+        toast(`Sales Order #${order.orderNo} is currently "Pending Advance Approval". Production Work Order cannot be issued until Finance / Management approves the advance waiver or payment is recorded.`, 'warning');
+        return;
+      }
+
+      // Check if customer registration requires advance payment
+      const cust = customers.find((c: any) => c.id === order.customerId || (c.company && order.customerName && c.company.toLowerCase() === order.customerName.toLowerCase()) || (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())) ||
+                   leads.find((l: any) => l.id === order.customerId || (l.company && order.customerName && l.company.toLowerCase() === order.customerName.toLowerCase()) || (l.name && order.customerName && l.name.toLowerCase() === order.customerName.toLowerCase()));
+
+      const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
+
+      if (customerRequiresAdvance) {
+        const hasApprovedWaiver = order.status === 'Confirmed' && order.notes && order.notes.includes('Advance Waiver Approved');
+
+        const hasAdvancePaid = (allInvoices || []).some((inv: any) => 
+          (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+          (Number(inv.paidAmount || 0) > 0 || inv.status === 'paid' || inv.status === 'partially_paid') &&
+          (
+            (inv.orderId && String(inv.orderId) === String(order.id)) ||
+            (inv.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
+            (order.quoteId && inv.quotationId && String(inv.quotationId) === String(order.quoteId)) ||
+            (order.quotationNo && inv.quotationNo && String(inv.quotationNo) === String(order.quotationNo)) ||
+            (inv.customerId && String(inv.customerId) === String(order.customerId))
+          )
+        );
+
+        if (!hasAdvancePaid && !hasApprovedWaiver) {
+          toast(`Customer "${order.customerName}" requires advance payment. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval.`, 'warning');
+          return;
+        }
+      }
+
+      const resolvedItems = resolveOrderLineItems(order, rawItems);
+      setCreateWoModalOrder(order);
+      setCreateWoModalItems(resolvedItems);
+      setCreateWoJobTitle(`WO: ${order.orderNo} - ${order.customerName}`);
+      setCreateWoPriority('Normal');
+      setCreateWoNotes(order.notes || '');
+    } catch (err: any) {
+      toast(err?.message || 'Error preparing Work Order', 'error');
+    }
+  };
+
+  const submitCreateWorkOrder = async () => {
+    if (!createWoModalOrder) return;
+    setCreateWoSubmitting(true);
+    try {
+      const order = createWoModalOrder;
+      const jobQty = Math.max(1, Number(order.qty) || (createWoModalItems.reduce((acc, it) => acc + (Number(it.qty) || 1), 0)) || 1);
+
+      const woData = {
+        title: createWoJobTitle || `WO: ${order.orderNo} - ${order.customerName}`,
+        customerId: order.customerId || null,
+        customer: order.customerName,
+        orderNo: order.orderNo,
+        sourceQuoteId: order.quoteId || null,
+        priority: createWoPriority || 'Normal',
+        jobQty,
+        notes: createWoNotes || null,
+        operations: [
+          {
+            operationName: 'Precision Fabrication & Machining',
+            plannedHours: 2,
+            hourlyLaborRate: 750,
+            hourlyMachineRate: 1200
+          }
+        ],
+        bom: (createWoModalItems && createWoModalItems.length > 0) ? createWoModalItems.map((it: any) => ({
+          material: it.description || it.productName || order.productName,
+          qty: Number(it.qty) || 1,
+          unit: it.uom || 'Nos',
+          unitCost: 0,
+          notes: it.description || `Line item for ${order.orderNo}`
+        })) : [
+          {
+            material: order.productName || 'Order Material',
+            qty: jobQty,
+            unit: 'Nos',
+            unitCost: 0,
+            notes: `For Sales Order ${order.orderNo}`
+          }
+        ]
+      };
+
+      const res = await createWorkOrder(woData);
+      if (res && (res.error || !res.success)) {
+        if (res.error === 'DUPLICATE') {
+          toast(`A Work Order already exists (${res.existingId || ''}) for ${order.orderNo}!`, 'warning');
+        } else {
+          toast(res.error || res.message || 'Failed to create Work Order', 'error');
+        }
+        return;
+      }
+
+      try {
+        await updateFinishedGoodsOrder(order.id, { status: 'In Production' });
+      } catch (e) {}
+
+      toast(`Work Order successfully created for Sales Order ${order.orderNo}!`, 'success');
+      setCreateWoModalOrder(null);
+      await loadWorkOrders();
+      refetch();
+    } catch (err: any) {
+      toast(err?.message || 'Failed to create Work Order', 'error');
+    } finally {
+      setCreateWoSubmitting(false);
+    }
+  };
+
   const handleCreateWorkOrder = async (order: any, orderItems: any[]) => {
     try {
       if (order.status === 'Pending Advance Approval') {
@@ -1018,25 +1168,40 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
             {/* 2. Work Order in Factory */}
             {existingWO ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenActionOrderId(null)
-                  navigate(`/production/work-orders/${existingWO.id}`)
-                }}
-                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-amber-600 dark:text-amber-400 font-medium"
-              >
-                <span className="flex items-center gap-2">
-                  <Factory size={13} /> View Work Order ({existingWO.status || 'Active'})
-                </span>
-                <span className="text-[10px] font-mono px-1 py-0.2 bg-amber-500/10 border border-amber-500/20">WO</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionOrderId(null)
+                    navigate(`/production/work-orders/${existingWO.id}`)
+                  }}
+                  className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-amber-600 dark:text-amber-400 font-medium"
+                >
+                  <span className="flex items-center gap-2">
+                    <Factory size={13} /> View Work Order ({existingWO.status || 'Active'})
+                  </span>
+                  <span className="text-[10px] font-mono px-1 py-0.2 bg-amber-500/10 border border-amber-500/20">WO</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionOrderId(null)
+                    setPrintWorkOrderTarget(existingWO)
+                  }}
+                  className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-blue-600 dark:text-blue-400 font-medium"
+                >
+                  <span className="flex items-center gap-2">
+                    <Printer size={13} /> Print Work Order (Traveler)
+                  </span>
+                  <span className="text-[10px] font-mono px-1 py-0.2 bg-blue-500/10 border border-blue-500/20">Print</span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
                 onClick={() => {
                   setOpenActionOrderId(null)
-                  handleCreateWorkOrder(order, orderItems)
+                  openCreateWorkOrderPrompt(order, orderItems)
                 }}
                 className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
               >
@@ -2672,6 +2837,171 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             setActivePrintProforma(inv);
           }}
         />
+      )}
+
+      {/* Work Order Print / Job Traveler Modal */}
+      {printWorkOrderTarget && (
+        <WorkOrderPrintModal
+          isOpen={true}
+          onClose={() => setPrintWorkOrderTarget(null)}
+          workOrder={printWorkOrderTarget}
+          settings={settings}
+        />
+      )}
+
+      {/* Create Work Order Review Confirmation Modal */}
+      {createWoModalOrder && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <Factory size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+                    Issue Production Work Order
+                    <span className="font-mono text-xs px-2 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                      SO #${createWoModalOrder.orderNo}
+                    </span>
+                  </h2>
+                  <p className="text-[11px] text-muted">
+                    Review quotation line items and specifications before releasing to shop floor
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateWoModalOrder(null)}
+                className="p-1.5 text-muted hover:text-primary hover:bg-surface3 transition-colors rounded-none"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 custom-scrollbar text-xs">
+              {/* Order summary info */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-surface2/60 border border-theme-subtle">
+                <div>
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Customer</span>
+                  <span className="font-bold text-primary">${createWoModalOrder.customerName}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Quotation Reference</span>
+                  <span className="font-mono font-semibold text-secondary">${createWoModalOrder.quotationNo || createWoModalOrder.quoteId || 'Direct'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Customer PO #</span>
+                  <span className="font-mono font-semibold text-secondary">${createWoModalOrder.customerPoNo || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Target Delivery</span>
+                  <span className="font-mono font-semibold text-secondary">${createWoModalOrder.deliveryDate || 'TBD'}</span>
+                </div>
+              </div>
+
+              {/* Title & Priority inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                    Job Card Title
+                  </label>
+                  <input
+                    type="text"
+                    value={createWoJobTitle}
+                    onChange={(e) => setCreateWoJobTitle(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle rounded-none px-3 py-1.5 text-xs text-primary outline-none focus:border-amber-500 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                    Priority
+                  </label>
+                  <select
+                    value={createWoPriority}
+                    onChange={(e) => setCreateWoPriority(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle rounded-none px-3 py-1.5 text-xs text-primary outline-none focus:border-amber-500 font-semibold"
+                  >
+                    <option value="Normal">Normal</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Quotation Line Items & Descriptions */}
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1.5">
+                  Production Scope &amp; Descriptions ({createWoModalItems.length} item{createWoModalItems.length !== 1 ? 's' : ''})
+                </label>
+                <div className="border border-theme-subtle rounded-none overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-surface2/80 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted">
+                        <th className="py-1.5 px-2 text-center w-8">#</th>
+                        <th className="py-1.5 px-3 text-left">Quotation Description &amp; Scope</th>
+                        <th className="py-1.5 px-3 text-center w-16">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-theme-subtle">
+                      {createWoModalItems.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-surface2/40">
+                          <td className="py-2 px-2 text-center font-mono text-muted">{idx + 1}</td>
+                          <td className="py-2 px-3 font-medium text-primary whitespace-pre-line leading-relaxed">
+                            {item.description}
+                          </td>
+                          <td className="py-2 px-3 text-center font-mono font-bold text-primary">
+                            {item.qty}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Special Instructions / Notes */}
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1">
+                  Workshop Instructions / Notes (Optional)
+                </label>
+                <textarea
+                  value={createWoNotes}
+                  onChange={(e) => setCreateWoNotes(e.target.value)}
+                  placeholder="Special instructions for cutting, tolerances, finishing or delivery packaging..."
+                  rows={2}
+                  className="w-full bg-surface border border-theme-subtle rounded-none p-2.5 text-xs text-primary outline-none focus:border-amber-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2.5 px-5 py-3 border-t border-theme-subtle bg-surface2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateWoModalOrder(null)}
+                disabled={createWoSubmitting}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Factory}
+                onClick={submitCreateWorkOrder}
+                loading={createWoSubmitting}
+                className="text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                Confirm &amp; Issue Work Order
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Proforma Invoice Print / PDF View Modal */}
