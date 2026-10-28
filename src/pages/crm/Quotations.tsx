@@ -2608,6 +2608,7 @@ export const Quotations: React.FC = () => {
             <QuotationPrintView 
                data={((): any => {
                   const parsed = typeof previewData.quotation.data === 'string' ? JSON.parse(previewData.quotation.data) : previewData.quotation.data;
+                  parsed.status = previewData.quotation?.status || parsed.status || 'Draft';
                   if (parsed.taxEnabled && parsed.selectedProfileId && !parsed.selectedProfile && taxProfiles) {
                       parsed.selectedProfile = taxProfiles.find((p: any) => p.id === parsed.selectedProfileId);
                       if (parsed.selectedProfile) {

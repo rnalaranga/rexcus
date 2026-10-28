@@ -3061,7 +3061,8 @@ export const QuotationBuilder: React.FC = () => {
                            custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                            jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
                            custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
-                           bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+                           bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+                           status: currentQuote?.status || 'Draft'
                         }}
                         type="main"
                         lead={currentEntity || lead}
@@ -3118,7 +3119,8 @@ export const QuotationBuilder: React.FC = () => {
                custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
                jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
                custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
-               bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+               bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+               status: currentQuote?.status || 'Draft'
             }}
             type="main"
             lead={currentEntity || lead}

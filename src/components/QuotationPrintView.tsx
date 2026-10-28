@@ -92,6 +92,15 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
     (data.quotationNo && data.quotationNo.startsWith('PQ-'))
   );
 
+  const quoteStatus = (data.status || '').trim();
+  const isApproved = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(quoteStatus);
+  const showDraftWatermark = Boolean(
+    !isApproved && 
+    quoteStatus !== 'template' &&
+    quotationType !== 'template' &&
+    data.showDraftWatermark !== false
+  );
+
   let multiplier = 1;
   let unitPriceDivisor = 1;
   if (isProductQuote) {
@@ -397,6 +406,17 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
             flex: none !important;
             display: block !important;
           }
+          #print-section .draft-watermark {
+            display: flex !important;
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) rotate(-35deg) !important;
+            opacity: 0.12 !important;
+            z-index: 10 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
       `}</style>
       <div
@@ -411,7 +431,41 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           boxSizing: 'border-box'
         }}
       >
-        <div className="border border-black flex flex-col flex-1 justify-between print:min-h-0 print:h-auto print:block print:border-black" style={{ minHeight: '1040px' }}>
+        <div className="border border-black flex flex-col flex-1 justify-between print:min-h-0 print:h-auto print:block print:border-black relative overflow-hidden" style={{ minHeight: '1040px' }}>
+          
+          {/* DRAFT WATERMARK (CENTERED) */}
+          {showDraftWatermark && (
+            <div
+              className="draft-watermark"
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%) rotate(-35deg)',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                zIndex: 10,
+                opacity: 0.12,
+                color: '#000000',
+                fontSize: '110px',
+                fontWeight: 900,
+                fontFamily: 'Arial Black, Impact, sans-serif',
+                border: '8px dashed rgba(0, 0, 0, 0.4)',
+                padding: '14px 50px',
+                borderRadius: '24px',
+                letterSpacing: '0.15em',
+                textTransform: 'uppercase',
+                lineHeight: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'nowrap'
+              }}
+              aria-hidden="true"
+            >
+              DRAFT
+            </div>
+          )}
           
           {/* Header */}
           <div className="flex p-3 border-b border-black items-center print-no-break">
