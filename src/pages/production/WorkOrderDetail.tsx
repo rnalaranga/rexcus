@@ -33,6 +33,7 @@ import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrder
 import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
 import { WorkOrderFullBomAdjustModal } from '@/components/production/WorkOrderFullBomAdjustModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { useSettings } from '@/contexts/SettingsContext'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { Truck, ArrowLeftRight, Calculator } from 'lucide-react'
@@ -44,6 +45,7 @@ type DetailTab = 'bom' | 'routing' | 'materials' | 'qc_rework' | 'dispatches' | 
 export const WorkOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { settings } = useSettings()
 
   // Primary State
   const [workOrder, setWorkOrder] = useState<any>(null)
@@ -2742,6 +2744,7 @@ export const WorkOrderDetail: React.FC = () => {
           isOpen={showPrintTravelerModal}
           onClose={() => setShowPrintTravelerModal(false)}
           workOrder={wo}
+          settings={settings}
         />
       )}
     </div>

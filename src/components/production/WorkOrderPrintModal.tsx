@@ -50,7 +50,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-muted">
-                {workOrder.productName || workOrder.partName || 'Work Order'} &bull; Qty: {workOrder.quantity || workOrder.qty || 1} {workOrder.uom || 'Nos'}
+                {workOrder.productName || workOrder.partName || workOrder.title || 'Work Order'} &bull; Qty: {workOrder.jobQty || workOrder.quantity || workOrder.qty || 1} {workOrder.uom || 'Nos'}
               </p>
             </div>
           </div>

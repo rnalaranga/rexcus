@@ -18,6 +18,7 @@ import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdo
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { useSettings } from '@/contexts/SettingsContext'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
@@ -30,6 +31,7 @@ type StatusFilter = 'all' | 'planned' | 'in_progress' | 'qc_rework' | 'completed
 export const WorkOrders: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { settings } = useSettings()
 
   // Data State
   const [workOrders, setWorkOrders] = useState<any[]>([])
@@ -888,6 +890,7 @@ export const WorkOrders: React.FC = () => {
           isOpen={!!printWo}
           onClose={() => setPrintWo(null)}
           workOrder={printWo}
+          settings={settings}
         />
       )}
     </div>
