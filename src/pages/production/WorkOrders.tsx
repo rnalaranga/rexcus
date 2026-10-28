@@ -4,7 +4,7 @@ import {
   Factory, Plus, Search, Filter, Layers, Wrench, Clock, CheckCircle2, 
   AlertTriangle, RotateCcw, DollarSign, Package, ClipboardList, Play, 
   Scissors, ExternalLink, Trash2, Kanban, List, Calendar, Building, 
-  RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Eye, Sparkles, Printer
+  RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Eye, Sparkles, Printer, Camera
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -13,11 +13,13 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
-import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs } from '@/lib/api'
+import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs, fetchAllCustomerGRNs } from '@/lib/api'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 
@@ -39,6 +41,8 @@ export const WorkOrders: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
   const [mrs, setMrs] = useState<any[]>([])
+  const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
+  const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Filter & Search State
@@ -65,7 +69,7 @@ export const WorkOrders: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true)
     try {
-      const [wos, emps, machs, invs, custs, quotes, ords, invcs, matReqs] = await Promise.all([
+      const [wos, emps, machs, invs, custs, quotes, ords, invcs, matReqs, cGrns] = await Promise.all([
         fetchWorkOrders().catch(() => []),
         fetch(`${API_URL}/hr/employees`).then(r => r.json()).catch(() => []),
         fetch(`${API_URL}/production/machineries`).then(r => r.json()).catch(() => []),
@@ -74,8 +78,10 @@ export const WorkOrders: React.FC = () => {
         fetch(`${API_URL}/quotations`).then(r => r.json()).catch(() => []),
         fetchFinishedGoodsOrders().catch(() => []),
         fetchInvoices().catch(() => []),
-        fetchMRs().catch(() => [])
+        fetchMRs().catch(() => []),
+        fetchAllCustomerGRNs().catch(() => [])
       ])
+      setAllCustomerGrns(Array.isArray(cGrns) ? cGrns : [])
 
       setWorkOrders(Array.isArray(wos) ? wos : [])
       setEmployees(Array.isArray(emps) ? emps : [])
@@ -444,6 +450,35 @@ export const WorkOrders: React.FC = () => {
             <Eye size={12} className="mr-1 text-rex-600 dark:text-rex-400"/> Studio
           </Button>
 
+          {(() => {
+            const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
+              id: row.id,
+              orderNo: row.orderNo,
+              quoteId: row.sourceQuoteId || row.quotationId,
+              quotationNo: row.quotationNo || row.sourceQuoteNo,
+              leadId: row.leadId,
+              customerName: row.customerName
+            }, allCustomerGrns);
+            if (sPhotos.length === 0) return null;
+            return (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveViewingPhotos({
+                    photos: sPhotos,
+                    title: `Sample Photos - Work Order #${row.orderNo || row.id} (${matchedGrns.map((g: any) => g.id).join(', ')})`
+                  });
+                }}
+                className="text-xs font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 rounded-none h-7 px-2"
+                title={`View ${sPhotos.length} Customer Sample Photo(s)`}
+              >
+                <Camera size={12} className="mr-1 text-amber-500" /> Samples ({sPhotos.length})
+              </Button>
+            );
+          })()}
+
           <Button 
             variant="outline" 
             size="sm" 
@@ -728,6 +763,33 @@ export const WorkOrders: React.FC = () => {
                             <span className="text-muted font-mono">
                               {formatCurrency(cost.actualTotalCost || 0)}
                             </span>
+                            {(() => {
+                              const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
+                                id: wo.id,
+                                orderNo: wo.orderNo,
+                                quoteId: wo.sourceQuoteId || wo.quotationId,
+                                quotationNo: wo.quotationNo || wo.sourceQuoteNo,
+                                leadId: wo.leadId,
+                                customerName: wo.customerName
+                              }, allCustomerGrns);
+                              if (sPhotos.length === 0) return null;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveViewingPhotos({
+                                      photos: sPhotos,
+                                      title: `Sample Photos - Work Order #${wo.orderNo || wo.id} (${matchedGrns.map((g: any) => g.id).join(', ')})`
+                                    });
+                                  }}
+                                  className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5"
+                                  title={`View ${sPhotos.length} Customer Sample Photo(s)`}
+                                >
+                                  <Camera size={10} className="text-amber-500" /> Samples ({sPhotos.length})
+                                </button>
+                              );
+                            })()}
                             <span className="text-rex-600 dark:text-rex-400 hover:underline font-bold flex items-center gap-0.5">
                               Studio <ArrowRight size={11}/>
                             </span>
@@ -814,6 +876,13 @@ export const WorkOrders: React.FC = () => {
       </Modal>
 
       {/* ── WORK ORDER JOB TRAVELER PRINT MODAL ────────────────────────────────────── */}
+      <SamplePhotoViewerModal
+        isOpen={!!activeViewingPhotos}
+        onClose={() => setActiveViewingPhotos(null)}
+        photos={activeViewingPhotos?.photos || []}
+        title={activeViewingPhotos?.title || 'Sample Photos'}
+      />
+
       {printWo && (
         <WorkOrderPrintModal
           isOpen={!!printWo}

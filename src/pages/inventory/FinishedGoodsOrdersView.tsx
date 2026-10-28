@@ -6,7 +6,7 @@ import {
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
-  ShoppingBag, Receipt, UploadCloud, Paperclip
+  ShoppingBag, Receipt, UploadCloud, Paperclip, Camera
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -30,6 +30,8 @@ import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrint
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
 import { exportPdf } from '@/lib/exportPdf'
+import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -38,7 +40,8 @@ import {
   createWorkOrder,
   fetchWorkOrders,
   fetchPaymentReceipts,
-  deleteInvoice
+  deleteInvoice,
+  fetchAllCustomerGRNs
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -80,6 +83,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }, [searchParams])
   // Order Actions Dropdown state
   const [openActionOrderId, setOpenActionOrderId] = useState<string | null>(null)
+  const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
+  const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
+
+  useEffect(() => {
+    fetchAllCustomerGRNs().then(setAllCustomerGrns).catch(() => {});
+  }, [])
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
 
   useEffect(() => {
@@ -1082,6 +1091,36 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             >
               <Edit size={13} /> Edit Sales Order Details
             </button>
+
+            {/* View Sample Inspection Photos */}
+            {(() => {
+              const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
+                id: order.id,
+                orderNo: order.orderNo,
+                quoteId: order.quoteId,
+                quotationNo: order.quotationNo,
+                leadId: order.leadId,
+                customerName: order.customerName
+              }, allCustomerGrns);
+              if (sPhotos.length === 0) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionOrderId(null);
+                    setActionCoords(null);
+                    setActiveViewingPhotos({
+                      photos: sPhotos,
+                      title: `Sample Photos - Sales Order #${order.orderNo || order.id} (${matchedGrns.map((g: any) => g.id).join(', ')})`
+                    });
+                  }}
+                  className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-amber-600 dark:text-amber-400 font-semibold cursor-pointer"
+                >
+                  <Camera size={13} className="text-amber-500 shrink-0" />
+                  <span>View Sample Photos ({sPhotos.length})</span>
+                </button>
+              );
+            })()}
 
             {/* View PO Attachment if present */}
             {order.customerPoAttachment && (
@@ -2373,6 +2412,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           </form>
         </Modal>
       )}
+
+      {/* SAMPLE PHOTO VIEWER LIGHTBOX */}
+      <SamplePhotoViewerModal
+        isOpen={!!activeViewingPhotos}
+        onClose={() => setActiveViewingPhotos(null)}
+        photos={activeViewingPhotos?.photos || []}
+        title={activeViewingPhotos?.title || 'Sample Photos'}
+      />
 
       {/* SALES ORDER PRINT & PDF VIEW MODAL */}
       {printOrder && (

@@ -15,17 +15,19 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
 import { useLeads, useFollowups, useCustomers, useQuotations } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { printElement } from '@/lib/printElement'
 import { exportToPdf } from '@/lib/exportToPdf'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
-import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN } from '@/lib/api'
+import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN, deleteCustomerGRN } from '@/lib/api'
 import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
 const STAGE_LABELS: Record<string, string> = {
@@ -36,6 +38,22 @@ const STAGE_LABELS: Record<string, string> = {
 type ViewMode = 'kanban' | 'list'
 type PresetFilter = 'active' | 'hot' | 'stale' | 'won' | 'lost' | 'all'
 type CardDensity = 'detailed' | 'compact'
+
+export const getNextSampleGrnId = (existingGrns: any[] = [], currentList: any[] = []) => {
+  let maxNum = 0;
+  const all = [...(existingGrns || []), ...(currentList || [])];
+  for (const g of all) {
+    const id = g?.id;
+    if (typeof id === 'string') {
+      const m = id.match(/^(?:S-|GRN-)?(\d+)$/i);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    }
+  }
+  return `S-${(maxNum + 1).toString().padStart(4, '0')}`;
+};
 
 export const Leads: React.FC = () => {
   const navigate = useNavigate()
@@ -71,6 +89,8 @@ export const Leads: React.FC = () => {
     return leads.find((l: any) => l.id === selectedLeadId) || null;
   }, [leads, selectedLeadId])
   const { settings } = useSettings()
+  const { user } = useAuth()
+  const [deletedGrnIds, setDeletedGrnIds] = useState<string[]>([])
   const [updatingStage, setUpdatingStage] = useState(false)
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
   const [previewQuoteData, setPreviewQuoteData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
@@ -200,6 +220,7 @@ export const Leads: React.FC = () => {
   // Dedicated Collect Sample Modal State
   const [sampleModalLead, setSampleModalLead] = useState<any | null>(null);
   const [sampleModalData, setSampleModalData] = useState<any>({
+    id: '',
     quoteId: '',
     quoNo: '',
     items: [{ description: '', qty: 1, unit: 'Nos' }],
@@ -213,12 +234,14 @@ export const Leads: React.FC = () => {
 
   const openCollectSampleModal = async (lead: any) => {
     setSampleModalLead(lead);
+    const nextGrnId = getNextSampleGrnId(leadGrns);
     setSampleModalData({
+      id: nextGrnId,
       quoteId: '',
       quoNo: '',
       items: [{ description: '', qty: 1, unit: 'Nos' }],
       receivedAt: new Date().toISOString().slice(0, 10),
-      receivedBy: 'System Admin',
+      receivedBy: user?.name || 'System Admin',
       notes: '',
       photos: []
     });
@@ -244,6 +267,7 @@ export const Leads: React.FC = () => {
     setCollectingSample(true);
     try {
       const res = await createCustomerGRN({
+        id: sampleModalData.id,
         leadId: sampleModalLead.id,
         customerCompany: sampleModalLead.company,
         customerName: sampleModalLead.name,
@@ -252,7 +276,7 @@ export const Leads: React.FC = () => {
         quoNo: sampleModalData.quoNo || '',
         items: JSON.stringify(sampleModalData.items),
         receivedAt: sampleModalData.receivedAt,
-        receivedBy: sampleModalData.receivedBy,
+        receivedBy: sampleModalData.receivedBy || user?.name || 'System Admin',
         notes: sampleModalData.notes,
         photos: JSON.stringify(sampleModalData.photos || []),
         status: 'In Stock'
@@ -273,16 +297,47 @@ export const Leads: React.FC = () => {
 
   const openCreateModal = () => {
     setEditId(null)
-        setFormData({ name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', grnList: [] as any[] })
+    setDeletedGrnIds([])
+    setFormData({ 
+      name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', 
+      grnList: [] as any[] 
+    })
     setIsModalOpen(true)
   }
 
   const openEditModal = (lead: any) => {
     setEditId(lead.id)
-          setFormData({
-        name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '', priority: lead.priority, value: String(lead.value), stage: lead.stage, isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '',
-        grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => ({ id: g.id, items: (typeof g.items === 'string' ? (() => { try { return JSON.parse(g.items) } catch(e) { return [{description: g.items||'', qty: 1}] } })() : (Array.isArray(g.items) ? g.items : [{description: g.items||'', qty: 1}])), receivedBy: g.receivedBy || '', notes: g.notes || '' }))
+    setDeletedGrnIds([])
+    setFormData({
+      name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '', priority: lead.priority, value: String(lead.value), stage: lead.stage, isNewCustomer: false, address: lead.address || '', brNumber: lead.brNumber || '', financeContactName: lead.financeContactName || '', financeContactPhone: lead.financeContactPhone || '', industry: lead.industry || '',
+      grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => {
+        let items: any[] = [];
+        try {
+          items = typeof g.items === 'string' ? JSON.parse(g.items) : (Array.isArray(g.items) ? g.items : [{ description: g.items || '', qty: 1, unit: 'Nos' }]);
+        } catch(e) {
+          items = [{ description: g.items || '', qty: 1, unit: 'Nos' }];
+        }
+        let photos: any[] = [];
+        try {
+          if (typeof g.photos === 'string' && g.photos.startsWith('[')) {
+            photos = JSON.parse(g.photos);
+          } else if (Array.isArray(g.photos)) {
+            photos = g.photos;
+          }
+        } catch(e) {
+          photos = [];
+        }
+        return {
+          id: g.id,
+          isExisting: true,
+          items: items.length > 0 ? items : [{ description: '', qty: 1, unit: 'Nos' }],
+          receivedAt: g.receivedAt ? g.receivedAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+          receivedBy: g.receivedBy || user?.name || 'System Admin',
+          notes: g.notes || '',
+          photos: photos
+        };
       })
+    })
     setIsModalOpen(true)
   }
 
@@ -299,67 +354,105 @@ export const Leads: React.FC = () => {
         value: Number(formData.value) || 0,
         lastActivity: toMySQLDate(new Date())
       }
-      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
-        keysToRemove.forEach(k => delete (updatedLead as any)[k]);
-        await updateLead(editId, updatedLead)
-      } else {
+      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer'];
+      keysToRemove.forEach(k => delete (updatedLead as any)[k]);
+      await updateLead(editId, updatedLead)
+    } else {
       // Create new lead
       const newLead = {
         id: 'LEAD-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
         ...formData,
         value: Number(formData.value) || 0,
         probability: 10,
-        assignedTo: 'System Admin',
+        assignedTo: user?.name || 'System Admin',
         lastActivity: toMySQLDate(new Date())
       }
       currentLeadId = newLead.id;
       if (formData.isNewCustomer) {
-          const custId = 'CUST-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-          try {
-             const { createCustomer } = await import('@/lib/api');
-             await createCustomer({
-                id: custId,
-                name: formData.name,
-                company: formData.company,
-                email: formData.email,
-                phone: formData.phone,
-                address: formData.address || '',
-                brNumber: formData.brNumber || '',
-                financeContactName: formData.financeContactName || '',
-                financeContactPhone: formData.financeContactPhone || '',
-                industry: formData.industry || '',
-                status: 'active', segment: 'sme', lifetimeValue: 0, totalRevenue: 0, openDeals: 0, 
-                lastOrder: new Date().toISOString().slice(0, 19).replace('T', ' '), joinDate: new Date().toISOString().slice(0, 19).replace('T', ' '), 
-                avatar: (formData.name || '').substring(0,2).toUpperCase(),
-                vat: formData.vat, svat: formData.svat, creditLimit: 0, creditDays: 30, rating: 0, requiresAdvance: true, currency: 'LKR', isForeign: false
-             });
-             newLead.customerId = custId;
-          } catch(e) {}
-        }
-
-        const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer', 'address', 'brNumber', 'financeContactName', 'financeContactPhone', 'industry'];
-        keysToRemove.forEach(k => delete (newLead as any)[k]);
-        await createLead(newLead)
+        const custId = 'CUST-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        try {
+          const { createCustomer } = await import('@/lib/api');
+          await createCustomer({
+            id: custId,
+            name: formData.name,
+            company: formData.company,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address || '',
+            brNumber: formData.brNumber || '',
+            financeContactName: formData.financeContactName || '',
+            financeContactPhone: formData.financeContactPhone || '',
+            industry: formData.industry || '',
+            status: 'active', segment: 'sme', lifetimeValue: 0, totalRevenue: 0, openDeals: 0, 
+            lastOrder: new Date().toISOString().slice(0, 19).replace('T', ' '), joinDate: new Date().toISOString().slice(0, 19).replace('T', ' '), 
+            avatar: (formData.name || '').substring(0,2).toUpperCase(),
+            vat: formData.vat, svat: formData.svat, creditLimit: 0, creditDays: 30, rating: 0, requiresAdvance: true, currency: 'LKR', isForeign: false
+          });
+          newLead.customerId = custId;
+        } catch(e) {}
       }
 
+      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer'];
+      keysToRemove.forEach(k => delete (newLead as any)[k]);
+      await createLead(newLead)
+    }
+
+    // Process removed customer GRNs
+    if (deletedGrnIds.length > 0) {
+      for (const delId of deletedGrnIds) {
+        try {
+          await deleteCustomerGRN(delId);
+        } catch (e) {
+          console.error('Failed to delete sample GRN:', e);
+        }
+      }
+      setDeletedGrnIds([]);
+    }
+
+    // Save/Update samples
+    if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
+      for (const g of formData.grnList) {
+        const isExisting = g.isExisting || (g.id && leadGrns.some((lg: any) => lg.id === g.id));
+        const itemsPayload = typeof g.items === 'string' ? g.items : JSON.stringify(g.items || []);
+        const photosPayload = Array.isArray(g.photos) ? JSON.stringify(g.photos) : (typeof g.photos === 'string' ? g.photos : '[]');
+
+        if (isExisting && g.id) {
+          await updateCustomerGRN(g.id, {
+            customerName: formData.name,
+            customerCompany: formData.company,
+            customerPhone: formData.phone || '',
+            items: itemsPayload,
+            receivedBy: g.receivedBy || user?.name || 'System Admin',
+            receivedAt: g.receivedAt || new Date().toISOString().slice(0, 10),
+            notes: g.notes || '',
+            photos: photosPayload
+          });
+        } else {
+          await createCustomerGRN({
+            id: g.id || undefined,
+            quoteId: '',
+            quoNo: '',
+            leadId: currentLeadId,
+            customerName: formData.name,
+            customerCompany: formData.company,
+            customerPhone: formData.phone || '',
+            items: itemsPayload,
+            receivedBy: g.receivedBy || user?.name || 'System Admin',
+            receivedAt: g.receivedAt || new Date().toISOString().slice(0, 10),
+            notes: g.notes || '',
+            photos: photosPayload,
+            status: 'In Stock'
+          });
+        }
+      }
+    }
     
-      if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
-        for (const g of formData.grnList) {
-          if (g.id) {
-            await updateCustomerGRN(g.id, { items: typeof g.items === 'string' ? g.items : JSON.stringify(g.items), receivedBy: g.receivedBy, notes: g.notes });
-          } else {
-            await createCustomerGRN({
-              id: 'GRN-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
-              quoteId: '', quoNo: '', leadId: currentLeadId,
-              items: typeof g.items === 'string' ? g.items : JSON.stringify(g.items), receivedBy: g.receivedBy, notes: g.notes
-            });
-          }
-        }
-      }
-      
-      fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
-      
-      await refetch()
+    try {
+      const updatedGrns = await fetchAllCustomerGRNs();
+      setLeadGrns(updatedGrns);
+    } catch(e) {}
+    
+    await refetch()
     setSubmitting(false)
     setIsModalOpen(false)
   }
@@ -772,6 +865,23 @@ export const Leads: React.FC = () => {
       align: 'right',
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+          {(() => {
+            const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({ id: row.id, leadId: row.id }, leadGrns);
+            if (sPhotos.length === 0) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => setActiveViewingPhotos({
+                  photos: sPhotos,
+                  title: `Sample Photos - ${row.company || row.name} (${matchedGrns.map(g => g.id).join(', ')})`
+                })}
+                className="px-2 py-1 text-xs font-semibold rounded-none bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                title={`View ${sPhotos.length} Customer Sample Photo(s)`}
+              >
+                <Camera size={12} className="text-amber-500" /> Photos ({sPhotos.length})
+              </button>
+            );
+          })()}
           <button
             type="button"
             onClick={() => openCollectSampleModal(row)}
@@ -1330,6 +1440,26 @@ export const Leads: React.FC = () => {
 
                         {/* Action buttons on kanban card */}
                         <div className="mt-2 pt-1.5 border-t border-theme-subtle flex items-center gap-1.5">
+                          {(() => {
+                            const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({ id: lead.id, leadId: lead.id }, leadGrns);
+                            if (sPhotos.length === 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveViewingPhotos({
+                                    photos: sPhotos,
+                                    title: `Sample Photos - ${lead.company || lead.name} (${matchedGrns.map(g => g.id).join(', ')})`
+                                  });
+                                }}
+                                className="text-[10px] font-semibold py-1 px-1.5 rounded-none bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                title={`View ${sPhotos.length} Sample Photos`}
+                              >
+                                <Camera size={11} className="text-amber-500" /> Photos ({sPhotos.length})
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openCollectSampleModal(lead); }}
@@ -1604,72 +1734,241 @@ export const Leads: React.FC = () => {
             {/* Section: Customer Samples */}
             <div>
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-theme-subtle">
-                <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
-                  <Package size={14} className="text-rex-500" /> Customer Samples
-                </h3>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setFormData({...formData, grnList: [...(formData.grnList || []), { items: [{description: '', qty: 1}], receivedBy: '', notes: '' }]})} className="h-6 text-[10px]"><Plus size={12}/> Add Sample</Button>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                    <Package size={14} className="text-rex-500" /> Customer Samples (GRN)
+                  </h3>
+                  {formData.grnList && formData.grnList.length > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rex-100 dark:bg-rex-900/50 text-rex-700 dark:text-rex-300 border border-rex-200 dark:border-rex-800">
+                      {formData.grnList.length}
+                    </span>
+                  )}
+                </div>
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    const nextId = getNextSampleGrnId(leadGrns, formData.grnList);
+                    setFormData({
+                      ...formData, 
+                      grnList: [
+                        ...(formData.grnList || []), 
+                        { 
+                          id: nextId, 
+                          isExisting: false, 
+                          items: [{ description: '', qty: 1, unit: 'Nos' }], 
+                          receivedAt: new Date().toISOString().slice(0, 10),
+                          receivedBy: user?.name || 'System Admin', 
+                          notes: '',
+                          photos: []
+                        }
+                      ]
+                    });
+                  }} 
+                  className="h-6 text-[10px] flex items-center gap-1 font-semibold text-rex-600 hover:text-rex-500 hover:bg-rex-50 dark:hover:bg-rex-950/30"
+                >
+                  <Plus size={12}/> Add Sample
+                </Button>
               </div>
               
-              <div className="space-y-3">
-                {formData.grnList?.map((g: any, i: number) => (
-                  <div key={i} className="p-3 bg-surface2 rounded-lg border border-theme-subtle grid grid-cols-2 gap-3 relative group">
-                    <button type="button" onClick={() => {
-                        const newList = [...formData.grnList];
-                        newList.splice(i, 1);
-                        setFormData({...formData, grnList: newList});
-                    }} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12}/></button>
-                    
-                    <div className="space-y-1.5 col-span-2">
-                      <div className="flex justify-between items-center mb-1">
-                         <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Sample Items <span className="text-rex-500">*</span></label>
-                         <Button type="button" variant="ghost" size="sm" onClick={() => {
-                            const l = [...formData.grnList];
-                            if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
-                            l[i].items.push({description: '', qty: 1});
-                            setFormData({...formData, grnList: l});
-                         }} className="h-5 text-[9px] py-0 px-1"><Plus size={10} className="mr-1"/> Add Item</Button>
+              <div className="space-y-4">
+                {formData.grnList?.map((g: any, i: number) => {
+                  const grnNumber = g.id || getNextSampleGrnId(leadGrns, formData.grnList?.slice(0, i));
+                  const sampleItems = Array.isArray(g.items) 
+                    ? g.items 
+                    : (typeof g.items === 'string' 
+                        ? (() => { try { return JSON.parse(g.items) } catch(e) { return [{ description: g.items || '', qty: 1, unit: 'Nos' }] } })() 
+                        : [{ description: '', qty: 1, unit: 'Nos' }]);
+
+                  return (
+                    <div key={g.id || i} className="p-3.5 bg-surface2/70 rounded-lg border border-theme-subtle space-y-3 relative group transition-all shadow-sm">
+                      {/* Top Header of Sample Card: GRN Number and Actions */}
+                      <div className="flex items-center justify-between pb-2 border-b border-theme-subtle">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded text-[11px] font-mono font-bold bg-rex-50 text-rex-600 dark:bg-rex-950/60 dark:text-rex-300 border border-rex-300 dark:border-rex-700 flex items-center gap-1.5 shadow-sm">
+                            <Package size={12} className="text-rex-500" />
+                            GRN #{grnNumber}
+                          </span>
+                          <span className="text-[10.5px] text-muted font-medium">Customer Sample Goods Receipt</span>
+                          {g.isExisting && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
+                              Saved in GRN
+                            </span>
+                          )}
+                        </div>
+
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            if (g.isExisting && g.id) {
+                              setDeletedGrnIds(prev => [...prev, g.id]);
+                            }
+                            const newList = [...formData.grnList];
+                            newList.splice(i, 1);
+                            setFormData({...formData, grnList: newList});
+                          }} 
+                          className="text-red-500 hover:text-red-600 p-1 hover:bg-red-500/10 rounded transition-colors"
+                          title="Remove sample"
+                        >
+                          <Trash2 size={13}/>
+                        </button>
                       </div>
+                      
+                      {/* Items table */}
                       <div className="space-y-1.5">
-                         {(Array.isArray(g.items) ? g.items : (typeof g.items === 'string' ? (() => { try { return JSON.parse(g.items) } catch(e) { return [{description: g.items||'', qty: 1}] } })() : [{description: g.items||'', qty: 1}])).map((item: any, idx: number) => (
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                            Sample Items <span className="text-rex-500">*</span>
+                          </label>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => {
+                              const l = [...formData.grnList];
+                              const curItems = Array.isArray(l[i].items) ? [...l[i].items] : [{ description: '', qty: 1, unit: 'Nos' }];
+                              curItems.push({ description: '', qty: 1, unit: 'Nos' });
+                              l[i].items = curItems;
+                              setFormData({ ...formData, grnList: l });
+                            }} 
+                            className="h-5 text-[9px] py-0 px-1.5"
+                          >
+                            <Plus size={10} className="mr-1"/> Add Item
+                          </Button>
+                        </div>
+                        <div className="space-y-1.5">
+                          {sampleItems.map((item: any, idx: number) => (
                             <div key={idx} className="flex gap-2 items-center">
-                               <input className="input-base text-xs flex-1 py-1 h-7" placeholder="Item description" value={item.description} onChange={e => {
+                              <input 
+                                className="input-base text-xs flex-1 py-1 h-7" 
+                                placeholder="Item description (e.g. Flange Part, Bracket Sample)" 
+                                value={item.description} 
+                                onChange={e => {
                                   const l = [...formData.grnList];
-                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
-                                  l[i].items[idx].description = e.target.value;
-                                  setFormData({...formData, grnList: l});
-                               }} />
-                               <input type="number" className="input-base text-xs w-16 py-1 h-7" placeholder="Qty" value={item.qty} onChange={e => {
+                                  const curItems = Array.isArray(l[i].items) ? [...l[i].items] : [...sampleItems];
+                                  curItems[idx] = { ...curItems[idx], description: e.target.value };
+                                  l[i].items = curItems;
+                                  setFormData({ ...formData, grnList: l });
+                                }} 
+                              />
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                className="input-base text-xs w-16 py-1 h-7 text-center font-mono" 
+                                placeholder="Qty" 
+                                value={item.qty} 
+                                onChange={e => {
                                   const l = [...formData.grnList];
-                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
-                                  l[i].items[idx].qty = Number(e.target.value);
-                                  setFormData({...formData, grnList: l});
-                               }} />
-                               <button type="button" onClick={() => {
+                                  const curItems = Array.isArray(l[i].items) ? [...l[i].items] : [...sampleItems];
+                                  curItems[idx] = { ...curItems[idx], qty: Number(e.target.value) };
+                                  l[i].items = curItems;
+                                  setFormData({ ...formData, grnList: l });
+                                }} 
+                              />
+                              <input 
+                                className="input-base text-xs w-16 py-1 h-7 text-center" 
+                                placeholder="Unit" 
+                                value={item.unit || 'Nos'} 
+                                onChange={e => {
                                   const l = [...formData.grnList];
-                                  if (!Array.isArray(l[i].items)) l[i].items = typeof l[i].items === 'string' ? (() => { try { return JSON.parse(l[i].items) } catch(e) { return [{description: l[i].items||'', qty: 1}] } })() : (Array.isArray(l[i].items) ? l[i].items : [{description: l[i].items||'', qty: 1}]);
-                                  l[i].items.splice(idx, 1);
-                                  setFormData({...formData, grnList: l});
-                               }} className="text-red-400 hover:text-red-600"><X size={12} /></button>
+                                  const curItems = Array.isArray(l[i].items) ? [...l[i].items] : [...sampleItems];
+                                  curItems[idx] = { ...curItems[idx], unit: e.target.value };
+                                  l[i].items = curItems;
+                                  setFormData({ ...formData, grnList: l });
+                                }} 
+                              />
+                              {sampleItems.length > 1 && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => {
+                                    const l = [...formData.grnList];
+                                    const curItems = Array.isArray(l[i].items) ? [...l[i].items] : [...sampleItems];
+                                    curItems.splice(idx, 1);
+                                    l[i].items = curItems;
+                                    setFormData({ ...formData, grnList: l });
+                                  }} 
+                                  className="text-red-400 hover:text-red-600 p-0.5"
+                                >
+                                  <X size={13} />
+                                </button>
+                              )}
                             </div>
-                         ))}
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Received Date, Received By, Notes */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                            Received Date <span className="text-rex-500">*</span>
+                          </label>
+                          <input 
+                            type="date" 
+                            value={g.receivedAt ? g.receivedAt.slice(0, 10) : new Date().toISOString().slice(0, 10)} 
+                            onChange={e => {
+                              const l = [...formData.grnList];
+                              l[i].receivedAt = e.target.value;
+                              setFormData({ ...formData, grnList: l });
+                            }} 
+                            className="w-full input-base text-xs py-1 h-8" 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                            Received By <span className="text-rex-500">*</span>
+                          </label>
+                          <input 
+                            type="text" 
+                            required 
+                            placeholder="Employee name" 
+                            value={g.receivedBy || ''} 
+                            onChange={e => {
+                              const l = [...formData.grnList]; 
+                              l[i].receivedBy = e.target.value; 
+                              setFormData({...formData, grnList: l});
+                            }} 
+                            className="w-full input-base text-xs py-1 h-8" 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Notes</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Dimensions verification" 
+                            value={g.notes || ''} 
+                            onChange={e => {
+                              const l = [...formData.grnList]; 
+                              l[i].notes = e.target.value; 
+                              setFormData({...formData, grnList: l});
+                            }} 
+                            className="w-full input-base text-xs py-1 h-8" 
+                          />
+                        </div>
+                      </div>
+
+                      {/* Sample Photos Upload Section */}
+                      <div className="pt-2 border-t border-theme-subtle">
+                        <SamplePhotoUploadSection
+                          photos={g.photos || []}
+                          onChange={photos => {
+                            const l = [...formData.grnList];
+                            l[i].photos = photos;
+                            setFormData({ ...formData, grnList: l });
+                          }}
+                          onPreview={(p) => setActiveViewingPhotos({ photos: g.photos || [], title: `Sample ${grnNumber} Photos` })}
+                          maxPhotos={8}
+                        />
                       </div>
                     </div>
-                    <div className="space-y-1.5 col-span-1">
-                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Received By <span className="text-rex-500">*</span></label>
-                      <input type="text" required placeholder="Name of employee" value={g.receivedBy} onChange={e => {
-                        const l = [...formData.grnList]; l[i].receivedBy = e.target.value; setFormData({...formData, grnList: l});
-                      }} className="w-full input-base text-xs py-1.5 h-8" />
-                    </div>
-                    <div className="space-y-1.5 col-span-1">
-                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Notes</label>
-                      <input type="text" placeholder="Optional notes" value={g.notes} onChange={e => {
-                        const l = [...formData.grnList]; l[i].notes = e.target.value; setFormData({...formData, grnList: l});
-                      }} className="w-full input-base text-xs py-1.5 h-8" />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
+
                 {(!formData.grnList || formData.grnList.length === 0) && (
-                  <p className="text-xs text-muted text-center py-2 bg-surface rounded border border-dashed border-theme-subtle">No samples added yet.</p>
+                  <p className="text-xs text-muted text-center py-3 bg-surface rounded border border-dashed border-theme-subtle">
+                    No physical samples added yet. Click &quot;+ Add Sample&quot; to inward customer samples with GRN and photos.
+                  </p>
                 )}
               </div>
             </div>
@@ -1860,9 +2159,15 @@ export const Leads: React.FC = () => {
                 <p className="text-xs font-bold text-primary">{sampleModalLead.company}</p>
                 <p className="text-[11px] text-muted">{sampleModalLead.name} · {sampleModalLead.id}</p>
               </div>
-              <Badge variant="warning" className="text-xs font-mono font-bold">
-                {sampleModalLead.stage.toUpperCase()}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded bg-rex-50 text-rex-600 dark:bg-rex-950/60 dark:text-rex-300 border border-rex-300 dark:border-rex-700 flex items-center gap-1.5 shadow-sm">
+                  <Package size={13} className="text-rex-500" />
+                  GRN #{sampleModalData.id || getNextSampleGrnId(leadGrns)}
+                </span>
+                <Badge variant="warning" className="text-xs font-mono font-bold">
+                  {sampleModalLead.stage.toUpperCase()}
+                </Badge>
+              </div>
             </div>
 
             {/* Quotation Link if exists */}
@@ -2508,6 +2813,15 @@ export const Leads: React.FC = () => {
               lead={previewQuoteData.lead}
               settings={settings}
             />
+            {previewQuoteData.quotation?.status === 'Pending Approval' && (
+              <div className="w-full mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+                <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  <strong>Approval Required:</strong> This quotation has been sent for approval and is currently <strong>Pending Approval</strong>. Exporting and printing are locked until approved.
+                </span>
+              </div>
+            )}
+
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 pb-4 border-t border-theme-subtle pt-6">
               <Button
                 variant="outline"
@@ -2532,20 +2846,32 @@ export const Leads: React.FC = () => {
                 <Button 
                   variant="ghost" 
                   size="sm"
+                  disabled={previewQuoteData.quotation?.status === 'Pending Approval'}
                   onClick={async () => {
+                    if (previewQuoteData.quotation?.status === 'Pending Approval') {
+                      alert('This quotation is currently Pending Approval and cannot be exported until approved.');
+                      return;
+                    }
                     const quoteNo = previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || 'Quote';
                     const { exportPdf } = await import('@/lib/exportPdf');
                     await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
                   }}
-                  className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
+                  className={`text-xs font-semibold ${previewQuoteData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed bg-surface border border-theme-subtle' : 'bg-surface border border-theme-subtle hover:bg-surface2'}`}
                 >
                   Export PDF
                 </Button>
                 <Button 
                   variant="primary" 
                   size="sm"
-                  onClick={() => printElement('print-section', previewQuoteData?.quotation?.quotationNo || 'Quotation')}
-                  className="text-xs font-bold"
+                  disabled={previewQuoteData.quotation?.status === 'Pending Approval'}
+                  onClick={() => {
+                    if (previewQuoteData.quotation?.status === 'Pending Approval') {
+                      alert('This quotation is currently Pending Approval and cannot be printed until approved.');
+                      return;
+                    }
+                    printElement('print-section', previewQuoteData?.quotation?.quotationNo || 'Quotation');
+                  }}
+                  className={`text-xs font-bold ${previewQuoteData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   Print Quotation
                 </Button>

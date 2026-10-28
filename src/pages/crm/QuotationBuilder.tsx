@@ -367,7 +367,14 @@ export const QuotationBuilder: React.FC = () => {
   const [quoDate, setQuoDate] = useState(new Date().toISOString().split('T')[0])
   const [vatNo, setVatNo] = useState(lead?.vat || '')
   const [tinNo, setTinNo] = useState(lead?.svat || '')
-  const [customerAddress, setCustomerAddress] = useState(lead?.address || '')
+  const [customerAddress, setCustomerAddress] = useState(() => {
+    if (lead?.address) return lead.address;
+    if (lead?.customerId && customers) {
+      const c = customers.find((cust: any) => cust.id === lead.customerId);
+      if (c?.address) return c.address;
+    }
+    return '';
+  })
   const [quotationNo, setQuotationNo] = useState('')
   const [jobQty, setJobQty] = useState('1')
   const [attention, setAttention] = useState('')
@@ -589,15 +596,20 @@ export const QuotationBuilder: React.FC = () => {
   useEffect(() => {
      if (leadId && lead) {
         const isCust = leadId.startsWith('CUST-') || customers?.some(c => c.id === leadId);
+        const linkedCust = !isCust && lead.customerId ? customers?.find(c => c.id === lead.customerId) : null;
         setClientType(isCust ? 'customer' : 'lead');
-        setCustomerName(lead.company || lead.name || '');
-        setCustomerAddress(lead.address || '');
+        setCustomerName(lead.company || lead.name || linkedCust?.company || linkedCust?.name || '');
+        setCustomerAddress(lead.address || linkedCust?.address || '');
         setSelectedLeadId(lead.id);
-        if (!attention && lead.name) setAttention(lead.name);
-        if (lead.vat) setVatNo(lead.vat);
-        if (lead.svat || lead.tin) setTinNo(lead.svat || lead.tin);
+        if (!attention && (lead.name || linkedCust?.name)) setAttention(lead.name || linkedCust?.name || '');
+        if (lead.vat || linkedCust?.vat) setVatNo(lead.vat || linkedCust?.vat || '');
+        if (lead.svat || lead.tin || linkedCust?.svat || linkedCust?.tin) setTinNo(lead.svat || lead.tin || linkedCust?.svat || linkedCust?.tin || '');
+        if (linkedCust) {
+          if (linkedCust.paymentTerms) setCustTerms(linkedCust.paymentTerms);
+          if (linkedCust.deliveryTerms) setCustDelivery(linkedCust.deliveryTerms);
+        }
         if (!quoteIdParam && !quotationNo) {
-          const cust = isCust ? customers?.find(c => c.id === leadId) || lead : null;
+          const cust = isCust ? customers?.find(c => c.id === leadId) || lead : (linkedCust || null);
           fetchNextDocumentNumber('quotation', {
             userPrefix: user?.prefix,
             customerPrefix: cust?.prefix,
@@ -3138,6 +3150,15 @@ export const QuotationBuilder: React.FC = () => {
             </div>
           )}
 
+          {currentQuote?.status === 'Pending Approval' && (
+            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+              <span>
+                <strong>Approval Required:</strong> This quotation has been submitted for approval and is currently <strong>Pending Approval</strong>. Emailing to customer, exporting PDF, and printing are locked until approved.
+              </span>
+            </div>
+          )}
+
           <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
             <Button 
               variant="ghost" 
@@ -3152,7 +3173,7 @@ export const QuotationBuilder: React.FC = () => {
               }} 
               className={`bg-surface border border-theme-subtle/40 font-semibold ${
                 !isApproved 
-                  ? 'opacity-40 cursor-not-allowed text-muted' 
+                  ? 'opacity-40 cursor-not-allowed text-muted pointer-events-none' 
                   : 'hover:bg-surface2 text-blue-600'
               }`}
               title={!isApproved ? `Quotation is "${currentQuote?.status || 'Draft'}". Must be Approved to email.` : 'Email Customer'}
@@ -3173,7 +3194,7 @@ export const QuotationBuilder: React.FC = () => {
               }} 
               className={`bg-surface border border-theme-subtle/40 font-semibold ${
                 !isApproved 
-                  ? 'opacity-40 cursor-not-allowed text-muted' 
+                  ? 'opacity-40 cursor-not-allowed text-muted pointer-events-none' 
                   : 'hover:bg-surface2'
               }`}
               title={!isApproved ? `Quotation is "${currentQuote?.status || 'Draft'}". Must be Approved to export PDF.` : 'Export PDF'}
@@ -3192,7 +3213,7 @@ export const QuotationBuilder: React.FC = () => {
                 }
                 printElement('print-section', quotationNo || 'Quotation');
               }}
-              className={!isApproved ? 'opacity-40 cursor-not-allowed' : ''}
+              className={!isApproved ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}
               title={!isApproved ? `Quotation is "${currentQuote?.status || 'Draft'}". Must be Approved to print.` : 'Print Quotation'}
             >
               Print Quotation

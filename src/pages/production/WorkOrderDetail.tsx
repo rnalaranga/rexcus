@@ -5,7 +5,7 @@ import {
   AlertTriangle, RotateCcw, DollarSign, Package, ClipboardList, Play, 
   Pause, Check, Scissors, ExternalLink, Trash2, Calendar, Building, 
   RefreshCw, TrendingUp, ShieldCheck, ArrowRight, Printer, Sparkles, 
-  User, Cpu, AlertCircle, FileText, ChevronRight, ChevronDown, CheckSquare, PackageCheck
+  User, Cpu, AlertCircle, FileText, ChevronRight, ChevronDown, CheckSquare, PackageCheck, Camera
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -33,6 +33,8 @@ import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrder
 import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
 import { WorkOrderFullBomAdjustModal } from '@/components/production/WorkOrderFullBomAdjustModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
+import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { Truck, ArrowLeftRight, Calculator } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
@@ -68,6 +70,14 @@ export const WorkOrderDetail: React.FC = () => {
   const [showPartialDispatchModal, setShowPartialDispatchModal] = useState(false)
   const [showPrintTravelerModal, setShowPrintTravelerModal] = useState(false)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
+  const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
+  const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
+
+  useEffect(() => {
+    import('@/lib/api').then(({ fetchAllCustomerGRNs }) => {
+      fetchAllCustomerGRNs().then(setAllCustomerGrns).catch(() => {});
+    });
+  }, [])
   const actionsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1111,6 +1121,37 @@ export const WorkOrderDetail: React.FC = () => {
                 )}
 
                 <div className="my-1 border-t border-theme-subtle" />
+
+                {(() => {
+                  const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
+                    id: wo?.id,
+                    orderNo: wo?.orderNo,
+                    quoteId: wo?.sourceQuoteId || wo?.quotationId,
+                    quotationNo: wo?.quotationNo || wo?.sourceQuoteNo,
+                    leadId: wo?.leadId,
+                    customerName: wo?.customerName
+                  }, allCustomerGrns);
+                  if (sPhotos.length === 0) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActionsMenu(false);
+                        setActiveViewingPhotos({
+                          photos: sPhotos,
+                          title: `Sample Photos - Work Order #${wo?.orderNo || wo?.id} (${matchedGrns.map(g => g.id).join(', ')})`
+                        });
+                      }}
+                      className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-600 dark:text-amber-400 cursor-pointer transition-colors"
+                    >
+                      <Camera size={14} className="text-amber-500 shrink-0" />
+                      <div>
+                        <span className="font-semibold block">View Sample Photos ({sPhotos.length})</span>
+                        <span className="text-[10px] text-muted">Customer physical sample inspection photos</span>
+                      </div>
+                    </button>
+                  );
+                })()}
 
                 <button
                   type="button"
@@ -2686,6 +2727,14 @@ export const WorkOrderDetail: React.FC = () => {
           }}
         />
       )}
+
+      {/* ── SAMPLE PHOTO LIGHTBOX VIEWER ── */}
+      <SamplePhotoViewerModal
+        isOpen={!!activeViewingPhotos}
+        onClose={() => setActiveViewingPhotos(null)}
+        photos={activeViewingPhotos?.photos || []}
+        title={activeViewingPhotos?.title || 'Sample Photos'}
+      />
 
       {/* ── PRODUCTION WORK ORDER & JOB TRAVELER PRINT MODAL ──────── */}
       {showPrintTravelerModal && (
