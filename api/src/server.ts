@@ -2456,7 +2456,7 @@ app.post('/api/customers', async (req, res) => {
     data.creditLimitStatus = isPending ? 'pending' : 'approved';
 
     const [result] = await db.query('INSERT INTO customers SET ?', data);
-    res.json({ success: true, id: data.id, invoice: safeData });
+    res.json({ success: true, id: data.id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
