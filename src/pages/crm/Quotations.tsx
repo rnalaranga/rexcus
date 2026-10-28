@@ -34,6 +34,9 @@ import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
+import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
+import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
+import { FileSpreadsheet } from 'lucide-react'
 
 
 export const Quotations: React.FC = () => {
@@ -65,6 +68,8 @@ export const Quotations: React.FC = () => {
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
   const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
   const [viewPoModalData, setViewPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
+  const [advanceProformaModalOrder, setAdvanceProformaModalOrder] = useState<any | null>(null)
+  const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
 
   // Rejection modal state
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
@@ -130,6 +135,50 @@ export const Quotations: React.FC = () => {
   }
 
   
+  const handleGenerateAdvanceProforma = (group: any, latestMain: any) => {
+    let quoteData: any = {};
+    try {
+      quoteData = typeof latestMain?.data === 'string' ? JSON.parse(latestMain.data || '{}') : (latestMain?.data || {});
+    } catch(e) {}
+
+    const quoteTotal = Number(
+      latestMain?.totalPrice || 
+      latestMain?.totalAmount || 
+      quoteData?.custWithSSCL || 
+      quoteData?.custTotal || 
+      0
+    );
+
+    const lead = leads.find((l: any) => l.id === group?.leadId);
+    const custId = group?.leadId || (lead as any)?.customerId;
+    const cust = customers.find((c: any) => c.id === custId || (c.company && group?.clientName && c.company.toLowerCase() === group.clientName.toLowerCase()) || (c.name && group?.clientName && c.name.toLowerCase() === group.clientName.toLowerCase()));
+
+    const targetOrder = {
+      id: latestMain?.id,
+      orderNo: group?.quoNo || latestMain?.quotationNo || latestMain?.docNo,
+      quotationNo: group?.quoNo || latestMain?.quotationNo || latestMain?.docNo,
+      quoteId: latestMain?.id,
+      customerId: cust?.id || group?.leadId || null,
+      matchedCustomerId: cust?.id || group?.leadId || null,
+      customerName: cust?.name || group?.clientName || latestMain?.leadName || 'Valued Customer',
+      customerCompany: cust?.company || group?.clientName || latestMain?.leadCompany || cust?.name || 'Valued Customer',
+      deliveryAddress: cust?.address || group?.address || latestMain?.address || '',
+      customerAddress: cust?.address || group?.address || latestMain?.address || '',
+      customerPhone: cust?.phone || group?.phone || latestMain?.phone || '',
+      customerEmail: cust?.email || group?.email || latestMain?.email || '',
+      customerVat: cust?.vat || '',
+      totalPrice: quoteTotal,
+      totalAmount: quoteTotal,
+      taxProfileId: quoteData?.taxProfileId || null,
+      items: quoteData?.custItems || quoteData?.items || [],
+      productName: quoteData?.subject || `Quotation #${group?.quoNo}`,
+      targetDeliveryDate: quoteData?.deliveryDate || quoteData?.targetDeliveryDate || null,
+      notes: quoteData?.notes || `Quotation #${group?.quoNo} Advance Payment`
+    };
+
+    setAdvanceProformaModalOrder(targetOrder);
+  };
+
   const handleCreateWO = (group: any, latestMain: any) => {
     const existing = getExistingWO(group, latestMain);
     if (existing) {
@@ -140,9 +189,9 @@ export const Quotations: React.FC = () => {
     // Check if customer registration conditions mandate an advance deposit
     const lead = leads.find((l: any) => l.id === group.leadId);
     const custId = group.leadId || (lead as any)?.customerId;
-    const cust = customers.find((c: any) => c.id === custId || (c.name && group.clientName && c.name.toLowerCase() === group.clientName.toLowerCase()));
+    const cust = customers.find((c: any) => c.id === custId || (c.company && group.clientName && c.company.toLowerCase() === group.clientName.toLowerCase()) || (c.name && group.clientName && c.name.toLowerCase() === group.clientName.toLowerCase()));
 
-    const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
+    const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1)) || Boolean(lead && (lead.requiresAdvance === true || lead.requiresAdvance === 1));
 
     if (customerRequiresAdvance) {
       const hasAdvance = allInvoices.some((inv: any) => 
@@ -150,13 +199,9 @@ export const Quotations: React.FC = () => {
         (String(inv.quotationId) === String(latestMain.id) || String(inv.quotationNo) === String(group.quoNo) || String(inv.orderNo) === String(group.quoNo))
       );
 
-      const hasApprovedOrder = allOrders.some((ord: any) => 
-        (String(ord.quoteId) === String(latestMain.id) || String(ord.quotationNo) === String(group.quoNo)) &&
-        ord.status === 'Confirmed'
-      );
-
-      if (!hasAdvance && !hasApprovedOrder) {
-        toast(`Customer "${cust?.company || cust?.name || 'Client'}" requires an advance deposit as per registration conditions. Please issue an Advance Proforma Invoice or obtain Admin approval via Sales Orders before initiating a Work Order.`, 'warning');
+      if (!hasAdvance) {
+        toast(`Customer "${cust?.company || cust?.name || group.clientName || 'Client'}" requires an advance deposit as per registration conditions. Work Order cannot be created without an Advance Payment Proforma Invoice.`, 'warning');
+        handleGenerateAdvanceProforma(group, latestMain);
         return;
       }
     }
@@ -1146,6 +1191,18 @@ export const Quotations: React.FC = () => {
                 >
                   <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
                   <span>Create Sales Order</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleGenerateAdvanceProforma(group, latestMain);
+                    setOpenActionId(null);
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
+                >
+                  <FileSpreadsheet size={14} className="shrink-0 text-amber-500" />
+                  <span>Generate Advance Proforma</span>
                 </button>
 
                 <button
@@ -3518,6 +3575,7 @@ export const Quotations: React.FC = () => {
           onCreateSalesOrder={() => handleCreateSalesOrder(snapshotModalData.group, snapshotModalData.quotation)}
           onCreateWorkOrder={() => handleCreateWO(snapshotModalData.group, snapshotModalData.quotation)}
           onCreateInvoice={() => handlePaymentRequest(snapshotModalData.group, snapshotModalData.quotation)}
+          onGenerateAdvanceProforma={() => handleGenerateAdvanceProforma(snapshotModalData.group, snapshotModalData.quotation)}
           onIssueReceipt={() => handleOpenReceiptModal(snapshotModalData.group, snapshotModalData.quotation)}
           onPreviewPdf={() => setPreviewData({
             quotation: snapshotModalData.quotation,
@@ -3583,6 +3641,31 @@ export const Quotations: React.FC = () => {
           }
         }}
       />
+      {/* ── CREATE ADVANCE PROFORMA INVOICE MODAL ── */}
+      {advanceProformaModalOrder && (
+        <CreateAdvanceProformaModal
+          isOpen={true}
+          onClose={() => setAdvanceProformaModalOrder(null)}
+          order={advanceProformaModalOrder}
+          settings={settings}
+          onSuccess={(inv) => {
+            setAdvanceProformaModalOrder(null);
+            setActivePrintProforma(inv);
+            loadPaymentReceipts();
+            toast('Advance Proforma Invoice generated successfully!', 'success');
+          }}
+        />
+      )}
+
+      {/* ── PRINT / VIEW PROFORMA INVOICE MODAL ── */}
+      {activePrintProforma && (
+        <ProformaInvoicePrintModal
+          isOpen={true}
+          onClose={() => setActivePrintProforma(null)}
+          invoice={activePrintProforma}
+          settings={settings}
+        />
+      )}
     </div>
   )
 }

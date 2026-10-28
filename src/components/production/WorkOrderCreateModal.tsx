@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { formatCurrency } from '@/lib/utils'
 import { createWorkOrder, updateQuotationStatus } from '@/lib/api'
+import { useInvoices } from '@/hooks/useData'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { QuotationAutocomplete } from '@/components/ui/QuotationAutocomplete'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
@@ -34,6 +35,7 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
   quotations,
   onSuccess
 }) => {
+  const { data: allInvoices = [] } = useInvoices()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -292,6 +294,28 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
     if (!formData.title.trim()) {
       setError('Please provide a descriptive Work Order title.')
       return
+    }
+
+    // Check if customer requires advance deposit
+    const selectedCust = customers.find((c: any) => 
+      c.id === formData.customerId || 
+      (c.company && formData.customer && c.company.toLowerCase() === formData.customer.toLowerCase()) || 
+      (c.name && formData.customer && c.name.toLowerCase() === formData.customer.toLowerCase())
+    )
+    const customerRequiresAdvance = Boolean(selectedCust && (selectedCust.requiresAdvance === true || selectedCust.requiresAdvance === 1))
+
+    if (customerRequiresAdvance) {
+      const hasAdvance = (allInvoices || []).some((inv: any) => 
+        (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+        (
+          (formData.sourceQuoteId && inv.quotationId && String(inv.quotationId) === String(formData.sourceQuoteId)) ||
+          (formData.customerId && inv.customerId && String(inv.customerId) === String(formData.customerId))
+        )
+      )
+      if (!hasAdvance) {
+        setError(`Customer "${selectedCust?.company || selectedCust?.name || 'Client'}" requires an advance deposit as per registration terms. An Advance Payment Proforma Invoice must be created before issuing a Work Order.`)
+        return
+      }
     }
 
     try {

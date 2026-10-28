@@ -724,6 +724,31 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const handleCreateWorkOrder = async (order: any, orderItems: any[]) => {
     try {
+      // Check if customer registration requires advance payment
+      const cust = customers.find((c: any) => c.id === order.customerId || (c.company && order.customerName && c.company.toLowerCase() === order.customerName.toLowerCase()) || (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())) ||
+                   leads.find((l: any) => l.id === order.customerId || (l.company && order.customerName && l.company.toLowerCase() === order.customerName.toLowerCase()) || (l.name && order.customerName && l.name.toLowerCase() === order.customerName.toLowerCase()));
+
+      const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
+
+      if (customerRequiresAdvance) {
+        const hasAdvanceProforma = (allInvoices || []).some((inv: any) => 
+          (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+          (
+            (inv.orderId && String(inv.orderId) === String(order.id)) ||
+            (inv.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
+            (order.quoteId && inv.quotationId && String(inv.quotationId) === String(order.quoteId)) ||
+            (order.quotationNo && inv.quotationNo && String(inv.quotationNo) === String(order.quotationNo)) ||
+            (inv.customerId && String(inv.customerId) === String(order.customerId))
+          )
+        );
+
+        if (!hasAdvanceProforma) {
+          toast(`Customer "${order.customerName}" requires an advance payment deposit as per registration terms. Work Order cannot be created without an Advance Payment Proforma Invoice.`, 'warning');
+          setProformaModalOrder(order);
+          return;
+        }
+      }
+
       const jobQty = Math.max(1, Number(order.qty) || 1)
       const woData = {
         title: `WO: ${order.orderNo} - ${order.customerName}`,

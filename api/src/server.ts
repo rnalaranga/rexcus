@@ -1688,7 +1688,8 @@ async function runDatabaseSync() {
     "ALTER TABLE work_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
-    "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''"
+    "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''",
+    "ALTER TABLE invoices MODIFY COLUMN deliveryDate DATE DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -6269,6 +6270,23 @@ app.post('/api/invoices', async (req, res) => {
     if (!data.id) data.id = data.invoiceNo;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
 
+    // Helper to format date strings for MySQL DATE columns (strips ISO timestamp 'T...')
+    const formatMySQLDateOnly = (val: any): string | null => {
+      if (val === null || val === undefined || val === '') return null;
+      if (val instanceof Date) {
+        if (isNaN(val.getTime())) return null;
+        return val.toISOString().slice(0, 10);
+      }
+      const str = String(val).trim();
+      if (!str) return null;
+      if (str.includes('T')) return str.split('T')[0];
+      if (str.includes(' ')) return str.split(' ')[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return null;
+    };
+
     // Strip unknown columns dynamically to prevent ER_BAD_FIELD_ERROR 500s
     const [invCols]: any = await db.query('SHOW COLUMNS FROM invoices');
     const validCols = new Set(invCols.map((col: any) => col.Field));
@@ -6278,6 +6296,17 @@ app.post('/api/invoices', async (req, res) => {
         safeData[key] = value;
       }
     }
+
+    if ('deliveryDate' in safeData) {
+      safeData.deliveryDate = formatMySQLDateOnly(safeData.deliveryDate);
+    }
+    if ('date' in safeData) {
+      safeData.date = formatMySQLDateOnly(safeData.date) || new Date().toISOString().slice(0, 10);
+    }
+    if ('dueDate' in safeData) {
+      safeData.dueDate = formatMySQLDateOnly(safeData.dueDate);
+    }
+
     await db.query('INSERT INTO invoices SET ?', safeData);
     
     // Auto GL: Accrual Basis - Record Receivable & Sales
@@ -6386,8 +6415,45 @@ app.put('/api/invoices/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
+    delete data.id;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    await db.query('UPDATE invoices SET ? WHERE id = ? OR invoiceNo = ?', [data, id, id]);
+
+    const formatMySQLDateOnly = (val: any): string | null => {
+      if (val === null || val === undefined || val === '') return null;
+      if (val instanceof Date) {
+        if (isNaN(val.getTime())) return null;
+        return val.toISOString().slice(0, 10);
+      }
+      const str = String(val).trim();
+      if (!str) return null;
+      if (str.includes('T')) return str.split('T')[0];
+      if (str.includes(' ')) return str.split(' ')[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return null;
+    };
+
+    const [invCols]: any = await db.query('SHOW COLUMNS FROM invoices');
+    const validCols = new Set(invCols.map((col: any) => col.Field));
+    const safeData: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (validCols.has(key)) {
+        safeData[key] = value;
+      }
+    }
+
+    if ('deliveryDate' in safeData && safeData.deliveryDate !== undefined) {
+      safeData.deliveryDate = formatMySQLDateOnly(safeData.deliveryDate);
+    }
+    if ('date' in safeData && safeData.date !== undefined) {
+      safeData.date = formatMySQLDateOnly(safeData.date) || new Date().toISOString().slice(0, 10);
+    }
+    if ('dueDate' in safeData && safeData.dueDate !== undefined) {
+      safeData.dueDate = formatMySQLDateOnly(safeData.dueDate);
+    }
+
+    await db.query('UPDATE invoices SET ? WHERE id = ? OR invoiceNo = ?', [safeData, id, id]);
     res.json({ success: true, id });
   } catch (error: any) {
     console.error(error);
@@ -8372,6 +8438,57 @@ app.post('/api/production/work-orders', async (req, res) => {
       const [existing]: any = await db.query('SELECT id FROM work_orders WHERE quoteId = ? LIMIT 1', [sourceQuoteId]);
       if (existing && existing.length > 0) {
         return res.status(409).json({ error: 'DUPLICATE', existingId: existing[0].id, message: 'A Work Order already exists for this quotation.' });
+      }
+    }
+
+    // Strict validation: If customer requires advance payment, a Work Order CANNOT be created without an Advance Payment Proforma Invoice
+    let requiresAdvance = false;
+    let checkedCustName = customer || '';
+    if (customerId) {
+      const [custRows]: any = await db.query(
+        'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, requiresAdvance FROM leads WHERE id = ? LIMIT 1',
+        [customerId, customerId]
+      );
+      if (custRows && custRows.length > 0) {
+        requiresAdvance = Boolean(custRows[0].requiresAdvance === 1 || custRows[0].requiresAdvance === true);
+        checkedCustName = custRows[0].company || custRows[0].name || checkedCustName;
+      }
+    } else if (customer) {
+      const [custRows]: any = await db.query(
+        'SELECT id, name, company, requiresAdvance FROM customers WHERE UPPER(company) = ? OR UPPER(name) = ? UNION SELECT id, name, company, requiresAdvance FROM leads WHERE UPPER(company) = ? OR UPPER(name) = ? LIMIT 1',
+        [customer.toUpperCase(), customer.toUpperCase(), customer.toUpperCase(), customer.toUpperCase()]
+      );
+      if (custRows && custRows.length > 0) {
+        requiresAdvance = Boolean(custRows[0].requiresAdvance === 1 || custRows[0].requiresAdvance === true);
+        checkedCustName = custRows[0].company || custRows[0].name || checkedCustName;
+      }
+    }
+
+    if (requiresAdvance) {
+      const [proformaRows]: any = await db.query(
+        `SELECT id, invoiceNo FROM invoices 
+         WHERE (isProforma = 1 OR invoiceType = 'proforma' OR invoiceNo LIKE 'PI-%' OR id LIKE 'PI-%')
+           AND (
+             (quotationId IS NOT NULL AND quotationId != '' AND quotationId = ?) OR
+             (quotationNo IS NOT NULL AND quotationNo != '' AND (quotationNo = ? OR quotationNo = ?)) OR
+             (orderNo IS NOT NULL AND orderNo != '' AND (orderNo = ? OR orderNo = ?)) OR
+             (customerId IS NOT NULL AND customerId != '' AND customerId = ?)
+           )
+         LIMIT 1`,
+        [
+          sourceQuoteId || '', 
+          sourceQuoteId || '', 
+          req.body.orderNo || '', 
+          sourceQuoteId || '', 
+          req.body.orderNo || '', 
+          customerId || ''
+        ]
+      );
+
+      if (!proformaRows || proformaRows.length === 0) {
+        return res.status(400).json({
+          error: `Customer "${checkedCustName || 'Client'}" requires an advance payment deposit as per registration terms. An Advance Payment Proforma Invoice must be created before issuing a Work Order.`
+        });
       }
     }
 

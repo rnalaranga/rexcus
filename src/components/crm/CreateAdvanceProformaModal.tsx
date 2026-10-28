@@ -20,6 +20,22 @@ interface Props {
   settings?: any;
 }
 
+const toDateOnly = (val: any): string | null => {
+  if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    return val.toISOString().slice(0, 10);
+  }
+  const str = String(val).trim();
+  if (!str) return null;
+  if (str.includes('T')) return str.split('T')[0];
+  if (str.includes(' ')) return str.split(' ')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return null;
+};
+
 export const CreateAdvanceProformaModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -313,9 +329,9 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         customerEmail: customerEmail,
         customerVat: customerVat,
         placeOfSupply: order?.deliveryAddress || 'Negombo, Sri Lanka',
-        date: date,
-        dueDate: dueDate,
-        deliveryDate: order?.targetDeliveryDate || date,
+        date: toDateOnly(date) || new Date().toISOString().slice(0, 10),
+        dueDate: toDateOnly(dueDate),
+        deliveryDate: toDateOnly(order?.targetDeliveryDate || order?.deliveryDate || date) || toDateOnly(date),
         subtotal: calculation.subtotal,
         taxAmount: calculation.totalTax,
         total: calculation.totalPayable,

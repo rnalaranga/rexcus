@@ -25,6 +25,7 @@ export interface QuotationStageSnapshotModalProps {
   onCreateSalesOrder?: () => void;
   onCreateWorkOrder?: () => void;
   onCreateInvoice?: () => void;
+  onGenerateAdvanceProforma?: () => void;
   onIssueReceipt?: () => void;
   onPreviewPdf?: () => void;
 }
@@ -43,6 +44,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
   onCreateSalesOrder,
   onCreateWorkOrder,
   onCreateInvoice,
+  onGenerateAdvanceProforma,
   onIssueReceipt,
   onPreviewPdf
 }) => {
@@ -471,6 +473,20 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {onGenerateAdvanceProforma && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onClose();
+                      onGenerateAdvanceProforma();
+                    }}
+                    className="h-7 text-xs px-2.5 flex items-center gap-1 border-theme-subtle text-amber-600 dark:text-amber-400 font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                  >
+                    <FileText size={12} className="text-amber-500" />
+                    <span>Generate Proforma</span>
+                  </Button>
+                )}
                 {onIssueReceipt && (
                   <Button
                     size="sm"

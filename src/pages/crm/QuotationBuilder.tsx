@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2, Percent, Coins, Lock, Unlock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2, Percent, Coins, Lock, Unlock, Sidebar } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -1655,18 +1655,18 @@ export const QuotationBuilder: React.FC = () => {
           </button>
           <button onClick={() => setPreviewCollapsed(p => !p)}
             className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ' + 
-            (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-rex-500/50 text-primary')}
-            title={previewCollapsed ? 'Expand Live Preview' : 'Collapse Live Preview'}
+            (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-theme-subtle text-muted hover:text-primary')}
+            title={previewCollapsed ? 'Expand Side Panel Live Preview' : 'Collapse Side Panel Live Preview'}
           >
-            <Eye size={14} /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
+            <Sidebar size={14} /> {previewCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
           </button>
           <button 
             type="button"
             onClick={() => setShowPreview(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors cursor-pointer"
-            title="Preview Quotation Document"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 border border-rex-500/50 bg-rex-500/10 text-rex-600 dark:text-rex-400 hover:bg-rex-500/20 transition-colors shadow-xs cursor-pointer"
+            title="Preview Full Quotation Document"
           >
-            <Eye size={14} /> Preview
+            <Eye size={14} className="text-rex-600 dark:text-rex-400" /> Preview Document
           </button>
 
           {/* Approval Workflow Actions */}

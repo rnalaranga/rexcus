@@ -6,7 +6,7 @@ import {
   ChevronUp, User, RotateCcw, X, FileText, TrendingUp, Mail, FileDown, 
   Printer, Wand2, LineChart, Building2, UserCheck, Eye, ChevronLeft, 
   ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, 
-  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink, Wrench, Lock, Unlock 
+  AlertTriangle, Sparkles, Loader2, PackageCheck, ShoppingBag, Search, ExternalLink, Wrench, Lock, Unlock, Sidebar 
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
@@ -1509,15 +1509,19 @@ export const ProductQuotationBuilder: React.FC = () => {
 
           <button onClick={() => setPreviewCollapsed(p => !p)}
             className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border transition-colors ' + 
-            (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-emerald-500/50 text-emerald-600 dark:text-emerald-400 font-bold')}
-            title={previewCollapsed ? 'Expand Live Preview' : 'Collapse Live Preview'}
+            (previewCollapsed ? 'border-theme-subtle text-muted hover:text-primary hover:bg-surface2' : 'bg-surface2 border-theme-subtle text-muted hover:text-primary')}
+            title={previewCollapsed ? 'Expand Side Panel Live Preview' : 'Collapse Side Panel Live Preview'}
           >
-            <Eye size={14} className="text-emerald-500" /> {previewCollapsed ? 'Show Preview' : 'Hide Preview'}
+            <Sidebar size={14} className="text-emerald-500" /> {previewCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
           </button>
 
-          <button onClick={() => setShowPreview(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 border border-theme-subtle/40 text-muted hover:text-primary hover:bg-surface2 transition-colors">
-            <Download size={14} /> Preview
+          <button 
+            type="button"
+            onClick={() => setShowPreview(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 border border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors shadow-xs cursor-pointer"
+            title="Preview Full Quotation Document"
+          >
+            <Eye size={14} className="text-emerald-500" /> Preview Document
           </button>
 
           {/* Approval Workflow Actions */}
