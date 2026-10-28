@@ -995,7 +995,7 @@ async function runDatabaseSync() {
       user_prefix VARCHAR(50) NOT NULL,
       user_id VARCHAR(50) NULL,
       next_number INT NOT NULL DEFAULT 2206,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uq_user_prefix (user_prefix)
     )`
   ];
@@ -2190,14 +2190,18 @@ app.post('/api/sequences/next', async (req, res) => {
 
     let currentNum = defaultNum;
     const normalizedUserPrefix = (userPrefix || '').trim().toUpperCase();
+    const cleanUserPfx = normalizedUserPrefix.replace(/[-_]+$/, '');
+
+    // Quotation numbers always start with [userprefix]SQ (e.g. RSSQ, RNSQ) or SQ if no user prefix
+    const userQuoPrefix = cleanUserPfx ? (cleanUserPfx.endsWith('SQ') ? cleanUserPfx : `${cleanUserPfx}SQ`) : 'SQ';
 
     // Check if this quotation sequence should use user-specific prefix sequence
-    const isUserQuotation = (type === 'quotation' && Boolean(seq.include_user_prefix) && Boolean(normalizedUserPrefix));
+    const isUserQuotation = ((type === 'quotation' || type === 'product_quotation') && Boolean(seq.include_user_prefix) && Boolean(cleanUserPfx));
 
     if (isUserQuotation) {
       const [uRows]: any = await db.query(
-        'SELECT next_number FROM user_quotation_sequences WHERE user_prefix = ? LIMIT 1',
-        [normalizedUserPrefix]
+        'SELECT next_number FROM user_quotation_sequences WHERE user_prefix = ? OR user_prefix = ? LIMIT 1',
+        [cleanUserPfx, userQuoPrefix]
       );
       if (uRows && uRows.length > 0) {
         currentNum = Number(uRows[0].next_number) || defaultNum;
@@ -2205,37 +2209,44 @@ app.post('/api/sequences/next', async (req, res) => {
         currentNum = defaultNum;
         await db.query(
           'INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE updated_at = NOW()',
-          [normalizedUserPrefix, userId || null, defaultNum]
+          [cleanUserPfx, userId || null, defaultNum]
         );
       }
     }
 
     const paddedNumber = String(currentNum).padStart(padding, '0');
-    const paddedNum = paddedNumber;
 
     const parts: string[] = [];
-    if (seq.prefix && seq.prefix.trim()) {
-      parts.push(seq.prefix.trim().replace(/[-_]+$/, ''));
+    if (type === 'quotation' || type === 'product_quotation') {
+      // Always starts with [userprefix]SQ (e.g. RSSQ, RNSQ) or SQ
+      parts.push(userQuoPrefix);
+
+      if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
+        parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
+      }
+    } else {
+      if (seq.prefix && seq.prefix.trim()) {
+        parts.push(seq.prefix.trim().replace(/[-_]+$/, ''));
+      }
+      if (seq.include_user_prefix && cleanUserPfx) {
+        parts.push(cleanUserPfx);
+      }
+      if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
+        parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
+      }
+      if (parts.length === 0) {
+        parts.push('DOC');
+      }
     }
-    if (seq.include_user_prefix && normalizedUserPrefix) {
-      parts.push(normalizedUserPrefix.replace(/[-_]+$/, ''));
-    }
-    if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
-      parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
-    }
-    // If no prefix added yet, fallback to document prefix or QT
-    if (parts.length === 0) {
-      if (type === 'quotation') parts.push('QT');
-      else if (type === 'product_quotation') parts.push('PQ');
-    }
+
     parts.push(paddedNumber);
     const formattedNumber = parts.join('-');
 
     if (reserve) {
       if (isUserQuotation) {
         await db.query(
-          'UPDATE user_quotation_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE user_prefix = ?',
-          [normalizedUserPrefix]
+          'UPDATE user_quotation_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE user_prefix = ? OR user_prefix = ?',
+          [cleanUserPfx, userQuoPrefix]
         );
       } else {
         await db.query(
@@ -3027,16 +3038,21 @@ app.post('/api/quotations', async (req, res) => {
         if (!userPfx && qData.userPrefix) {
           userPfx = String(qData.userPrefix).trim().toUpperCase();
         }
+        if (!userPfx && newQuotation.quotationNo) {
+          const m = String(newQuotation.quotationNo).match(/^([A-Za-z]+?)SQ(?:-[A-Za-z0-9]+)*-\d+/i);
+          if (m && m[1]) userPfx = m[1].toUpperCase();
+        }
 
         const numMatch = String(newQuotation.quotationNo).match(/(\d+)$/);
         if (numMatch) {
           const usedNum = parseInt(numMatch[1], 10);
           if (userPfx) {
+            const cleanP = userPfx.replace(/[-_]+$/, '');
             await db.query(
               `INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) 
                VALUES (?, ?, ?, NOW()) 
                ON DUPLICATE KEY UPDATE next_number = GREATEST(next_number, VALUES(next_number)), updated_at = NOW()`,
-              [userPfx, createdBy || null, usedNum + 1]
+              [cleanP, createdBy || null, usedNum + 1]
             );
           } else {
             await db.query(

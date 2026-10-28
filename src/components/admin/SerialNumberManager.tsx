@@ -175,7 +175,13 @@ export const SerialNumberManager: React.FC = () => {
 
     if (seq.include_user_prefix) {
       const sampleUserPfx = currentUser?.prefix || 'RN';
-      parts.push(sampleUserPfx);
+      const cleanUser = sampleUserPfx.trim().toUpperCase().replace(/[-_]+$/, '');
+      const pfxWithSq = seq.id === 'quotation'
+        ? (cleanUser.endsWith('SQ') ? cleanUser : `${cleanUser}SQ`)
+        : cleanUser;
+      parts.push(pfxWithSq);
+    } else if (seq.id === 'quotation') {
+      parts.push('SQ');
     }
 
     if (seq.include_customer_prefix) {
@@ -190,18 +196,16 @@ export const SerialNumberManager: React.FC = () => {
 
   const getUserQuotationPreview = (u: any) => {
     const pfx = (userPrefixes[u.id] || '').trim().toUpperCase();
+    const cleanUser = pfx.replace(/[-_]+$/, '');
+    const userQuoPfx = cleanUser ? (cleanUser.endsWith('SQ') ? cleanUser : `${cleanUser}SQ`) : 'SQ';
     const num = Number(userSeqNumbers[u.id] || (pfx ? userSeqNumbers[pfx] : 2206)) || 2206;
     const quoSeq = sequences.find(s => s.id === 'quotation');
     const padding = Number(quoSeq?.padding) || 4;
     const paddedNum = String(num).padStart(padding, '0');
 
     const parts: string[] = [];
-    if (quoSeq?.prefix?.trim()) {
-      parts.push(quoSeq.prefix.trim().replace(/[-_]+$/, ''));
-    }
-    if (pfx) {
-      parts.push(pfx);
-    }
+    parts.push(userQuoPfx);
+
     if (quoSeq?.include_customer_prefix) {
       parts.push('CUS');
     }

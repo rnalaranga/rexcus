@@ -51,6 +51,16 @@ function toWords(num: number): string {
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-primary px-2 py-1.5 text-[12px] outline-none transition-all placeholder:text-muted/30 text-primary"
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-rex-500/50 transition-colors disabled:text-muted disabled:cursor-default"
 
+export const buildDefaultQuotationNo = (userPfx?: string | null, custPfx?: string | null, num: string | number = '2206') => {
+  const cleanUser = (userPfx || '').trim().toUpperCase().replace(/[-_]+$/, '');
+  const pfx = cleanUser ? (cleanUser.endsWith('SQ') ? cleanUser : `${cleanUser}SQ`) : 'SQ';
+  const cleanCust = (custPfx || '').trim().toUpperCase().replace(/[-_]+$/, '');
+  if (cleanCust) {
+    return `${pfx}-${cleanCust}-${num}`;
+  }
+  return `${pfx}-${num}`;
+};
+
 interface MatSearchProps {
   value: string
   onChange: (val: string) => void
@@ -516,17 +526,9 @@ export const QuotationBuilder: React.FC = () => {
         reserve: false
       }).then(res => {
         if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-        else {
-          const userPrefix = user?.prefix ? `${user.prefix}-` : '';
-          const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-          const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
-          setQuotationNo(`${base}2206`);
-        }
+        else setQuotationNo(buildDefaultQuotationNo(user?.prefix, cust.prefix));
       }).catch(() => {
-        const userPrefix = user?.prefix ? `${user.prefix}-` : '';
-        const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-        const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
-        setQuotationNo(`${base}2206`);
+        setQuotationNo(buildDefaultQuotationNo(user?.prefix, cust.prefix));
       });
     } else {
       const leadItem = leads?.find((l: any) => l.id === itemId) || item;
@@ -558,17 +560,9 @@ export const QuotationBuilder: React.FC = () => {
           reserve: false
         }).then(res => {
           if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-          else {
-            const userPrefix = user?.prefix ? `${user.prefix}-` : '';
-            const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-            const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
-            setQuotationNo(`${base}2206`);
-          }
+          else setQuotationNo(buildDefaultQuotationNo(user?.prefix, cust.prefix));
         }).catch(() => {
-          const userPrefix = user?.prefix ? `${user.prefix}-` : '';
-          const custPrefix = cust.prefix ? `${cust.prefix}-` : '';
-          const base = (userPrefix || custPrefix) ? `${userPrefix}${custPrefix}` : 'QT-';
-          setQuotationNo(`${base}2206`);
+          setQuotationNo(buildDefaultQuotationNo(user?.prefix, cust.prefix));
         });
       } else {
         setCustomerAddress(leadItem.address || '');
@@ -579,13 +573,9 @@ export const QuotationBuilder: React.FC = () => {
           reserve: false
         }).then(res => {
           if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-          else {
-            const userPrefix = user?.prefix ? `${user.prefix}-` : 'QT-';
-            setQuotationNo(`${userPrefix}2206`);
-          }
+          else setQuotationNo(buildDefaultQuotationNo(user?.prefix));
         }).catch(() => {
-          const userPrefix = user?.prefix ? `${user.prefix}-` : 'QT-';
-          setQuotationNo(`${userPrefix}2206`);
+          setQuotationNo(buildDefaultQuotationNo(user?.prefix));
         });
       }
     }
@@ -614,9 +604,9 @@ export const QuotationBuilder: React.FC = () => {
             reserve: false
           }).then(res => {
             if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-            else setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+            else setQuotationNo(buildDefaultQuotationNo(user?.prefix, cust?.prefix));
           }).catch(() => {
-            setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+            setQuotationNo(buildDefaultQuotationNo(user?.prefix, cust?.prefix));
           });
         }
      } else if (!quoteIdParam && !quotationNo) {
@@ -625,9 +615,9 @@ export const QuotationBuilder: React.FC = () => {
           reserve: false
         }).then(res => {
           if (res?.formattedNumber) setQuotationNo(res.formattedNumber);
-          else setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+          else setQuotationNo(buildDefaultQuotationNo(user?.prefix));
         }).catch(() => {
-          setQuotationNo(user?.prefix ? `${user.prefix}-2206` : 'QT-2206');
+          setQuotationNo(buildDefaultQuotationNo(user?.prefix));
         });
      }
   }, [leadId, lead, customers, quoteIdParam, quotationNo, user?.prefix]);

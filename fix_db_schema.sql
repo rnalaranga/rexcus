@@ -882,3 +882,12 @@ ALTER TABLE rework_logs ADD COLUMN status VARCHAR(50) DEFAULT 'Pending';
 
 
 
+
+CREATE TABLE IF NOT EXISTS `user_quotation_sequences` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_prefix` VARCHAR(50) NOT NULL,
+  `user_id` VARCHAR(50) NULL,
+  `next_number` INT NOT NULL DEFAULT 2206,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_user_prefix` (`user_prefix`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
