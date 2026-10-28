@@ -33,6 +33,7 @@ import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSect
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
+import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
 
 
 export const Quotations: React.FC = () => {
@@ -63,6 +64,7 @@ export const Quotations: React.FC = () => {
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
   const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
+  const [viewPoModalData, setViewPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
 
   // Rejection modal state
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false)
@@ -117,6 +119,8 @@ export const Quotations: React.FC = () => {
     switch (status) {
       case 'Sent': return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/50';
       case 'PO Received': return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 font-bold';
+      case 'PO Pending': return 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 font-bold';
+      case 'Without PO': return 'bg-sky-500/20 text-sky-700 dark:text-sky-400 border-sky-500/40 font-bold';
       case 'Approved': return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50';
       case 'Pending Approval': return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50';
       case 'Rejected': return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50';
@@ -328,7 +332,11 @@ export const Quotations: React.FC = () => {
   };
 
   const handleRecordCustomerPo = (group: any, latestMain: any) => {
-    setRecordPoModalData({ group, quotation: latestMain, type: 'custom' });
+    setRecordPoModalData({ group, quotation: latestMain, type: group.isProduct ? 'product' : 'custom' });
+  };
+
+  const handleViewCustomerPo = (group: any, latestMain: any) => {
+    setViewPoModalData({ group, quotation: latestMain, type: group.isProduct ? 'product' : 'custom' });
   };
 
   const handleCreateSalesOrder = (group: any, latestMain: any) => {
@@ -747,6 +755,7 @@ export const Quotations: React.FC = () => {
       draft: 0,
       "pending approval": 0,
       "po received": 0,
+      "po pending": 0,
       approved: 0,
       sent: 0,
       "in production": 0,
@@ -774,8 +783,13 @@ export const Quotations: React.FC = () => {
       }
       if (isDraft) {
         counts.draft++;
-      } else if (counts[s] !== undefined) {
-        counts[s]++;
+      } else {
+        const isPoPending = s === 'po pending' || latestMain?.customerPoNo === 'PO PENDING' || (latestMain as any)?.poStatus === 'PO Pending';
+        if (isPoPending) {
+          counts['po pending']++;
+        } else if (counts[s] !== undefined) {
+          counts[s]++;
+        }
       }
     });
     return counts;
@@ -821,6 +835,11 @@ export const Quotations: React.FC = () => {
         if (isDraft) return false;
       } else if (statusFilter === "draft") {
         if (!isDraft) return false;
+      } else if (statusFilter.toLowerCase() === "po pending") {
+        const isPoPending = latestStatus === 'po pending' || 
+          latestMain?.customerPoNo === 'PO PENDING' || 
+          (latestMain as any)?.poStatus === 'PO Pending';
+        if (!isPoPending) return false;
       } else {
         if (latestStatus !== statusFilter.toLowerCase()) return false;
       }
@@ -1079,12 +1098,27 @@ export const Quotations: React.FC = () => {
             </button>
 
             {/* Commercial & Production Actions */}
-            {(latestMain?.status === 'Approved' || latestMain?.status === 'Sent' || latestMain?.status === 'Accepted' || latestMain?.status === 'In Production' || latestMain?.status === 'PO Received') && (
+            {(['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'PO Pending', 'Without PO'].includes(latestMain?.status) || Boolean(latestMain?.customerPoNo)) && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
                 <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
                   Commercial & Production
                 </div>
+
+                {/* View Customer PO if recorded or pending */}
+                {(latestMain?.customerPoNo || ['PO Received', 'PO Pending', 'Without PO'].includes(latestMain?.status)) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleViewCustomerPo(group, latestMain);
+                      setOpenActionId(null);
+                    }}
+                    className="w-full px-3.5 py-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2.5 transition-colors text-left"
+                  >
+                    <Eye size={14} className="shrink-0 text-indigo-600 dark:text-indigo-400" />
+                    <span>View Customer PO</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1095,7 +1129,11 @@ export const Quotations: React.FC = () => {
                   className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
                 >
                   <FileCheck size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span>PO Received</span>
+                  <span>
+                    {(latestMain?.customerPoNo || ['PO Received', 'PO Pending', 'Without PO'].includes(latestMain?.status)) 
+                      ? 'Update Customer PO' 
+                      : 'Record Customer PO'}
+                  </span>
                 </button>
 
                 <button
@@ -1550,6 +1588,7 @@ export const Quotations: React.FC = () => {
               { id: 'draft', label: 'Draft', count: statusCounts.draft },
               { id: 'pending approval', label: 'Pending Approval', count: statusCounts['pending approval'] },
               { id: 'po received', label: 'PO Received', count: statusCounts['po received'] },
+              { id: 'po pending', label: 'PO Pending', count: statusCounts['po pending'] },
               { id: 'approved', label: 'Approved', count: statusCounts.approved },
               { id: 'sent', label: 'Sent', count: statusCounts.sent },
               { id: 'in production', label: 'In Production', count: statusCounts['in production'] },
@@ -1907,10 +1946,17 @@ export const Quotations: React.FC = () => {
                                 <div className="p-2 bg-surface2/60 border border-theme-subtle">
                                   <div className="flex items-center justify-between mb-1">
                                     <span className="text-[10px] font-semibold text-muted uppercase tracking-wider">Customer PO</span>
-                                    {(latestMain?.customerPoNo || parsed.customerPoNo) ? (
-                                      <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1 py-0.2 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                                        <CheckCircle2 size={9} /> Recorded
-                                      </span>
+                                    {(latestMain?.customerPoNo || parsed.customerPoNo || latestMain?.status === 'PO Pending' || latestMain?.status === 'Without PO') ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenInfoId(null);
+                                          handleViewCustomerPo(group, latestMain);
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer border border-emerald-500/30"
+                                      >
+                                        <Eye size={9} /> View PO
+                                      </button>
                                     ) : (
                                       <button
                                         type="button"
@@ -1924,11 +1970,18 @@ export const Quotations: React.FC = () => {
                                       </button>
                                     )}
                                   </div>
-                                  {(latestMain?.customerPoNo || parsed.customerPoNo) ? (
-                                    <div className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                  {(latestMain?.customerPoNo || parsed.customerPoNo || latestMain?.status === 'PO Pending' || latestMain?.status === 'Without PO') ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenInfoId(null);
+                                        handleViewCustomerPo(group, latestMain);
+                                      }}
+                                      className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1.5 cursor-pointer text-left"
+                                    >
                                       <FileCheck size={12} className="shrink-0" />
-                                      PO: #{latestMain?.customerPoNo || parsed.customerPoNo}
-                                    </div>
+                                      PO: #{latestMain?.customerPoNo || parsed.customerPoNo || latestMain?.status}
+                                    </button>
                                   ) : (
                                     <div className="text-[11px] text-muted italic">
                                       No PO attached yet
@@ -1981,14 +2034,34 @@ export const Quotations: React.FC = () => {
                               {group.leadCompany && group.leadName ? (
                                 <span>Attn: {group.leadName}</span>
                               ) : null}
-                              {(latestMain?.customerPoNo || parsed.customerPoNo) && (
-                                <span 
-                                  className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
-                                  title={`Customer PO: ${latestMain?.customerPoNo || parsed.customerPoNo}`}
-                                >
-                                  <FileCheck size={10} /> PO: {latestMain?.customerPoNo || parsed.customerPoNo}
-                                </span>
-                              )}
+                              {(() => {
+                                const poVal = latestMain?.customerPoNo || parsed?.customerPoNo;
+                                const isPoPending = status === 'PO Pending' || latestMain?.status === 'PO Pending' || poVal === 'PO PENDING';
+                                const isWithoutPo = status === 'Without PO' || latestMain?.status === 'Without PO' || poVal === 'WITHOUT PO';
+                                const hasAnyPo = Boolean(poVal || isPoPending || isWithoutPo);
+                                if (!hasAnyPo) return null;
+                                return (
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewCustomerPo(group, latestMain);
+                                    }}
+                                    className={`font-mono font-semibold flex items-center gap-1 text-[10px] px-1.5 py-0.2 border cursor-pointer hover:opacity-80 transition-opacity shrink-0 ${
+                                      isPoPending 
+                                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30' 
+                                        : isWithoutPo 
+                                        ? 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30'
+                                        : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                                    }`}
+                                    title="Click to view Customer PO Details & Attachment"
+                                  >
+                                    <FileCheck size={10} />
+                                    <span>{isPoPending ? 'PO Pending' : isWithoutPo ? 'Without PO' : `PO: #${poVal}`}</span>
+                                    <Eye size={10} className="opacity-70 ml-0.5" />
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
                         </td>
@@ -2445,6 +2518,31 @@ export const Quotations: React.FC = () => {
                       <Package size={11} className="text-rex-500" />
                       {itemsCount} {itemsCount === 1 ? 'Item' : 'Items'}
                     </span>
+
+                    {(() => {
+                      const poVal = latestMain?.customerPoNo || parsed?.customerPoNo;
+                      const isPoPending = status === 'PO Pending' || latestMain?.status === 'PO Pending' || poVal === 'PO PENDING';
+                      const isWithoutPo = status === 'Without PO' || latestMain?.status === 'Without PO' || poVal === 'WITHOUT PO';
+                      if (!poVal && !isPoPending && !isWithoutPo) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleViewCustomerPo(group, latestMain || displayQ)}
+                          className={`inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 border cursor-pointer hover:opacity-80 transition-opacity ${
+                            isPoPending
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30'
+                              : isWithoutPo
+                              ? 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30'
+                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                          }`}
+                          title="Click to view Customer PO"
+                        >
+                          <FileCheck size={10} />
+                          <span>{isPoPending ? 'PO Pending' : isWithoutPo ? 'Without PO' : `PO: #${poVal}`}</span>
+                          <Eye size={10} className="opacity-70 ml-0.5" />
+                        </button>
+                      );
+                    })()}
 
                     {((parsed.boms && parsed.boms.length > 0) || (parsed.custItems && parsed.custItems.length > 0)) && (
                       <button
@@ -3446,6 +3544,19 @@ export const Quotations: React.FC = () => {
         isOpen={Boolean(salesOrderModalData)}
         onClose={() => setSalesOrderModalData(null)}
         quotationData={salesOrderModalData}
+      />
+
+      {/* ── VIEW CUSTOMER PO MODAL ── */}
+      <ViewCustomerPoModal
+        isOpen={Boolean(viewPoModalData)}
+        onClose={() => setViewPoModalData(null)}
+        quotationData={viewPoModalData}
+        onEditPo={(data) => {
+          setRecordPoModalData(data);
+        }}
+        onCreateSalesOrder={(group, quotation) => {
+          handleCreateSalesOrder(group, quotation);
+        }}
       />
 
       {/* ── RECORD CUSTOMER PO MODAL ── */}

@@ -3400,7 +3400,7 @@ app.post('/api/quotations/:id/reject-edit', async (req, res) => {
 app.post('/api/quotations/:id/po-received', async (req, res) => {
   try {
     const { id } = req.params;
-    let { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy, poStatus } = req.body;
+    let { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy, poStatus, expectedPoDate, withoutPoReason } = req.body;
 
     if (poStatus === 'PO Pending') {
       customerPoNo = customerPoNo?.trim() || 'PO PENDING';
@@ -3431,6 +3431,9 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
     qData.poStatus = poStatus;
     qData.customerPoDate = customerPoDate || new Date().toISOString().slice(0, 10);
     qData.customerPoAttachment = customerPoAttachment || null;
+    if (expectedPoDate) qData.expectedPoDate = expectedPoDate;
+    if (withoutPoReason) qData.withoutPoReason = withoutPoReason;
+    if (receivedBy) qData.poReceivedBy = receivedBy;
     if (notes) qData.customerPoNotes = notes;
 
     let newStatus = quote.status;

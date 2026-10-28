@@ -72,6 +72,8 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     }
 
     setCustomerPoDate(quotation.customerPoDate || quoteData.customerPoDate || new Date().toISOString().slice(0, 10));
+    setExpectedPoDate(quotation.expectedPoDate || quoteData.expectedPoDate || '');
+    setWithoutPoReason(quotation.withoutPoReason || quoteData.withoutPoReason || 'Verbal / Phone Confirmation');
     setCustomerPoAttachment(quotation.customerPoAttachment || quoteData.customerPoAttachment || '');
     setCustomerPoAttachmentName(
       quotation.customerPoAttachment || quoteData.customerPoAttachment 
@@ -144,7 +146,9 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
           customerPoNo: finalPoNo,
           poStatus: finalStatus,
           customerPoDate,
-          customerPoAttachment: poMode === 'received' ? (customerPoAttachment || null) : null,
+          expectedPoDate: poMode === 'pending' ? expectedPoDate : null,
+          withoutPoReason: poMode === 'without_po' ? withoutPoReason : null,
+          customerPoAttachment: customerPoAttachment || null,
           notes: compositeNotes || null,
           receivedBy: user?.name || (user as any)?.email || 'Sales Team'
         })
