@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, Download, X, FileText, Factory } from 'lucide-react';
+import { Printer, Download, X, Factory } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { WorkOrderPrintView } from './WorkOrderPrintView';
 import { printElement } from '@/lib/printElement';
@@ -24,11 +24,11 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
   if (!isOpen || !workOrder) return null;
 
   const handlePrint = () => {
-    printElement('work-order-print-section', `Job_Traveler_${workOrder.id || 'WO'}`);
+    printElement('work-order-print-section', `Work_Order_${workOrder.orderNo || workOrder.id || 'WO'}`);
   };
 
   const handleDownloadPDF = async () => {
-    await exportPdf('work-order-print-section', `Job_Traveler_${workOrder.orderNo || workOrder.id || 'WO'}.pdf`);
+    await exportPdf('work-order-print-section', `Work_Order_${workOrder.orderNo || workOrder.id || 'WO'}.pdf`);
   };
 
   return createPortal(
@@ -43,10 +43,10 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-sm text-primary tracking-tight">
-                  Shop-Floor Job Traveler &amp; Routing Card
+                  Production Work Order &amp; Job Traveler
                 </h3>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 bg-rex-500/10 text-rex-500 border border-rex-500/30 font-semibold uppercase">
-                  {workOrder.id}
+                  {workOrder.orderNo || workOrder.id}
                 </span>
               </div>
               <p className="text-[11px] text-muted">
@@ -63,7 +63,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
               onClick={handlePrint}
               className="text-xs font-bold"
             >
-              Print Job Traveler
+              Print Work Order
             </Button>
             <Button
               variant="outline"
