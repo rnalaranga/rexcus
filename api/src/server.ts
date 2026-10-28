@@ -1550,6 +1550,7 @@ async function runDatabaseSync() {
     "ALTER TABLE work_order_operations ADD COLUMN scheduledStart DATETIME DEFAULT NULL",
     "ALTER TABLE work_order_operations ADD COLUMN scheduledEnd DATETIME DEFAULT NULL",
     "ALTER TABLE work_order_operations ADD COLUMN isLocked TINYINT(1) DEFAULT 0",
+    "ALTER TABLE leads ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0",
     "ALTER TABLE work_orders ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN customer VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN orderNo VARCHAR(100) DEFAULT NULL",
@@ -4764,7 +4765,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       let custName = safeOrder.customerName || '';
       if (safeOrder.customerId) {
         const [custRows]: any = await db.query(
-          'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, requiresAdvance FROM leads WHERE id = ? LIMIT 1',
+          'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, IFNULL(requiresAdvance, 0) AS requiresAdvance FROM leads WHERE id = ? LIMIT 1',
           [safeOrder.customerId, safeOrder.customerId]
         );
         if (custRows && custRows.length > 0) {
@@ -8497,7 +8498,7 @@ app.post('/api/production/work-orders', async (req, res) => {
     let checkedCustName = customer || '';
     if (customerId) {
       const [custRows]: any = await db.query(
-        'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, requiresAdvance FROM leads WHERE id = ? LIMIT 1',
+        'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, IFNULL(requiresAdvance, 0) AS requiresAdvance FROM leads WHERE id = ? LIMIT 1',
         [customerId, customerId]
       );
       if (custRows && custRows.length > 0) {
@@ -8506,7 +8507,7 @@ app.post('/api/production/work-orders', async (req, res) => {
       }
     } else if (customer) {
       const [custRows]: any = await db.query(
-        'SELECT id, name, company, requiresAdvance FROM customers WHERE UPPER(company) = ? OR UPPER(name) = ? UNION SELECT id, name, company, requiresAdvance FROM leads WHERE UPPER(company) = ? OR UPPER(name) = ? LIMIT 1',
+        'SELECT id, name, company, requiresAdvance FROM customers WHERE UPPER(company) = ? OR UPPER(name) = ? UNION SELECT id, name, company, IFNULL(requiresAdvance, 0) AS requiresAdvance FROM leads WHERE UPPER(company) = ? OR UPPER(name) = ? LIMIT 1',
         [customer.toUpperCase(), customer.toUpperCase(), customer.toUpperCase(), customer.toUpperCase()]
       );
       if (custRows && custRows.length > 0) {

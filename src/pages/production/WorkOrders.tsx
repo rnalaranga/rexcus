@@ -135,13 +135,16 @@ export const WorkOrders: React.FC = () => {
         (wo.title || '').toLowerCase().includes(q) ||
         (wo.id || '').toLowerCase().includes(q) ||
         (wo.orderNo || '').toLowerCase().includes(q) ||
+        (wo.quoteId || '').toLowerCase().includes(q) ||
+        (wo.quotationNo || '').toLowerCase().includes(q) ||
         (wo.customerName || '').toLowerCase().includes(q) ||
+        (wo.customer || '').toLowerCase().includes(q) ||
         (wo.notes || '').toLowerCase().includes(q)
 
       // 2. Status filter
       let matchStatus = true
       if (statusFilter === 'planned') {
-        matchStatus = wo.status === 'Draft' || wo.status === 'Pending' || wo.status === 'Released'
+        matchStatus = wo.status === 'Draft' || wo.status === 'Pending' || wo.status === 'Released' || wo.status === 'Planned'
       } else if (statusFilter === 'in_progress') {
         matchStatus = wo.status === 'In Progress'
       } else if (statusFilter === 'qc_rework') {

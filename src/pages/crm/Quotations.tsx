@@ -363,8 +363,12 @@ export const Quotations: React.FC = () => {
       };
       
       const res = await createWorkOrder(woData);
-      if (res && res.error === 'DUPLICATE') {
-        setWoDialog({ type: 'error', msg: `A Work Order already exists (${res.existingId || ''}) for Quotation ${woDialog.group.quoNo}!` });
+      if (res && (res.error || !res.success)) {
+        if (res.error === 'DUPLICATE') {
+          setWoDialog({ type: 'error', msg: `A Work Order already exists (${res.existingId || ''}) for Quotation ${woDialog.group.quoNo}!` });
+        } else {
+          setWoDialog({ type: 'error', msg: res.error || res.message || 'Failed to create Work Order' });
+        }
         return;
       }
       try {
@@ -372,7 +376,11 @@ export const Quotations: React.FC = () => {
       } catch (err) {}
       await loadWorkOrders();
       await refetch();
-      setWoDialog({ type: 'success', msg: `Work Order successfully created for ${woDialog.group.quoNo}! Quotation status updated to 'In Production'.` });
+      setWoDialog({ 
+        type: 'success', 
+        woId: res.orderNo || res.id,
+        msg: `Work Order #${res.orderNo || res.id} successfully created for ${woDialog.group.quoNo}! Quotation status updated to 'In Production'.` 
+      });
     } catch(e: any) {
       setWoDialog({ type: 'error', msg: e?.message || 'Failed to create Work Order' });
     }
@@ -497,7 +505,7 @@ export const Quotations: React.FC = () => {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
-  const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string} | null>(null)
+  const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string, woId?: string} | null>(null)
   const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
   const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string, photos?: any[] } | null>(null)
@@ -2902,8 +2910,20 @@ export const Quotations: React.FC = () => {
           {woDialog?.type === 'success' && (
             <>
               <p className="text-sm text-emerald-500 font-medium mb-6">{woDialog.msg}</p>
-              <div className="flex justify-end">
-                <Button variant="primary" onClick={() => setWoDialog(null)}>Close</Button>
+              <div className="flex justify-end gap-2">
+                {woDialog.woId && (
+                  <Button 
+                    variant="primary" 
+                    onClick={() => {
+                      const wid = woDialog.woId || '';
+                      setWoDialog(null);
+                      navigate(`/production/work-orders?search=${encodeURIComponent(wid)}`);
+                    }}
+                  >
+                    View in Work Orders
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setWoDialog(null)}>Close</Button>
               </div>
             </>
           )}

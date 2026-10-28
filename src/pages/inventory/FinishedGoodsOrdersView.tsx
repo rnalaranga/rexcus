@@ -791,8 +791,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }
 
       const res = await createWorkOrder(woData)
-      if (res && res.error === 'DUPLICATE') {
-        toast(`A Work Order already exists (${res.existingId || ''}) for ${order.orderNo}!`, 'warning')
+      if (res && (res.error || !res.success)) {
+        if (res.error === 'DUPLICATE') {
+          toast(`A Work Order already exists (${res.existingId || ''}) for ${order.orderNo}!`, 'warning')
+        } else {
+          toast(res.error || res.message || 'Failed to create Work Order', 'error')
+        }
         return
       }
 

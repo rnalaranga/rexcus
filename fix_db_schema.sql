@@ -585,6 +585,7 @@ CREATE TABLE IF NOT EXISTS `tax_profiles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL;
 ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL;
+ALTER TABLE leads ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0;
 
 INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId) VALUES ('tp_vat18', 'VAT (18%)', 'VAT', 18, NULL);
 INSERT IGNORE INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, accountId) VALUES ('tp_vat_sscl', 'VAT (18%) + SSCL (2.5%)', 'SSCL', 2.5, 'VAT', 18, 1, NULL);
