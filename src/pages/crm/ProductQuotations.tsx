@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
-  UserCheck, Shield, Users, FileText, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
+  UserCheck, Shield, Users, FileText, AlertCircle, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
   ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info, ShieldCheck
@@ -657,7 +657,12 @@ export const ProductQuotations: React.FC = () => {
             {/* 3. Send Email */}
             <button
               type="button"
+              disabled={latest?.status === 'Pending Approval' || status === 'Pending Approval'}
               onClick={() => {
+                if (latest?.status === 'Pending Approval' || status === 'Pending Approval') {
+                  alert(`Quotation ${group.quoNo} has been sent for approval and is currently "Pending Approval". It cannot be emailed until formally approved.`);
+                  return;
+                }
                 setEmailModalData({
                   documentNumber: group.quoNo,
                   customerEmail: group.clientEmail || '',
@@ -670,10 +675,20 @@ export const ProductQuotations: React.FC = () => {
                 setOpenActionId(null);
                 setActionCoords(null);
               }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+              className={`w-full px-3.5 py-2 text-xs font-semibold flex items-center gap-2.5 transition-colors text-left ${
+                (latest?.status === 'Pending Approval' || status === 'Pending Approval')
+                  ? 'text-zinc-400 dark:text-zinc-600 cursor-not-allowed bg-zinc-50 dark:bg-zinc-900/50'
+                  : 'text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer'
+              }`}
+              title={(latest?.status === 'Pending Approval' || status === 'Pending Approval') ? 'Cannot email: Quotation is Pending Approval' : 'Send Quotation via Email'}
             >
-              <Mail size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <Mail size={14} className={(latest?.status === 'Pending Approval' || status === 'Pending Approval') ? 'text-zinc-400 shrink-0' : 'text-indigo-600 dark:text-indigo-400 shrink-0'} />
               <span>Send via Email</span>
+              {(latest?.status === 'Pending Approval' || status === 'Pending Approval') && (
+                <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                  Pending Approval
+                </span>
+              )}
             </button>
 
             {/* Commercial Actions (If Approved / Sent / Accepted / PO Received) */}
@@ -1794,27 +1809,48 @@ export const ProductQuotations: React.FC = () => {
           size="4xl"
         >
           <div className="space-y-4">
+            {previewData.quotation?.status === 'Pending Approval' && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  <strong>Approval Required:</strong> This quotation has been sent for approval and is currently <strong>Pending Approval</strong>. Downloading PDF and printing are locked until it is formally approved.
+                </span>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pb-3 border-b border-theme-subtle">
               <Button
                 variant="ghost"
                 size="sm"
                 icon={Download}
+                disabled={previewData.quotation?.status === 'Pending Approval'}
                 onClick={async () => {
+                  if (previewData.quotation?.status === 'Pending Approval') {
+                    alert('This quotation is currently Pending Approval and cannot be downloaded until approved.');
+                    return;
+                  }
                   const el = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
                   if (el) {
                     const quoteNo = previewData.quotation?.parsed?.quotationNo || previewData.quotation?.id || 'PQ';
                     await exportPdf(el, `Quotation_${quoteNo}.pdf`);
                   }
                 }}
-                className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs font-semibold"
+                className={`text-xs font-semibold ${previewData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed bg-surface border border-theme-subtle' : 'bg-surface border border-theme-subtle hover:bg-surface2'}`}
               >
                 Download PDF
               </Button>
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => printElement('print-section', previewData.quotation?.parsed?.quotationNo || 'Product_Quotation')}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                disabled={previewData.quotation?.status === 'Pending Approval'}
+                onClick={() => {
+                  if (previewData.quotation?.status === 'Pending Approval') {
+                    alert('This quotation is currently Pending Approval and cannot be printed until approved.');
+                    return;
+                  }
+                  printElement('print-section', previewData.quotation?.parsed?.quotationNo || 'Product_Quotation');
+                }}
+                className={`font-bold text-xs ${previewData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
               >
                 Print Quotation
               </Button>

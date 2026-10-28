@@ -19,7 +19,7 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportPdf } from '@/lib/exportPdf'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info, ShieldCheck } from 'lucide-react'
+import { Banknote, Mail, AlertCircle, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info, ShieldCheck } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
@@ -1042,7 +1042,12 @@ export const Quotations: React.FC = () => {
             {/* 3. Send Email */}
             <button
               type="button"
+              disabled={latestMain?.status === 'Pending Approval'}
               onClick={() => {
+                if (latestMain?.status === 'Pending Approval') {
+                  alert(`Quotation ${group.quoNo} has been sent for approval and is currently "Pending Approval". It cannot be emailed until formally approved.`);
+                  return;
+                }
                 setEmailModalData({
                   documentNumber: group.quoNo,
                   customerEmail: group.leadEmail || '',
@@ -1053,10 +1058,20 @@ export const Quotations: React.FC = () => {
                 });
                 setOpenActionId(null);
               }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left"
+              className={`w-full px-3.5 py-2 text-xs font-semibold flex items-center gap-2.5 transition-colors text-left ${
+                latestMain?.status === 'Pending Approval'
+                  ? 'text-zinc-400 dark:text-zinc-600 cursor-not-allowed bg-zinc-50 dark:bg-zinc-900/50'
+                  : 'text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer'
+              }`}
+              title={latestMain?.status === 'Pending Approval' ? 'Cannot email: Quotation is Pending Approval' : 'Send Quotation via Email'}
             >
-              <Mail size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <Mail size={14} className={latestMain?.status === 'Pending Approval' ? 'text-zinc-400 shrink-0' : 'text-indigo-600 dark:text-indigo-400 shrink-0'} />
               <span>Send via Email</span>
+              {latestMain?.status === 'Pending Approval' && (
+                <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                  Pending Approval
+                </span>
+              )}
             </button>
 
             {/* Commercial & Production Actions */}
@@ -2593,11 +2608,25 @@ export const Quotations: React.FC = () => {
                lead={previewData.lead}
                settings={settings}
             />
+            {previewData.quotation?.status === 'Pending Approval' && (
+              <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  <strong>Approval Required:</strong> This quotation has been sent for approval and is currently <strong>Pending Approval</strong>. Emailing, downloading PDF, and printing are locked until it is formally approved.
+                </span>
+              </div>
+            )}
+
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
               <Button 
                 variant="primary" 
                 icon={Mail} 
+                disabled={previewData.quotation?.status === 'Pending Approval'}
                 onClick={() => {
+                  if (previewData.quotation?.status === 'Pending Approval') {
+                    alert('This quotation is currently Pending Approval and cannot be emailed until approved.');
+                    return;
+                  }
                   let parsed: any = {};
                   try { parsed = JSON.parse(previewData.quotation?.data || '{}'); } catch(e){}
                   setEmailModalData({
@@ -2609,15 +2638,39 @@ export const Quotations: React.FC = () => {
                     elementIdToPdf: 'print-section'
                   });
                 }} 
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
+                className={previewData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs'}
               >
                 Email Quotation
               </Button>
-              <Button variant="ghost" onClick={async () => {
-                const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
-                await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
-              }} className="bg-surface border border-theme-subtle hover:bg-surface2 font-semibold">Export PDF</Button>
-              <Button variant="primary" onClick={() => printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation')}>Print Quotation</Button>
+              <Button 
+                variant="ghost" 
+                disabled={previewData.quotation?.status === 'Pending Approval'}
+                onClick={async () => {
+                  if (previewData.quotation?.status === 'Pending Approval') {
+                    alert('This quotation is currently Pending Approval and cannot be downloaded until approved.');
+                    return;
+                  }
+                  const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
+                  await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
+                }} 
+                className={`border border-theme-subtle font-semibold ${previewData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed bg-surface' : 'bg-surface hover:bg-surface2'}`}
+              >
+                Export PDF
+              </Button>
+              <Button 
+                variant="primary" 
+                disabled={previewData.quotation?.status === 'Pending Approval'}
+                onClick={() => {
+                  if (previewData.quotation?.status === 'Pending Approval') {
+                    alert('This quotation is currently Pending Approval and cannot be printed until approved.');
+                    return;
+                  }
+                  printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation');
+                }}
+                className={previewData.quotation?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                Print Quotation
+              </Button>
             </div>
           </div>
         )}

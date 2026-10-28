@@ -357,7 +357,14 @@ export const QuotationBuilder: React.FC = () => {
   const [quoDate, setQuoDate] = useState(new Date().toISOString().split('T')[0])
   const [vatNo, setVatNo] = useState(lead?.vat || '')
   const [tinNo, setTinNo] = useState(lead?.svat || '')
-  const [customerAddress, setCustomerAddress] = useState(lead?.address || '')
+  const [customerAddress, setCustomerAddress] = useState(() => {
+    if (lead?.address) return lead.address;
+    if (lead?.customerId && customers) {
+      const c = customers.find((cust: any) => cust.id === lead.customerId);
+      if (c?.address) return c.address;
+    }
+    return '';
+  })
   const [quotationNo, setQuotationNo] = useState('')
   const [jobQty, setJobQty] = useState('1')
   const [attention, setAttention] = useState('')
@@ -579,15 +586,20 @@ export const QuotationBuilder: React.FC = () => {
   useEffect(() => {
      if (leadId && lead) {
         const isCust = leadId.startsWith('CUST-') || customers?.some(c => c.id === leadId);
+        const linkedCust = !isCust && lead.customerId ? customers?.find(c => c.id === lead.customerId) : null;
         setClientType(isCust ? 'customer' : 'lead');
-        setCustomerName(lead.company || lead.name || '');
-        setCustomerAddress(lead.address || '');
+        setCustomerName(lead.company || lead.name || linkedCust?.company || linkedCust?.name || '');
+        setCustomerAddress(lead.address || linkedCust?.address || '');
         setSelectedLeadId(lead.id);
-        if (!attention && lead.name) setAttention(lead.name);
-        if (lead.vat) setVatNo(lead.vat);
-        if (lead.svat || lead.tin) setTinNo(lead.svat || lead.tin);
+        if (!attention && (lead.name || linkedCust?.name)) setAttention(lead.name || linkedCust?.name || '');
+        if (lead.vat || linkedCust?.vat) setVatNo(lead.vat || linkedCust?.vat || '');
+        if (lead.svat || lead.tin || linkedCust?.svat || linkedCust?.tin) setTinNo(lead.svat || lead.tin || linkedCust?.svat || linkedCust?.tin || '');
+        if (linkedCust) {
+          if (linkedCust.paymentTerms) setCustTerms(linkedCust.paymentTerms);
+          if (linkedCust.deliveryTerms) setCustDelivery(linkedCust.deliveryTerms);
+        }
         if (!quoteIdParam && !quotationNo) {
-          const cust = isCust ? customers?.find(c => c.id === leadId) || lead : null;
+          const cust = isCust ? customers?.find(c => c.id === leadId) || lead : (linkedCust || null);
           fetchNextDocumentNumber('quotation', {
             userPrefix: user?.prefix,
             customerPrefix: cust?.prefix,
@@ -3114,21 +3126,68 @@ export const QuotationBuilder: React.FC = () => {
             </div>
           )}
 
+          {currentQuote?.status === 'Pending Approval' && (
+            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+              <span>
+                <strong>Approval Required:</strong> This quotation has been submitted for approval and is currently <strong>Pending Approval</strong>. Emailing to customer, exporting PDF, and printing are locked until approved.
+              </span>
+            </div>
+          )}
+
           <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
-            <Button variant="ghost" icon={Mail} onClick={() => {
-              if (currentQuote && currentQuote.status !== 'Approved') {
-                if (!window.confirm(`Notice: This quotation is currently "${currentQuote.status || 'Draft'}" and has not been formally approved yet. Do you still wish to email the customer?`)) {
+            <Button 
+              variant="ghost" 
+              icon={Mail} 
+              disabled={currentQuote?.status === 'Pending Approval'}
+              onClick={() => {
+                if (currentQuote?.status === 'Pending Approval') {
+                  alert('This quotation is currently Pending Approval and cannot be emailed until approved.');
                   return;
                 }
-              }
-              setEmailModalOpen(true);
-            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600 font-semibold">Email Customer</Button>
+                if (currentQuote && currentQuote.status !== 'Approved') {
+                  if (!window.confirm(`Notice: This quotation is currently "${currentQuote.status || 'Draft'}" and has not been formally approved yet. Do you still wish to email the customer?`)) {
+                    return;
+                  }
+                }
+                setEmailModalOpen(true);
+              }} 
+              className={`font-semibold ${currentQuote?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed bg-surface border border-theme-subtle/40 text-muted' : 'bg-surface border border-theme-subtle/40 hover:bg-surface2 text-blue-600'}`}
+            >
+              Email Customer
+            </Button>
             
-            <Button variant="ghost" icon={FileDown} onClick={async () => {
-              await exportPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
-            }} className="bg-surface border border-theme-subtle/40 hover:bg-surface2 font-semibold">Export PDF</Button>
+            <Button 
+              variant="ghost" 
+              icon={FileDown} 
+              disabled={currentQuote?.status === 'Pending Approval'}
+              onClick={async () => {
+                if (currentQuote?.status === 'Pending Approval') {
+                  alert('This quotation is currently Pending Approval and cannot be exported until approved.');
+                  return;
+                }
+                await exportPdf('print-section', `Quotation_${quotationNo || 'Q'}.pdf`);
+              }} 
+              className={`font-semibold ${currentQuote?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed bg-surface border border-theme-subtle/40 text-muted' : 'bg-surface border border-theme-subtle/40 hover:bg-surface2'}`}
+            >
+              Export PDF
+            </Button>
             
-            <Button variant="primary" icon={Printer} onClick={() => printElement('print-section', quotationNo || 'Quotation')}>Print Quotation</Button>
+            <Button 
+              variant="primary" 
+              icon={Printer} 
+              disabled={currentQuote?.status === 'Pending Approval'}
+              onClick={() => {
+                if (currentQuote?.status === 'Pending Approval') {
+                  alert('This quotation is currently Pending Approval and cannot be printed until approved.');
+                  return;
+                }
+                printElement('print-section', quotationNo || 'Quotation');
+              }}
+              className={currentQuote?.status === 'Pending Approval' ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              Print Quotation
+            </Button>
           </div>
         </div>
       </Modal>

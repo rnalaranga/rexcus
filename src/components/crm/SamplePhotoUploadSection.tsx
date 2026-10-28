@@ -14,13 +14,15 @@ interface SamplePhotoUploadSectionProps {
   onChange: (photos: SamplePhoto[]) => void;
   disabled?: boolean;
   maxPhotos?: number;
+  onPreview?: (photo: SamplePhoto) => void;
 }
 
 export const SamplePhotoUploadSection: React.FC<SamplePhotoUploadSectionProps> = ({
   photos,
   onChange,
   disabled = false,
-  maxPhotos = 10
+  maxPhotos = 10,
+  onPreview
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -149,7 +151,9 @@ export const SamplePhotoUploadSection: React.FC<SamplePhotoUploadSectionProps> =
             {photos.map(p => (
               <div 
                 key={p.id} 
-                className="relative group aspect-square rounded-none overflow-hidden border border-theme-subtle bg-surface"
+                onClick={() => onPreview?.(p)}
+                className={`relative group aspect-square rounded-none overflow-hidden border border-theme-subtle bg-surface ${onPreview ? "cursor-pointer hover:border-amber-500" : ""}`}
+                title={onPreview ? (p.name ? `${p.name} (Click to enlarge)` : "Click to enlarge") : p.name}
               >
                 <img
                   src={p.url}

@@ -1465,6 +1465,11 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
+    "ALTER TABLE leads ADD COLUMN address TEXT DEFAULT NULL",
+    "ALTER TABLE leads ADD COLUMN brNumber VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE leads ADD COLUMN financeContactName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE leads ADD COLUMN financeContactPhone VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE leads ADD COLUMN industry VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
     "ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock'",
     "ALTER TABLE customer_grns ADD COLUMN gatePassId VARCHAR(50) DEFAULT NULL",
@@ -1924,6 +1929,22 @@ app.post('/api/email/send', async (req, res) => {
     }
     if (!subject) {
       return res.status(400).json({ success: false, error: 'Email subject is required' });
+    }
+
+    if (docType === 'quotation' && docNumber) {
+      const [qRows]: any = await db.query(
+        "SELECT id, status FROM quotations WHERE id = ? OR quotationNo = ? OR docNo = ?",
+        [docNumber, docNumber, docNumber]
+      );
+      if (qRows && qRows.length > 0) {
+        const qStatus = qRows[0].status;
+        if (qStatus === 'Pending Approval') {
+          return res.status(403).json({
+            success: false,
+            error: `Quotation ${docNumber} has been sent for approval and is currently "Pending Approval". It cannot be emailed to customers until formally approved.`
+          });
+        }
+      }
     }
 
     const emailConfig = await getEmailTransporter();
@@ -2586,7 +2607,16 @@ app.post('/api/customers/:id/approve-credit', async (req, res) => {
 // -- LEADS --
 app.get('/api/leads', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM leads ORDER BY lastActivity DESC');
+    const [rows] = await db.query(`
+      SELECT 
+        l.*, 
+        COALESCE(NULLIF(l.address, ''), c.address, '') as address,
+        COALESCE(NULLIF(l.vat, ''), c.vat, '') as vat,
+        COALESCE(NULLIF(l.svat, ''), c.svat, '') as svat
+      FROM leads l 
+      LEFT JOIN customers c ON l.customerId = c.id 
+      ORDER BY l.lastActivity DESC
+    `);
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -3776,6 +3806,7 @@ app.get('/api/crm/grns/:quoteId', async (req, res) => {
 app.post('/api/crm/grns', async (req, res) => {
   try {
     const data = { ...req.body };
+    delete data.isExisting;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
     
@@ -3806,6 +3837,7 @@ app.put('/api/crm/grns/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     delete data.id;
+    delete data.isExisting;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
     if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
     await db.query('UPDATE customer_grns SET ? WHERE id = ?', [data, id]);
