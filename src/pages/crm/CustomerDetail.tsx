@@ -243,6 +243,20 @@ export const CustomerDetail: React.FC = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!customer) return
+    const trimmedCompany = (formData.company || '').trim().toUpperCase()
+    if (!trimmedCompany) {
+      showError('Company Name is required.')
+      return
+    }
+
+    const duplicate = (customers || []).find((c: any) => 
+      c.id !== customer.id && c.company && c.company.trim().toUpperCase() === trimmedCompany
+    )
+    if (duplicate) {
+      showError(`Customer company "${trimmedCompany}" already exists (${duplicate.name} - ${duplicate.id}). Duplicate company names are not allowed.`)
+      return
+    }
+
     setSubmitting(true)
     const cleanedContacts = (formData.contacts || []).filter((c: any) => 
       c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()
@@ -250,6 +264,7 @@ export const CustomerDetail: React.FC = () => {
     try {
       const payload = { 
         ...formData, 
+        company: trimmedCompany,
         contacts: cleanedContacts 
       }
       await updateCustomer(customer.id, payload)
@@ -934,8 +949,16 @@ export const CustomerDetail: React.FC = () => {
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company Name <span className="text-rex-500">*</span></label>
-                  <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" />
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                    Company Name <span className="text-rex-500">*</span> (BLOCK CAPITALS)
+                  </label>
+                  <input 
+                    required 
+                    value={formData.company} 
+                    onChange={e => setFormData({...formData, company: e.target.value.toUpperCase()})} 
+                    className="w-full input-base uppercase font-semibold" 
+                    placeholder="E.G. ACME CORPORATION"
+                  />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Customer Prefix</label>

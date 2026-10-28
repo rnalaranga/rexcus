@@ -3,6 +3,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { createCustomer } from '@/lib/api'
 import { toMySQLDate } from '@/lib/utils'
+import { useCustomers } from '@/hooks/useData'
 import { Building2, Briefcase, User, Users, Plus, Trash2, MapPin, Search, Tags, CheckCircle2 } from 'lucide-react'
 
 interface CustomerModalProps {
@@ -13,12 +14,30 @@ interface CustomerModalProps {
 
 export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false)
+  const { data: customers } = useCustomers()
   const [formData, setFormData] = useState({
     prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, creditLimit: 0, creditDays: 30, paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: true, accountManager: 'System Admin', currency: 'LKR', isForeign: false, contacts: [] as any[]
   })
 
+  const trimmedCompany = (formData.company || '').trim().toUpperCase()
+  const duplicateCompany = Boolean(
+    trimmedCompany && (customers || []).some((c: any) => 
+      c.company && c.company.trim().toUpperCase() === trimmedCompany
+    )
+  )
+
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!trimmedCompany) {
+      alert('Company Name is required.')
+      return
+    }
+
+    if (duplicateCompany) {
+      alert(`Customer company "${trimmedCompany}" already exists! Duplicate company names are not allowed.`)
+      return
+    }
+
     setSubmitting(true)
     const cleanedContacts = (formData.contacts || []).filter((c: any) => 
       c.name?.trim() || c.designation?.trim() || c.phone?.trim() || c.email?.trim()
@@ -27,6 +46,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
     const newCustomer = {
       id: 'CUST-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
       ...formData,
+      company: trimmedCompany,
       contacts: cleanedContacts,
       status: 'active',
       lifetimeValue: 0,
@@ -64,9 +84,22 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
                   <input value={formData.prefix} onChange={e => setFormData({...formData, prefix: e.target.value})} className="w-full input-base" placeholder="ACM" maxLength={5} />
                 </div>
                 <div className="space-y-1.5 col-span-6 sm:col-span-3">
-                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company Name</label>
-                <input value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="Acme Corp" />
-              </div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                    Company Name <span className="text-rose-500 font-bold">*</span> (BLOCK CAPITALS)
+                  </label>
+                  <input 
+                    required 
+                    value={formData.company} 
+                    onChange={e => setFormData({...formData, company: e.target.value.toUpperCase()})} 
+                    className={`w-full input-base uppercase font-semibold ${duplicateCompany ? 'border-rose-500 bg-rose-500/5' : ''}`} 
+                    placeholder="E.G. ACME CORPORATION" 
+                  />
+                  {duplicateCompany && (
+                    <p className="text-[10px] font-bold text-rose-500 mt-1">
+                      ⚠️ Company name &quot;{trimmedCompany}&quot; already exists! Duplicate company names are not allowed.
+                    </p>
+                  )}
+                </div>
               <div className="space-y-1.5 col-span-6 sm:col-span-3">
                 <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Business Reg. No</label>
                 <input value={formData.brNumber} onChange={e => setFormData({...formData, brNumber: e.target.value})} className="w-full input-base" placeholder="PV 000000" />

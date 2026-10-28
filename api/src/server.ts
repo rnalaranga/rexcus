@@ -1687,7 +1687,8 @@ async function runDatabaseSync() {
     "ALTER TABLE work_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE work_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
-    "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL"
+    "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
+    "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''"
   ];
 
   for (const patch of patches) {
@@ -2443,6 +2444,25 @@ app.get('/api/customers/:id', async (req, res) => {
 app.post('/api/customers', async (req, res) => {
   try {
     const data = { ...req.body };
+
+    // Format company name to BLOCK CAPITALS and validate uniqueness
+    if (data.company !== undefined) {
+      data.company = String(data.company || '').trim().toUpperCase();
+    }
+    if (!data.company) {
+      return res.status(400).json({ error: 'Company name is required and cannot be empty.' });
+    }
+
+    const [dupRows]: any = await db.query(
+      'SELECT id, name, company FROM customers WHERE UPPER(TRIM(company)) = ? AND id != ? LIMIT 1',
+      [data.company, data.id || '']
+    );
+    if (dupRows && dupRows.length > 0) {
+      return res.status(400).json({ 
+        error: `Customer company "${data.company}" already exists (${dupRows[0].name} - ${dupRows[0].id}). Duplicate customer company names are not allowed.` 
+      });
+    }
+
     if (data.contacts !== undefined) {
       if (Array.isArray(data.contacts)) {
         data.contacts = JSON.stringify(data.contacts);
@@ -2503,6 +2523,25 @@ app.put('/api/customers/:id', async (req, res) => {
     const { id } = req.params;
     const data = { ...req.body };
     delete data.id;
+
+    // Format company name to BLOCK CAPITALS and validate uniqueness
+    if (data.company !== undefined) {
+      data.company = String(data.company || '').trim().toUpperCase();
+      if (!data.company) {
+        return res.status(400).json({ error: 'Company name is required and cannot be empty.' });
+      }
+
+      const [dupRows]: any = await db.query(
+        'SELECT id, name, company FROM customers WHERE UPPER(TRIM(company)) = ? AND id != ? LIMIT 1',
+        [data.company, id]
+      );
+      if (dupRows && dupRows.length > 0) {
+        return res.status(400).json({ 
+          error: `Customer company "${data.company}" already exists (${dupRows[0].name} - ${dupRows[0].id}). Duplicate customer company names are not allowed.` 
+        });
+      }
+    }
+
     if (data.contacts !== undefined) {
       if (Array.isArray(data.contacts)) {
         data.contacts = JSON.stringify(data.contacts);

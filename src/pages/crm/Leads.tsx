@@ -375,7 +375,7 @@ export const Leads: React.FC = () => {
           await createCustomer({
             id: custId,
             name: formData.name,
-            company: formData.company,
+            company: (formData.company || '').trim().toUpperCase(),
             email: formData.email,
             phone: formData.phone,
             address: formData.address || '',
@@ -1657,8 +1657,8 @@ export const Leads: React.FC = () => {
                     <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" placeholder="e.g. Jane Doe" />
                   </div>
                   <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company / Business Name <span className="text-rex-500">*</span></label>
-                    <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full input-base" placeholder="e.g. Acme Corp" />
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company / Business Name <span className="text-rex-500">*</span> (BLOCK CAPITALS)</label>
+                    <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value.toUpperCase()})} className="w-full input-base uppercase font-semibold" placeholder="E.G. ACME CORP" />
                   </div>
                   <div className="space-y-1.5 col-span-2">
                     <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Full Address</label>
