@@ -10648,8 +10648,7 @@ app.get('/api/search', async (req, res) => {
     let salesOrders: any[] = [];
     try {
       const [sos] = await db.query(
-        SELECT id, orderNo, customerName, productName, quotationNo, customerPoNo, totalPrice, status FROM finished_goods_orders \
-         WHERE id LIKE ? OR orderNo LIKE ? OR customerName LIKE ? OR quotationNo LIKE ? OR customerPoNo LIKE ? OR productName LIKE ? LIMIT 6,
+        `SELECT id, orderNo, customerName, productName, quotationNo, customerPoNo, totalPrice, status FROM finished_goods_orders WHERE id LIKE ? OR orderNo LIKE ? OR customerName LIKE ? OR quotationNo LIKE ? OR customerPoNo LIKE ? OR productName LIKE ? LIMIT 6`,
         [like, like, like, like, like, like]
       ) as any[];
       salesOrders = sos || [];
