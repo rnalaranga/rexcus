@@ -724,6 +724,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const handleCreateWorkOrder = async (order: any, orderItems: any[]) => {
     try {
+      if (order.status === 'Pending Advance Approval') {
+        toast(`Sales Order #${order.orderNo} is currently "Pending Advance Approval". Production Work Order cannot be issued until Finance / Management approves the advance waiver or payment is recorded.`, 'warning');
+        return;
+      }
+
       // Check if customer registration requires advance payment
       const cust = customers.find((c: any) => c.id === order.customerId || (c.company && order.customerName && c.company.toLowerCase() === order.customerName.toLowerCase()) || (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())) ||
                    leads.find((l: any) => l.id === order.customerId || (l.company && order.customerName && l.company.toLowerCase() === order.customerName.toLowerCase()) || (l.name && order.customerName && l.name.toLowerCase() === order.customerName.toLowerCase()));
@@ -731,8 +736,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
 
       if (customerRequiresAdvance) {
-        const hasAdvanceProforma = (allInvoices || []).some((inv: any) => 
+        const hasApprovedWaiver = order.status === 'Confirmed' && order.notes && order.notes.includes('Advance Waiver Approved');
+
+        const hasAdvancePaid = (allInvoices || []).some((inv: any) => 
           (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+          (Number(inv.paidAmount || 0) > 0 || inv.status === 'paid' || inv.status === 'partially_paid') &&
           (
             (inv.orderId && String(inv.orderId) === String(order.id)) ||
             (inv.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
@@ -742,9 +750,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           )
         );
 
-        if (!hasAdvanceProforma) {
-          toast(`Customer "${order.customerName}" requires an advance payment deposit as per registration terms. Work Order cannot be created without an Advance Payment Proforma Invoice.`, 'warning');
-          setProformaModalOrder(order);
+        if (!hasAdvancePaid && !hasApprovedWaiver) {
+          toast(`Customer "${order.customerName}" requires advance payment. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval.`, 'warning');
           return;
         }
       }

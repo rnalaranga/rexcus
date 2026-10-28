@@ -4758,6 +4758,57 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       }
     }
 
+    // Server-side enforcement: If customer requires advance, order cannot be Confirmed without payment recorded in Finance (or authorized waiver)
+    if (safeOrder.status === 'Confirmed') {
+      let requiresAdvance = false;
+      let custName = safeOrder.customerName || '';
+      if (safeOrder.customerId) {
+        const [custRows]: any = await db.query(
+          'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, requiresAdvance FROM leads WHERE id = ? LIMIT 1',
+          [safeOrder.customerId, safeOrder.customerId]
+        );
+        if (custRows && custRows.length > 0) {
+          requiresAdvance = Boolean(custRows[0].requiresAdvance === 1 || custRows[0].requiresAdvance === true);
+          custName = custRows[0].company || custRows[0].name || custName;
+        }
+      }
+
+      if (requiresAdvance) {
+        const hasAdminWaiver = safeOrder.notes && (
+          safeOrder.notes.includes('Advance Waived by Admin') || 
+          safeOrder.notes.includes('Direct Admin Override') ||
+          safeOrder.notes.includes('Direct Finance / Admin Override')
+        );
+
+        if (!hasAdminWaiver) {
+          const [paidProforma]: any = await db.query(
+            `SELECT id, invoiceNo, paidAmount, status FROM invoices 
+             WHERE (isProforma = 1 OR invoiceType = 'proforma' OR invoiceNo LIKE 'PI-%' OR id LIKE 'PI-%')
+               AND (paidAmount > 0 OR status IN ('paid', 'partially_paid'))
+               AND (
+                 (quotationId IS NOT NULL AND quotationId != '' AND quotationId = ?) OR
+                 (quotationNo IS NOT NULL AND quotationNo != '' AND (quotationNo = ? OR quotationNo = ?)) OR
+                 (orderNo IS NOT NULL AND orderNo != '' AND (orderNo = ? OR orderNo = ?)) OR
+                 (customerId IS NOT NULL AND customerId != '' AND customerId = ?)
+               )
+             LIMIT 1`,
+            [
+              safeOrder.quoteId || '',
+              safeOrder.quotationNo || '',
+              safeOrder.orderNo || '',
+              safeOrder.quotationNo || '',
+              safeOrder.orderNo || '',
+              safeOrder.customerId || ''
+            ]
+          );
+
+          if (!paidProforma || paidProforma.length === 0) {
+            safeOrder.status = 'Pending Advance Approval';
+          }
+        }
+      }
+    }
+
     const [result]: any = await db.query('INSERT INTO finished_goods_orders SET ?', safeOrder);
     const insertedId = result?.insertId || safeOrder.id;
 
@@ -8465,30 +8516,51 @@ app.post('/api/production/work-orders', async (req, res) => {
     }
 
     if (requiresAdvance) {
-      const [proformaRows]: any = await db.query(
-        `SELECT id, invoiceNo FROM invoices 
-         WHERE (isProforma = 1 OR invoiceType = 'proforma' OR invoiceNo LIKE 'PI-%' OR id LIKE 'PI-%')
-           AND (
-             (quotationId IS NOT NULL AND quotationId != '' AND quotationId = ?) OR
-             (quotationNo IS NOT NULL AND quotationNo != '' AND (quotationNo = ? OR quotationNo = ?)) OR
-             (orderNo IS NOT NULL AND orderNo != '' AND (orderNo = ? OR orderNo = ?)) OR
-             (customerId IS NOT NULL AND customerId != '' AND customerId = ?)
-           )
-         LIMIT 1`,
-        [
-          sourceQuoteId || '', 
-          sourceQuoteId || '', 
-          req.body.orderNo || '', 
-          sourceQuoteId || '', 
-          req.body.orderNo || '', 
-          customerId || ''
-        ]
-      );
+      let advanceApproved = false;
+      if (req.body.orderNo || sourceQuoteId) {
+        const [ordRows]: any = await db.query(
+          "SELECT status, notes FROM finished_goods_orders WHERE orderNo = ? OR quoteId = ? LIMIT 1",
+          [req.body.orderNo || '', sourceQuoteId || '']
+        );
+        if (ordRows && ordRows.length > 0) {
+          if (ordRows[0].status === 'Pending Advance Approval') {
+            return res.status(400).json({
+              error: `Sales Order #${req.body.orderNo || ordRows[0].orderNo} is currently "Pending Advance Approval". Production Work Order cannot be issued until Finance / Management approves the advance waiver or payment is recorded.`
+            });
+          }
+          if (ordRows[0].status === 'Confirmed' && ordRows[0].notes && ordRows[0].notes.includes('Advance Waiver Approved')) {
+            advanceApproved = true;
+          }
+        }
+      }
 
-      if (!proformaRows || proformaRows.length === 0) {
-        return res.status(400).json({
-          error: `Customer "${checkedCustName || 'Client'}" requires an advance payment deposit as per registration terms. An Advance Payment Proforma Invoice must be created before issuing a Work Order.`
-        });
+      if (!advanceApproved) {
+        const [proformaRows]: any = await db.query(
+          `SELECT id, invoiceNo, paidAmount, status FROM invoices 
+           WHERE (isProforma = 1 OR invoiceType = 'proforma' OR invoiceNo LIKE 'PI-%' OR id LIKE 'PI-%')
+             AND (paidAmount > 0 OR status IN ('paid', 'partially_paid'))
+             AND (
+               (quotationId IS NOT NULL AND quotationId != '' AND quotationId = ?) OR
+               (quotationNo IS NOT NULL AND quotationNo != '' AND (quotationNo = ? OR quotationNo = ?)) OR
+               (orderNo IS NOT NULL AND orderNo != '' AND (orderNo = ? OR orderNo = ?)) OR
+               (customerId IS NOT NULL AND customerId != '' AND customerId = ?)
+             )
+           LIMIT 1`,
+          [
+            sourceQuoteId || '', 
+            sourceQuoteId || '', 
+            req.body.orderNo || '', 
+            sourceQuoteId || '', 
+            req.body.orderNo || '', 
+            customerId || ''
+          ]
+        );
+
+        if (!proformaRows || proformaRows.length === 0) {
+          return res.status(400).json({
+            error: `Customer "${checkedCustName || 'Client'}" requires an advance payment deposit as per registration terms. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval.`
+          });
+        }
       }
     }
 

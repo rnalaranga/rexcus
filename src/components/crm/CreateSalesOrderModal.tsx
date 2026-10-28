@@ -47,7 +47,11 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     user?.role === 'admin' || 
     user?.role === 'manager' || 
     user?.role === 'sales_head' || 
-    can?.('approvals.orders')
+    user?.role === 'finance_head' || 
+    user?.role === 'cfo' || 
+    user?.role === 'accountant' || 
+    can?.('approvals.orders') ||
+    can?.('finance.approvals')
   );
 
   // Check if an Advance Proforma Invoice or payment exists for this Quotation
@@ -73,14 +77,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     });
   }, [quotationData, allInvoices]);
 
-  const hasAdvance = Boolean(
+  const proformaTotal = Number(linkedProforma?.total || linkedProforma?.amount || 0);
+  const proformaPaid = Number(linkedProforma?.paidAmount || 0);
+  const hasAdvancePaid = Boolean(
     linkedProforma && (
-      Number(linkedProforma.paidAmount || 0) > 0 || 
+      proformaPaid > 0 || 
       linkedProforma.status === 'paid' || 
-      linkedProforma.status === 'partially_paid' ||
-      linkedProforma.id
+      linkedProforma.status === 'partially_paid'
     )
   );
+
+  const hasAdvance = hasAdvancePaid;
 
   // Match the customer from registration to inspect their condition
   const matchedCustomer = useMemo(() => {
@@ -449,7 +456,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 Direct Order OK
               </span>
             </div>
-          ) : hasAdvance ? (
+          ) : hasAdvancePaid ? (
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-1.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
@@ -457,17 +464,74 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 </div>
                 <div>
                   <span className="font-bold text-emerald-800 dark:text-emerald-300 block">
-                    Advance Payment / Proforma Invoice Verified
+                    Advance Payment Verified in Finance (Receivables)
                   </span>
                   <span className="text-muted text-[11px]">
-                    Linked Proforma: <strong className="font-mono text-primary">{linkedProforma.invoiceNo || linkedProforma.id}</strong>
-                    {Number(linkedProforma.paidAmount) > 0 ? ` · Paid: ${formatCurrency(linkedProforma.paidAmount)}` : ' · Formally Issued'}
+                    Linked Proforma: <strong className="font-mono text-primary">{linkedProforma.invoiceNo || linkedProforma.id}</strong> · Recorded Payment: <strong className="font-mono text-emerald-600">{formatCurrency(proformaPaid)}</strong> ({linkedProforma.status === 'paid' ? 'Fully Settled' : 'Advance Paid'})
                   </span>
                 </div>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-600 text-white uppercase font-mono">
-                Advance Verified
+                Advance Paid OK
               </span>
+            </div>
+          ) : linkedProforma ? (
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
+              <div className="flex items-start gap-2.5">
+                <div className="p-1.5 bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                  <AlertTriangle size={16} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-800 dark:text-amber-300 block">
+                      Advance Payment Record Pending in Finance (Receivables)
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 uppercase font-mono">
+                      Finance Approval Required
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                    Advance Proforma <strong>{linkedProforma.invoiceNo || linkedProforma.id}</strong> ({formatCurrency(proformaTotal)}) exists, but <strong>no payment record has been entered under Finance &gt; Receivables</strong> yet (Paid: {formatCurrency(proformaPaid)}).
+                  </p>
+                  <p className="text-[11px] text-muted mt-1">
+                    Customer <strong>{matchedCustomer?.company || matchedCustomer?.name || formData.customerName}</strong> registration is set to <strong>"Requires Advance Payment"</strong>. To confirm directly, please record payment in <strong>Finance &gt; Receivables &gt; Proformas</strong>. Otherwise, enter reason below for Finance Approval.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-amber-500/20 space-y-2">
+                <p className="text-[11px] text-secondary">
+                  If proceeding without recording advance payment in Finance, an <strong>Advance Waiver Approval Request</strong> will be routed to the <strong>Finance & Management Approval Hub</strong>.
+                </p>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-muted mb-1">
+                    Reason for Bypassing Advance Payment / Requesting Finance Approval *
+                  </label>
+                  <input
+                    type="text"
+                    required={isAdvanceMissing && !adminOverrideWaiver}
+                    value={advanceWaiverReason}
+                    onChange={(e) => setAdvanceWaiverReason(e.target.value)}
+                    placeholder="e.g. Cheque received awaiting deposit, or corporate credit authorized by Finance Manager"
+                    className="w-full h-8 px-2.5 text-xs bg-surface border border-amber-500/40 text-primary focus:outline-none focus:border-amber-600 font-medium"
+                  />
+                </div>
+
+                {isAdminOrManager && (
+                  <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adminOverrideWaiver}
+                      onChange={(e) => setAdminOverrideWaiver(e.target.checked)}
+                      className="rounded-none text-rex-600 focus:ring-0"
+                    />
+                    <span className="text-xs font-semibold text-primary">
+                      Direct Finance / Admin Override: Waive customer advance condition and Confirm order immediately
+                    </span>
+                  </label>
+                )}
+              </div>
             </div>
           ) : (
             <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
@@ -481,18 +545,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       Advance Payment Required (Customer Registration Mandate)
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 uppercase font-mono">
-                      Approval Needed
+                      Finance Approval Needed
                     </span>
                   </div>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                    Customer <strong>{matchedCustomer?.company || matchedCustomer?.name || formData.customerName}</strong> registration is set to <strong>"Requires Advance Payment"</strong>. No advance proforma invoice was found for quotation <strong>{formData.quotationNo}</strong>.
+                    Customer <strong>{matchedCustomer?.company || matchedCustomer?.name || formData.customerName}</strong> registration is set to <strong>"Requires Advance Payment"</strong>. No advance proforma invoice or payment was found for quotation <strong>{formData.quotationNo}</strong>.
                   </p>
                 </div>
               </div>
 
               <div className="pt-2 border-t border-amber-500/20 space-y-2">
                 <p className="text-[11px] text-secondary">
-                  To proceed without an advance deposit, an <strong>Advance Waiver Approval Request</strong> will be routed to the <strong>Central Approval Hub</strong> for Admin / Management authorization.
+                  To proceed without an advance deposit, an <strong>Advance Waiver Approval Request</strong> will be routed to the <strong>Finance & Management Approval Hub</strong>.
                 </p>
 
                 <div>
@@ -518,7 +582,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       className="rounded-none text-rex-600 focus:ring-0"
                     />
                     <span className="text-xs font-semibold text-primary">
-                      Direct Admin Override: Waive customer advance condition and Confirm order immediately
+                      Direct Finance / Admin Override: Waive customer advance condition and Confirm order immediately
                     </span>
                   </label>
                 )}
@@ -814,7 +878,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               {submitting
                 ? 'Processing...'
                 : (isAdvanceMissing && !adminOverrideWaiver)
-                  ? 'Request Admin Approval & Submit Order'
+                  ? 'Submit for Finance Approval'
                   : 'Confirm & Create Sales Order'}
             </Button>
           </div>

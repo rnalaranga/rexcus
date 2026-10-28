@@ -305,15 +305,16 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
     const customerRequiresAdvance = Boolean(selectedCust && (selectedCust.requiresAdvance === true || selectedCust.requiresAdvance === 1))
 
     if (customerRequiresAdvance) {
-      const hasAdvance = (allInvoices || []).some((inv: any) => 
+      const hasAdvancePaid = (allInvoices || []).some((inv: any) => 
         (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+        (Number(inv.paidAmount || 0) > 0 || inv.status === 'paid' || inv.status === 'partially_paid') &&
         (
           (formData.sourceQuoteId && inv.quotationId && String(inv.quotationId) === String(formData.sourceQuoteId)) ||
           (formData.customerId && inv.customerId && String(inv.customerId) === String(formData.customerId))
         )
       )
-      if (!hasAdvance) {
-        setError(`Customer "${selectedCust?.company || selectedCust?.name || 'Client'}" requires an advance deposit as per registration terms. An Advance Payment Proforma Invoice must be created before issuing a Work Order.`)
+      if (!hasAdvancePaid) {
+        setError(`Customer "${selectedCust?.company || selectedCust?.name || 'Client'}" requires advance payment. An advance payment record must be entered under Finance (Receivables) before issuing a Work Order, or obtain Finance Approval.`)
         return
       }
     }

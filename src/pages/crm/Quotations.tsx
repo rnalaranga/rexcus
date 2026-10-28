@@ -194,13 +194,20 @@ export const Quotations: React.FC = () => {
     const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1)) || Boolean(lead && (lead.requiresAdvance === true || lead.requiresAdvance === 1));
 
     if (customerRequiresAdvance) {
-      const hasAdvance = allInvoices.some((inv: any) => 
+      const hasAdvancePaid = allInvoices.some((inv: any) => 
         (inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-')) &&
+        (Number(inv.paidAmount || 0) > 0 || inv.status === 'paid' || inv.status === 'partially_paid') &&
         (String(inv.quotationId) === String(latestMain.id) || String(inv.quotationNo) === String(group.quoNo) || String(inv.orderNo) === String(group.quoNo))
       );
 
-      if (!hasAdvance) {
-        toast(`Customer "${cust?.company || cust?.name || group.clientName || 'Client'}" requires an advance deposit as per registration conditions. Work Order cannot be created without an Advance Payment Proforma Invoice.`, 'warning');
+      const hasApprovedOrderWaiver = allOrders.some((ord: any) => 
+        (String(ord.quoteId) === String(latestMain.id) || String(ord.quotationNo) === String(group.quoNo)) &&
+        ord.status === 'Confirmed' &&
+        ord.notes && ord.notes.includes('Advance Waiver Approved')
+      );
+
+      if (!hasAdvancePaid && !hasApprovedOrderWaiver) {
+        toast(`Customer "${cust?.company || cust?.name || group.clientName || 'Client'}" requires advance payment. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval via Sales Orders.`, 'warning');
         handleGenerateAdvanceProforma(group, latestMain);
         return;
       }

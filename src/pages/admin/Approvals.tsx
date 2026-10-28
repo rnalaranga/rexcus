@@ -345,7 +345,7 @@ export default function Approvals() {
   }
 
   const canApproveQuotations = can('approvals.quotations') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
-  const canApproveOrders = can('approvals.orders') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head'
+  const canApproveOrders = can('approvals.orders') || can('finance.approvals') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'finance_head' || user?.role === 'cfo' || user?.role === 'accountant' || user?.role === 'finance_manager'
   const canApproveCredit = can('approvals.credit_limit') || user?.role === 'admin' || user?.role === 'manager'
 
   return (
