@@ -265,7 +265,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       const quoteTypeLabel = isProd ? 'Product Quotation' : 'Engineering Quotation';
       const qNo = q.quotationNo || q.docNo || parsed.quotationNo || q.quoNo || q.id;
       const custName = q.leadCompany || q.leadName || parsed.customerCompany || parsed.customerName || 'Customer';
-      const totalAmt = Number(q.totalAmount || q.customAmount || parsed.custTotals?.total || 0);
+      const totalAmt = Number(q.totalAmount || q.customAmount || parsed.custTotals?.withSSCL || parsed.custTotals?.total || 0);
 
       const rawItems = parsed.custItems || parsed.items || parsed.jobItems || [];
       const itemsCount = Array.isArray(rawItems) ? rawItems.length : 1;
@@ -307,6 +307,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     qty: '1',
     unitPrice: '',
+    subtotal: 0,
+    discount: 0,
+    taxAmount: 0,
+    taxRate: 0,
+    taxProfileId: '',
+    totalPrice: 0,
     status: 'Confirmed',
     notes: '',
     items: [] as any[]
@@ -372,6 +378,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       source = 'custom_job';
     }
 
+    const ordSubtotal = Number(order.subtotal) || (Number(order.totalPrice || 0) - Number(order.taxAmount || 0));
+    const ordTaxAmount = Number(order.taxAmount) || 0;
+    const ordTotalPrice = Number(order.totalPrice) || (ordSubtotal + ordTaxAmount);
+    const ordTaxRate = Number(order.taxRate) || 0;
+    const ordTaxProfileId = order.taxProfileId || '';
+
     setFormData({
       orderNo: order.orderNo || '',
       orderSource: source,
@@ -395,6 +407,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       targetDeliveryDate: order.targetDeliveryDate ? String(order.targetDeliveryDate).slice(0, 10) : '',
       qty: String(order.qty || '1'),
       unitPrice: String(order.unitPrice || '0'),
+      subtotal: ordSubtotal,
+      discount: 0,
+      taxAmount: ordTaxAmount,
+      taxRate: ordTaxRate,
+      taxProfileId: ordTaxProfileId,
+      totalPrice: ordTotalPrice,
       status: order.status || 'Confirmed',
       notes: order.notes || '',
       items: parsedItems
@@ -515,6 +533,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const primaryPrice = extractedItems.length === 1 ? extractedItems[0].unitPrice : quote.totalAmt;
     const primaryQty = extractedItems.length === 1 ? extractedItems[0].qty : 1;
 
+    const itemsSum = extractedItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice || 0))), 0);
+    const quoteSubtotal = Number(parsed.custTotals?.subtotal) || itemsSum;
+    const quoteDiscount = Number(parsed.custTotals?.discount || parsed.custDiscountAmount || parsed.discountAmount || 0);
+    const netBase = Number(parsed.custTotals?.total) || (quoteSubtotal - quoteDiscount);
+
+    let vatAmount = Number(parsed.custVat || 0);
+    let ssclAmount = Number(parsed.custSscl || 0);
+    let totalTax = vatAmount + ssclAmount;
+    let grandTotal = Number(quote.totalAmount || quote.totalAmt || parsed.custTotals?.withSSCL || 0);
+
+    if (totalTax === 0 && grandTotal > netBase) {
+      totalTax = Math.max(0, grandTotal - netBase);
+    }
+    if (grandTotal === 0) {
+      grandTotal = netBase + totalTax;
+    }
+
+    const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (totalTax > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
+    const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && totalTax > 0 ? Number(((totalTax / netBase) * 100).toFixed(2)) : 0));
+
     setFormData(prev => ({
       ...prev,
       quoteId: quote.id,
@@ -531,7 +569,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       productId: extractedItems[0]?.productId || (quote.isProd ? 'PRODUCT-ITEM' : 'CUSTOM-JOB'),
       qty: String(primaryQty),
       unitPrice: String(primaryPrice),
-      items: extractedItems
+      items: extractedItems,
+      subtotal: quoteSubtotal,
+      discount: quoteDiscount,
+      taxAmount: totalTax,
+      taxRate,
+      taxProfileId,
+      totalPrice: grandTotal
     }));
   };
 
@@ -610,9 +654,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }];
     }
 
-    const calculatedTotal = itemsList.length > 1 && formData.orderSource === 'from_quote'
+    const itemSum = itemsList.length > 1 && formData.orderSource === 'from_quote'
       ? itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
       : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0);
+
+    const finalSubtotal = Number(formData.subtotal) || itemSum;
+    const finalTaxAmount = Number(formData.taxAmount) || 0;
+    const finalTotalPrice = Number(formData.totalPrice) || (finalSubtotal + finalTaxAmount) || itemSum;
 
     const stockStatus = formData.orderSource === 'ready_made'
       ? (hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock')
@@ -630,9 +678,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       qty: itemsList.length > 1 && formData.orderSource === 'from_quote'
         ? itemsList.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)
         : (Number(formData.qty) || 1),
-      unitPrice: Number(formData.unitPrice) || 0,
-      subtotal: calculatedTotal,
-      totalPrice: calculatedTotal,
+      unitPrice: Number(formData.unitPrice) || (itemsList.length === 1 ? Number(itemsList[0].unitPrice) : 0),
+      subtotal: finalSubtotal,
+      taxAmount: finalTaxAmount,
+      taxRate: Number(formData.taxRate) || 0,
+      taxProfileId: formData.taxProfileId || null,
+      totalPrice: finalTotalPrice,
       stockStatus,
       attention: formData.attention || null,
       quoteId: formData.quoteId || null,
@@ -1774,15 +1825,24 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                     {/* Value & Advance Proforma */}
                     <td className="px-3.5 py-2.5 text-right">
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-end gap-0.5">
                         <span className="font-mono font-bold text-xs text-primary">
                           {formatCurrency(order.totalPrice)}
                         </span>
+                        {Number(order.taxAmount) > 0 ? (
+                          <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
+                            Incl. Tax: {formatCurrency(order.taxAmount)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono text-muted">
+                            Tax: 0.00
+                          </span>
+                        )}
                         {linkedProforma && (
                           <button
                             type="button"
                             onClick={() => handleOpenPrintProforma(linkedProforma, order)}
-                            className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors"
+                            className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors mt-0.5"
                             title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
                           >
                             <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
@@ -2303,13 +2363,46 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">Calculated Total</label>
-                  <div className="w-full input-base font-mono font-bold text-base text-rex-600 bg-surface2/30">
-                    {formatCurrency(
-                      formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
-                        ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
-                        : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
+                  <label className="block text-xs font-medium text-secondary mb-1">Financial Summary</label>
+                  <div className="w-full p-2.5 bg-surface2/30 border border-theme-subtle font-mono text-xs space-y-1">
+                    <div className="flex justify-between text-secondary text-[11px]">
+                      <span>Subtotal:</span>
+                      <span className="font-semibold text-primary">
+                        {formatCurrency(
+                          formData.subtotal || (
+                            formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
+                              ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
+                              : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
+                          )
+                        )}
+                      </span>
+                    </div>
+                    {Number(formData.discount || 0) > 0 && (
+                      <div className="flex justify-between text-rose-500 text-[11px]">
+                        <span>Discount:</span>
+                        <span>-{formatCurrency(formData.discount)}</span>
+                      </div>
                     )}
+                    {Number(formData.taxAmount || 0) > 0 && (
+                      <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                        <span>Taxes (VAT / SSCL):</span>
+                        <span>+{formatCurrency(formData.taxAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-black text-rex-600 pt-1 border-t border-theme-subtle">
+                      <span>Total Value:</span>
+                      <span>
+                        {formatCurrency(
+                          formData.totalPrice || (
+                            (Number(formData.subtotal) || (
+                              formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
+                                ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
+                                : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
+                            )) + Number(formData.taxAmount || 0)
+                          )
+                        )}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

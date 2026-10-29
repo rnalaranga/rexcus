@@ -173,6 +173,10 @@ export const InvoiceBuilder: React.FC = () => {
             if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
             if (ord.deliveryAddress) setPlaceOfSupply(ord.deliveryAddress);
             if (ord.paymentTerms) setNotes(ord.paymentTerms);
+            if (ord.taxProfileId) setTaxProfileId(ord.taxProfileId);
+            if (Number(ord.taxAmount) > 0 || ord.taxProfileId) {
+              setTaxEnabled(true);
+            }
 
             // Parse items
             let parsedItems: any[] = [];

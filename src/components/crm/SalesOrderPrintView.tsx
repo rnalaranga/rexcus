@@ -69,8 +69,11 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
   const vatNumber = customer?.vat || '';
 
   const subtotal = Number(order.subtotal) || itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
-  const taxAmount = Number(order.taxAmount) || 0;
+  let taxAmount = Number(order.taxAmount) || 0;
   const totalPrice = Number(order.totalPrice) || (subtotal + taxAmount);
+  if (taxAmount === 0 && totalPrice > subtotal) {
+    taxAmount = totalPrice - subtotal;
+  }
 
   return (
     <>

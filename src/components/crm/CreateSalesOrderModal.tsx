@@ -145,7 +145,12 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     items: [] as any[],
     subtotal: 0,
+    discount: 0,
     taxAmount: 0,
+    taxRate: 0,
+    taxProfileId: '',
+    vatAmount: 0,
+    ssclAmount: 0,
     totalPrice: 0,
     status: 'Confirmed',
     notes: ''
@@ -158,10 +163,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const isProduct = type === 'product';
 
     let quoteData: any = {};
-    if (isProduct) {
-      quoteData = quotation.parsed || {};
-    } else {
-      quoteData = typeof quotation.data === 'string' ? JSON.parse(quotation.data || '{}') : (quotation.data || {});
+    if (quotation.parsed && typeof quotation.parsed === 'object' && Object.keys(quotation.parsed).length > 0) {
+      quoteData = quotation.parsed;
+    } else if (quotation.data) {
+      try {
+        quoteData = typeof quotation.data === 'string' ? JSON.parse(quotation.data || '{}') : quotation.data;
+      } catch (e) {
+        quoteData = {};
+      }
     }
 
     const rawItems = quoteData.custItems || quoteData.items || [];
@@ -177,21 +186,52 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }));
 
     if (itemsList.length === 0) {
-      itemsList = [{
-        productId: isProduct ? 'CUSTOM-PRODUCT' : 'CUSTOM-JOB',
-        productName: quotation.subject || `Quotation ${group?.quoNo || ''} Job`,
-        productSku: '',
-        description: quotation.subject || `Quotation ${group?.quoNo || ''} Production Order`,
-        qty: 1,
-        unitPrice: Number(quotation.totalAmount || 0),
-        amount: Number(quotation.totalAmount || 0),
-        uom: 'Lot'
-      }];
+      if (Array.isArray(quoteData.jobItems) && quoteData.jobItems.length > 0) {
+        const jiText = quoteData.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join(', ');
+        itemsList = [{
+          productId: 'CUSTOM-JOB',
+          productName: quoteData.subject || quotation.subject || `Quotation ${group?.quoNo || ''} Job`,
+          productSku: '',
+          description: (quoteData.subject ? `${quoteData.subject} - ` : '') + (jiText || 'Custom Machining Job'),
+          qty: Number(quoteData.jobQty) || 1,
+          unitPrice: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
+          amount: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
+          uom: 'Lot'
+        }];
+      } else {
+        itemsList = [{
+          productId: isProduct ? 'CUSTOM-PRODUCT' : 'CUSTOM-JOB',
+          productName: quotation.subject || `Quotation ${group?.quoNo || ''} Job`,
+          productSku: '',
+          description: quotation.subject || `Quotation ${group?.quoNo || ''} Production Order`,
+          qty: 1,
+          unitPrice: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
+          amount: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
+          uom: 'Lot'
+        }];
+      }
     }
 
-    const subtotal = Number(quoteData.custTotals?.subtotal) || itemsList.reduce((acc: number, it: any) => acc + it.amount, 0);
-    const total = Number(quotation.totalAmount) || Number(quoteData.custTotals?.total) || subtotal;
-    const taxAmount = total - subtotal > 0 ? (total - subtotal) : 0;
+    const itemsSum = itemsList.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice || 0))), 0);
+    const subtotal = Number(quoteData.custTotals?.subtotal) || itemsSum;
+    const discount = Number(quoteData.custTotals?.discount || quoteData.custDiscountAmount || quoteData.discountAmount || 0);
+    const netBase = Number(quoteData.custTotals?.total) || (subtotal - discount);
+
+    let vatAmount = Number(quoteData.custVat || 0);
+    let ssclAmount = Number(quoteData.custSscl || 0);
+    let taxAmount = vatAmount + ssclAmount;
+
+    let grandTotal = Number(quotation.totalAmount) || Number(quoteData.custTotals?.withSSCL) || 0;
+
+    if (taxAmount === 0 && grandTotal > netBase) {
+      taxAmount = Math.max(0, grandTotal - netBase);
+    }
+    if (grandTotal === 0) {
+      grandTotal = netBase + taxAmount;
+    }
+
+    const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
+    const taxRate = Number(quoteData.selectedProfile?.tax2_rate || (netBase > 0 && taxAmount > 0 ? Number(((taxAmount / netBase) * 100).toFixed(2)) : 0));
 
     const cust = customers.find((c: any) => c.id === group.leadId);
     const lead = leads.find((l: any) => l.id === group.leadId);
@@ -223,8 +263,13 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
       items: itemsList,
       subtotal,
+      discount,
       taxAmount,
-      totalPrice: total,
+      taxRate,
+      taxProfileId,
+      vatAmount,
+      ssclAmount,
+      totalPrice: grandTotal,
       status: 'Confirmed',
       notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
     });
@@ -322,6 +367,11 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         ...formData,
         orderNo: cleanOrderNo,
         status: orderStatus,
+        subtotal: Number(formData.subtotal) || 0,
+        taxAmount: Number(formData.taxAmount) || 0,
+        taxRate: Number(formData.taxRate) || 0,
+        taxProfileId: formData.taxProfileId || null,
+        totalPrice: Number(formData.totalPrice) || 0,
         customerPoNo: finalCustomerPoNo || null,
         customerPoDate: formData.customerPoDate || null,
         customerPoAttachment: poMode === 'received' ? (formData.customerPoAttachment || null) : null,
@@ -408,11 +458,26 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                   <span className="text-[11px] text-muted block">Attn: {formData.attention}</span>
                 )}
               </div>
-              <div className="text-left sm:text-right">
+              <div className="text-left sm:text-right space-y-0.5">
                 <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Commercial Value</span>
-                <span className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(formData.totalPrice)}
-                </span>
+                <div className="flex flex-col items-start sm:items-end font-mono text-xs">
+                  <div className="text-secondary text-[11px]">
+                    Subtotal: <span className="font-semibold text-primary">{formatCurrency(formData.subtotal)}</span>
+                  </div>
+                  {Number(formData.discount || 0) > 0 && (
+                    <div className="text-rose-500 text-[11px]">
+                      Discount: -{formatCurrency(formData.discount)}
+                    </div>
+                  )}
+                  {Number(formData.taxAmount || 0) > 0 ? (
+                    <div className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                      Taxes (VAT / SSCL): +{formatCurrency(formData.taxAmount)}
+                    </div>
+                  ) : null}
+                  <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    Total: {formatCurrency(formData.totalPrice)}
+                  </div>
+                </div>
               </div>
             </div>
 
