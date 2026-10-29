@@ -16,6 +16,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations, useInvoices } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete'
@@ -55,6 +56,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   onOpenProductBOM
 }) => {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const { toast, showConfirm } = useDialog()
   const { settings } = useSettings()
   const { data: orders, loading, refetch } = useFinishedGoodsOrders()
@@ -1188,18 +1197,20 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   </span>
                   <span className="text-[10px] font-mono px-1 py-0.2 bg-blue-500/10 border border-blue-500/20">PI</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setOpenActionOrderId(null)
-                    handleDeleteProforma(linkedProforma)
-                  }}
-                  className="p-2 text-muted hover:text-rose-600 transition-colors"
-                  title="Delete Advance Proforma"
-                >
-                  <Trash2 size={12} />
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenActionOrderId(null)
+                      handleDeleteProforma(linkedProforma)
+                    }}
+                    className="p-2 text-muted hover:text-rose-600 transition-colors"
+                    title="Delete Advance Proforma"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
               </div>
             ) : (
               <button
@@ -1399,19 +1410,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </button>
             )}
 
-            <div className="my-1 border-t border-theme-subtle" />
-
-            {/* 7. Delete Order (available for any order) */}
-            <button
-              type="button"
-              onClick={() => {
-                setOpenActionOrderId(null)
-                setDeleteTarget(order)
-              }}
-              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-rose-500/10 transition-colors text-rose-600 font-semibold"
-            >
-              <Trash2 size={13} /> Delete Sales Order
-            </button>
+            {/* 7. Delete Order (available for Admin only) */}
+            {isAdmin && (
+              <>
+                <div className="my-1 border-t border-theme-subtle" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionOrderId(null)
+                    setDeleteTarget(order)
+                  }}
+                  className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-rose-500/10 transition-colors text-rose-600 font-semibold"
+                >
+                  <Trash2 size={13} /> Delete Sales Order
+                </button>
+              </>
+            )}
           </div>,
           document.body
         )}
@@ -1617,15 +1631,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           >
                             <Printer size={12} /> View / Print Proforma
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteProforma(pi)}
-                            className="text-xs text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-theme-subtle hover:border-rose-500/30 font-bold py-1 px-2.5 rounded-none flex items-center gap-1 transition-colors"
-                            title="Delete Proforma Invoice"
-                          >
-                            <Trash2 size={12} /> Delete
-                          </Button>
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteProforma(pi)}
+                              className="text-xs text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-theme-subtle hover:border-rose-500/30 font-bold py-1 px-2.5 rounded-none flex items-center gap-1 transition-colors"
+                              title="Delete Proforma Invoice"
+                            >
+                              <Trash2 size={12} /> Delete
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1973,14 +1989,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {/* Compact Dropdown Actions */}
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(order)}
-                          className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
-                          title={`Delete Order ${order.orderNo}`}
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(order)}
+                            className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
+                            title={`Delete Order ${order.orderNo}`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                         {renderOrderActions(order, orderItems, existingWO, linkedInvoice, linkedProforma)}
                       </div>
                     </td>

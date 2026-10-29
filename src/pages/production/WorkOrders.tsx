@@ -18,6 +18,7 @@ import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdo
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
@@ -30,6 +31,14 @@ type StatusFilter = 'all' | 'planned' | 'in_progress' | 'qc_rework' | 'completed
 
 export const WorkOrders: React.FC = () => {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const [searchParams] = useSearchParams()
   const { settings } = useSettings()
 
@@ -499,14 +508,16 @@ export const WorkOrders: React.FC = () => {
             traces={getWorkOrderTraces(row)}
           />
 
-          <button 
-            type="button" 
-            onClick={() => setDeleteWoId(row.id)}
-            className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
-            title="Delete Work Order"
-          >
-            <Trash2 size={13}/>
-          </button>
+          {isAdmin && (
+            <button 
+              type="button" 
+              onClick={() => setDeleteWoId(row.id)}
+              className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
+              title="Delete Work Order"
+            >
+              <Trash2 size={13}/>
+            </button>
+          )}
         </div>
       )
     }

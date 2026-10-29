@@ -15,6 +15,7 @@ import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
 import { updateInvoice, deleteInvoice } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
@@ -24,6 +25,14 @@ import { exportPdf } from '@/lib/exportPdf'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const { data: invoices, loading, refetch } = useInvoices()
   const { data: leads } = useLeads()
   const { data: customers } = useCustomers()
@@ -748,13 +757,15 @@ export const Invoices: React.FC = () => {
           <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs font-medium" onClick={() => setViewInvoice(item)}>
             View
           </Button>
-          <button 
-            onClick={() => setDeleteTarget(item.id)} 
-            className="p-1.5 text-muted hover:text-red-500 rounded transition-colors"
-            title="Delete Invoice"
-          >
-            <Trash2 size={14} />
-          </button>
+          {isAdmin && (
+            <button 
+              onClick={() => setDeleteTarget(item.id)} 
+              className="p-1.5 text-muted hover:text-red-500 rounded transition-colors"
+              title="Delete Invoice"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       )
     }

@@ -57,6 +57,13 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
   onNavigateToMR
 }) => {
   const { user } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const [activeTab, setActiveTab] = useState<StudioTab>('routing')
   const [submitting, setSubmitting] = useState(false)
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
@@ -1180,14 +1187,16 @@ export const WorkOrderStudioModal: React.FC<WorkOrderStudioModalProps> = ({
                             <ShieldCheck size={12} className="mr-1"/> QC
                           </Button>
 
-                          <button 
-                            type="button" 
-                            onClick={() => handleDeleteOp(op.id, op.operationName)}
-                            className="p-1.5 text-muted hover:text-rose-500 rounded-none hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
-                            title="Delete operation"
-                          >
-                            <Trash2 size={13}/>
-                          </button>
+                          {isAdmin && (
+                            <button 
+                              type="button" 
+                              onClick={() => handleDeleteOp(op.id, op.operationName)}
+                              className="p-1.5 text-muted hover:text-rose-500 rounded-none hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
+                              title="Delete operation"
+                            >
+                              <Trash2 size={13}/>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </GlassCard>

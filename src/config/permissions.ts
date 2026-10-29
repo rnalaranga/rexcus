@@ -211,7 +211,18 @@ export const hasPermission = (
 ): boolean => {
   if (userRole === 'admin') return true;
 
-  // CRM Manager and Head of Sales have complete CRM and quotation approval rights
+  // STRICT POLICY: Quotation, Invoice, Sales Order, and Work Order deletion is EXCLUSIVELY reserved for Admin.
+  if (
+    requiredPermission === 'quotations.delete' ||
+    requiredPermission === 'invoices.delete' ||
+    requiredPermission === 'sales_orders.delete' ||
+    requiredPermission === 'work_orders.delete' ||
+    requiredPermission === 'finance.invoices.delete'
+  ) {
+    return false;
+  }
+
+  // CRM Manager and Head of Sales have complete CRM and quotation approval rights (except deletion)
   if (userRole === 'crm_manager' || userRole === 'sales_head') {
     if (
       requiredPermission.startsWith('crm.') ||
@@ -227,7 +238,7 @@ export const hasPermission = (
     }
   }
 
-  // General Manager has broad operational rights
+  // General Manager has broad operational rights (except deletion of core records)
   if (userRole === 'manager') {
     if (!requiredPermission.startsWith('admin.database') && !requiredPermission.startsWith('admin.users')) {
       return true;

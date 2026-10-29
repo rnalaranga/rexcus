@@ -224,6 +224,13 @@ export const QuotationBuilder: React.FC = () => {
   const { data: inventory } = useInventory()
   const { settings } = useSettings()
   const { user, can } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const canApprove = (can ? can('approvals.quotations') : false) || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
   const { data: currencies } = useCurrencies()
   const { data: taxes } = useTaxes()
@@ -1945,13 +1952,15 @@ export const QuotationBuilder: React.FC = () => {
                       className="flex items-center gap-1 px-2 py-1 bg-rex-500/10 text-rex-500 rounded-lg hover:bg-rex-500/20 transition-colors text-[11px] font-semibold">
                       <RotateCcw size={11} /> Load
                     </button>
-                    <button 
-                      onClick={() => handleDeleteVersion(v)}
-                      className="p-1 text-muted/60 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                      title={`Delete Version v${v.version}`}
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    {isAdmin && (
+                      <button 
+                        onClick={() => handleDeleteVersion(v)}
+                        className="p-1 text-muted/60 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                        title={`Delete Version v${v.version}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

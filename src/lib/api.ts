@@ -1,5 +1,22 @@
 const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`;
 
+export const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  let userRole = '';
+  try {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      userRole = JSON.parse(storedUser)?.role || '';
+    }
+  } catch (e) {}
+
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(userRole ? { 'X-User-Role': userRole } : {})
+  };
+};
+
 export const fetchCustomers = async () => {
   const res = await fetch(`${API_URL}/customers`);
   const json = await res.json();
@@ -201,8 +218,13 @@ export const rejectQuotationEdit = async (id: string | number, rejectedBy?: stri
 };
 
 export const deleteQuotation = async (id: string) => {
-  const res = await fetch(`${API_URL}/quotations/${id}`, { method: 'DELETE' });
-  return res.json();
+  const res = await fetch(`${API_URL}/quotations/${id}`, { 
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete quotation');
+  return json;
 };
 
 export const generateQuotationDescription = async (payload: {
@@ -368,9 +390,12 @@ export const dispatchFinishedGoodsOrder = async (id: string, dispatchDetails?: a
 
 export const deleteFinishedGoodsOrder = async (id: string) => {
   const res = await fetch(`${API_URL}/finished-goods-orders/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: getAuthHeaders()
   });
-  return res.json();
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete sales order');
+  return json;
 };
 
 // -- SUPPLIERS --
@@ -663,8 +688,13 @@ export const updateWorkOrderStatus = async (id: string, status: string) => {
 };
 
 export const deleteWorkOrder = async (id: string) => {
-  const res = await fetch(`${API_URL}/production/work-orders/${id}`, { method: 'DELETE' });
-  return res.json();
+  const res = await fetch(`${API_URL}/production/work-orders/${id}`, { 
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete work order');
+  return json;
 };
 
 export const issueMaterialToWorkOrder = async (id: string, data: any) => {
@@ -718,8 +748,13 @@ export const assignWorkOrderOperation = async (opId: string, data: any) => {
 };
 
 export const deleteWorkOrderOperation = async (opId: string) => {
-  const res = await fetch(`${API_URL}/production/operations/${opId}`, { method: 'DELETE' });
-  return res.json();
+  const res = await fetch(`${API_URL}/production/operations/${opId}`, { 
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete operation');
+  return json;
 };
 
 export const saveWorkOrderQcCheckpoints = async (workOrderId: string, checkpoints: any[]) => {
@@ -882,8 +917,13 @@ export const updateGatePass = async (id: string, data: any) => {
 };
 
 export const deleteGatePass = async (id: string) => {
-  const res = await fetch(`${API_URL}/gate-passes/${id}`, { method: 'DELETE' });
-  return res.json();
+  const res = await fetch(`${API_URL}/gate-passes/${id}`, { 
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete gate pass');
+  return json;
 };
 
 // -- LINEAR STOCK REMNANTS & CUT OPTIMIZER --

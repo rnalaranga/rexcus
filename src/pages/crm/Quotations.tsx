@@ -42,6 +42,13 @@ import { FileSpreadsheet } from 'lucide-react'
 export const Quotations: React.FC = () => {
   const { toast, showConfirm } = useDialog();
   const { user, can } = useAuth();
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  );
   const canApprove = can('approvals.quotations') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager';
   const canViewAll = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager' || (user?.permissions?.includes('*') ?? false);
   const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all');
@@ -1420,29 +1427,33 @@ export const Quotations: React.FC = () => {
               </>
             )}
 
-            {/* Delete Section */}
-            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-            <button
-              type="button"
-              onClick={async () => {
-                setOpenActionId(null);
-                setActionCoords(null);
-                const isDraftGroup = group.main.some((m: any) => m.type === 'draft' || m.type === 'product_draft' || m.status === 'Draft');
-                const label = isDraftGroup ? `draft "${group.quoNo}"` : `quotation group "${group.quoNo}"`;
-                if (await showConfirm(`Are you sure you want to delete ${label}?`, 'Delete Quotation', { confirmLabel: 'Delete' })) {
-                  const allIds = Array.from(new Set([...group.main, ...group.job, ...group.customer].map((q: any) => q.id).filter(Boolean)));
-                  for (const id of allIds) {
-                    await deleteQuotation(id);
-                  }
-                  toast(`Deleted ${label} successfully`, 'success');
-                  refetch();
-                }
-              }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
-            >
-              <Trash2 size={14} className="shrink-0 text-rose-500" />
-              <span>Delete Quotation Group</span>
-            </button>
+            {/* Delete Section - Admin Only */}
+            {isAdmin && (
+              <>
+                <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setOpenActionId(null);
+                    setActionCoords(null);
+                    const isDraftGroup = group.main.some((m: any) => m.type === 'draft' || m.type === 'product_draft' || m.status === 'Draft');
+                    const label = isDraftGroup ? `draft "${group.quoNo}"` : `quotation group "${group.quoNo}"`;
+                    if (await showConfirm(`Are you sure you want to delete ${label}?`, 'Delete Quotation', { confirmLabel: 'Delete' })) {
+                      const allIds = Array.from(new Set([...group.main, ...group.job, ...group.customer].map((q: any) => q.id).filter(Boolean)));
+                      for (const id of allIds) {
+                        await deleteQuotation(id);
+                      }
+                      toast(`Deleted ${label} successfully`, 'success');
+                      refetch();
+                    }
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <Trash2 size={14} className="shrink-0 text-rose-500" />
+                  <span>Delete Quotation Group</span>
+                </button>
+              </>
+            )}
           </div>,
           document.body
         )}

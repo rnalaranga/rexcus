@@ -526,6 +526,26 @@ app.post('/api/production/machineries/:id/operators', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'rex-erp-secret-key-super-secure';
 
+function checkIsAdminUser(req: any): boolean {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (decoded.role === 'admin' || decoded.username === 'admin') {
+        return true;
+      }
+    }
+    const roleHeader = req.headers['x-user-role'];
+    if (roleHeader === 'admin') return true;
+    return false;
+  } catch (e) {
+    const roleHeader = req.headers['x-user-role'];
+    if (roleHeader === 'admin') return true;
+    return false;
+  }
+}
+
 // -- AUTH --
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -3666,6 +3686,9 @@ app.post('/api/approval-logs', async (req, res) => {
 
 app.delete('/api/quotations/:id', async (req, res) => {
   try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete quotations.' });
+    }
     const { id } = req.params;
     const { user } = req.query as any;
     // Safety check: Prevent deleting Approved or PO Received quotations directly
@@ -4086,6 +4109,9 @@ app.put('/api/gate-passes/:id', async (req, res) => {
 
 app.delete('/api/gate-passes/:id', async (req, res) => {
   try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete gate passes.' });
+    }
     const { id } = req.params;
     await db.query("UPDATE customer_grns SET gatePassId = NULL, status = 'In Stock', dispatchedAt = NULL WHERE gatePassId = ?", [id]);
     await db.query('DELETE FROM gate_passes WHERE id = ?', [id]);
@@ -5184,6 +5210,9 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
 
 app.delete('/api/finished-goods-orders/:id', async (req, res) => {
   try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete sales orders.' });
+    }
     const { id } = req.params;
     await db.query('DELETE FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
     res.json({ success: true });
@@ -6530,6 +6559,9 @@ app.put('/api/invoices/:id', async (req, res) => {
 
 const handleInvoiceDelete = async (req: any, res: any) => {
   try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete invoices and proformas.' });
+    }
     const rawId = req.query.id || req.body?.id || req.params.id || req.params[0];
     const id = decodeURIComponent(String(rawId || '')).trim();
     if (!id) {
@@ -9499,6 +9531,9 @@ app.put('/api/production/work-orders/:id/status', async (req, res) => {
 // Delete Work Order
 app.delete('/api/production/work-orders/:id', async (req, res) => {
   try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete work orders.' });
+    }
     const { id } = req.params;
     await db.query('DELETE FROM qc_inspections WHERE workOrderId = ?', [id]);
     await db.query('DELETE FROM rework_logs WHERE workOrderId = ?', [id]);
@@ -9651,6 +9686,9 @@ app.put('/api/production/operations/:id', async (req, res) => {
 // DELETE OPERATION
 app.delete('/api/production/operations/:id', async (req, res) => {
   try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete work order operations.' });
+    }
     await db.query('DELETE FROM work_order_operations WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (error: any) {

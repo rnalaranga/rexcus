@@ -90,6 +90,13 @@ export const Leads: React.FC = () => {
   }, [leads, selectedLeadId])
   const { settings } = useSettings()
   const { user } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const [deletedGrnIds, setDeletedGrnIds] = useState<string[]>([])
   const [updatingStage, setUpdatingStage] = useState(false)
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
@@ -2094,13 +2101,16 @@ export const Leads: React.FC = () => {
                             >
                               View
                             </Button>
-                            <button
-                              type="button"
-                              className="h-6 w-6 flex items-center justify-center text-muted hover:text-red-500 rounded-md transition-colors"
-                              onClick={() => setDeleteTarget({ type: 'quotation', id: q.id })}
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="h-6 w-6 flex items-center justify-center text-muted hover:text-red-500 rounded-md transition-colors"
+                                onClick={() => setDeleteTarget({ type: 'quotation', id: q.id })}
+                                title="Delete Quotation"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )

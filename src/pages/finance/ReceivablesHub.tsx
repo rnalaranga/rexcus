@@ -15,6 +15,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useInvoices, useCustomers } from '@/hooks/useData';
 import { useAccounts } from '@/hooks/useFinance';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
@@ -26,6 +27,14 @@ type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
 export const ReceivablesHub: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  );
   const { toast, showConfirm } = useDialog();
   const { settings } = useSettings();
   const { data: allInvoices = [], loading: loadingInvoices, refetch: refetchInvoices } = useInvoices();
@@ -752,14 +761,16 @@ export const ReceivablesHub: React.FC = () => {
                                 Record Advance
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              icon={Trash2}
-                              className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20"
-                              onClick={() => handleDeleteProforma(pi)}
-                              title="Delete Proforma Invoice"
-                            />
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={Trash2}
+                                className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20"
+                                onClick={() => handleDeleteProforma(pi)}
+                                title="Delete Proforma Invoice"
+                              />
+                            )}
                           </div>
                         </td>
                       </tr>

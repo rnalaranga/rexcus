@@ -44,6 +44,13 @@ export const ProductQuotations: React.FC = () => {
   const [advanceProformaModalOrder, setAdvanceProformaModalOrder] = useState<any | null>(null)
   const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
   const { user, can } = useAuth()
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  )
   const canApprove = can('approvals.quotations') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager'
   const canViewAll = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager' || (user?.permissions?.includes('*') ?? false)
   const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all')
@@ -913,16 +920,20 @@ export const ProductQuotations: React.FC = () => {
               </>
             )}
 
-            {/* Delete Action */}
-            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-            <button
-              type="button"
-              onClick={() => { handleDelete(group, latest); setOpenActionId(null); setActionCoords(null); }}
-              className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
-            >
-              <Trash2 size={14} className="shrink-0 text-rose-500" />
-              <span>Delete Quotation</span>
-            </button>
+            {/* Delete Action - Admin Only */}
+            {isAdmin && (
+              <>
+                <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                <button
+                  type="button"
+                  onClick={() => { handleDelete(group, latest); setOpenActionId(null); setActionCoords(null); }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <Trash2 size={14} className="shrink-0 text-rose-500" />
+                  <span>Delete Quotation</span>
+                </button>
+              </>
+            )}
           </div>,
           document.body
         )}
