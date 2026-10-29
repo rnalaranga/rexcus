@@ -28,6 +28,7 @@ import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
+import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
 const STAGE_LABELS: Record<string, string> = {
@@ -2819,6 +2820,45 @@ export const Leads: React.FC = () => {
               lead={previewQuoteData.lead}
               settings={settings}
             />
+
+            {/* Quotation Attachments & Technical Drawings */}
+            {(() => {
+              let parsed: any = {};
+              try {
+                parsed = typeof previewQuoteData.quotation?.data === 'string' 
+                  ? JSON.parse(previewQuoteData.quotation.data) 
+                  : (previewQuoteData.quotation?.data || previewQuoteData.quotation || {});
+              } catch(e) {
+                parsed = previewQuoteData.quotation || {};
+              }
+              const atts: any[] = [
+                ...(parsed.attachments || []).map((a: any, idx: number) => ({
+                  id: a.id || `lead-q-att-${idx}`,
+                  name: a.name || `Attachment ${idx + 1}`,
+                  type: a.type,
+                  dataUrl: a.dataUrl,
+                  url: a.url,
+                  source: 'Quotation Specs'
+                })),
+                ...(parsed.boms || []).flatMap((b: any, bIdx: number) => 
+                  (b.attachments || []).map((ba: any, aIdx: number) => ({
+                    id: ba.id || `bom-${bIdx}-att-${aIdx}`,
+                    name: ba.name || `${b.title || `Part #${bIdx + 1}`} Drawing ${aIdx + 1}`,
+                    type: ba.type,
+                    dataUrl: ba.dataUrl,
+                    url: ba.url,
+                    source: `Part #${bIdx + 1}: ${b.title || 'BOM Part'}`
+                  }))
+                )
+              ];
+              if (atts.length === 0) return null;
+              return (
+                <div className="mt-6 pt-5 border-t border-gray-200">
+                  <QuotationAttachmentsGallery attachments={atts} title="Quotation Attachments & Technical Drawings" />
+                </div>
+              );
+            })()}
+
             {previewQuoteData.quotation?.status === 'Pending Approval' && (
               <div className="w-full mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
                 <AlertTriangle size={16} className="text-amber-600 shrink-0" />

@@ -37,6 +37,63 @@ import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { FileSpreadsheet } from 'lucide-react'
+import { QuotationAttachmentsGallery, QuotationAttachmentItem } from '@/components/crm/QuotationAttachmentsGallery'
+
+const extractQuoteAttachments = (parsed: any): QuotationAttachmentItem[] => {
+  if (!parsed) return [];
+  const list: QuotationAttachmentItem[] = [];
+
+  // 1. General quotation attachments
+  if (Array.isArray(parsed.attachments)) {
+    parsed.attachments.forEach((att: any, idx: number) => {
+      if (att && (att.dataUrl || att.url)) {
+        list.push({
+          id: att.id || `quote-att-${idx}`,
+          name: att.name || `Quotation Attachment ${idx + 1}`,
+          type: att.type,
+          dataUrl: att.dataUrl,
+          url: att.url,
+          source: 'Quotation Specs'
+        });
+      }
+    });
+  }
+
+  // 2. BOM part-level attachments
+  if (Array.isArray(parsed.boms)) {
+    parsed.boms.forEach((bom: any, bIdx: number) => {
+      const partName = bom.title || `Part #${bIdx + 1}`;
+      if (Array.isArray(bom.attachments)) {
+        bom.attachments.forEach((ba: any, aIdx: number) => {
+          if (ba && (ba.dataUrl || ba.url)) {
+            list.push({
+              id: ba.id || `bom-${bIdx}-att-${aIdx}`,
+              name: ba.name || `${partName} Drawing ${aIdx + 1}`,
+              type: ba.type,
+              dataUrl: ba.dataUrl,
+              url: ba.url,
+              source: `Part #${bIdx + 1}: ${partName}`,
+              bomTitle: partName
+            });
+          }
+        });
+      }
+    });
+  }
+
+  // 3. Customer PO Attachment if present
+  if (parsed.customerPoAttachment) {
+    list.push({
+      id: 'customer-po-doc',
+      name: parsed.customerPoNumber ? `Purchase Order (${parsed.customerPoNumber})` : 'Customer Purchase Order',
+      type: 'application/pdf',
+      dataUrl: parsed.customerPoAttachment,
+      source: 'Customer PO'
+    });
+  }
+
+  return list;
+};
 
 
 export const Quotations: React.FC = () => {
@@ -556,6 +613,7 @@ export const Quotations: React.FC = () => {
       jobTotals: parsed.jobTotals,
       custTotals: parsed.custTotals,
       totalQuoted: parsed.custTotals?.total || group.main[0]?.totalAmount || 0,
+      attachments: parsed.attachments || [],
       ...(bomsList.length === 0 ? parsed : {})
     });
     setSelectedBomTab(bomsList.length > 1 ? 'overview' : 0);
@@ -2813,6 +2871,29 @@ export const Quotations: React.FC = () => {
                lead={previewData.lead}
                settings={settings}
             />
+
+            {/* Quotation Technical Drawings & Attachments */}
+            {(() => {
+              let parsed: any = {};
+              try {
+                parsed = typeof previewData.quotation?.data === 'string'
+                  ? JSON.parse(previewData.quotation.data)
+                  : (previewData.quotation?.data || previewData.quotation || {});
+              } catch (e) {
+                parsed = previewData.quotation || {};
+              }
+              const atts = extractQuoteAttachments(parsed);
+              if (atts.length === 0) return null;
+              return (
+                <div className="mt-6 pt-5 border-t border-gray-200">
+                  <QuotationAttachmentsGallery
+                    attachments={atts}
+                    title="Quotation Attachments & Technical Drawings"
+                  />
+                </div>
+              );
+            })()}
+
             {!['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(previewData.quotation?.status) && (
               <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-200">
                 <AlertCircle size={16} className="text-amber-600 shrink-0" />
@@ -2978,6 +3059,28 @@ export const Quotations: React.FC = () => {
           const activeBom = selectedBomTab === 'overview' 
             ? null 
             : (bomsList[Number(selectedBomTab)] || bomsList[0]);
+
+          const allQuoteAttachments: QuotationAttachmentItem[] = [
+            ...(viewBomDialog.attachments || []).map((a: any, idx: number) => ({
+              id: a.id || `quote-att-${idx}`,
+              name: a.name || `Quotation Attachment ${idx + 1}`,
+              type: a.type,
+              dataUrl: a.dataUrl,
+              url: a.url,
+              source: 'Quotation Specs'
+            })),
+            ...bomsList.flatMap((b: any, bIdx: number) =>
+              (b.attachments || []).map((ba: any, aIdx: number) => ({
+                id: ba.id || `bom-${bIdx}-att-${aIdx}`,
+                name: ba.name || `${b.title || `Part #${bIdx + 1}`} Drawing ${aIdx + 1}`,
+                type: ba.type,
+                dataUrl: ba.dataUrl,
+                url: ba.url,
+                source: `Part #${bIdx + 1}: ${b.title || 'BOM Part'}`,
+                bomTitle: b.title || `Part #${bIdx + 1}`
+              }))
+            )
+          ];
 
           return (
             <div className="bg-surface text-primary p-0 flex flex-col h-full rounded-b-none overflow-hidden max-h-[85vh]">
@@ -3147,6 +3250,16 @@ export const Quotations: React.FC = () => {
                         </table>
                       </div>
                     </div>
+
+                    {/* All Attachments Gallery in Overview */}
+                    {allQuoteAttachments.length > 0 && (
+                      <div className="border border-theme-subtle rounded-none bg-surface p-4 shadow-xs">
+                        <QuotationAttachmentsGallery
+                          attachments={allQuoteAttachments}
+                          title="All Technical Drawings & Quotation Attachments"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3185,6 +3298,24 @@ export const Quotations: React.FC = () => {
                         );
                       })()}
                     </div>
+
+                    {/* Part Attachments / Technical Drawings */}
+                    {activeBom.attachments && activeBom.attachments.length > 0 && (
+                      <div className="border border-theme-subtle rounded-none bg-surface p-4 shadow-xs">
+                        <QuotationAttachmentsGallery
+                          attachments={(activeBom.attachments || []).map((ba: any, aIdx: number) => ({
+                            id: ba.id || `active-bom-att-${aIdx}`,
+                            name: ba.name || `${activeBom.title || 'Part'} Drawing ${aIdx + 1}`,
+                            type: ba.type,
+                            dataUrl: ba.dataUrl,
+                            url: ba.url,
+                            source: activeBom.title || 'Part Drawing'
+                          }))}
+                          title={`Technical Drawings & Files: ${activeBom.title || 'Part'}`}
+                          compact
+                        />
+                      </div>
+                    )}
 
                     {/* Auto Materials Table (Plates & Round Rods with COMPLETE dimensions) */}
                     <div className="border border-theme-subtle rounded-none bg-surface shadow-xs overflow-hidden">
@@ -3387,6 +3518,33 @@ export const Quotations: React.FC = () => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {/* Single BOM or Fallback: Show all attachments */}
+                {bomsList.length <= 1 && allQuoteAttachments.length > 0 && (
+                  <div className="border border-theme-subtle rounded-none bg-surface p-4 shadow-xs">
+                    <QuotationAttachmentsGallery
+                      attachments={allQuoteAttachments}
+                      title="Technical Drawings & Attachments"
+                    />
+                  </div>
+                )}
+
+                {/* Multi BOM: Show general quotation attachments if viewing a specific part */}
+                {bomsList.length > 1 && selectedBomTab !== 'overview' && (viewBomDialog.attachments || []).length > 0 && (
+                  <div className="border border-theme-subtle rounded-none bg-surface p-4 shadow-xs">
+                    <QuotationAttachmentsGallery
+                      attachments={(viewBomDialog.attachments || []).map((a: any, idx: number) => ({
+                        id: a.id || `view-bom-q-att-${idx}`,
+                        name: a.name || `Quotation Attachment ${idx + 1}`,
+                        type: a.type,
+                        dataUrl: a.dataUrl,
+                        url: a.url,
+                        source: 'Quotation Specs'
+                      }))}
+                      title="General Quotation Attachments"
+                    />
                   </div>
                 )}
               </div>

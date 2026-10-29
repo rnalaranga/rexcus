@@ -37,6 +37,7 @@ import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { FileSpreadsheet } from 'lucide-react'
+import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
 
 export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
@@ -1982,6 +1983,27 @@ export const ProductQuotations: React.FC = () => {
                 settings={settings}
               />
             </div>
+
+            {/* Quotation Attachments & Drawings Gallery */}
+            {(() => {
+              const atts = (previewData.quotation?.parsed?.attachments || []).map((a: any, idx: number) => ({
+                id: a.id || `pq-att-${idx}`,
+                name: a.name || `Attachment ${idx + 1}`,
+                type: a.type,
+                dataUrl: a.dataUrl,
+                url: a.url,
+                source: 'Product Quotation'
+              }));
+              if (atts.length === 0) return null;
+              return (
+                <div className="mt-4 pt-4 border-t border-theme-subtle">
+                  <QuotationAttachmentsGallery
+                    attachments={atts}
+                    title="Quotation Attachments & Drawings"
+                  />
+                </div>
+              );
+            })()}
           </div>
         </Modal>
       )}
