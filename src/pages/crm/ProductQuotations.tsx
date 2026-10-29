@@ -259,7 +259,7 @@ export const ProductQuotations: React.FC = () => {
       const clientEmail = parsed.customerEmail || (cust as any)?.email || (lead as any)?.email || '';
       const clientAddress = parsed.customerAddress || q.leadAddress || cust?.address || (lead as any)?.address || '';
       const clientVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || '';
-      const clientSvat = parsed.tinNo || q.leadSvat || cust?.svat || (cust as any)?.tin || lead?.svat || '';
+      const clientSvat = '';
       const resolvedLeadId = lead?.id || cust?.id || q.leadId || "WALK-IN";
 
       const isDraft = q.type === "product_draft" || q.type === "draft";

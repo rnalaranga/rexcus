@@ -58,8 +58,16 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const issueNo = data.issueNo || '01'
   const issueDate = data.issueDate || 'March 04, 2026'
   const quoDate = data.quoDate || new Date().toISOString().slice(0, 10)
-  const vatNo = data.vatNo || data.vat || lead?.vat || ''
-  const tinNo = data.tinNo || data.tin || data.svat || lead?.svat || lead?.tin || ''
+  const rawSvat = String(data.svat || lead?.svat || '').trim();
+  const rawVat = String(data.vatNo || data.vat || lead?.vat || '').trim();
+  let rawTin = String(data.tinNo || data.tin || lead?.tin || lead?.brNumber || '').trim();
+  // Strip out SVAT if it was mistakenly passed as tinNo so SVAT is NEVER shown on quotations
+  if ((rawSvat && rawTin === rawSvat) || rawTin.toUpperCase().startsWith('SVAT') || rawTin.toUpperCase().includes('SVAT')) {
+    rawTin = '';
+  }
+
+  const vatNo = rawVat;
+  const tinNo = rawTin;
   const quotationNo = data.quotationNo || ''
   const attention = data.attention || ''
   const subject = data.subject || ''
@@ -553,9 +561,9 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               </div>
               <div className="mt-2 space-y-0.5 font-medium text-[10.5px]">
                 <div className="flex items-start">
-                  <span className="w-16 font-bold shrink-0">TIN No.</span>
+                  <span className="w-16 font-bold shrink-0">{vatNo ? 'VAT No.' : (tinNo ? 'TIN No.' : 'VAT No.')}</span>
                   <span className="font-bold mr-1 shrink-0">:</span>
-                  <span className="flex-1">{tinNo || vatNo || '-'}</span>
+                  <span className="flex-1">{vatNo || tinNo || '-'}</span>
                 </div>
               </div>
             </div>

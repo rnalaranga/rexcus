@@ -113,7 +113,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
                 <input value={formData.vat} onChange={e => setFormData({...formData, vat: e.target.value})} className="w-full input-base" placeholder="Optional" />
               </div>
               <div className="space-y-1.5 col-span-6 sm:col-span-3">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">SVAT / TIN Number</label>
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">SVAT Number</label>
                 <input value={formData.svat} onChange={e => setFormData({...formData, svat: e.target.value})} className="w-full input-base" placeholder="Optional" />
               </div>
               <div className="col-span-3 mt-1">

@@ -2798,7 +2798,7 @@ export const Leads: React.FC = () => {
                   parsed = previewQuoteData.quotation;
                 }
                 if (!parsed.vatNo && previewQuoteData.lead?.vat) parsed.vatNo = previewQuoteData.lead.vat;
-                if (!parsed.tinNo && previewQuoteData.lead?.svat) parsed.tinNo = previewQuoteData.lead.svat;
+                if (!parsed.tinNo && (previewQuoteData.lead?.tin || previewQuoteData.lead?.brNumber)) parsed.tinNo = previewQuoteData.lead.tin || previewQuoteData.lead.brNumber;
                 if (!parsed.customerAddress && previewQuoteData.lead?.address) parsed.customerAddress = previewQuoteData.lead.address;
                 if (!parsed.customerName && (previewQuoteData.lead?.company || previewQuoteData.lead?.name)) {
                   parsed.customerName = previewQuoteData.lead.company || previewQuoteData.lead.name;

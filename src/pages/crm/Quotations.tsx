@@ -688,7 +688,7 @@ export const Quotations: React.FC = () => {
         const leadEmail = parsed.customerEmail || parsed.email || cust?.email || lead?.email || "";
         const leadAddress = parsed.customerAddress || parsed.address || q.leadAddress || cust?.address || lead?.address || "";
         const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || "";
-        const leadSvat = parsed.tinNo || q.leadSvat || cust?.svat || cust?.tin || lead?.svat || lead?.tin || "";
+        const leadSvat = "";
 
         groups[groupKey] = { 
           quoNo: (isAutoPregenNo ? (q.quotationNo || q.docNo || q.id) : quoNo) || q.id, 
@@ -2791,7 +2791,7 @@ export const Quotations: React.FC = () => {
                       }
                   }
                   if (!parsed.vatNo && previewData.lead?.vat) parsed.vatNo = previewData.lead.vat;
-                  if (!parsed.tinNo && previewData.lead?.svat) parsed.tinNo = previewData.lead.svat;
+                  if (!parsed.tinNo && previewData.lead?.tin) parsed.tinNo = previewData.lead.tin;
                   if (!parsed.customerAddress && previewData.lead?.address) parsed.customerAddress = previewData.lead.address;
                   if (!parsed.customerName && (previewData.lead?.company || previewData.lead?.name)) {
                     parsed.customerName = previewData.lead.company || previewData.lead.name;

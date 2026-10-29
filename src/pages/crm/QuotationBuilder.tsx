@@ -374,7 +374,7 @@ export const QuotationBuilder: React.FC = () => {
   const [issueDate, setIssueDate] = useState('March 04, 2026')
   const [quoDate, setQuoDate] = useState(new Date().toISOString().split('T')[0])
   const [vatNo, setVatNo] = useState(lead?.vat || '')
-  const [tinNo, setTinNo] = useState(lead?.svat || '')
+  const [tinNo, setTinNo] = useState(lead?.tin || lead?.brNumber || '')
   const [customerAddress, setCustomerAddress] = useState(() => {
     if (lead?.address) return lead.address;
     if (lead?.customerId && customers) {
@@ -509,7 +509,7 @@ export const QuotationBuilder: React.FC = () => {
         setAttention(cust.name);
       }
       setVatNo(cust.vat || '');
-      setTinNo(cust.svat || cust.tin || cust.brNumber || '');
+      setTinNo(cust.tin || cust.brNumber || '');
       if (cust.paymentTerms) {
         setCustTerms(cust.paymentTerms);
       } else if (!custTerms) {
@@ -543,7 +543,7 @@ export const QuotationBuilder: React.FC = () => {
       if (cust) {
         setCustomerAddress(cust.address || leadItem.address || '');
         setVatNo(cust.vat || leadItem.vat || '');
-        setTinNo(cust.svat || cust.tin || cust.brNumber || leadItem.svat || leadItem.tin || '');
+        setTinNo(cust.tin || cust.brNumber || leadItem.tin || leadItem.brNumber || '');
         if (cust.paymentTerms) {
           setCustTerms(cust.paymentTerms);
         } else if (!custTerms) {
@@ -567,7 +567,7 @@ export const QuotationBuilder: React.FC = () => {
       } else {
         setCustomerAddress(leadItem.address || '');
         setVatNo(leadItem.vat || '');
-        setTinNo(leadItem.svat || leadItem.tin || '');
+        setTinNo(leadItem.tin || leadItem.brNumber || '');
         fetchNextDocumentNumber('quotation', {
           userPrefix: user?.prefix,
           reserve: false
@@ -591,7 +591,7 @@ export const QuotationBuilder: React.FC = () => {
         setSelectedLeadId(lead.id);
         if (!attention && (lead.name || linkedCust?.name)) setAttention(lead.name || linkedCust?.name || '');
         if (lead.vat || linkedCust?.vat) setVatNo(lead.vat || linkedCust?.vat || '');
-        if (lead.svat || lead.tin || linkedCust?.svat || linkedCust?.tin) setTinNo(lead.svat || lead.tin || linkedCust?.svat || linkedCust?.tin || '');
+        if (lead.tin || linkedCust?.tin || lead.brNumber || linkedCust?.brNumber) setTinNo(lead.tin || linkedCust?.tin || lead.brNumber || linkedCust?.brNumber || '');
         if (linkedCust) {
           if (linkedCust.paymentTerms) setCustTerms(linkedCust.paymentTerms);
           if (linkedCust.deliveryTerms) setCustDelivery(linkedCust.deliveryTerms);
@@ -946,7 +946,8 @@ export const QuotationBuilder: React.FC = () => {
     setIssueDate(snap.issueDate || 'March 04, 2026')
     setQuoDate(snap.quoDate || new Date().toISOString().split('T')[0])
     setVatNo(snap.vatNo !== undefined ? snap.vatNo : (lead?.vat || ''))
-    setTinNo(snap.tinNo !== undefined ? snap.tinNo : (lead?.svat || ''))
+    const savedTin = snap.tinNo !== undefined ? snap.tinNo : (lead?.tin || lead?.brNumber || '');
+    setTinNo((lead?.svat && savedTin === lead.svat) ? '' : savedTin)
     setQuotationNo(snap.quotationNo || '')
     setJobQty(snap.jobQty || '1')
     setAttention(snap.attention || '')
@@ -2096,13 +2097,13 @@ export const QuotationBuilder: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-muted mb-1.5">Customer TIN No.</label>
+                  <label className="block text-[11px] text-muted mb-1.5">Customer VAT No.</label>
                   <input
                     type="text"
-                    value={tinNo || vatNo}
+                    value={vatNo || tinNo}
                     onChange={e => {
-                      setTinNo(e.target.value)
                       setVatNo(e.target.value)
+                      setTinNo(e.target.value)
                     }}
                     placeholder="e.g. 104106470-7000"
                     className={docInputClass}
