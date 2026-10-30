@@ -23,7 +23,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN, deleteCustomerGRN } from '@/lib/api'
-import { formatCurrency, relativeTime, toMySQLDate } from '@/lib/utils'
+import { formatCurrency, formatDate, relativeTime, toMySQLDate } from '@/lib/utils'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
@@ -156,8 +156,10 @@ export const Leads: React.FC = () => {
   }, [editId])
 
   // Fast memoized map of quotation numbers per lead & customer
-  const leadQuotesMap = useMemo(() => {
-    const map: Record<string, any[]> = {};
+  const { leadQuotesMap, customerQuotesMap } = useMemo(() => {
+    const lMap: Record<string, any[]> = {};
+    const cMap: Record<string, any[]> = {};
+
     (allQuotations || []).forEach((q: any) => {
       let parsed: any = {};
       try {
@@ -180,30 +182,49 @@ export const Leads: React.FC = () => {
         leadId: q.leadId || parsed.leadId,
         customerId: q.customerId || parsed.customerId,
         company: q.leadCompany || parsed.company,
+        customerName: parsed.customerName || q.leadName || '',
         date: q.date || q.createdAt
       };
 
-      // Strictly index quotations by explicit lead ID to avoid bleeding past lead/company quotes into new leads
-      const keys = [
+      // 1. Index by Lead ID
+      const lKeys = [
         q.leadId, 
         parsed.leadId, 
         q.leadId ? String(q.leadId).replace(/^LEAD-0*/i, '') : null
       ].filter(Boolean);
 
-      keys.forEach((key: any) => {
+      lKeys.forEach((key: any) => {
         const kStr = String(key);
-        if (!map[kStr]) map[kStr] = [];
-        if (!map[kStr].some(existing => String(existing.id) === String(quoteObj.id))) {
-          map[kStr].push(quoteObj);
+        if (!lMap[kStr]) lMap[kStr] = [];
+        if (!lMap[kStr].some(existing => String(existing.id) === String(quoteObj.id))) {
+          lMap[kStr].push(quoteObj);
+        }
+      });
+
+      // 2. Index by Customer ID and Company Name (for customer history across leads)
+      const cKeys = [
+        q.customerId,
+        parsed.customerId,
+        q.leadCompany ? String(q.leadCompany).trim().toLowerCase() : null,
+        parsed.company ? String(parsed.company).trim().toLowerCase() : null,
+        parsed.customerName ? String(parsed.customerName).trim().toLowerCase() : null
+      ].filter(Boolean);
+
+      cKeys.forEach((key: any) => {
+        const kStr = String(key);
+        if (!cMap[kStr]) cMap[kStr] = [];
+        if (!cMap[kStr].some(existing => String(existing.id) === String(quoteObj.id))) {
+          cMap[kStr].push(quoteObj);
         }
       });
     });
-    return map;
+
+    return { leadQuotesMap: lMap, customerQuotesMap: cMap };
   }, [allQuotations]);
 
   const getLeadQuotes = React.useCallback((lead: any) => {
     if (!lead) return [];
-    // Strictly isolate quotations to this specific lead ID only
+    // 1. Direct quotes for this specific lead
     const directQuotes = leadQuotesMap[String(lead.id)] || [];
     const numId = String(lead.id).replace(/^LEAD-0*/i, '');
     const numQuotes = numId ? (leadQuotesMap[numId] || []) : [];
@@ -214,8 +235,39 @@ export const Leads: React.FC = () => {
         combined.push(q);
       }
     });
+
+    // 2. Customer history quotes (for same customer / company)
+    const custId = lead.customerId ? String(lead.customerId) : null;
+    const custQuotes = custId ? (customerQuotesMap[custId] || []) : [];
+    const compKey = lead.company ? String(lead.company).trim().toLowerCase() : null;
+    const compQuotes = compKey ? (customerQuotesMap[compKey] || []) : [];
+
+    [...custQuotes, ...compQuotes].forEach(q => {
+      if (!combined.some(c => String(c.id) === String(q.id))) {
+        combined.push({ ...q, isCustomerHistory: true });
+      }
+    });
+
     return combined;
-  }, [leadQuotesMap]);
+  }, [leadQuotesMap, customerQuotesMap]);
+
+  // Customer's previous quotations when selecting a customer in Lead modal (New Lead or Edit Lead)
+  const customerPreviousQuotes = useMemo(() => {
+    const custId = formData.customerId ? String(formData.customerId) : null;
+    const compKey = formData.company ? String(formData.company).trim().toLowerCase() : null;
+    const list: any[] = [];
+    if (custId && customerQuotesMap[custId]) {
+      customerQuotesMap[custId].forEach(q => {
+        if (!list.some(x => String(x.id) === String(q.id))) list.push(q);
+      });
+    }
+    if (compKey && customerQuotesMap[compKey]) {
+      customerQuotesMap[compKey].forEach(q => {
+        if (!list.some(x => String(x.id) === String(q.id))) list.push(q);
+      });
+    }
+    return list;
+  }, [formData.customerId, formData.company, customerQuotesMap]);
 
     useEffect(() => {
     fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
@@ -251,17 +303,20 @@ export const Leads: React.FC = () => {
     });
     try {
       const quotes = await fetchQuotations(lead.id);
-      const qList = Array.isArray(quotes) ? quotes : [];
+      let qList = Array.isArray(quotes) ? quotes : [];
+      if (qList.length === 0) {
+        qList = getLeadQuotes(lead);
+      }
       setLeadQuotesForSample(qList);
       if (qList.length === 1) {
         setSampleModalData((prev: any) => ({
           ...prev,
           quoteId: qList[0].id,
-          quoNo: qList[0].docNo || qList[0].id
+          quoNo: qList[0].quotationNo || qList[0].docNo || qList[0].id
         }));
       }
     } catch (e) {
-      setLeadQuotesForSample([]);
+      setLeadQuotesForSample(getLeadQuotes(lead));
     }
   };
 
@@ -2013,13 +2068,13 @@ export const Leads: React.FC = () => {
             </div>
           )}
 
-          {/* Section: Saved Quotations */}
+          {/* Section: Saved Quotations for this Lead */}
           {editId && (
             <div>
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-theme-subtle">
                 <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
                   <FileText size={14} className="text-blue-500" />
-                  Saved Quotations
+                  Saved Quotations (This Lead)
                 </h3>
                 <button
                   type="button"
@@ -2031,7 +2086,7 @@ export const Leads: React.FC = () => {
               </div>
               <div className="space-y-2">
                 {leadQuotations.length === 0 ? (
-                  <p className="text-[10px] text-muted italic">No quotations saved for this lead.</p>
+                  <p className="text-[10px] text-muted italic">No direct quotations saved for this lead.</p>
                 ) : (
                   (() => {
                     const seenTypes = new Set<string>()
@@ -2118,6 +2173,97 @@ export const Leads: React.FC = () => {
                     })
                   })()
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Customer's Previous Quotation History (Available for New Lead and Existing Leads) */}
+          {customerPreviousQuotes.length > 0 && (
+            <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-none space-y-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-blue-500/20">
+                <div className="flex items-center gap-2">
+                  <FileText size={15} className="text-blue-600 dark:text-blue-400" />
+                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider">
+                    Customer's Previous Quotations ({customerPreviousQuotes.length})
+                  </h4>
+                </div>
+                <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 border border-blue-500/20">
+                  {formData.company || 'Customer History'}
+                </span>
+              </div>
+              
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                {customerPreviousQuotes.map((q: any) => {
+                  const statusColor = 
+                    q.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' :
+                    q.status === 'Sent' ? 'bg-blue-500/10 text-blue-600 border-blue-500/30' :
+                    q.status === 'Rejected' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
+                    'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30';
+
+                  return (
+                    <div 
+                      key={q.id} 
+                      className="flex items-center justify-between p-2.5 bg-surface border border-theme-subtle hover:border-blue-500/50 transition-all text-xs"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-xs font-bold text-primary">
+                            {q.quotationNo || q.id}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.2 border uppercase ${statusColor}`}>
+                            {q.status}
+                          </span>
+                          <span className="text-[9px] font-mono text-muted bg-surface2 px-1 border border-theme-subtle">
+                            {q.isProduct ? 'Product' : 'Custom'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted font-mono">
+                          <span>{q.date ? formatDate(q.date) : 'Previous'}</span>
+                          <span>•</span>
+                          <span className="font-bold text-primary">{formatCurrency(q.total)}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          type="button"
+                          className="text-[10px] h-6 py-0 px-2 flex items-center gap-1 bg-surface border border-theme-subtle hover:bg-surface2"
+                          onClick={() => setPreviewQuoteData({
+                            quotation: q.raw || q,
+                            type: q.isProduct ? 'product' : 'main',
+                            lead: { 
+                              company: formData.company || q.company, 
+                              name: formData.name || q.customerName, 
+                              email: formData.email, 
+                              phone: formData.phone 
+                            }
+                          })}
+                        >
+                          <Eye size={11} /> View
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          className="text-[10px] h-6 py-0 px-2 flex items-center gap-1 text-blue-600 dark:text-blue-400 border-blue-500/40 hover:bg-blue-500/10"
+                          onClick={() => {
+                            const targetLeadId = editId || 'new';
+                            const url = q.isProduct
+                              ? `/crm/product-quotations/new/${targetLeadId}?quoteId=${q.id}`
+                              : `/crm/quotations/new/${targetLeadId}?quoteId=${q.id}`;
+                            setIsModalOpen(false);
+                            navigate(url);
+                          }}
+                        >
+                          <FileEdit size={11} /> Open
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2588,6 +2734,11 @@ export const Leads: React.FC = () => {
                                 <span className="text-[9px] font-mono text-muted bg-surface2 px-1 border border-theme-subtle">
                                   {q.isProduct ? 'Product' : 'Custom'}
                                 </span>
+                                {q.isCustomerHistory && (
+                                  <span className="text-[9px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1 border border-blue-500/20">
+                                    Customer History
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[11px] font-mono font-bold text-rex-600 dark:text-rex-300 mt-1">
                                 {formatCurrency(q.total)}

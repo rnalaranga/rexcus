@@ -65,10 +65,9 @@ export const QuickSupplierModal: React.FC<QuickSupplierModalProps> = ({
     setError('');
 
     try {
-      const payload = {
+      const payload: any = {
         id: 'SUP-' + Date.now().toString().slice(-5),
         name: formData.name.trim(),
-        company: formData.name.trim(),
         contactPerson: formData.contactName.trim() || formData.name.trim(),
         contactName: formData.contactName.trim(),
         phone: formData.phone.trim(),

@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   X, ShoppingBag, FileText, Calendar, Building2, User, Phone, 
   MapPin, UploadCloud, Eye, Trash2, CheckCircle2, AlertCircle, 
-  Package, DollarSign, AlertTriangle, ShieldCheck, Lock, Clock
+  Package, DollarSign, AlertTriangle, ShieldCheck, Lock, Clock,
+  Plus, Edit3
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -310,6 +311,106 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handleItemChange = (index: number, field: string, value: any) => {
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      const item = { ...newItems[index], [field]: value };
+      
+      const q = Math.max(0, Number(field === 'qty' ? value : item.qty) || 0);
+      const up = Math.max(0, Number(field === 'unitPrice' ? value : item.unitPrice) || 0);
+      item.amount = q * up;
+      newItems[index] = item;
+
+      const newSubtotal = newItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))), 0);
+      const discount = Number(prev.discount || 0);
+      const netBase = Math.max(0, newSubtotal - discount);
+
+      let taxAmount = prev.taxAmount;
+      if (prev.taxRate > 0) {
+        taxAmount = Number(((netBase * prev.taxRate) / 100).toFixed(2));
+      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
+        const prevBase = Math.max(1, prev.subtotal - discount);
+        const ratio = prev.taxAmount / prevBase;
+        taxAmount = Number((netBase * ratio).toFixed(2));
+      }
+      const totalPrice = netBase + taxAmount;
+
+      return {
+        ...prev,
+        items: newItems,
+        subtotal: newSubtotal,
+        taxAmount,
+        totalPrice
+      };
+    });
+  };
+
+  const handleAddItem = () => {
+    setFormData(prev => {
+      const newItem = {
+        productId: 'CUSTOM-ITEM',
+        productName: 'Additional Order Item',
+        description: '',
+        qty: 1,
+        unitPrice: 0,
+        amount: 0,
+        uom: 'Nos'
+      };
+      const newItems = [...prev.items, newItem];
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setFormData(prev => {
+      if (prev.items.length <= 1) return prev;
+      const newItems = prev.items.filter((_, idx) => idx !== index);
+      const newSubtotal = newItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))), 0);
+      const discount = Number(prev.discount || 0);
+      const netBase = Math.max(0, newSubtotal - discount);
+
+      let taxAmount = prev.taxAmount;
+      if (prev.taxRate > 0) {
+        taxAmount = Number(((netBase * prev.taxRate) / 100).toFixed(2));
+      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
+        const prevBase = Math.max(1, prev.subtotal - discount);
+        const ratio = prev.taxAmount / prevBase;
+        taxAmount = Number((netBase * ratio).toFixed(2));
+      }
+      const totalPrice = netBase + taxAmount;
+
+      return {
+        ...prev,
+        items: newItems,
+        subtotal: newSubtotal,
+        taxAmount,
+        totalPrice
+      };
+    });
+  };
+
+  const handleDiscountChange = (val: number) => {
+    setFormData(prev => {
+      const discount = Math.max(0, val);
+      const netBase = Math.max(0, prev.subtotal - discount);
+      let taxAmount = prev.taxAmount;
+      if (prev.taxRate > 0) {
+        taxAmount = Number(((netBase * prev.taxRate) / 100).toFixed(2));
+      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
+        const prevBase = Math.max(1, prev.subtotal);
+        const ratio = prev.taxAmount / prevBase;
+        taxAmount = Number((netBase * ratio).toFixed(2));
+      }
+      const totalPrice = netBase + taxAmount;
+      return {
+        ...prev,
+        discount,
+        taxAmount,
+        totalPrice
+      };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.orderNo.trim()) {
@@ -363,11 +464,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         .replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3')
         .replace(/^SO-20(\d{2})-/i, 'SO-$1-');
 
+      const totalItemsQty = formData.items.reduce((acc, it) => acc + (Number(it.qty) || 1), 0);
+      const itemsSummaryTitle = formData.items.map(it => it.description || it.productName).filter(Boolean).join(', ') || 'Custom Machining / Quoted Job';
+
       const payload = {
         ...formData,
         orderNo: cleanOrderNo,
+        productName: itemsSummaryTitle,
+        qty: totalItemsQty,
+        unitPrice: formData.items.length === 1 ? Number(formData.items[0].unitPrice || 0) : (totalItemsQty > 0 ? (formData.subtotal / totalItemsQty) : formData.subtotal),
         status: orderStatus,
         subtotal: Number(formData.subtotal) || 0,
+        discount: Number(formData.discount) || 0,
         taxAmount: Number(formData.taxAmount) || 0,
         taxRate: Number(formData.taxRate) || 0,
         taxProfileId: formData.taxProfileId || null,
@@ -375,6 +483,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         customerPoNo: finalCustomerPoNo || null,
         customerPoDate: formData.customerPoDate || null,
         customerPoAttachment: poMode === 'received' ? (formData.customerPoAttachment || null) : null,
+        items: formData.items,
         notes: `${formData.notes || ''}${waiverNote}${poMode === 'pending' ? ' [PO Pending]' : poMode === 'without_po' ? ` [Without PO: ${withoutPoReason}]` : ''}`.trim()
       };
 
@@ -418,7 +527,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col max-h-[92vh] overflow-hidden">
+      <div className="relative w-full max-w-4xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col max-h-[94vh] overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2">
           <div className="flex items-center gap-2.5">
@@ -433,7 +542,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 </span>
               </h2>
               <p className="text-[11px] text-muted">
-                Input Customer Purchase Order (PO) details and confirm commercial dispatch schedule
+                Edit order line items, input Customer Purchase Order (PO) details, and confirm commercial schedule
               </p>
             </div>
           </div>
@@ -448,9 +557,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
-          {/* Top Summary Card */}
-          <div className="p-3.5 bg-surface2/60 border border-theme-subtle text-xs space-y-2.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-theme-subtle/60 pb-2">
+          {/* Top Summary Card with Editable Line Items */}
+          <div className="p-4 bg-surface2/60 border border-theme-subtle text-xs space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-theme-subtle/60 pb-2.5">
               <div>
                 <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Customer</span>
                 <span className="text-sm font-bold text-primary">{formData.customerName}</span>
@@ -459,7 +568,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 )}
               </div>
               <div className="text-left sm:text-right space-y-0.5">
-                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Commercial Value</span>
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Commercial Value Summary</span>
                 <div className="flex flex-col items-start sm:items-end font-mono text-xs">
                   <div className="text-secondary text-[11px]">
                     Subtotal: <span className="font-semibold text-primary">{formatCurrency(formData.subtotal)}</span>
@@ -475,28 +584,126 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                     </div>
                   ) : null}
                   <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    Total: {formatCurrency(formData.totalPrice)}
+                    Total Order Value: {formatCurrency(formData.totalPrice)}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Line items preview */}
+            {/* Editable Line Items Section */}
             <div>
-              <span className="text-[10px] text-muted uppercase font-bold tracking-wider block mb-1">
-                Order Items ({formData.items.length})
-              </span>
-              <div className="max-h-24 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                {formData.items.map((it, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs py-0.5 bg-surface/50 px-2 border border-theme-subtle/40">
-                    <span className="truncate max-w-[340px] text-secondary font-medium">
-                      • {it.description || it.productName}
-                    </span>
-                    <span className="font-mono text-muted shrink-0 text-[11px]">
-                      {it.qty} {it.uom || 'Nos'} × {formatCurrency(it.unitPrice)}
-                    </span>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                  <Package size={13} className="text-blue-500" />
+                  Order Line Items ({formData.items.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="px-2.5 py-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 flex items-center gap-1 transition-colors"
+                >
+                  <Plus size={12} /> Add Item
+                </button>
+              </div>
+
+              <div className="overflow-x-auto border border-theme-subtle bg-surface">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-surface2/60 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                    <tr>
+                      <th className="px-3 py-2">Item Description / Scope</th>
+                      <th className="px-2 py-2 text-right w-24">Qty</th>
+                      <th className="px-2 py-2 w-20">Unit</th>
+                      <th className="px-2 py-2 text-right w-32">Unit Price (Rs)</th>
+                      <th className="px-3 py-2 text-right w-32">Total</th>
+                      <th className="px-2 py-2 text-center w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-theme-subtle/40">
+                    {formData.items.map((it, idx) => {
+                      const lineTotal = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+                      return (
+                        <tr key={idx} className="hover:bg-surface2/20">
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={it.description || it.productName || ''}
+                              onChange={e => handleItemChange(idx, 'description', e.target.value)}
+                              placeholder="Item description / manufacturing scope..."
+                              className="w-full h-8 px-2 text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              min="1"
+                              step="any"
+                              value={it.qty}
+                              onChange={e => handleItemChange(idx, 'qty', e.target.value)}
+                              className="w-full h-8 px-2 text-right font-mono text-xs font-bold bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={it.uom || 'Nos'}
+                              onChange={e => handleItemChange(idx, 'uom', e.target.value)}
+                              className="w-full h-8 px-1.5 text-center font-mono text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={it.unitPrice}
+                              onChange={e => handleItemChange(idx, 'unitPrice', e.target.value)}
+                              className="w-full h-8 px-2 text-right font-mono text-xs font-bold bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2 text-right font-mono font-bold text-primary">
+                            {formatCurrency(lineTotal)}
+                          </td>
+                          <td className="p-2 text-center">
+                            {formData.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(idx)}
+                                className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                title="Remove line item"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Financial Adjustments Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-muted uppercase">Commercial Discount (Rs):</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.discount || ''}
+                    onChange={e => handleDiscountChange(Number(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="w-28 h-7 px-2 font-mono text-xs text-right bg-surface border border-theme-subtle font-bold"
+                  />
+                </div>
+
+                <div className="flex items-center gap-4 text-xs font-mono">
+                  <span className="text-secondary">Subtotal: <strong>{formatCurrency(formData.subtotal)}</strong></span>
+                  {formData.taxAmount > 0 && (
+                    <span className="text-indigo-600 dark:text-indigo-400">Tax: <strong>+{formatCurrency(formData.taxAmount)}</strong></span>
+                  )}
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Total: {formatCurrency(formData.totalPrice)}</span>
+                </div>
               </div>
             </div>
           </div>

@@ -1977,7 +1977,11 @@ export const ProductQuotations: React.FC = () => {
 
             <div id="product-quote-list-print" className="bg-white text-black p-2 overflow-x-auto">
               <QuotationPrintView
-                data={previewData.quotation.parsed}
+                data={{
+                  ...previewData.quotation.parsed,
+                  status: previewData.quotation?.status || previewData.quotation.parsed?.status || 'Draft',
+                  approvedBy: previewData.quotation?.approvedBy || previewData.quotation.parsed?.approvedBy
+                }}
                 type="main"
                 lead={previewData.lead}
                 settings={settings}
@@ -2022,7 +2026,11 @@ export const ProductQuotations: React.FC = () => {
           <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '850px', background: '#fff' }}>
             <div id="product-quote-email-print" className="p-8 bg-white text-zinc-900">
               <QuotationPrintView
-                data={emailModalData.quotation?.parsed}
+                data={{
+                  ...emailModalData.quotation?.parsed,
+                  status: emailModalData.quotation?.status || emailModalData.quotation?.parsed?.status || 'Draft',
+                  approvedBy: emailModalData.quotation?.approvedBy || emailModalData.quotation?.parsed?.approvedBy
+                }}
                 type="main"
                 lead={emailModalData.lead}
                 settings={settings}

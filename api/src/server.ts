@@ -1532,6 +1532,7 @@ async function runDatabaseSync() {
     "ALTER TABLE suppliers ADD COLUMN status VARCHAR(20) DEFAULT 'active'",
     "ALTER TABLE suppliers ADD COLUMN notes TEXT DEFAULT NULL",
     "ALTER TABLE suppliers ADD COLUMN openingBalance DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE suppliers ADD COLUMN company VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN referenceNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN debit DECIMAL(15,2) DEFAULT 0.00",
@@ -2821,6 +2822,23 @@ app.get('/api/quotations/:leadId', async (req, res) => {
       return res.json(rows);
     }
 
+    // Fallback 1: If lead is linked to an existing customer, check customer's quotations
+    const [linkedLead]: any = await db.query(`
+      SELECT customerId, company FROM leads WHERE id = ? OR id = CONCAT('LEAD-', LPAD(?, 3, '0')) LIMIT 1
+    `, [leadId, leadId]);
+    if (linkedLead && linkedLead.length > 0 && linkedLead[0].customerId) {
+      const cId = linkedLead[0].customerId;
+      const [custQuotes]: any = await db.query(`
+        SELECT * FROM quotations 
+        WHERE (leadId = ? OR leadId = REPLACE(?, 'LEAD-', '') OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0')))
+           AND deletedAt IS NULL
+        ORDER BY type ASC, version DESC
+      `, [cId, cId, cId]);
+      if (custQuotes && custQuotes.length > 0) {
+        return res.json(custQuotes);
+      }
+    }
+
     // Fallback: Check if leadId is actually a quotation id, quoNo, or docNo
     const [byQuote]: any = await db.query(`
       SELECT q.*, 
@@ -3203,10 +3221,30 @@ app.put('/api/quotations/status/:id', async (req, res) => {
     }
 
     if (status === 'Approved') {
-      await db.query(
-        'UPDATE quotations SET status = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?',
-        [status, approvedBy || 'Authorized Approver', id]
-      );
+      let dataJson: string | null = null;
+      try {
+        const [qRows]: any = await db.query('SELECT data FROM quotations WHERE id = ?', [id]);
+        if (qRows && qRows.length > 0 && qRows[0].data) {
+          let parsed: any = typeof qRows[0].data === 'string' ? JSON.parse(qRows[0].data) : qRows[0].data;
+          parsed.status = 'Approved';
+          parsed.isApproved = true;
+          parsed.approvedBy = approvedBy || 'Authorized Approver';
+          parsed.approvedAt = new Date().toISOString();
+          dataJson = JSON.stringify(parsed);
+        }
+      } catch (e) {}
+
+      if (dataJson) {
+        await db.query(
+          'UPDATE quotations SET status = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL, data = ? WHERE id = ?',
+          [status, approvedBy || 'Authorized Approver', dataJson, id]
+        );
+      } else {
+        await db.query(
+          'UPDATE quotations SET status = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?',
+          [status, approvedBy || 'Authorized Approver', id]
+        );
+      }
     } else if (status === 'Rejected') {
       await db.query(
         'UPDATE quotations SET status = ?, rejectionReason = ? WHERE id = ?',
@@ -3259,10 +3297,29 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
     if (quote.type === 'draft') newType = 'main';
     else if (quote.type === 'product_draft') newType = 'product';
 
-    await db.query(
-      "UPDATE quotations SET status = 'Approved', type = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?",
-      [newType, approvedBy || 'Authorized Approver', id]
-    );
+    let dataJson: string | null = null;
+    try {
+      if (quote?.data) {
+        let parsed: any = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data;
+        parsed.status = 'Approved';
+        parsed.isApproved = true;
+        parsed.approvedBy = approvedBy || 'Authorized Approver';
+        parsed.approvedAt = new Date().toISOString();
+        dataJson = JSON.stringify(parsed);
+      }
+    } catch (e) {}
+
+    if (dataJson) {
+      await db.query(
+        "UPDATE quotations SET status = 'Approved', type = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL, data = ? WHERE id = ?",
+        [newType, approvedBy || 'Authorized Approver', dataJson, id]
+      );
+    } else {
+      await db.query(
+        "UPDATE quotations SET status = 'Approved', type = ?, approvedBy = ?, approvedAt = NOW(), rejectionReason = NULL WHERE id = ?",
+        [newType, approvedBy || 'Authorized Approver', id]
+      );
+    }
 
     // Auto-advance sequence for this quotation number so the next number is properly reserved
     try {
@@ -6148,14 +6205,26 @@ app.post('/api/suppliers', async (req, res) => {
     }
     if (data.contactName && !data.contactPerson) data.contactPerson = data.contactName;
     if (data.contactPerson && !data.contactName) data.contactName = data.contactPerson;
+    if (data.company && !data.name) data.name = data.company;
 
     const item = {
       ...data,
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     };
-    await db.query('INSERT INTO suppliers SET ?', item);
-    res.json({ success: true, item });
+
+    // Filter against actual existing columns in suppliers table
+    const [colRows]: any = await db.query('SHOW COLUMNS FROM suppliers');
+    const validCols = new Set(colRows.map((c: any) => c.Field));
+    const safeItem: any = {};
+    for (const [k, v] of Object.entries(item)) {
+      if (validCols.has(k)) {
+        safeItem[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO suppliers SET ?', safeItem);
+    res.json({ success: true, item: safeItem });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -6172,9 +6241,21 @@ app.put('/api/suppliers/:id', async (req, res) => {
     }
     if (data.contactName && !data.contactPerson) data.contactPerson = data.contactName;
     if (data.contactPerson && !data.contactName) data.contactName = data.contactPerson;
+    if (data.company && !data.name) data.name = data.company;
 
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    await db.query('UPDATE suppliers SET ? WHERE id = ?', [data, id]);
+
+    // Filter against actual existing columns in suppliers table
+    const [colRows]: any = await db.query('SHOW COLUMNS FROM suppliers');
+    const validCols = new Set(colRows.map((c: any) => c.Field));
+    const safeData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validCols.has(k)) {
+        safeData[k] = v;
+      }
+    }
+
+    await db.query('UPDATE suppliers SET ? WHERE id = ?', [safeData, id]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);

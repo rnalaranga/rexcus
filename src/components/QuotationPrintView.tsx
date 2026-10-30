@@ -100,11 +100,13 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
     (data.quotationNo && data.quotationNo.startsWith('PQ-'))
   );
 
-  const quoteStatus = (data.status || '').trim();
-  const isApproved = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(quoteStatus);
+  const quoteStatus = String(data.status || '').trim();
+  const isApproved = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].some(
+    s => s.toLowerCase() === quoteStatus.toLowerCase()
+  ) || Boolean(data.isApproved || data.approvedBy);
   const showDraftWatermark = Boolean(
     !isApproved && 
-    quoteStatus !== 'template' &&
+    quoteStatus.toLowerCase() !== 'template' &&
     quotationType !== 'template' &&
     data.showDraftWatermark !== false
   );

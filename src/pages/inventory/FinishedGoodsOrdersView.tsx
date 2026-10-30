@@ -603,6 +603,72 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
+  const handleItemChangeInOrder = (idx: number, field: string, value: any) => {
+    setFormData(prev => {
+      const newItems = [...(prev.items || [])];
+      const it = { ...newItems[idx], [field]: value };
+      const q = Math.max(0, Number(field === 'qty' ? value : it.qty) || 0);
+      const up = Math.max(0, Number(field === 'unitPrice' ? value : it.unitPrice) || 0);
+      it.amount = q * up;
+      newItems[idx] = it;
+
+      const subtotal = newItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
+      let taxAmount = prev.taxAmount;
+      if (prev.taxRate > 0) {
+        taxAmount = Number(((subtotal * prev.taxRate) / 100).toFixed(2));
+      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
+        const ratio = prev.taxAmount / prev.subtotal;
+        taxAmount = Number((subtotal * ratio).toFixed(2));
+      }
+      const totalPrice = subtotal + taxAmount;
+
+      return {
+        ...prev,
+        items: newItems,
+        subtotal,
+        taxAmount,
+        totalPrice,
+        qty: String(newItems.reduce((acc, x) => acc + (Number(x.qty) || 1), 0))
+      };
+    });
+  };
+
+  const handleAddItemToOrder = () => {
+    setFormData(prev => {
+      const newItems = [...(prev.items || []), {
+        productId: 'CUSTOM-ITEM',
+        productName: 'Additional Item',
+        description: '',
+        qty: 1,
+        unitPrice: 0,
+        amount: 0,
+        uom: 'Nos'
+      }];
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleRemoveItemFromOrder = (idx: number) => {
+    setFormData(prev => {
+      if ((prev.items || []).length <= 1) return prev;
+      const newItems = prev.items.filter((_: any, i: number) => i !== idx);
+      const subtotal = newItems.reduce((acc: number, x: any) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
+      let taxAmount = prev.taxAmount;
+      if (prev.taxRate > 0) {
+        taxAmount = Number(((subtotal * prev.taxRate) / 100).toFixed(2));
+      }
+      const totalPrice = subtotal + taxAmount;
+      return {
+        ...prev,
+        items: newItems,
+        subtotal,
+        taxAmount,
+        totalPrice,
+        qty: String(newItems.reduce((acc: number, x: any) => acc + (Number(x.qty) || 1), 0))
+      };
+    });
+  };
+
   const handleCustomerSelect = (cId: string, custObj?: any) => {
     const cust = custObj || customers.find(c => c.id === cId) || leads.find(l => l.id === cId)
     if (cust) {
@@ -2037,7 +2103,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       {/* CREATE / EDIT ORDER MODAL */}
       {showOrderModal && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
-          <div className="relative w-full max-w-2xl bg-surface border border-theme-subtle rounded-none shadow-2xl p-6 overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-3xl bg-surface border border-theme-subtle rounded-none shadow-2xl p-6 overflow-hidden max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-theme-subtle">
               <h3 className="text-base font-bold text-primary flex items-center gap-2">
                 <ShoppingBag size={18} className="text-blue-600" />
@@ -2156,21 +2222,95 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         </div>
 
                         {formData.items && formData.items.length > 0 && (
-                          <div className="mt-1 border-t border-theme-subtle/50 pt-2">
-                            <span className="text-xs font-semibold text-muted uppercase tracking-wider block mb-1">
-                              Quoted Items ({formData.items.length})
-                            </span>
-                            <div className="max-h-24 overflow-y-auto space-y-1">
-                              {formData.items.map((it: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between py-0.5 text-xs">
-                                  <span className="truncate max-w-[320px] text-secondary font-medium">
-                                    • {it.description || it.productName}
-                                  </span>
-                                  <span className="font-mono text-muted shrink-0">
-                                    {it.qty} {it.uom || 'Nos'} × Rs. {Number(it.unitPrice || 0).toLocaleString()}
-                                  </span>
-                                </div>
-                              ))}
+                          <div className="mt-2 border-t border-theme-subtle/50 pt-2.5 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                <Package size={13} className="text-blue-500" />
+                                Quoted Order Line Items ({formData.items.length})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={handleAddItemToOrder}
+                                className="px-2 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 flex items-center gap-1 transition-colors"
+                              >
+                                <Plus size={11} /> Add Item
+                              </button>
+                            </div>
+
+                            <div className="overflow-x-auto border border-theme-subtle bg-surface">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-surface2/60 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                                  <tr>
+                                    <th className="px-2.5 py-1.5">Item Description</th>
+                                    <th className="px-2 py-1.5 text-right w-20">Qty</th>
+                                    <th className="px-2 py-1.5 w-16">Unit</th>
+                                    <th className="px-2 py-1.5 text-right w-28">Unit Price</th>
+                                    <th className="px-2.5 py-1.5 text-right w-28">Total</th>
+                                    <th className="px-1.5 py-1.5 text-center w-8"></th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-theme-subtle/40">
+                                  {formData.items.map((it: any, idx: number) => {
+                                    const lTot = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+                                    return (
+                                      <tr key={idx} className="hover:bg-surface2/20">
+                                        <td className="p-1.5">
+                                          <input
+                                            type="text"
+                                            value={it.description || it.productName || ''}
+                                            onChange={e => handleItemChangeInOrder(idx, 'description', e.target.value)}
+                                            placeholder="Description..."
+                                            className="w-full h-7 px-1.5 text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                          />
+                                        </td>
+                                        <td className="p-1.5 text-right">
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            step="any"
+                                            value={it.qty}
+                                            onChange={e => handleItemChangeInOrder(idx, 'qty', e.target.value)}
+                                            className="w-full h-7 px-1 text-right font-mono text-xs font-bold bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                          />
+                                        </td>
+                                        <td className="p-1.5">
+                                          <input
+                                            type="text"
+                                            value={it.uom || 'Nos'}
+                                            onChange={e => handleItemChangeInOrder(idx, 'uom', e.target.value)}
+                                            className="w-full h-7 px-1 text-center font-mono text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                          />
+                                        </td>
+                                        <td className="p-1.5 text-right">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={it.unitPrice}
+                                            onChange={e => handleItemChangeInOrder(idx, 'unitPrice', e.target.value)}
+                                            className="w-full h-7 px-1.5 text-right font-mono text-xs font-bold bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                          />
+                                        </td>
+                                        <td className="p-1.5 text-right font-mono font-bold text-primary text-[11px]">
+                                          {formatCurrency(lTot)}
+                                        </td>
+                                        <td className="p-1.5 text-center">
+                                          {formData.items.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveItemFromOrder(idx)}
+                                              className="p-1 text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                              title="Remove item"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         )}
