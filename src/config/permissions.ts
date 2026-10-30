@@ -146,7 +146,8 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'approvals.purchase_orders', label: 'Purchase Orders (PO) Authorization', description: 'Approve vendor purchase orders before dispatching to suppliers' },
       { id: 'approvals.material_requests', label: 'Material Requisitions (MR)', description: 'Approve store material requests and workshop requisition slips' },
       { id: 'approvals.bills_payments', label: 'Supplier Bills & Payment Release', description: 'Approve supplier bills and accounts payable payment disbursements' },
-      { id: 'approvals.work_orders', label: 'Production Work Order Release', description: 'Approve production job cards for release to factory floor' }
+      { id: 'approvals.work_orders', label: 'Production Work Order Release', description: 'Approve production job cards for release to factory floor' },
+      { id: 'approvals.sales_order_edit', label: 'Sales Order Edit / Change Approval', description: 'Authorize changes and modifications to confirmed Sales Orders' }
     ]
   },
   {
@@ -191,7 +192,10 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   'crm.leads.edit': ['crm.leads.edit', 'crm.leads.manage'],
   'crm.leads.delete': ['crm.leads.delete', 'crm.leads.manage'],
   'crm.leads.manage': ['crm.leads.manage', 'crm.leads.view'],
+  'sales_orders.edit': ['approvals.sales_order_edit', 'production.work_orders.edit', 'sales_orders.edit'],
+  'approvals.sales_order_edit': ['approvals.sales_order_edit', 'sales_orders.edit'],
   'admin.approvals.manage': [
+    'approvals.sales_order_edit',
     'admin.approvals.manage',
     'approvals.quotations',
     'quotations.approve',

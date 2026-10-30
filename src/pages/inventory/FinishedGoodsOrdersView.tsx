@@ -56,7 +56,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   onOpenProductBOM
 }) => {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
   const isAdmin = Boolean(
     user?.role === 'admin' ||
     user?.roleName?.toLowerCase() === 'admin' ||
@@ -64,6 +64,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
   )
+  const canEditOrder = Boolean(
+    isAdmin || 
+    (can ? can('approvals.sales_order_edit') : false) || 
+    (can ? can('sales_orders.edit') : false) ||
+    user?.role === 'manager' ||
+    user?.role === 'sales_head'
+  );
   const { toast, showConfirm } = useDialog()
   const { settings } = useSettings()
   const { data: orders, loading, refetch } = useFinishedGoodsOrders()
@@ -372,6 +379,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const handleOpenEditModal = (order: any) => {
+    if (!canEditOrder) {
+      toast('Admin approval required to edit or modify confirmed Sales Orders. Contact an administrator.', 'error');
+      return;
+    }
     setEditingOrder(order)
     let parsedItems: any[] = [];
     if (order.items) {
@@ -698,6 +709,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (editingOrder && !canEditOrder) {
+      toast('Permission denied: Sales order changes require Admin approval.', 'error')
+      return
+    }
     if (!formData.productName || !formData.customerName) return
     setSubmitting(true)
 
@@ -1426,7 +1441,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               }}
               className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-secondary hover:text-primary font-medium"
             >
-              <Edit size={13} /> Edit Sales Order Details
+              <Edit size={13} /> Edit Sales Order Details{!canEditOrder && ' (Admin Approval Required)'}
             </button>
 
             {/* View Sample Inspection Photos */}

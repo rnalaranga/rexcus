@@ -129,19 +129,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     const cleanOrd = orderNo ? orderNo.replace(/[^A-Za-z0-9]/g, '') : Date.now().toString().slice(-4);
     setProformaNo(`PI-${yy}${mmm}-${cleanOrd.slice(-5)}`);
 
-    // Match order's tax profile if available
-    if (order?.taxProfileId) {
-      const pId = String(order.taxProfileId).toLowerCase();
-      if (pId.includes('opt1') || pId.includes('absorbed')) {
-        setTaxOption('opt1');
-      } else if (pId.includes('opt3') || pId.includes('both')) {
-        setTaxOption('opt3');
-      } else if (pId.includes('none') || pId.includes('no_tax')) {
-        setTaxOption('none');
-      } else {
-        setTaxOption('opt2');
-      }
-    }
+    // Advance Proforma Invoice is non-taxable advance deposit (tax is settled on final tax invoice)
+    setTaxOption('none');
 
     // Default notes
     setNotes(
@@ -239,8 +228,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     let vatAmount = 0;
     let actualTaxProfileId = '';
 
-    if (taxOption === 'none') {
-      // Advance Deposit - Non-taxable deposit (Taxes settled on final tax invoice)
+    if (true) {
+      // Advance Proforma is an advance deposit - No tax on proforma
       actualTaxProfileId = '';
       subtotal = totalPayable;
       ssclAmount = 0;
@@ -332,25 +321,17 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         date: toDateOnly(date) || new Date().toISOString().slice(0, 10),
         dueDate: toDateOnly(dueDate),
         deliveryDate: toDateOnly(order?.targetDeliveryDate || order?.deliveryDate || date) || toDateOnly(date),
-        subtotal: calculation.subtotal,
-        taxAmount: calculation.totalTax,
+        subtotal: calculation.totalPayable,
+        taxAmount: 0,
         total: calculation.totalPayable,
         amount: calculation.totalPayable,
         paidAmount: 0,
         status: 'unpaid',
         isProforma: 1,
         invoiceType: 'proforma',
-        taxProfileId: calculation.actualTaxProfileId || null,
-        taxType: taxOption === 'none' ? 'none' : 'profile',
-        taxBreakdown: JSON.stringify({
-          tax1Name: 'SSCL',
-          tax1Rate: 2.5,
-          tax1Amount: calculation.ssclAmount,
-          tax2Name: 'VAT',
-          tax2Rate: 18,
-          tax2Amount: calculation.vatAmount,
-          vatRate: (taxOption === 'opt2' || taxOption === 'opt3') ? 18 : 0
-        }),
+        taxProfileId: null,
+        taxType: 'none',
+        taxBreakdown: null,
         modeOfPayment: modeOfPayment,
         bankDetailId: selectedBankId || null,
         bankDetails: selectedBank ? JSON.stringify({

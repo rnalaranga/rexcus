@@ -293,6 +293,8 @@ export const ProductQuotations: React.FC = () => {
           clientAddress,
           clientVat,
           clientSvat,
+          linkedQuoteNo: parsed.linkedCustomQuoteNo || parsed.linkedQuoteNo || q.linkedQuoteNo || '',
+          linkedQuoteId: parsed.linkedCustomQuoteId || parsed.linkedQuoteId || q.linkedQuoteId || '',
           latestDate: q.date,
           salesRep: q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || '',
           versions: []
@@ -1354,6 +1356,20 @@ export const ProductQuotations: React.FC = () => {
                               <div className="flex items-center justify-between pb-2 mb-2 border-b border-theme-subtle">
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-mono font-bold text-xs text-primary">{group.quoNo}</span>
+                              {group.linkedQuoteNo && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/crm/quotations?search=${encodeURIComponent(group.linkedQuoteNo || '')}`);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer shrink-0"
+                                  title={`Linked to Custom Fabrication Quote: ${group.linkedQuoteNo}`}
+                                >
+                                  <GitBranch size={9} />
+                                  Linked: {group.linkedQuoteNo}
+                                </button>
+                              )}
                                   <span className="text-[10px] font-mono px-1 py-0.2 bg-surface2 text-muted border border-theme-subtle">
                                     v{latest?.version || 1}
                                   </span>

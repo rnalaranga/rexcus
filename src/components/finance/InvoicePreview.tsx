@@ -671,15 +671,15 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           {/* TOTAL VALUE OF SUPPLY */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              Total Value of Supply:
+              {isProforma ? 'Total Advance Amount Requested:' : 'Total Value of Supply:'}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-              {(isTaxInclusive ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {(isTaxInclusive || isProforma ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
           </tr>
 
-          {/* Option 3: SSCL Amount (Separate line) */}
-          {isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0 && (
+          {/* Option 3: SSCL Amount (Separate line) - Strictly suppressed on Proforma */}
+          {!isProforma && isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0 && (
             <tr style={{ borderBottom: tableBorder }}>
               <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
                 {`${taxProfile?.tax1_name || 'SSCL'} Amount (Total Value of Supply @ ${t1Rate}%):`}
@@ -690,8 +690,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </tr>
           )}
 
-          {/* Option 2 & 3: VAT Amount (Separate line) */}
-          {isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0) && (
+          {/* Option 2 & 3: VAT Amount (Separate line) - Strictly suppressed on Proforma */}
+          {!isProforma && isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0) && (
             <tr style={{ borderBottom: tableBorder }}>
               <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
                 {vatRateLabel}
@@ -702,10 +702,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </tr>
           )}
 
-          {/* TOTAL CONSIDERATION INCLUDING VAT */}
+          {/* TOTAL CONSIDERATION */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              Total Amount/consideration including VAT:
+              {isProforma ? 'Total Amount Payable (LKR):' : 'Total Amount/consideration including VAT:'}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
               {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

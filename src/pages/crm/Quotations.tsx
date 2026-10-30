@@ -564,7 +564,7 @@ export const Quotations: React.FC = () => {
     }
   }, [searchParams])
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'custom' | 'product'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'custom' | 'product'>('custom')
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('all')
   const [startDate, setStartDate] = useState('')
@@ -666,6 +666,8 @@ export const Quotations: React.FC = () => {
       leadId: string; 
       customerId?: string;
       isProduct: boolean;
+      linkedQuoteNo?: string;
+      linkedQuoteId?: string;
       isDeleted?: boolean;
       deletedAt?: string;
       deletedBy?: string;
@@ -756,6 +758,9 @@ export const Quotations: React.FC = () => {
         const leadVat = parsed.vatNo || q.leadVat || cust?.vat || lead?.vat || "";
         const leadSvat = "";
 
+        const lqNo = parsed.linkedQuoteNo || parsed.linkedProductQuoteNo || parsed.linkedCustomQuoteNo || q.linkedQuoteNo || "";
+        const lqId = parsed.linkedQuoteId || parsed.linkedProductQuoteId || parsed.linkedCustomQuoteId || q.linkedQuoteId || "";
+
         groups[groupKey] = { 
           quoNo: (isAutoPregenNo ? (q.quotationNo || q.docNo || q.id) : quoNo) || q.id, 
           leadName, 
@@ -767,6 +772,8 @@ export const Quotations: React.FC = () => {
           leadId: resolvedLeadId, 
           customerId: cust?.id || lead?.customerId || q.customerId,
           isProduct: isProd,
+          linkedQuoteNo: lqNo,
+          linkedQuoteId: lqId,
           isDeleted: Boolean(q.deletedAt),
           deletedAt: q.deletedAt,
           deletedBy: q.deletedBy,
@@ -1693,8 +1700,19 @@ export const Quotations: React.FC = () => {
             <div className="flex items-center gap-1 pr-2 border-r border-theme-subtle shrink-0">
               <button
                 type="button"
+                onClick={() => setCategoryFilter('custom')}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
+                  categoryFilter === 'custom'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
+                }`}
+              >
+                Custom Fabrication
+              </button>
+              <button
+                type="button"
                 onClick={() => setCategoryFilter('all')}
-                className={`px-2 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
                   categoryFilter === 'all'
                     ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
                     : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
@@ -1704,25 +1722,14 @@ export const Quotations: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setCategoryFilter('custom')}
-                className={`px-2 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
-                  categoryFilter === 'custom'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
-                }`}
-              >
-                Custom
-              </button>
-              <button
-                type="button"
                 onClick={() => setCategoryFilter('product')}
-                className={`px-2 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-none transition-all uppercase tracking-wider ${
                   categoryFilter === 'product'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-surface border border-theme-subtle text-muted hover:text-primary'
                 }`}
               >
-                Products
+                Product Quotes
               </button>
             </div>
 
@@ -2017,6 +2024,20 @@ export const Quotations: React.FC = () => {
                             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle shrink-0">
                               v{latestMain?.version || displayQ?.version || 1}
                             </span>
+                            {group.linkedQuoteNo && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(group.isProduct ? `/crm/quotations?search=${encodeURIComponent(group.linkedQuoteNo || '')}` : `/crm/product-quotations?search=${encodeURIComponent(group.linkedQuoteNo || '')}`);
+                                }}
+                                className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.2 rounded-none bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/25 transition-colors cursor-pointer shrink-0"
+                                title={`Linked to Quotation: ${group.linkedQuoteNo}`}
+                              >
+                                <GitBranch size={9} />
+                                Linked: {group.linkedQuoteNo}
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2632,6 +2653,20 @@ export const Quotations: React.FC = () => {
                       <span className="text-[10px] font-mono px-1.5 py-0.2 bg-surface2 text-muted border border-theme-subtle">
                         v{latestMain?.version || displayQ?.version || 1}
                       </span>
+                      {group.linkedQuoteNo && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(group.isProduct ? `/crm/quotations?search=${encodeURIComponent(group.linkedQuoteNo || '')}` : `/crm/product-quotations?search=${encodeURIComponent(group.linkedQuoteNo || '')}`);
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/25 transition-colors cursor-pointer"
+                          title={`Linked to Quotation: ${group.linkedQuoteNo}`}
+                        >
+                          <GitBranch size={10} />
+                          Linked: {group.linkedQuoteNo}
+                        </button>
+                      )}
                       <span className={`text-[10px] uppercase font-semibold px-2 py-0.5 border ${getStatusColor(status)}`}>
                         {status}
                       </span>

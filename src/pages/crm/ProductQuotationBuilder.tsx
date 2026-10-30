@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { 
-  ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, 
+  ArrowLeft, Plus, GitBranch, Trash2, Download, Save, History, Package, ChevronDown, 
   ChevronUp, User, RotateCcw, X, FileText, TrendingUp, Mail, FileDown, 
   Printer, Wand2, LineChart, Building2, UserCheck, Eye, ChevronLeft, 
   ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, 
@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/Badge'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal } from '@/components/crm/QuotationTemplatesModal'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
-import { useLeads, useInventory, useCustomers } from '@/hooks/useData'
+import { useLeads, useInventory, useCustomers, useQuotations } from '@/hooks/useData'
 import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { 
   createQuotation, fetchQuotations, updateQuotation, deleteQuotation, 
@@ -626,6 +626,9 @@ export const ProductQuotationBuilder: React.FC = () => {
     }
     return '';
   })
+  const { data: allQuotations = [] } = useQuotations();
+  const [linkedCustomQuoteNo, setLinkedCustomQuoteNo] = useState('')
+  const [linkedCustomQuoteId, setLinkedCustomQuoteId] = useState('')
   const [quotationNo, setQuotationNo] = useState('')
   const [jobQty, setJobQty] = useState('1')
   const [attention, setAttention] = useState('')
@@ -660,6 +663,20 @@ export const ProductQuotationBuilder: React.FC = () => {
   }, [customers, selectedLeadId, clientType, selectedLead]);
 
   const currentEntity = selectedCustomer || selectedLead;
+
+  const availableCustomQuotes = useMemo(() => {
+    if (!allQuotations || !allQuotations.length) return [];
+    return allQuotations.filter((q: any) => {
+      const isProd = q.type === 'product' || q.type === 'product_draft' || q.data?.isProductQuotation || q.data?.quotationCategory === 'product';
+      if (isProd) return false;
+      if (quotationNo && q.quotationNo === quotationNo) return false;
+      const matchLead = selectedLeadId && (q.leadId === selectedLeadId || q.customerId === selectedLeadId);
+      const matchCustomer = selectedCustomer?.id && (q.leadId === selectedCustomer.id || q.customerId === selectedCustomer.id || q.data?.selectedCustomerId === selectedCustomer.id);
+      const matchCustName = (customerName && q.customerName && q.customerName.toLowerCase().trim() === customerName.toLowerCase().trim()) ||
+                            (currentEntity?.company && q.customerCompany && q.customerCompany.toLowerCase().trim() === currentEntity.company.toLowerCase().trim());
+      return matchLead || matchCustomer || matchCustName;
+    });
+  }, [allQuotations, selectedLeadId, selectedCustomer, customerName, currentEntity, quotationNo]);
 
   // Aggregate all contacts from Customer and Lead
   const availableContacts = useMemo(() => {
@@ -1171,6 +1188,8 @@ export const ProductQuotationBuilder: React.FC = () => {
     setCustDiscount(snap.custDiscount !== undefined ? snap.custDiscount : 0);
     setCustDiscountType(snap.custDiscountType || 'percent');
     setCustDiscountAmount(snap.custDiscountAmount !== undefined ? snap.custDiscountAmount : (snap.custTotals?.discount !== undefined ? snap.custTotals.discount : 0));
+    setLinkedCustomQuoteNo(snap.linkedCustomQuoteNo || snap.linkedQuoteNo || '');
+    setLinkedCustomQuoteId(snap.linkedCustomQuoteId || snap.linkedQuoteId || '');
   };
 
   // --- Auto Save Draft (DB) ---
@@ -1196,6 +1215,10 @@ export const ProductQuotationBuilder: React.FC = () => {
         status: currentQuote?.status || 'Draft',
         approvedBy: currentQuote?.approvedBy,
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
+        linkedCustomQuoteNo: linkedCustomQuoteNo || null,
+        linkedCustomQuoteId: linkedCustomQuoteId || null,
+        linkedQuoteNo: linkedCustomQuoteNo || null,
+        linkedQuoteId: linkedCustomQuoteId || null,
         taxEnabled, selectedProfileId,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
         custDiscountType, custDiscountAmount,
@@ -2141,6 +2164,38 @@ export const ProductQuotationBuilder: React.FC = () => {
                     <input type="text" value={user?.name || ''} disabled
                       className={docInputClass + " text-[10px] px-2 opacity-60"} />
                   </div>
+                </div>
+
+                <div className="pt-2 border-t border-theme-subtle/30">
+                  <label className="text-[11px] font-medium text-secondary flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <GitBranch className="w-3.5 h-3.5 text-blue-500" />
+                      Link Custom Fabrication Quote
+                    </span>
+                    {linkedCustomQuoteNo && (
+                      <span className="text-[10px] text-blue-500 font-semibold bg-blue-500/10 px-1.5 py-0.5 rounded">Linked</span>
+                    )}
+                  </label>
+                  <select
+                    value={linkedCustomQuoteNo}
+                    onChange={(e) => {
+                      const qNo = e.target.value;
+                      setLinkedCustomQuoteNo(qNo);
+                      const found = availableCustomQuotes.find((q: any) => q.quotationNo === qNo);
+                      setLinkedCustomQuoteId(found?.id || '');
+                    }}
+                    className={docInputClass}
+                  >
+                    <option value="">-- Standalone (No Custom Quote Linked) --</option>
+                    {availableCustomQuotes.map((q: any) => (
+                      <option key={q.id} value={q.quotationNo}>
+                        {q.quotationNo} {q.data?.subject ? `(${q.data.subject})` : ''} - LKR {Number(q.totalAmount || 0).toLocaleString()}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted/70 mt-1">
+                    Link this product quote with an existing custom fabrication quotation for the same customer.
+                  </p>
                 </div>
               </div>
             </div>

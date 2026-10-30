@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2, Percent, Coins, Lock, Unlock, Sidebar } from 'lucide-react'
+import { ArrowLeft, Plus, GitBranch, Trash2, Download, Save, History, Package, ChevronDown, ChevronUp, Briefcase, User, RotateCcw, X, FileText, TrendingUp, TrendingDown, LayoutDashboard, Mail, FileDown, Printer, Wand2, LineChart, Building2, UserCheck, Users, Eye, ChevronLeft, ChevronRight, Bookmark, Landmark, CheckCircle2, XCircle, Clock, Send, AlertTriangle, Sparkles, Loader2, Percent, Coins, Lock, Unlock, Sidebar } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
-import { useLeads, useInventory, useMachiningOperations, useCustomers } from '@/hooks/useData'
+import { useLeads, useInventory, useMachiningOperations, useCustomers, useQuotations } from '@/hooks/useData'
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
@@ -390,6 +390,9 @@ export const QuotationBuilder: React.FC = () => {
     }
     return '';
   })
+  const { data: allQuotations = [] } = useQuotations();
+  const [linkedProductQuoteNo, setLinkedProductQuoteNo] = useState('')
+  const [linkedProductQuoteId, setLinkedProductQuoteId] = useState('')
   const [quotationNo, setQuotationNo] = useState('')
   const [jobQty, setJobQty] = useState('1')
   const [attention, setAttention] = useState('')
@@ -420,6 +423,20 @@ export const QuotationBuilder: React.FC = () => {
   }, [customers, selectedLeadId, clientType, selectedLead]);
 
   const currentEntity = selectedCustomer || selectedLead;
+
+  const availableProductQuotes = useMemo(() => {
+    if (!allQuotations || !allQuotations.length) return [];
+    return allQuotations.filter((q: any) => {
+      const isProd = q.type === 'product' || q.type === 'product_draft' || q.data?.isProductQuotation || q.data?.quotationCategory === 'product';
+      if (!isProd) return false;
+      if (quotationNo && q.quotationNo === quotationNo) return false;
+      const matchLead = selectedLeadId && (q.leadId === selectedLeadId || q.customerId === selectedLeadId);
+      const matchCustomer = selectedCustomer?.id && (q.leadId === selectedCustomer.id || q.customerId === selectedCustomer.id || q.data?.selectedCustomerId === selectedCustomer.id);
+      const matchCustName = (customerName && q.customerName && q.customerName.toLowerCase().trim() === customerName.toLowerCase().trim()) ||
+                            (currentEntity?.company && q.customerCompany && q.customerCompany.toLowerCase().trim() === currentEntity.company.toLowerCase().trim());
+      return matchLead || matchCustomer || matchCustName;
+    });
+  }, [allQuotations, selectedLeadId, selectedCustomer, customerName, currentEntity, quotationNo]);
 
   // Aggregate all contacts from Customer (Primary, Finance, Additional contacts) and Lead
   const availableContacts = useMemo(() => {
@@ -991,6 +1008,8 @@ export const QuotationBuilder: React.FC = () => {
     setCustDiscount(snap.custDiscount !== undefined ? snap.custDiscount : 0)
     setCustDiscountType(snap.custDiscountType || 'percent')
     setCustDiscountAmount(snap.custDiscountAmount !== undefined ? snap.custDiscountAmount : (snap.custTotals?.discount !== undefined ? snap.custTotals.discount : 0))
+    setLinkedProductQuoteNo(snap.linkedProductQuoteNo || snap.linkedQuoteNo || '');
+    setLinkedProductQuoteId(snap.linkedProductQuoteId || snap.linkedQuoteId || '');
   }
 
 
@@ -1013,6 +1032,10 @@ export const QuotationBuilder: React.FC = () => {
       setSaveStatus('saving');
       const snapshot: any = {
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
+        linkedProductQuoteNo: linkedProductQuoteNo || null,
+        linkedProductQuoteId: linkedProductQuoteId || null,
+        linkedQuoteNo: linkedProductQuoteNo || null,
+        linkedQuoteId: linkedProductQuoteId || null,
         taxEnabled, selectedProfileId,
         boms,
         custItems, custTerms, custValidity, custDelivery, custDiscount,
@@ -2297,6 +2320,38 @@ export const QuotationBuilder: React.FC = () => {
                     <input type="text" value={user?.name || ''} disabled
                       className={docInputClass + " text-[10px] px-2 opacity-60"} />
                   </div>
+                </div>
+
+                <div className="pt-2 border-t border-theme-subtle/30">
+                  <label className="text-[11px] font-medium text-secondary flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-1.5">
+                      <GitBranch className="w-3.5 h-3.5 text-emerald-500" />
+                      Link Product Catalog Quote
+                    </span>
+                    {linkedProductQuoteNo && (
+                      <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded">Linked</span>
+                    )}
+                  </label>
+                  <select
+                    value={linkedProductQuoteNo}
+                    onChange={(e) => {
+                      const qNo = e.target.value;
+                      setLinkedProductQuoteNo(qNo);
+                      const found = availableProductQuotes.find((q: any) => q.quotationNo === qNo);
+                      setLinkedProductQuoteId(found?.id || '');
+                    }}
+                    className={docInputClass}
+                  >
+                    <option value="">-- Standalone (No Product Quote Linked) --</option>
+                    {availableProductQuotes.map((q: any) => (
+                      <option key={q.id} value={q.quotationNo}>
+                        {q.quotationNo} {q.data?.subject ? `(${q.data.subject})` : ''} - LKR {Number(q.totalAmount || 0).toLocaleString()}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted/70 mt-1">
+                    Link this custom quote with a standard product catalog quotation for the same customer.
+                  </p>
                 </div>
               </div>
             </div>

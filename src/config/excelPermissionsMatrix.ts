@@ -98,7 +98,7 @@ export const EXCEL_DEPARTMENTS: ExcelDepartmentConfig[] = [
         department: 'sales',
         permissionMap: {
           add: ['production.work_orders.create', 'inventory.items.view'],
-          edit: ['production.work_orders.edit'],
+          edit: ['approvals.sales_order_edit', 'production.work_orders.edit'],
           view: ['production.work_orders.view', 'inventory.items.view'],
           cancel: ['production.work_orders.delete'],
           delete: ['production.work_orders.delete'],
@@ -450,7 +450,7 @@ export const EXCEL_DEPARTMENTS: ExcelDepartmentConfig[] = [
         department: 'finance',
         permissionMap: {
           add: ['production.work_orders.create'],
-          edit: ['production.work_orders.edit'],
+          edit: ['approvals.sales_order_edit', 'production.work_orders.edit'],
           view: ['production.work_orders.view', 'quotations.view_all'],
           cancel: ['production.work_orders.delete'],
           delete: ['production.work_orders.delete'],
