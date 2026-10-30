@@ -38,6 +38,7 @@ import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProfor
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { FileSpreadsheet } from 'lucide-react'
 import { QuotationAttachmentsGallery, QuotationAttachmentItem } from '@/components/crm/QuotationAttachmentsGallery'
+import { SalesOrderWarningBadge, getQuotationSoChange } from '@/components/crm/SalesOrderWarningBadge'
 
 const extractQuoteAttachments = (parsed: any): QuotationAttachmentItem[] => {
   if (!parsed) return [];

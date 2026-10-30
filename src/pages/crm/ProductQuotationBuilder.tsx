@@ -1086,10 +1086,6 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   // Taxes & Financials for Tax-Inclusive Finished Goods / Products
   let unitPriceDivisor = 1;
-  let custBaseSupplyValue = custTotal;
-  let custSscl = 0;
-  let custVat = 0;
-
   const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
 
   if (selectedProfile && taxEnabled) {
@@ -1099,34 +1095,51 @@ export const ProductQuotationBuilder: React.FC = () => {
     const isVatSep = selectedProfile.tax2_show_separately === 1;
 
     if (isSsclSep && isVatSep) {
-      // Option 3: Both SSCL & VAT Separate
       unitPriceDivisor = selectedProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
-      custBaseSupplyValue = unitPriceDivisor > 0 ? (custTotal / unitPriceDivisor) : custTotal;
-      custSscl = custBaseSupplyValue * t1;
-      custVat = selectedProfile.tax2_compound ? ((custBaseSupplyValue + custSscl) * t2) : (custBaseSupplyValue * t2);
     } else if (!isSsclSep && isVatSep) {
-      // Option 2: SSCL Absorbed into supply value, VAT Separate (Standard 18%)
       unitPriceDivisor = 1 + t2;
-      custBaseSupplyValue = unitPriceDivisor > 0 ? (custTotal / unitPriceDivisor) : custTotal;
-      custVat = custTotal - custBaseSupplyValue;
-      custSscl = 0;
     } else {
-      // Option 1: Both Absorbed
       unitPriceDivisor = 1;
-      custBaseSupplyValue = custTotal;
-      custSscl = 0;
-      custVat = 0;
     }
   }
 
-  // Final Total for Customer is ALWAYS the product's final tax-inclusive price (VAT is never added on top)
-  const custWithSSCL = custTotal;
+  // 1. Base Subtotal before discount (Extracted from gross inclusive item total)
+  const isTaxSeparated = Boolean(taxEnabled && selectedProfile?.tax2_show_separately === 1);
+  const custBaseSubtotal = (isTaxSeparated && unitPriceDivisor > 0) ? (custSubtotal / unitPriceDivisor) : custSubtotal;
+
+  // 2. Base Discount Amount (applied directly to the base subtotal)
+  const custBaseDiscountAmt = (isTaxSeparated && unitPriceDivisor > 0) ? (custDiscountAmt / unitPriceDivisor) : custDiscountAmt;
+
+  // 3. Discounted Net Base Supply Value (Subtotal - Discount)
+  const custBaseSupplyValue = Math.max(0, custBaseSubtotal - custBaseDiscountAmt);
+
+  // 4. Taxes calculated on the Discounted Net Base Supply Value
+  let custSscl = 0;
+  let custVat = 0;
+  if (selectedProfile && taxEnabled) {
+    const t1 = Number(selectedProfile.tax1_rate) / 100;
+    const t2 = Number(selectedProfile.tax2_rate) / 100;
+    const isSsclSep = selectedProfile.tax1_show_separately === 1;
+    const isVatSep = selectedProfile.tax2_show_separately === 1;
+
+    if (isSsclSep && isVatSep) {
+      custSscl = custBaseSupplyValue * t1;
+      custVat = selectedProfile.tax2_compound ? ((custBaseSupplyValue + custSscl) * t2) : (custBaseSupplyValue * t2);
+    } else if (!isSsclSep && isVatSep) {
+      custVat = custBaseSupplyValue * t2;
+      custSscl = 0;
+    }
+  }
+
+  // Final Total for Customer is Net Base + Taxes (matching customer's expected discounted total)
+  const custFinalTotal = isTaxSeparated ? (custBaseSupplyValue + custSscl + custVat) : custTotal;
+  const custWithSSCL = custFinalTotal;
   const jobWithSSCL = jobTotalCost;
   const jobSscl = 0;
   const jobVat = 0;
 
   // Financial calculations: Net revenue Rex keeps is the supply value excluding VAT
-  const netRevenue = (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal;
+  const netRevenue = isTaxSeparated ? custBaseSupplyValue : custFinalTotal;
   const expectedProfit = netRevenue - jobTotalCost;
   const expectedMargin = netRevenue > 0 ? (expectedProfit / netRevenue) * 100 : 0;
 
@@ -1190,11 +1203,11 @@ export const ProductQuotationBuilder: React.FC = () => {
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: {
-          subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
-          discount: custDiscountAmt,
-          total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+          subtotal: isTaxSeparated ? custBaseSubtotal : custSubtotal,
+          discount: isTaxSeparated ? custBaseDiscountAmt : custDiscountAmt,
+          total: isTaxSeparated ? custBaseSupplyValue : custTotal,
           withSSCL: custWithSSCL,
-          grossTotal: custTotal
+          grossTotal: custFinalTotal
         },
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         productTotals: { totalCost: totalProductCost, revenue: netRevenue, margin: expectedMargin, profit: expectedProfit },
@@ -1336,11 +1349,11 @@ export const ProductQuotationBuilder: React.FC = () => {
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
         custTotals: {
-          subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
-          discount: custDiscountAmt,
-          total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+          subtotal: isTaxSeparated ? custBaseSubtotal : custSubtotal,
+          discount: isTaxSeparated ? custBaseDiscountAmt : custDiscountAmt,
+          total: isTaxSeparated ? custBaseSupplyValue : custTotal,
           withSSCL: custWithSSCL,
-          grossTotal: custTotal
+          grossTotal: custFinalTotal
         },
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         productTotals: { totalCost: totalProductCost, revenue: netRevenue, margin: expectedMargin, profit: expectedProfit },
@@ -2494,12 +2507,12 @@ export const ProductQuotationBuilder: React.FC = () => {
               <div className="space-y-4 relative z-10">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-muted font-medium">
-                    {taxEnabled && selectedProfile?.tax2_show_separately === 1 ? 'Supply Value (Excl. VAT)' : 'Sub Total'}
+                    {isTaxSeparated ? 'Supply Value (Excl. VAT)' : 'Sub Total'}
                   </span>
                   <span className="font-mono font-semibold text-secondary text-sm">
                     {formatCurrency(
-                      taxEnabled && selectedProfile?.tax2_show_separately === 1
-                        ? custBaseSupplyValue
+                      isTaxSeparated
+                        ? custBaseSubtotal
                         : custSubtotal
                     )}
                   </span>
@@ -2527,7 +2540,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                       </div>
                     </div>
                     <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">
-                      -{formatCurrency(taxEnabled && selectedProfile?.tax2_show_separately === 1 ? (custDiscountAmt / unitPriceDivisor) : custDiscountAmt)}
+                      -{formatCurrency(isTaxSeparated ? custBaseDiscountAmt : custDiscountAmt)}
                     </span>
                   </div>
 
@@ -2735,11 +2748,11 @@ export const ProductQuotationBuilder: React.FC = () => {
                            approvedBy: currentQuote?.approvedBy,
                            custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
                            custTotals: {
-                             subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
-                             discount: custDiscountAmt,
-                             total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+                             subtotal: isTaxSeparated ? custBaseSubtotal : custSubtotal,
+                             discount: isTaxSeparated ? custBaseDiscountAmt : custDiscountAmt,
+                             total: isTaxSeparated ? custBaseSupplyValue : custTotal,
                              withSSCL: custWithSSCL,
-                             grossTotal: custTotal
+                             grossTotal: custFinalTotal
                            },
                            jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
                            taxEnabled, selectedProfileId,
@@ -2793,11 +2806,11 @@ export const ProductQuotationBuilder: React.FC = () => {
                  approvedBy: currentQuote?.approvedBy,
                  custItems, custDiscount, custDiscountType, custDiscountAmount, boms: [],
                  custTotals: {
-                   subtotal: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custSubtotal,
-                   discount: custDiscountAmt,
-                   total: (selectedProfile?.tax2_show_separately === 1 && taxEnabled) ? custBaseSupplyValue : custTotal,
+                   subtotal: isTaxSeparated ? custBaseSubtotal : custSubtotal,
+                   discount: isTaxSeparated ? custBaseDiscountAmt : custDiscountAmt,
+                   total: isTaxSeparated ? custBaseSupplyValue : custTotal,
                    withSSCL: custWithSSCL,
-                   grossTotal: custTotal
+                   grossTotal: custFinalTotal
                  },
                  jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
                  taxEnabled, selectedProfileId,

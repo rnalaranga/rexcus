@@ -1710,6 +1710,12 @@ async function runDatabaseSync() {
     "ALTER TABLE work_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN soChangeInfo LONGTEXT DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN isEdited TINYINT(1) DEFAULT 0",
+    "ALTER TABLE finished_goods_orders ADD COLUMN lastEditedBy VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN lastEditedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN soChangeInfo LONGTEXT DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN soChanged TINYINT(1) DEFAULT 0",
     "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''",
     "ALTER TABLE invoices MODIFY COLUMN deliveryDate DATE DEFAULT NULL"
   ];
@@ -5006,7 +5012,125 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     if (data.customerPoAttachment && typeof data.customerPoAttachment === 'object') {
       data.customerPoAttachment = JSON.stringify(data.customerPoAttachment);
     }
-    data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    data.updatedAt = nowStr;
+
+    // 1. Fetch existing order to detect differences
+    const [existingRows]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
+    const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+
+    if (existing) {
+      const changes: string[] = [];
+
+      // Compare Total Price
+      const prevTotal = Number(existing.totalPrice || 0);
+      const newTotal = Number(data.totalPrice !== undefined ? data.totalPrice : existing.totalPrice || 0);
+      if (data.totalPrice !== undefined && Math.abs(prevTotal - newTotal) > 0.01) {
+        changes.push(`Total Amount: Rs. ${prevTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} → Rs. ${newTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+      }
+
+      // Compare Subtotal
+      const prevSubtotal = Number(existing.subtotal || 0);
+      const newSubtotal = Number(data.subtotal !== undefined ? data.subtotal : existing.subtotal || 0);
+      if (data.subtotal !== undefined && Math.abs(prevSubtotal - newSubtotal) > 0.01) {
+        changes.push(`Subtotal: Rs. ${prevSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} → Rs. ${newSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+      }
+
+      // Compare Tax Amount
+      const prevTax = Number(existing.taxAmount || 0);
+      const newTax = Number(data.taxAmount !== undefined ? data.taxAmount : existing.taxAmount || 0);
+      if (data.taxAmount !== undefined && Math.abs(prevTax - newTax) > 0.01) {
+        changes.push(`Tax: Rs. ${prevTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} → Rs. ${newTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+      }
+
+      // Compare Quantity
+      const prevQty = Number(existing.qty || 0);
+      const newQty = Number(data.qty !== undefined ? data.qty : existing.qty || 0);
+      if (data.qty !== undefined && prevQty !== newQty) {
+        changes.push(`Total Quantity: ${prevQty} → ${newQty}`);
+      }
+
+      // Compare Customer PO
+      if (data.customerPoNo !== undefined && String(data.customerPoNo || '').trim() !== String(existing.customerPoNo || '').trim()) {
+        changes.push(`Customer PO: "${existing.customerPoNo || 'None'}" → "${data.customerPoNo || 'None'}"`);
+      }
+
+      // Compare PO Date
+      if (data.customerPoDate !== undefined && String(data.customerPoDate || '').trim() !== String(existing.customerPoDate || '').trim()) {
+        changes.push(`PO Date: "${existing.customerPoDate || 'None'}" → "${data.customerPoDate || 'None'}"`);
+      }
+
+      // Compare Delivery Address
+      if (data.deliveryAddress !== undefined && String(data.deliveryAddress || '').trim() !== String(existing.deliveryAddress || '').trim()) {
+        changes.push(`Delivery Address updated`);
+      }
+
+      // Compare Attention
+      if (data.attention !== undefined && String(data.attention || '').trim() !== String(existing.attention || '').trim()) {
+        changes.push(`Attention: "${existing.attention || 'None'}" → "${data.attention || 'None'}"`);
+      }
+
+      // Compare Items
+      if (data.items) {
+        try {
+          const prevItems = typeof existing.items === 'string' ? JSON.parse(existing.items) : (existing.items || []);
+          const newItems = typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || []);
+          const prevSummary = (prevItems || []).map((it: any) => `${it.description || it.productName || ''}_${it.qty}_${it.unitPrice}`).join('|');
+          const newSummary = (newItems || []).map((it: any) => `${it.description || it.productName || ''}_${it.qty}_${it.unitPrice}`).join('|');
+          if (prevSummary && newSummary && prevSummary !== newSummary) {
+            changes.push(`Line items / product pricing updated`);
+          }
+        } catch (e) {}
+      }
+
+      if (changes.length > 0) {
+        const userWhoChanged = data.updatedBy || req.headers['x-user-name'] || 'Sales Team';
+        const changeRecord = {
+          orderId: existing.id,
+          orderNo: existing.orderNo || id,
+          quoteId: existing.quoteId || data.quoteId,
+          quotationNo: existing.quotationNo || data.quotationNo,
+          changedAt: nowStr,
+          changedBy: userWhoChanged,
+          summary: changes.join('; '),
+          changes: changes
+        };
+
+        data.soChangeInfo = JSON.stringify(changeRecord);
+        data.isEdited = 1;
+        data.lastEditedBy = userWhoChanged;
+        data.lastEditedAt = nowStr;
+
+        // Propagate change record to the linked quotation
+        const targetQuoteId = existing.quoteId || data.quoteId;
+        const targetQuoteNo = existing.quotationNo || data.quotationNo;
+
+        if (targetQuoteId || targetQuoteNo) {
+          try {
+            const [qRows]: any = await db.query(
+              `SELECT id, data FROM quotations WHERE id = ? OR quotationNo = ? OR docNo = ?`,
+              [targetQuoteId, targetQuoteNo, targetQuoteNo]
+            );
+            for (const qRow of qRows) {
+              let parsed: any = {};
+              try {
+                parsed = typeof qRow.data === 'string' ? JSON.parse(qRow.data) : (qRow.data || {});
+                if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+              } catch (e) {}
+              parsed.soChangeInfo = changeRecord;
+              parsed.soChanged = true;
+
+              await db.query(
+                `UPDATE quotations SET soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
+                [JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
+              ).catch(console.error);
+            }
+          } catch (qErr) {
+            console.error('Error updating quotation with soChangeInfo:', qErr);
+          }
+        }
+      }
+    }
 
     const [colRows]: any = await db.query('SHOW COLUMNS FROM finished_goods_orders');
     const validCols = new Set(colRows.map((c: any) => c.Field));
@@ -5018,7 +5142,7 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     }
 
     await db.query('UPDATE finished_goods_orders SET ? WHERE id = ? OR orderNo = ?', [safeData, id, id]);
-    res.json({ success: true, id });
+    res.json({ success: true, id, soChangeInfo: data.soChangeInfo });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });

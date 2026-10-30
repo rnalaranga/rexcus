@@ -143,23 +143,30 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   let displaySscl = Number(data.custSscl || 0);
   let displayVat = Number(data.custVat || 0);
   let displaySubtotal = Number(custTotals.subtotal || 0);
+  let displayDiscount = Number(custTotals.discount || 0);
   let displayGrandTotal = quotationType === 'job' ? Number(jobTotals.withSSCL || 0) : rawWithSSCL;
 
   if (isProductQuote && data.taxEnabled && data.selectedProfile && quotationType !== 'job') {
     displayGrandTotal = rawWithSSCL;
     if (isVatSeparate && !isSsclSeparate) {
       // Option 2: VAT separate, SSCL absorbed into supply value
-      displaySubtotal = unitPriceDivisor > 0 ? (rawWithSSCL / unitPriceDivisor) : rawWithSSCL;
-      displayVat = rawWithSSCL - displaySubtotal;
+      const netBase = unitPriceDivisor > 0 ? (rawWithSSCL / unitPriceDivisor) : rawWithSSCL;
+      const baseDiscount = displayDiscount > 0 ? (displayDiscount === Number(data.custDiscountAmount) ? (displayDiscount / unitPriceDivisor) : displayDiscount) : 0;
+      displaySubtotal = netBase + baseDiscount;
+      displayDiscount = baseDiscount;
+      displayVat = rawWithSSCL - netBase;
       displaySscl = 0;
     } else if (isVatSeparate && isSsclSeparate) {
       // Option 3: Both separate
-      displaySubtotal = unitPriceDivisor > 0 ? (rawWithSSCL / unitPriceDivisor) : rawWithSSCL;
-      displaySscl = displaySubtotal * t1Rate;
-      displayVat = data.selectedProfile?.tax2_compound ? ((displaySubtotal + displaySscl) * t2Rate) : (displaySubtotal * t2Rate);
+      const netBase = unitPriceDivisor > 0 ? (rawWithSSCL / unitPriceDivisor) : rawWithSSCL;
+      const baseDiscount = displayDiscount > 0 ? (displayDiscount === Number(data.custDiscountAmount) ? (displayDiscount / unitPriceDivisor) : displayDiscount) : 0;
+      displaySubtotal = netBase + baseDiscount;
+      displayDiscount = baseDiscount;
+      displaySscl = netBase * t1Rate;
+      displayVat = data.selectedProfile?.tax2_compound ? ((netBase + displaySscl) * t2Rate) : (netBase * t2Rate);
     } else {
       // Option 1: Absorbed
-      displaySubtotal = rawWithSSCL;
+      displaySubtotal = rawWithSSCL + displayDiscount;
       displaySscl = 0;
       displayVat = 0;
     }
@@ -686,16 +693,16 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               </tr>
 
               {/* Discount */}
-              {quotationType !== 'job' && custTotals.discount > 0 && (
+              {quotationType !== 'job' && (isProductQuote ? displayDiscount > 0 : custTotals.discount > 0) && (
                 <tr className="border-b border-black print-no-break h-6 text-[11px]">
                   <td colSpan={2} className="text-right pr-6">Discount</td>
                   <td className="text-center border-l border-black">
                     {custDiscountType === 'amount'
-                      ? `${(custTotals.subtotal > 0 ? (custTotals.discount / custTotals.subtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
+                      ? `${(displaySubtotal > 0 ? ((isProductQuote ? displayDiscount : custTotals.discount) / displaySubtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
                       : `${Number(custDiscount || 0)} %`}
                   </td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
-                    {Number((custTotals.discount || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {Number(isProductQuote ? displayDiscount : (custTotals.discount || 0) * multiplier).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </td>
                 </tr>
               )}

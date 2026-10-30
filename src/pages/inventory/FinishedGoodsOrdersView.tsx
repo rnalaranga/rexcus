@@ -766,7 +766,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       deliveryAddress: formData.deliveryAddress || null,
       customerPoNo: formData.customerPoNo?.trim() || null,
       customerPoDate: formData.customerPoDate || null,
-      customerPoAttachment: formData.customerPoAttachment || null
+      customerPoAttachment: formData.customerPoAttachment || null,
+      updatedBy: user?.name || user?.username || 'Sales Executive'
     };
 
     try {
