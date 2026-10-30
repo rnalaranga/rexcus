@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck } from 'lucide-react'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck, Tags, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -20,6 +20,9 @@ import { AssetRegistryHub } from '@/components/inventory/AssetRegistryHub'
 import { StockLedgerHub } from '@/components/inventory/StockLedgerHub'
 import { ItemFormStudio } from '@/components/inventory/ItemFormStudio'
 import { ItemDetailModal } from '@/components/inventory/ItemDetailModal'
+import { MaterialCategoriesModal } from '@/components/inventory/MaterialCategoriesModal'
+import { useMaterialCategories } from '@/hooks/useMaterialCategories'
+import { downloadInventoryExcelTemplate, downloadInventoryCsvTemplate, parseInventoryImportFile } from '@/lib/inventoryExcel'
 import { LinearStockCutStudio } from '@/components/inventory/LinearStockCutStudio'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { printElement } from '@/lib/printElement'
@@ -228,6 +231,8 @@ export const Inventory: React.FC = () => {
   
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showCategoriesModal, setShowCategoriesModal] = useState(false)
+  const { categoryNames } = useMaterialCategories()
   const [formTab, setFormTab] = useState<'details' | 'ledger'>('details')
   const [editId, setEditId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -235,117 +240,62 @@ export const Inventory: React.FC = () => {
   const [toast, setToast] = useState<{type: 'success'|'error', msg: string} | null>(null)
   const showToast = (type: 'success'|'error', msg: string) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
 
-  const handleDownloadTemplate = () => {
-    const headers = ['Type(raw_material/finished_product/service/company_asset)', 'Name', 'SKU', 'Description', 'UnitPrice', 'UnitCost', 'Quantity', 'UOM(pcs/kg/m)', 'Location', 'ReorderLevel']
-    const row = ['raw_material', 'MS Plate 1/2" (12.7mm)', 'SKU-001', 'Spec: 50×300mm Ø25mm 90°', '1500', '1000', '10', 'pcs', 'Store A', '5']
-    const csv = headers.join(',') + '\n' + row.join(',') + '\n'
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'inventory_import_template.csv'
-    a.click()
-  }
+  const handleDownloadExcel = () => {
+    downloadInventoryExcelTemplate(categoryNames);
+  };
+
+  const handleDownloadCsv = () => {
+    downloadInventoryCsvTemplate();
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0];
+    if (!file) return;
     try {
-      setSubmitting(true)
-      const buffer = await file.arrayBuffer()
-      let text = ''
-      try {
-        // Try strict UTF-8 decoding first (standard UTF-8 and UTF-8 with BOM)
-        const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
-        text = utf8Decoder.decode(buffer)
-      } catch {
-        // Fall back to Windows-1252 (ANSI), default encoding for Windows Excel CSV saves
-        const winDecoder = new TextDecoder('windows-1252')
-        text = winDecoder.decode(buffer)
+      setSubmitting(true);
+      const items = await parseInventoryImportFile(file);
+      if (items.length === 0) {
+        setSubmitting(false);
+        return showToast('error', 'No valid items found in the file.');
       }
 
-      // Strip optional UTF-8 BOM if present
-      if (text.charCodeAt(0) === 0xFEFF) {
-        text = text.slice(1)
-      }
-
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l)
-      if (lines.length < 2) {
-        setSubmitting(false)
-        return showToast('error', 'CSV is empty or invalid')
-      }
-
-      let count = 0
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i]
-        const row: string[] = []
-        let cur = ''
-        let inQuote = false
-
-        for (let j = 0; j < line.length; j++) {
-          const char = line[j]
-          if (char === '"') {
-            if (inQuote && line[j + 1] === '"') {
-              cur += '"'
-              j++ // skip escaped quote
-            } else {
-              inQuote = !inQuote
-            }
-          } else if (char === ',' && !inQuote) {
-            row.push(cur.trim())
-            cur = ''
-          } else {
-            cur += char
-          }
-        }
-        row.push(cur.trim())
-
-        if (row.length < 2) continue
-
-        let typeStr = (row[0] || '').toLowerCase().replace(' ', '_')
-        if (!['raw_material', 'finished_product', 'service', 'company_asset'].includes(typeStr)) {
-          typeStr = typeStr === 'product' ? 'finished_product' : 'raw_material'
-        }
-        const type = typeStr
-        const name = row[1]
-        const sku = row[2] || ''
-        const description = row[3] || ''
-        const unitPrice = Number(row[4]) || 0
-        const unitCost = Number(row[5]) || 0
-        const quantity = Number(row[6]) || 0
-        const uom = row[7] || 'pcs'
-        const location = row[8] || ''
-        const reorderLevel = Number(row[9]) || 0
-
-        if (!name) continue
-
+      let count = 0;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const cleanSku = it.sku || `RM-${it.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}-${Date.now().toString().slice(-4)}${i}`;
         const res = await createInventoryItem({
           id: `INV-${Date.now().toString().slice(-4)}${i}`,
-          type,
-          name,
-          sku,
-          description,
-          unitPrice,
-          unitCost,
-          quantity,
-          uom,
-          location,
-          reorderLevel,
+          type: it.type || 'raw_material',
+          name: it.name,
+          sku: cleanSku,
+          category: it.category || 'Raw Metals & Alloys',
+          subCategory: it.subCategory || '',
+          description: it.description || '',
+          unitPrice: it.unitPrice || 0,
+          unitCost: it.unitCost || 0,
+          quantity: it.quantity || 0,
+          uom: it.uom || 'pcs',
+          location: it.location || '',
+          reorderLevel: it.reorderLevel || 0,
           status: 'active',
+          specifications: JSON.stringify({
+            materialGrade: it.materialGrade || '',
+            materialShape: it.materialShape || ''
+          }),
           suppliers: JSON.stringify([])
-        })
-        if (!res.error) count++
-        else console.error(res.error)
+        });
+        if (!res.error) count++;
+        else console.error(res.error);
       }
-      setSubmitting(false)
-      setShowImport(false)
-      showToast('success', `Imported ${count} items successfully`)
-      refetch()
+      setSubmitting(false);
+      setShowImport(false);
+      showToast('success', `Imported ${count} items successfully!`);
+      refetch();
     } catch (err: any) {
-      setSubmitting(false)
-      showToast('error', 'Failed to read CSV: ' + (err?.message || 'Unknown error'))
+      setSubmitting(false);
+      showToast('error', 'Failed to import file: ' + (err?.message || 'Unknown error'));
     }
-  }
+  };
 
 
   const initialForm = { type: 'raw_material', name: '', sku: '', description: '', unitPrice: '', unitCost: '', quantity: '0', status: 'active', uom: 'pcs', suppliers: [] as string[], location: '', reorderLevel: '0' }
@@ -1514,6 +1464,15 @@ export const Inventory: React.FC = () => {
               >
                 Material Issue Station
               </Button>
+              <Button 
+                variant="outline" 
+                icon={Tags} 
+                onClick={() => setShowCategoriesModal(true)}
+                className="border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-bold"
+                title="Manage Raw Material Categories & Families"
+              >
+                Categories
+              </Button>
               <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
               <Button variant="ghost" icon={Scissors} onClick={() => setActiveTab('linear_remnants')}>Cut Studio</Button>
               <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
@@ -1871,26 +1830,53 @@ export const Inventory: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import Inventory Items">
+      <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import Inventory Items (Excel / CSV)" size="lg">
         <div className="space-y-6 p-4">
-          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <h3 className="text-sm font-bold text-blue-600 dark:text-blue-400 mb-2">Step 1: Download Template</h3>
-            <p className="text-xs text-secondary mb-3">Download the standard CSV template and fill in your product data. Do not change the column headers.</p>
-            <Button variant="ghost" icon={Download} onClick={handleDownloadTemplate} className="text-blue-600 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10">Download CSV Template</Button>
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-3">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="text-emerald-500" size={18} />
+              <h3 className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Step 1: Download Import Template</h3>
+            </div>
+            <p className="text-xs text-secondary leading-relaxed">
+              Download the official template with all columns (Type, Category, SubCategory, Name, SKU, Specs, Quantity, UOM, Pricing, and Location). Sample items and a guide are included.
+            </p>
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <Button 
+                variant="primary" 
+                icon={FileSpreadsheet} 
+                onClick={handleDownloadExcel} 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+              >
+                Download Excel (.xlsx) Template
+              </Button>
+              <Button 
+                variant="outline" 
+                icon={Download} 
+                onClick={handleDownloadCsv} 
+                className="text-xs border-theme-subtle hover:bg-surface2"
+              >
+                Download CSV (.csv) Template
+              </Button>
+            </div>
           </div>
 
-          <div className="p-4 bg-surface2 rounded-lg border border-theme-subtle">
-            <h3 className="text-sm font-bold text-primary mb-2">Step 2: Upload Data</h3>
-            <p className="text-xs text-secondary mb-4">Upload the filled CSV file to import items into stock.</p>
-            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-theme-subtle rounded-lg cursor-pointer hover:bg-surface transition-colors">
+          <div className="p-4 bg-surface2 rounded-xl border border-theme-subtle">
+            <h3 className="text-sm font-bold text-primary mb-1">Step 2: Upload Filled Spreadsheet</h3>
+            <p className="text-xs text-muted mb-4">Upload your filled Microsoft Excel (.xlsx, .xls) or CSV file to import stock.</p>
+            <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-theme-subtle hover:border-emerald-500/50 rounded-xl cursor-pointer hover:bg-surface transition-all">
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload className="w-8 h-8 mb-3 text-muted" />
-                <p className="mb-2 text-sm text-secondary"><span className="font-semibold text-primary">Click to upload</span> or drag and drop</p>
-                <p className="text-xs text-muted">CSV files only</p>
+                <Upload className="w-8 h-8 mb-2 text-muted" />
+                <p className="mb-1 text-sm text-secondary font-medium"><span className="font-bold text-primary">Click to upload</span> or drag and drop</p>
+                <p className="text-[11px] text-muted">Supports Excel (.xlsx, .xls) and CSV (.csv)</p>
               </div>
-              <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} disabled={submitting} />
+              <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={submitting} />
             </label>
-            {submitting && <p className="text-xs text-center text-blue-500 font-bold mt-3 animate-pulse">Importing items, please wait...</p>}
+            {submitting && (
+              <div className="flex items-center justify-center gap-2 mt-4 text-xs font-bold text-emerald-600 animate-pulse">
+                <RefreshCw size={14} className="animate-spin" />
+                Importing inventory items into database, please wait...
+              </div>
+            )}
           </div>
         </div>
       </Modal>
@@ -1938,6 +1924,14 @@ export const Inventory: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {showCategoriesModal && (
+        <MaterialCategoriesModal
+          isOpen={true}
+          onClose={() => setShowCategoriesModal(false)}
+          inventory={inventory}
+        />
+      )}
 
       {/* Issue Outward Gate Pass Modal */}
       <Modal isOpen={!!gatePassDialog} onClose={() => setGatePassDialog(null)} title="Issue Outward Gate Pass (Return Customer Sample)" size="lg">

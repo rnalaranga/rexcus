@@ -3,12 +3,14 @@ import {
   ArrowLeft, Save, Info, DollarSign, Package, Truck, Layers, Wrench, 
   FileText, CheckCircle2, AlertTriangle, ShieldCheck, Barcode as BarcodeIcon, 
   ExternalLink, Sparkles, Scale, RefreshCw, X, Plus, Image as ImageIcon, MapPin, 
-  Hash, Tag, Compass, FileCheck
+  Hash, Tag, Tags, Compass, FileCheck
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
+import { useMaterialCategories } from '@/hooks/useMaterialCategories'
+import { MaterialCategoriesModal } from '@/components/inventory/MaterialCategoriesModal'
 
 export interface ItemFormStudioProps {
   initialItem?: any | null
@@ -93,6 +95,8 @@ export const ItemFormStudio: React.FC<ItemFormStudioProps> = ({
 
   // Active sub-tab in studio
   const [activeStudioTab, setActiveStudioTab] = useState<'general' | 'specs' | 'stock' | 'pricing' | 'suppliers' | 'quality'>('general')
+  const { categoryNames, subCategoriesMap } = useMaterialCategories();
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   // Parse existing specifications if object or string
   let parsedSpecs: any = {}
@@ -518,17 +522,27 @@ export const ItemFormStudio: React.FC<ItemFormStudioProps> = ({
                   {/* Category & Sub-Category */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-secondary mb-1">Material Category</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-secondary">Material Category</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowCategoryManager(true)}
+                          className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1"
+                        >
+                          <Plus size={11} /> Manage / Add Category
+                        </button>
+                      </div>
                       <select
                         className="w-full input-base text-xs"
                         value={formData.category}
                         onChange={e => {
                           const cat = e.target.value
-                          const defaultSub = (SUB_CATEGORIES[cat] && SUB_CATEGORIES[cat][0]) || ''
+                          const subList = subCategoriesMap[cat] || (SUB_CATEGORIES[cat] || [])
+                          const defaultSub = subList[0] || ''
                           setFormData({ ...formData, category: cat, subCategory: defaultSub })
                         }}
                       >
-                        {CATEGORIES.map(c => (
+                        {(categoryNames.length > 0 ? categoryNames : CATEGORIES).map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
@@ -545,7 +559,7 @@ export const ItemFormStudio: React.FC<ItemFormStudioProps> = ({
                         placeholder="e.g. Stainless Steel or Mild Steel"
                       />
                       <datalist id="sub-cat-list">
-                        {(SUB_CATEGORIES[formData.category] || []).map(sub => (
+                        {((subCategoriesMap[formData.category] && subCategoriesMap[formData.category].length > 0 ? subCategoriesMap[formData.category] : SUB_CATEGORIES[formData.category]) || []).map(sub => (
                           <option key={sub} value={sub} />
                         ))}
                       </datalist>
@@ -1269,6 +1283,15 @@ export const ItemFormStudio: React.FC<ItemFormStudioProps> = ({
           </GlassCard>
         </div>
       </div>
+      {showCategoryManager && (
+        <MaterialCategoriesModal
+          isOpen={true}
+          onClose={() => setShowCategoryManager(false)}
+          onCategorySelected={(catName) => {
+            setFormData(prev => ({ ...prev, category: catName }));
+          }}
+        />
+      )}
     </div>
   )
 }

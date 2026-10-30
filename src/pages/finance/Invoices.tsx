@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, Search, Plus, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt } from 'lucide-react'
+import { FileText, Search, Plus, Edit3, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
@@ -968,6 +968,9 @@ export const Invoices: React.FC = () => {
                 })()}
                 advanceDeducted={Number(viewInvoice.advanceDeducted || 0)}
                 receiptNos={viewInvoice.receiptNos || ''}
+                discount={Number(viewInvoice.discount || 0)}
+                discountType={viewInvoice.discountType || 'percent'}
+                discountAmount={Number(viewInvoice.discountAmount || 0)}
               />
               </div>
             </div>
@@ -996,6 +999,14 @@ export const Invoices: React.FC = () => {
                           <span>Total Amount:</span>
                           <span className="font-mono font-bold text-primary">{formatCurrency(invTotal)}</span>
                         </div>
+                        {Number(viewInvoice.discountAmount || 0) > 0 && (
+                          <div className="flex justify-between text-muted">
+                            <span>Discount:</span>
+                            <span className="font-mono font-bold text-rose-500">
+                              -{formatCurrency(Number(viewInvoice.discountAmount))} {viewInvoice.discountType === 'percent' && Number(viewInvoice.discount) > 0 ? `(${viewInvoice.discount}%)` : ''}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-muted">
                           <span>Paid to Date:</span>
                           <span className="font-mono font-bold text-emerald-600">{formatCurrency(invPaid)}</span>
@@ -1086,7 +1097,17 @@ export const Invoices: React.FC = () => {
                   ))}
                 </div>
                 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <Button 
+                    variant="outline" 
+                    icon={Edit3}
+                    className="h-9 text-xs border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-bold"
+                    onClick={() => {
+                      navigate(`/finance/invoices/new?editInvoiceId=${encodeURIComponent(viewInvoice.id)}`);
+                    }}
+                  >
+                    Edit Invoice
+                  </Button>
                   <Button 
                     variant="primary" 
                     icon={Mail} 

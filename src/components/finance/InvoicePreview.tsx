@@ -112,6 +112,10 @@ export interface InvoicePreviewProps {
   receiptNos?: string;
   paymentTerms?: string;
   isTaxInclusive?: boolean;
+  discount?: number;
+  discountType?: 'percent' | 'amount';
+  discountAmount?: number;
+  grossAmount?: number;
   [key: string]: any;
 }
 
@@ -146,8 +150,19 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   isProforma: isProformaProp = false,
   invoiceType = '',
   docTitle = '',
-  isTaxInclusive = false
+  isTaxInclusive = false,
+  discount = 0,
+  discountType = 'percent',
+  discountAmount = 0,
+  grossAmount: propGrossAmount = 0
 }) => {
+  const parsedDiscountAmount = Number(discountAmount || 0);
+  const rawItemsTotal = items.reduce((sum: number, it: any) => sum + (Number(it.qty || 0) * Number(it.unitPrice || 0)), 0);
+  const effectiveGrossAmount = Number(propGrossAmount) > 0 ? Number(propGrossAmount) : rawItemsTotal;
+  const effectiveDiscountAmt = parsedDiscountAmount > 0 
+    ? parsedDiscountAmount 
+    : (Number(discount || 0) > 0 && effectiveGrossAmount > 0 ? (effectiveGrossAmount * (Number(discount) / 100)) : 0);
+
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
 
@@ -668,10 +683,32 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </tr>
           ))}
 
+          {/* GROSS ITEMS TOTAL & DISCOUNT (if discount applied) */}
+          {!isProforma && effectiveDiscountAmt > 0 && (
+            <>
+              <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
+                <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', borderRight: tableBorder }}>
+                  Subtotal (Gross Item Total):
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600' }}>
+                  {(isTaxInclusive ? effectiveGrossAmount : (effectiveGrossAmount * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+              <tr style={{ borderBottom: tableBorder, backgroundColor: '#fff5f5' }}>
+                <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', color: '#b91c1c', borderRight: tableBorder }}>
+                  {`Less: Special Discount ${discountType === 'percent' && Number(discount) > 0 ? `(${discount}%)` : ''}:`}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600', color: '#b91c1c' }}>
+                  {`- ${effectiveDiscountAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                </td>
+              </tr>
+            </>
+          )}
+
           {/* TOTAL VALUE OF SUPPLY */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isProforma ? 'Total Advance Amount Requested:' : 'Total Value of Supply:'}
+              {isProforma ? 'Total Advance Amount Requested:' : (effectiveDiscountAmt > 0 ? 'Total Net Value of Supply:' : 'Total Value of Supply:')}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
               {(isTaxInclusive || isProforma ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

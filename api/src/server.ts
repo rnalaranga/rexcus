@@ -6532,6 +6532,32 @@ app.get('/api/invoices', async (req, res) => {
   }
 });
 
+app.get('/api/invoices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query(`
+      SELECT i.*, 
+             COALESCE(NULLIF(i.customerName, ''), c.name, l.name) AS customerName, 
+             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, i.customerName) AS customerCompany,
+             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address) AS customerAddress,
+             COALESCE(NULLIF(i.customerEmail, ''), c.email) AS customerEmail,
+             COALESCE(NULLIF(i.customerPhone, ''), c.phone) AS customerPhone
+      FROM invoices i
+      LEFT JOIN customers c ON (i.customerId = c.id OR (i.customerId IS NULL AND i.leadId = c.id))
+      LEFT JOIN leads l ON (i.leadId = l.id OR (i.leadId IS NULL AND i.customerId = l.id))
+      WHERE i.id = ? OR i.invoiceNo = ?
+      LIMIT 1
+    `, [id, id]);
+    if (rows && rows.length > 0) {
+      res.json(rows[0]);
+    } else {
+      res.status(404).json({ error: 'Invoice not found' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/invoices', async (req, res) => {
   try {
     const data = { ...req.body };

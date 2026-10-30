@@ -14,7 +14,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { useCustomers, useLeads, useInventory } from '@/hooks/useData';
 import { useTaxes, useTaxProfiles } from '@/hooks/useFinance';
-import { createInvoice, fetchPaymentReceipts } from '@/lib/api';
+import { createInvoice, updateInvoice, fetchPaymentReceipts } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager';
@@ -46,6 +46,10 @@ export const InvoiceBuilder: React.FC = () => {
   const [taxEnabled, setTaxEnabled] = useState(true);
   const [taxProfileId, setTaxProfileId] = useState('tp_opt2_sscl_absorbed_vat_sep');
   const [isTaxInclusive, setIsTaxInclusive] = useState(false);
+  const [discount, setDiscount] = useState<number | string>(0);
+  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [discountAmount, setDiscountAmount] = useState<number | string>(0);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (taxProfiles && taxProfiles.length > 0) {
@@ -88,14 +92,66 @@ export const InvoiceBuilder: React.FC = () => {
   const [searchParams] = useSearchParams();
   const paramOrderId = searchParams.get('orderId');
   const paramQuoteId = searchParams.get('quoteId');
+  const paramEditInvoiceId = searchParams.get('editInvoiceId') || searchParams.get('invoiceId') || searchParams.get('edit');
 
   useEffect(() => {
-    if (!paramOrderId && !paramQuoteId) return;
+    if (!paramOrderId && !paramQuoteId && !paramEditInvoiceId) return;
 
     let isMounted = true;
 
     const loadSourceData = async () => {
       try {
+        if (paramEditInvoiceId) {
+          setIsEditing(true);
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/${paramEditInvoiceId}`);
+            if (res.ok) {
+              const inv = await res.json();
+              if (inv && !inv.error) {
+                setDocNo(inv.invoiceNo || inv.id);
+                if (inv.customerId) setCustomerId(inv.customerId);
+                if (inv.attention) setAttention(inv.attention);
+                if (inv.date) setDate(inv.date.slice(0, 10));
+                if (inv.dueDate) setDueDate(inv.dueDate.slice(0, 10));
+                if (inv.deliveryDate) setDeliveryDate(inv.deliveryDate.slice(0, 10));
+                if (inv.placeOfSupply) setPlaceOfSupply(inv.placeOfSupply);
+                if (inv.modeOfPayment) setModeOfPayment(inv.modeOfPayment);
+                if (inv.additionalInfo) setAdditionalInfo(inv.additionalInfo);
+                if (inv.quotationNo) setQuotationNo(inv.quotationNo);
+                if (inv.dispatchNo) setDispatchNo(inv.dispatchNo);
+                if (inv.orderNo) setOrderNo(inv.orderNo);
+                if (inv.poNo) setPoNo(inv.poNo);
+                if (inv.customerVat) setCustomerVat(inv.customerVat);
+                if (inv.notes) setNotes(inv.notes);
+                if (inv.taxProfileId) setTaxProfileId(inv.taxProfileId);
+                if (inv.isTaxInclusive !== undefined) setIsTaxInclusive(Boolean(inv.isTaxInclusive));
+                if (inv.bankDetailId) setBankDetailId(inv.bankDetailId);
+                if (inv.discount !== undefined) setDiscount(inv.discount);
+                if (inv.discountType) setDiscountType(inv.discountType);
+                if (inv.discountAmount !== undefined) setDiscountAmount(inv.discountAmount);
+                if (inv.items) {
+                  try {
+                    const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                      setItems(parsed.map((it: any) => ({
+                        id: it.id || crypto.randomUUID(),
+                        inventoryId: it.inventoryId || it.productId || '',
+                        description: it.description || it.desc || '',
+                        qty: Number(it.qty) || 1,
+                        unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+                        taxRateId: ''
+                      })));
+                    }
+                  } catch(e) {}
+                }
+                toast('Invoice details loaded for editing', 'success');
+                return;
+              }
+            }
+          } catch(e) {
+            console.error('Failed to load invoice for editing:', e);
+          }
+        }
         if (paramOrderId) {
           let ord: any = null;
           // 1. Try single order endpoint
@@ -291,6 +347,10 @@ export const InvoiceBuilder: React.FC = () => {
             if (parsed.selectedProfileId || parsed.taxProfileId) setTaxProfileId(parsed.selectedProfileId || parsed.taxProfileId);
             if (parsed.taxEnabled !== undefined) setTaxEnabled(Boolean(parsed.taxEnabled));
             if (parsed.bankDetailId) setBankDetailId(parsed.bankDetailId);
+            if (parsed.custDiscount !== undefined) setDiscount(parsed.custDiscount);
+            if (parsed.custDiscountType) setDiscountType(parsed.custDiscountType);
+            if (parsed.custDiscountAmount !== undefined) setDiscountAmount(parsed.custDiscountAmount);
+            else if (parsed.custTotals?.discount !== undefined) setDiscountAmount(parsed.custTotals.discount);
 
             // Auto-detect Product Quotation (prices are tax inclusive)
             const isProdQuote = Boolean(
@@ -675,7 +735,50 @@ export const InvoiceBuilder: React.FC = () => {
   const getTaxRate = (id: string) => { return 0; /* Line item taxes no longer used in compound mode, absorbed to global */ };
   const grossAmount = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0), 0);
   
-  let subtotal = grossAmount;
+  const discountAmt = discountType === 'amount'
+    ? Math.min(grossAmount, Math.max(0, Number(discountAmount) || 0))
+    : grossAmount * (Math.max(0, Number(discount) || 0) / 100);
+
+  const netGross = Math.max(0, grossAmount - discountAmt);
+
+  const handlePercentDiscountChange = (val: string) => {
+    setDiscountType('percent');
+    setDiscount(val);
+    if (val === '' || isNaN(Number(val))) {
+      setDiscountAmount('');
+    } else {
+      const p = Math.max(0, Number(val));
+      setDiscountAmount(grossAmount > 0 ? Number((grossAmount * (p / 100)).toFixed(2)) : 0);
+    }
+  };
+
+  const handleAmountDiscountChange = (val: string) => {
+    setDiscountType('amount');
+    setDiscountAmount(val);
+    if (val === '' || isNaN(Number(val))) {
+      setDiscount('');
+    } else {
+      const a = Math.max(0, Number(val));
+      setDiscount(grossAmount > 0 ? Number(((a / grossAmount) * 100).toFixed(2)) : 0);
+    }
+  };
+
+  const handleDiscountTypeToggle = (type: 'percent' | 'amount') => {
+    if (type === discountType) return;
+    if (type === 'percent') {
+      const amt = Number(discountAmount) || 0;
+      const pct = grossAmount > 0 ? ((amt / grossAmount) * 100).toFixed(2) : '0';
+      setDiscountType('percent');
+      setDiscount(pct);
+    } else {
+      const pct = Number(discount) || 0;
+      const amt = grossAmount > 0 ? ((grossAmount * (pct / 100))).toFixed(2) : '0';
+      setDiscountType('amount');
+      setDiscountAmount(amt);
+    }
+  };
+
+  let subtotal = netGross;
   let taxAmount = 0;
   let taxBreakdown = { tax1Amount: 0, tax2Amount: 0 };
   const selectedTaxProfile = taxProfiles?.find((p: any) => p.id === taxProfileId);
@@ -689,37 +792,37 @@ export const InvoiceBuilder: React.FC = () => {
     const isSsclSeparate = Boolean(Number(selectedTaxProfile.tax1_rate) > 0 && selectedTaxProfile.tax1_show_separately === 1);
 
     if (isTaxInclusive) {
-      // Prices already include taxes: back out base and taxes so subtotal + tax = grossAmount
-      let baseSubtotal = grossAmount;
+      // Prices already include taxes: back out base and taxes from netGross
+      let baseSubtotal = netGross;
       let t1Amount = 0;
       let t2Amount = 0;
 
       if (isSsclHidden && isVatSeparate) {
         // Option 2: VAT separate, SSCL absorbed into supply value
-        baseSubtotal = grossAmount / (1 + t2);
-        t2Amount = grossAmount - baseSubtotal;
+        baseSubtotal = netGross / (1 + t2);
+        t2Amount = netGross - baseSubtotal;
         t1Amount = 0;
       } else if (isSsclSeparate && isVatSeparate) {
         // Option 3: Both separate
         const divisor = selectedTaxProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
-        baseSubtotal = grossAmount / divisor;
+        baseSubtotal = netGross / divisor;
         t1Amount = baseSubtotal * t1;
         const baseForT2 = selectedTaxProfile.tax2_compound ? (baseSubtotal + t1Amount) : baseSubtotal;
         t2Amount = baseForT2 * t2;
       } else {
         // Option 1: Both absorbed
-        baseSubtotal = grossAmount;
+        baseSubtotal = netGross;
         t1Amount = 0;
         t2Amount = 0;
       }
 
       subtotal = Math.round(baseSubtotal * 100) / 100;
       t1Amount = Math.round(t1Amount * 100) / 100;
-      t2Amount = Math.round((grossAmount - subtotal - t1Amount) * 100) / 100;
+      t2Amount = Math.round((netGross - subtotal - t1Amount) * 100) / 100;
       taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
       taxAmount = t1Amount + t2Amount;
     } else {
-      // Standard: tax added on top of base subtotal
+      // Standard: tax added on top of discounted subtotal
       const t1Amount = subtotal * t1;
       const baseForT2 = selectedTaxProfile.tax2_compound ? (subtotal + t1Amount) : subtotal;
       const t2Amount = baseForT2 * t2;
@@ -729,7 +832,7 @@ export const InvoiceBuilder: React.FC = () => {
     }
   }
   
-  const total = isTaxInclusive ? grossAmount : (subtotal + taxAmount);
+  const total = isTaxInclusive ? netGross : (subtotal + taxAmount);
   const isSsclSeparate = Boolean(selectedTaxProfile && selectedTaxProfile.tax1_show_separately === 1);
   const isVatSeparate = Boolean(selectedTaxProfile ? selectedTaxProfile.tax2_show_separately === 1 : (taxAmount > 0));
   const isTaxShownSeparately = Boolean(
@@ -766,7 +869,7 @@ export const InvoiceBuilder: React.FC = () => {
         }
       }
 
-      const res = await createInvoice({ 
+      const invoicePayload = { 
         id: cleanDocNo, 
         invoiceNo: cleanDocNo, 
         customerId, 
@@ -776,6 +879,9 @@ export const InvoiceBuilder: React.FC = () => {
         dueDate: dueDate || null, 
         items: JSON.stringify(items), 
         subtotal, 
+        discount: Number(discount) || 0,
+        discountType,
+        discountAmount: discountAmt,
         taxAmount, 
         total, 
         amount: total, 
@@ -806,7 +912,14 @@ export const InvoiceBuilder: React.FC = () => {
         isTaxInclusive: isTaxInclusive ? 1 : 0,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null)
-      });
+      };
+
+      let res: any;
+      if (isEditing) {
+        res = await updateInvoice(cleanDocNo, invoicePayload);
+      } else {
+        res = await createInvoice(invoicePayload);
+      }
       if ((res as any).error) throw new Error((res as any).error);
 
       // If created from a sales order, link invoice details back to the order
@@ -822,7 +935,7 @@ export const InvoiceBuilder: React.FC = () => {
         }
       }
 
-      toast('Invoice posted successfully!', 'success');
+      toast(isEditing ? 'Invoice updated successfully!' : 'Invoice posted successfully!', 'success');
       navigate('/finance/invoices');
     } catch (e: any) { showError(e.message || 'Failed to post invoice.'); }
   };
@@ -865,7 +978,11 @@ export const InvoiceBuilder: React.FC = () => {
     attention,
     bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
     advanceDeducted,
-    receiptNos
+    receiptNos,
+    discount: Number(discount) || 0,
+    discountType,
+    discountAmount: discountAmt,
+    grossAmount
   };
 
   return (
@@ -1365,15 +1482,74 @@ export const InvoiceBuilder: React.FC = () => {
               </h2>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted">{isTaxInclusive ? 'Base Supply Value (Excl. VAT)' : 'Subtotal'}</span>
-                  <span className="font-mono text-sm font-semibold">{formatCurrency(subtotal)}</span>
+                  <span className="text-sm text-muted">{isTaxInclusive ? 'Gross Item Total' : 'Gross Subtotal'}</span>
+                  <span className="font-mono text-sm font-semibold">{formatCurrency(grossAmount)}</span>
                 </div>
-                {isTaxInclusive && (
-                  <div className="flex justify-between items-center text-xs text-muted">
-                    <span>Quoted Gross Total</span>
-                    <span className="font-mono">{formatCurrency(grossAmount)}</span>
+
+                {/* Discount Control Block */}
+                <div className="py-2.5 border-t border-theme-subtle space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted">Discount</span>
+                      <div className="flex items-center bg-surface border border-theme-subtle rounded p-0.5 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => handleDiscountTypeToggle('percent')}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${discountType === 'percent' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDiscountTypeToggle('amount')}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${discountType === 'amount' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                        >
+                          LKR
+                        </button>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-semibold text-rose-500">
+                      {discountAmt > 0 ? `-${formatCurrency(discountAmt)}` : '0.00'}
+                    </span>
                   </div>
-                )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className={`flex items-center bg-surface border rounded-lg px-2.5 py-1.5 transition-all ${discountType === 'percent' ? 'border-blue-500/60 ring-1 ring-blue-500/20 bg-blue-500/5' : 'border-theme-subtle'}`}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        placeholder="0"
+                        value={discount}
+                        onChange={e => handlePercentDiscountChange(e.target.value)}
+                        onFocus={() => setDiscountType('percent')}
+                        className="w-full bg-transparent text-xs font-mono outline-none text-primary"
+                      />
+                      <span className="text-[11px] text-muted ml-1 font-bold">%</span>
+                    </div>
+                    <div className={`flex items-center bg-surface border rounded-lg px-2.5 py-1.5 transition-all ${discountType === 'amount' ? 'border-blue-500/60 ring-1 ring-blue-500/20 bg-blue-500/5' : 'border-theme-subtle'}`}>
+                      <span className="text-[10px] text-muted mr-1 font-semibold">LKR</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="0.00"
+                        value={discountAmount}
+                        onChange={e => handleAmountDiscountChange(e.target.value)}
+                        onFocus={() => setDiscountType('amount')}
+                        className="w-full bg-transparent text-xs font-mono outline-none text-primary text-right"
+                      />
+                    </div>
+                  </div>
+
+                  {discountAmt > 0 && (
+                    <div className="flex justify-between items-center text-xs text-muted pt-1">
+                      <span>{isTaxInclusive ? 'Base Supply Value (Excl. VAT)' : 'Net Supply Value'}</span>
+                      <span className="font-mono font-semibold text-primary">{formatCurrency(subtotal)}</span>
+                    </div>
+                  )}
+                </div>
                 <div className="py-2 border-t border-theme-subtle space-y-3 mt-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
