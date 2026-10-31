@@ -698,7 +698,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   <td colSpan={2} className="text-right pr-6">Discount</td>
                   <td className="text-center border-l border-black">
                     {custDiscountType === 'amount'
-                      ? `${(displaySubtotal > 0 ? ((isProductQuote ? displayDiscount : custTotals.discount) / displaySubtotal) * 100 : 0).toFixed(2).replace(/\.00$/, '')} %`
+                      ? (data.currency || 'LKR')
                       : `${Number(custDiscount || 0)} %`}
                   </td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">

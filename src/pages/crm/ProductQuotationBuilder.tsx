@@ -1067,37 +1067,30 @@ export const ProductQuotationBuilder: React.FC = () => {
   const handlePercentDiscountChange = (val: string) => {
     setCustDiscountType('percent');
     setCustDiscount(val);
-    if (val === '' || isNaN(Number(val))) {
-      setCustDiscountAmount('');
-    } else {
-      const p = Math.max(0, Number(val));
-      setCustDiscountAmount(custSubtotal > 0 ? Number((custSubtotal * (p / 100)).toFixed(2)) : 0);
-    }
   };
 
   const handleAmountDiscountChange = (val: string) => {
     setCustDiscountType('amount');
     setCustDiscountAmount(val);
-    if (val === '' || isNaN(Number(val))) {
-      setCustDiscount('');
-    } else {
-      const a = Math.max(0, Number(val));
-      setCustDiscount(custSubtotal > 0 ? Number(((a / custSubtotal) * 100).toFixed(2)) : 0);
-    }
   };
 
   const handleDiscountTypeToggle = (type: 'percent' | 'amount') => {
     if (type === custDiscountType) return;
-    if (type === 'percent') {
-      const amt = Number(custDiscountAmount) || 0;
-      const pct = custSubtotal > 0 ? ((amt / custSubtotal) * 100).toFixed(2) : '0';
-      setCustDiscountType('percent');
-      setCustDiscount(pct);
+    setCustDiscountType(type);
+    if (type === 'amount') {
+      if (!custDiscountAmount || Number(custDiscountAmount) === 0) {
+        const pct = Math.max(0, Number(custDiscount) || 0);
+        if (pct > 0 && custSubtotal > 0) {
+          setCustDiscountAmount(Number((custSubtotal * (pct / 100)).toFixed(2)));
+        }
+      }
     } else {
-      const pct = Number(custDiscount) || 0;
-      const amt = custSubtotal > 0 ? ((custSubtotal * (pct / 100))).toFixed(2) : '0';
-      setCustDiscountType('amount');
-      setCustDiscountAmount(amt);
+      if (!custDiscount || Number(custDiscount) === 0) {
+        const amt = Math.max(0, Number(custDiscountAmount) || 0);
+        if (amt > 0 && custSubtotal > 0) {
+          setCustDiscount(Number(((amt / custSubtotal) * 100).toFixed(2)));
+        }
+      }
     }
   };
 
@@ -1220,8 +1213,10 @@ export const ProductQuotationBuilder: React.FC = () => {
         linkedQuoteNo: linkedCustomQuoteNo || null,
         linkedQuoteId: linkedCustomQuoteId || null,
         taxEnabled, selectedProfileId,
-        custItems, custTerms, custValidity, custDelivery, custDiscount,
-        custDiscountType, custDiscountAmount,
+        custItems, custTerms, custValidity, custDelivery,
+        custDiscount: custDiscountType === 'percent' ? custDiscount : (custSubtotal > 0 ? Number(((custDiscountAmt / custSubtotal) * 100).toFixed(2)) : 0),
+        custDiscountType,
+        custDiscountAmount: custDiscountType === 'amount' ? custDiscountAmount : Number(custDiscountAmt.toFixed(2)),
         selectedTermsPresetId,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
@@ -1366,8 +1361,10 @@ export const ProductQuotationBuilder: React.FC = () => {
         status: currentQuote?.status || 'Draft',
         approvedBy: currentQuote?.approvedBy,
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
-        custItems, custTerms, custValidity, custDelivery, custDiscount,
-        custDiscountType, custDiscountAmount,
+        custItems, custTerms, custValidity, custDelivery,
+        custDiscount: custDiscountType === 'percent' ? custDiscount : (custSubtotal > 0 ? Number(((custDiscountAmt / custSubtotal) * 100).toFixed(2)) : 0),
+        custDiscountType,
+        custDiscountAmount: custDiscountType === 'amount' ? custDiscountAmount : Number(custDiscountAmt.toFixed(2)),
         selectedTermsPresetId,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
@@ -2599,37 +2596,56 @@ export const ProductQuotationBuilder: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className={`flex items-center bg-surface2 border rounded-md shadow-inner px-2 py-1 transition-all ${custDiscountType === 'percent' ? 'border-emerald-500/60 ring-1 ring-emerald-500/20 bg-emerald-500/5' : 'border-theme-subtle/50'}`}>
-                      <span className="text-[11px] font-bold text-muted mr-1">%</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="any"
-                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
-                        value={custDiscount}
-                        onChange={e => handlePercentDiscountChange(e.target.value)}
-                        onFocus={() => setCustDiscountType('percent')}
-                        placeholder="0.00"
-                        className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
-                      />
+                  {custDiscountType === 'percent' ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center bg-surface2 border border-emerald-500/60 ring-1 ring-emerald-500/20 bg-emerald-500/5 rounded-md shadow-inner px-2 py-1 transition-all">
+                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mr-1.5">%</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="any"
+                          onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+                          value={custDiscount}
+                          onChange={e => handlePercentDiscountChange(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
+                        />
+                      </div>
+                      {custSubtotal > 0 && Number(custDiscount) > 0 && (
+                        <div className="flex justify-between items-center text-[10px] px-1 text-muted">
+                          <span>Deduction:</span>
+                          <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                            ≈ Rs. {formatCurrency(custDiscountAmt)}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div className={`flex items-center bg-surface2 border rounded-md shadow-inner px-2 py-1 transition-all ${custDiscountType === 'amount' ? 'border-emerald-500/60 ring-1 ring-emerald-500/20 bg-emerald-500/5' : 'border-theme-subtle/50'}`}>
-                      <span className="text-[10px] font-bold text-muted mr-1">LKR</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
-                        value={custDiscountAmount}
-                        onChange={e => handleAmountDiscountChange(e.target.value)}
-                        onFocus={() => setCustDiscountType('amount')}
-                        placeholder="0.00"
-                        className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
-                      />
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center bg-surface2 border border-emerald-500/60 ring-1 ring-emerald-500/20 bg-emerald-500/5 rounded-md shadow-inner px-2 py-1 transition-all">
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mr-1.5">LKR</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
+                          value={custDiscountAmount}
+                          onChange={e => handleAmountDiscountChange(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
+                        />
+                      </div>
+                      {custSubtotal > 0 && Number(custDiscountAmount) > 0 && (
+                        <div className="flex justify-between items-center text-[10px] px-1 text-muted">
+                          <span>Equivalent rate:</span>
+                          <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                            ≈ {((custDiscountAmt / custSubtotal) * 100).toFixed(2)}%
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
                 
                 {taxEnabled && selectedProfile && (

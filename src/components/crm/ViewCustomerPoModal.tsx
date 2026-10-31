@@ -33,13 +33,16 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
 
   const { group, quotation, type } = quotationData;
   let quoteData: any = {};
-  if (type === 'product') {
-    quoteData = quotation?.parsed || {};
-  } else {
-    try {
-      quoteData = typeof quotation?.data === 'string' ? JSON.parse(quotation.data || '{}') : (quotation?.data || {});
-    } catch (e) {}
-  }
+  try {
+    if (quotation?.parsed && typeof quotation.parsed === 'object' && Object.keys(quotation.parsed).length > 0) {
+      quoteData = quotation.parsed;
+    } else if (quotation?.data) {
+      quoteData = typeof quotation.data === 'string' ? JSON.parse(quotation.data || '{}') : (quotation.data || {});
+      if (typeof quoteData === 'string') {
+        try { quoteData = JSON.parse(quoteData); } catch (e) {}
+      }
+    }
+  } catch (e) {}
 
   const custName = group?.clientName || group?.clientCompany || group?.leadCompany || group?.leadName || 'Customer';
   const qNo = group?.quoNo || quotation?.quotationNo || quotation?.docNo || quotation?.id;
@@ -50,14 +53,15 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
   const poDate = quotation?.customerPoDate || quoteData?.customerPoDate || '';
   const expectedDate = quoteData?.expectedPoDate || '';
   const withoutPoReason = quoteData?.withoutPoReason || '';
-  const notes = quoteData?.customerPoNotes || quotation?.notes || '';
+  const notes = quoteData?.customerPoNotes || quoteData?.notes || quoteData?.description || quotation?.notes || '';
   const poReceivedAt = quotation?.poReceivedAt || quoteData?.poReceivedAt || '';
-  const receivedBy = quoteData?.poReceivedBy || '';
+  const receivedBy = quoteData?.poReceivedBy || quoteData?.receivedBy || quotation?.poReceivedBy || quotation?.approvedBy || '';
   const attachment = quotation?.customerPoAttachment || quoteData?.customerPoAttachment || '';
 
-  const isPending = poStatus === 'PO Pending' || poNo === 'PO PENDING';
-  const isWithoutPo = poStatus === 'Without PO' || poNo === 'WITHOUT PO';
-  const isReceived = !isPending && !isWithoutPo && Boolean(poNo || poStatus === 'PO Received');
+  const hasRealPoNo = Boolean(poNo && poNo !== 'PO PENDING' && poNo !== 'WITHOUT PO');
+  const isPending = !hasRealPoNo && (poStatus === 'PO Pending' || poNo === 'PO PENDING');
+  const isWithoutPo = !hasRealPoNo && (poStatus === 'Without PO' || poNo === 'WITHOUT PO');
+  const isReceived = hasRealPoNo || (!isPending && !isWithoutPo && Boolean(poStatus === 'PO Received'));
 
   const isImageAttachment = Boolean(
     attachment && (

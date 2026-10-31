@@ -915,9 +915,13 @@ export const Quotations: React.FC = () => {
       if (isDraft) {
         counts.draft++;
       } else {
-        const isPoPending = s === 'po pending' || latestMain?.customerPoNo === 'PO PENDING' || (latestMain as any)?.poStatus === 'PO Pending';
+        const poVal = latestMain?.customerPoNo;
+        const isPoReceived = Boolean(poVal && poVal !== 'PO PENDING' && poVal !== 'WITHOUT PO');
+        const isPoPending = !isPoReceived && (s === 'po pending' || latestMain?.customerPoNo === 'PO PENDING' || (latestMain as any)?.poStatus === 'PO Pending');
         if (isPoPending) {
           counts['po pending']++;
+        } else if (isPoReceived || s === 'po received') {
+          counts['po received']++;
         } else if (counts[s] !== undefined) {
           counts[s]++;
         }
@@ -967,10 +971,18 @@ export const Quotations: React.FC = () => {
       } else if (statusFilter === "draft") {
         if (!isDraft) return false;
       } else if (statusFilter.toLowerCase() === "po pending") {
-        const isPoPending = latestStatus === 'po pending' || 
+        const poVal = latestMain?.customerPoNo;
+        const isPoReceived = Boolean(poVal && poVal !== 'PO PENDING' && poVal !== 'WITHOUT PO');
+        const isPoPending = !isPoReceived && (
+          latestStatus === 'po pending' || 
           latestMain?.customerPoNo === 'PO PENDING' || 
-          (latestMain as any)?.poStatus === 'PO Pending';
+          (latestMain as any)?.poStatus === 'PO Pending'
+        );
         if (!isPoPending) return false;
+      } else if (statusFilter.toLowerCase() === "po received") {
+        const poVal = latestMain?.customerPoNo;
+        const isPoReceived = Boolean(poVal && poVal !== 'PO PENDING' && poVal !== 'WITHOUT PO');
+        if (!isPoReceived && latestStatus !== 'po received') return false;
       } else {
         if (latestStatus !== statusFilter.toLowerCase()) return false;
       }
@@ -2200,8 +2212,9 @@ export const Quotations: React.FC = () => {
                               ) : null}
                               {(() => {
                                 const poVal = latestMain?.customerPoNo || parsed?.customerPoNo;
-                                const isPoPending = status === 'PO Pending' || latestMain?.status === 'PO Pending' || poVal === 'PO PENDING';
-                                const isWithoutPo = status === 'Without PO' || latestMain?.status === 'Without PO' || poVal === 'WITHOUT PO';
+                                const isPoReceived = Boolean(poVal && poVal !== 'PO PENDING' && poVal !== 'WITHOUT PO');
+                                const isPoPending = !isPoReceived && (status === 'PO Pending' || latestMain?.status === 'PO Pending' || poVal === 'PO PENDING' || (latestMain as any)?.poStatus === 'PO Pending');
+                                const isWithoutPo = !isPoReceived && (status === 'Without PO' || latestMain?.status === 'Without PO' || poVal === 'WITHOUT PO' || (latestMain as any)?.poStatus === 'Without PO');
                                 const hasAnyPo = Boolean(poVal || isPoPending || isWithoutPo);
                                 if (!hasAnyPo) return null;
                                 return (
@@ -2711,8 +2724,9 @@ export const Quotations: React.FC = () => {
 
                     {(() => {
                       const poVal = latestMain?.customerPoNo || parsed?.customerPoNo;
-                      const isPoPending = status === 'PO Pending' || latestMain?.status === 'PO Pending' || poVal === 'PO PENDING';
-                      const isWithoutPo = status === 'Without PO' || latestMain?.status === 'Without PO' || poVal === 'WITHOUT PO';
+                      const isPoReceived = Boolean(poVal && poVal !== 'PO PENDING' && poVal !== 'WITHOUT PO');
+                      const isPoPending = !isPoReceived && (status === 'PO Pending' || latestMain?.status === 'PO Pending' || poVal === 'PO PENDING' || (latestMain as any)?.poStatus === 'PO Pending');
+                      const isWithoutPo = !isPoReceived && (status === 'Without PO' || latestMain?.status === 'Without PO' || poVal === 'WITHOUT PO' || (latestMain as any)?.poStatus === 'Without PO');
                       if (!poVal && !isPoPending && !isWithoutPo) return null;
                       return (
                         <button

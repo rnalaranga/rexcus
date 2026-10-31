@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { createFinishedGoodsOrder } from '@/lib/api';
+import { createFinishedGoodsOrder, fetchNextDocumentNumber } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useCustomers, useLeads, useInvoices } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -239,12 +239,12 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const custId = cust?.id || (lead as any)?.customerId || (group.leadId?.startsWith('CUST') ? group.leadId : null);
 
     const currentYY = String(new Date().getFullYear()).slice(-2);
-    const generatedOrderNo = `SO-${currentYY}-${Date.now().toString().slice(-4)}`;
+    const fallbackOrderNo = `SO-${currentYY}-${Date.now().toString().slice(-4)}`;
     const custName = group.clientName || group.clientCompany || group.leadCompany || group.leadName || 'Customer';
     const attn = quoteData.attention || quotation.attention || group.clientContact || group.leadContact || (cust as any)?.name || '';
 
     setFormData({
-      orderNo: generatedOrderNo,
+      orderNo: fallbackOrderNo,
       quoteId: quotation.id,
       quotationNo: group.quoNo,
       customerId: custId || '',
@@ -273,6 +273,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       totalPrice: grandTotal,
       status: 'Confirmed',
       notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
+    });
+
+    fetchNextDocumentNumber('sales_order', { reserve: false }).then(res => {
+      if (res?.formattedNumber) {
+        setFormData(prev => ({ ...prev, orderNo: res.formattedNumber }));
+      }
+    }).catch(err => {
+      console.warn('Failed to fetch next sales order sequence number:', err);
     });
 
     const existingPo = quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '';
@@ -489,6 +497,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
       const res = await createFinishedGoodsOrder(payload);
       if (res && res.error) throw new Error(res.error);
+      fetchNextDocumentNumber('sales_order', { reserve: true }).catch(console.error);
 
       // Sync PO status back to quotation
       if (quotationData?.quotation?.id) {

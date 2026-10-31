@@ -14,7 +14,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   try {
     const ctx = useSettings();
     contextSettings = ctx?.settings;
-  } catch (e) {
+  } catch {
     contextSettings = null;
   }
   const settings = propSettings || contextSettings;
@@ -25,8 +25,8 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   if (!workOrder) return null;
 
   // 1. Identifiers
-  const woId = workOrder.id || 'WO-XXXX';
-  const soNo = workOrder.orderNo || workOrder.salesOrderNo || workOrder.soId || '-';
+  const woId = workOrder.orderNo || workOrder.id || 'WO-XXXX';
+  const soNo = workOrder.salesOrderNo || workOrder.soId || workOrder.orderNo || '-';
   const quoteRef = workOrder.quoteId || workOrder.sourceQuoteId || workOrder.quotationId || workOrder.quotationNo;
 
   // Find linked sales order if available
@@ -50,13 +50,13 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
 
   let quoteData: any = null;
   if (workOrder.quotationData) {
-    try { quoteData = typeof workOrder.quotationData === 'string' ? JSON.parse(workOrder.quotationData) : workOrder.quotationData; } catch (e) {}
+    try { quoteData = typeof workOrder.quotationData === 'string' ? JSON.parse(workOrder.quotationData) : workOrder.quotationData; } catch {}
   }
   if (!quoteData && linkedQuote?.data) {
-    try { quoteData = typeof linkedQuote.data === 'string' ? JSON.parse(linkedQuote.data) : linkedQuote.data; } catch (e) {}
+    try { quoteData = typeof linkedQuote.data === 'string' ? JSON.parse(linkedQuote.data) : linkedQuote.data; } catch {}
   }
 
-  // Customer Name: ONLY client name (no phone, no email, no address)
+  // Customer Name: ONLY client name (no personal phone, no personal email on floor traveller)
   const customerName = (
     workOrder.customerName ||
     workOrder.customer ||
@@ -92,19 +92,19 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
       sNo: idx + 1,
       desc: ci.desc || ci.description || ci.name || `Item ${idx + 1}`,
       qty: ci.qty || 1,
-      uom: 'Nos'
+      uom: ci.unit || 'Nos'
     }));
   }
   // Priority 2: From linked order items
   else if (linkedOrder?.items) {
     let oItems: any[] = [];
-    try { oItems = typeof linkedOrder.items === 'string' ? JSON.parse(linkedOrder.items) : linkedOrder.items; } catch (e) {}
+    try { oItems = typeof linkedOrder.items === 'string' ? JSON.parse(linkedOrder.items) : linkedOrder.items; } catch {}
     if (Array.isArray(oItems) && oItems.length > 0) {
       displayItems = oItems.map((it: any, idx: number) => ({
         sNo: idx + 1,
         desc: it.description || it.productName || it.name || `Item ${idx + 1}`,
         qty: it.qty || 1,
-        uom: it.uom || 'Nos'
+        uom: it.uom || it.unit || 'Nos'
       }));
     }
   }
@@ -114,7 +114,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
       sNo: idx + 1,
       desc: it.description || it.productName || it.name || `Item ${idx + 1}`,
       qty: it.qty || 1,
-      uom: it.uom || 'Nos'
+      uom: it.uom || it.unit || 'Nos'
     }));
   } else if (Array.isArray(workOrder.bom) && workOrder.bom.length > 0) {
     displayItems = workOrder.bom.map((b: any, idx: number) => ({
@@ -129,11 +129,21 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   if (displayItems.length === 0) {
     displayItems = [{
       sNo: 1,
-      desc: workOrder.productName || workOrder.partName || workOrder.title || 'Precision Machined Component as per given instruction',
-      qty: workOrder.jobQty || workOrder.quantity || 1,
-      uom: 'Nos'
+      desc: workOrder.productName || workOrder.partName || workOrder.title || 'Precision Machined Component as per given technical drawings',
+      qty: workOrder.jobQty || workOrder.quantity || workOrder.qty || 1,
+      uom: workOrder.uom || 'Nos'
     }];
   }
+
+  // Operations
+  let operations: any[] = [];
+  if (Array.isArray(workOrder.operations)) {
+    operations = workOrder.operations;
+  } else if (typeof workOrder.operations === 'string') {
+    try { operations = JSON.parse(workOrder.operations); } catch { operations = []; }
+  }
+
+  const logoUrl = settings?.company_logo || settings?.logo || settings?.companyLogo || '/rex-logo.png';
 
   return (
     <>
@@ -142,7 +152,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
           width: 100% !important;
           max-width: 794px !important;
           margin: 0 auto !important;
-          font-family: Arial, sans-serif !important;
+          font-family: Arial, Helvetica, sans-serif !important;
           color: #000000 !important;
           background: #ffffff !important;
           border: 1px solid #000000 !important;
@@ -157,305 +167,470 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
           border-collapse: collapse !important;
           width: 100% !important;
         }
-        #work-order-print-section .border-b { border-bottom: 1px solid #000000 !important; }
-        #work-order-print-section .border-r { border-right: 1px solid #000000 !important; }
-        #work-order-print-section .border-t { border-top: 1px solid #000000 !important; }
-        #work-order-print-section .border-l { border-left: 1px solid #000000 !important; }
-        #work-order-print-section .bg-gray-100 { background-color: #f3f4f6 !important; }
-        #work-order-print-section .bg-gray-50 { background-color: #f9fafb !important; }
         @media print {
           @page { size: A4 portrait; margin: 6mm 8mm; }
           html, body { background: #fff !important; color: #000 !important; }
+          #work-order-print-section { border: 1px solid #000000 !important; }
         }
       `}</style>
 
       <div
         id="work-order-print-section"
-        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm"
+        className="bg-white mx-auto flex flex-col text-black shadow-sm text-xs leading-normal"
         style={{
           width: '100%',
           maxWidth: '794px',
-          minHeight: '1050px',
-          color: '#000',
-          fontFamily: 'Arial, sans-serif',
-          fontSize: '12px',
-          lineHeight: 1.35
+          color: '#000000',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Arial, Helvetica, sans-serif'
         }}
       >
-        {/* ── 1. TOP LETTERHEAD HEADER (ERP General Format) ── */}
-        <div className="flex border-b border-black">
-          {/* Logo Column */}
-          <div className="w-[30%] flex items-center justify-center p-4 border-r border-black bg-white">
-            {settings?.company_logo ? (
-              <img
-                src={settings.company_logo}
-                alt="Company Logo"
-                className="w-full object-contain"
-                style={{ maxHeight: '80px' }}
-                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-              />
-            ) : (
-              <img
-                src="/rex-logo.png"
-                alt="REX"
-                className="w-full object-contain"
-                style={{ maxHeight: '80px' }}
-                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-              />
-            )}
+        {/* ── 1. HEADER (Signature Rex Industries standard format) ── */}
+        <div className="flex p-3 border-b border-black items-center">
+          {/* Logo (Left 32%) */}
+          <div className="w-[32%] flex justify-center items-center px-2">
+            <img
+              src={logoUrl}
+              alt="Rex Industries Logo"
+              className="max-h-20 object-contain"
+              onError={(e) => {
+                const target = e.currentTarget;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  const fallback = document.createElement('div');
+                  fallback.className = 'text-4xl font-black text-red-600 tracking-tighter';
+                  fallback.style.fontFamily = 'Impact, sans-serif';
+                  fallback.innerText = 'REX';
+                  parent.appendChild(fallback);
+                }
+              }}
+            />
           </div>
 
-          {/* Company Details Column */}
-          <div className="w-[70%] p-4 pl-6 text-[12px] leading-tight bg-white">
-            <h1 className="text-[20px] font-black uppercase text-black mb-1">
-              {settings?.company_name || 'REX INDUSTRIES (PVT) LTD'}
+          {/* Company Info (Right 68%) */}
+          <div className="w-[68%] pl-3 border-l border-black/40">
+            <h1
+              className="text-[19px] font-black mb-1 leading-tight tracking-tight text-black"
+              style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}
+            >
+              {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
             </h1>
-            <table className="w-full text-[12px] leading-tight">
+            <table className="text-[11px] leading-tight w-full">
               <tbody>
                 <tr>
-                  <td className="font-bold align-top w-16 pb-1">Office</td>
-                  <td className="pb-1">: {settings?.company_address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}</td>
+                  <td className="font-bold w-14 align-top py-0.5">Office</td>
+                  <td className="align-top py-0.5">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 whitespace-pre-line text-neutral-800">
+                        {settings?.company_address || settings?.companyAddress || 'No.451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}
+                      </span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold pb-1">Tel.</td>
-                  <td className="pb-1">: {settings?.company_phone || '0094-31-2233117 / 2233315 / 2223136'}</td>
+                  <td className="font-bold w-14 align-top py-0.5">Tel.</td>
+                  <td className="align-top py-0.5">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 text-neutral-800">
+                        {settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}
+                      </span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold pb-1">E-mail</td>
-                  <td className="pb-1">: {settings?.company_email || 'info@rexgroup.lk'}</td>
+                  <td className="font-bold w-14 align-top py-0.5">E-mail</td>
+                  <td className="align-top py-0.5">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 text-neutral-800">
+                        {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}
+                      </span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold">Web</td>
-                  <td>: {settings?.company_website || settings?.company_web || 'www.rexgroup.lk'}</td>
+                  <td className="font-bold w-14 align-top py-0.5">Web</td>
+                  <td className="align-top py-0.5">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 text-neutral-800">
+                        {settings?.company_website || settings?.companyWebsite || 'www.rexgroup.lk'}
+                      </span>
+                    </div>
+                  </td>
                 </tr>
+                {(settings?.tax_id || settings?.tin) && (
+                  <tr>
+                    <td className="font-bold w-14 align-top py-0.5">TIN</td>
+                    <td className="align-top py-0.5">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1 text-neutral-800 font-mono font-semibold">
+                          {settings?.tax_id || settings?.tin}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* ── 2. TITLE BAR ── */}
-        <div className="bg-gray-100 border-b border-black text-center py-2.5 font-bold text-[16px] uppercase tracking-wider flex items-center justify-center gap-3">
-          <span>PRODUCTION WORK ORDER / JOB TRAVELER</span>
-          <span className="text-[12px] font-mono bg-white border border-black px-2 py-0.5 rounded text-gray-800">
-            {workOrder.status || 'Active'}
-          </span>
+        {/* ── 2. DOCUMENT TITLE BAR ── */}
+        <div className="border-b border-black py-1.5 px-3 bg-gray-50/70 flex items-center justify-between">
+          <div className="w-24"></div>
+          <h2 className="text-[17px] font-black uppercase tracking-wider text-black m-0 text-center flex-1">
+            PRODUCTION WORK ORDER / JOB TRAVELER
+          </h2>
+          <div className="w-24 text-right">
+            <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 border border-black bg-white rounded">
+              {workOrder.status || 'Active'}
+            </span>
+          </div>
         </div>
 
-        {/* ── 3. DETAILS SECTION (2 COLUMNS) ── */}
-        <div className="flex border-b border-black text-[12.5px]">
-          {/* Left: Customer Name Only (Zero addresses/phones as requested) */}
-          <div className="w-[50%] p-3.5 pl-4 border-r border-black flex flex-col justify-between">
+        {/* ── 3. DETAILS METADATA SECTION ── */}
+        <div className="flex border-b border-black text-[11px] leading-tight">
+          {/* Left: Customer & Job Scope (52%) */}
+          <div className="w-[52%] p-2.5 border-r border-black flex flex-col justify-between">
             <div>
-              <span className="font-bold italic underline mb-2 block text-[13px]">Customer / Client :</span>
-              <div className="font-black text-[16px] text-black uppercase tracking-tight mb-2">
+              <div className="font-bold uppercase tracking-wider text-[10px] text-neutral-500 mb-1">
+                Customer / Client Name:
+              </div>
+              <div className="font-black text-[15px] text-black uppercase tracking-tight mb-2">
                 {customerName}
               </div>
               {jobType && jobType !== '-' && (
-                <div className="text-[12px] text-gray-800 mt-2">
+                <div className="text-[11px] text-neutral-800 mt-1">
                   <span className="font-bold text-black">Type of Job / Scope:</span> {jobType}
                 </div>
               )}
             </div>
-            <div className="text-[11px] text-gray-600 mt-3 pt-2 border-t border-gray-200">
-              <span className="font-bold uppercase text-[10px] text-gray-500 block">Release Type:</span>
-              <span>Shop-Floor Production &amp; Machine Traveler</span>
+            <div className="mt-3 pt-2 border-t border-neutral-300 flex items-center justify-between text-[10px]">
+              <div>
+                <span className="text-neutral-500 font-bold uppercase">Release Document:</span>{' '}
+                <span className="font-semibold text-black">Shop Floor Machine Traveler</span>
+              </div>
+              <div>
+                <span className="text-neutral-500 font-bold uppercase">Priority:</span>{' '}
+                <span className={`font-bold uppercase px-1.5 py-0.5 rounded ${
+                  priority.toLowerCase() === 'urgent' || priority.toLowerCase() === 'high'
+                    ? 'bg-red-100 text-red-800 border border-red-300'
+                    : 'bg-neutral-100 text-black border border-neutral-300'
+                }`}>
+                  {priority}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Right: Work Order & Order Metadata */}
-          <div className="w-[50%] p-3.5 pl-4">
-            <table className="w-full leading-snug text-[12.5px]">
+          {/* Right: Document & Production Metadata (48%) */}
+          <div className="w-[48%] p-2.5">
+            <table className="w-full text-[11px] leading-relaxed">
               <tbody>
                 <tr>
-                  <td className="w-36 font-bold pb-1">Work Order No</td>
-                  <td className="font-bold pb-1">: <span className="font-mono text-[14px] text-black font-black">{woId}</span></td>
+                  <td className="w-32 font-bold py-0.5">Work Order No.</td>
+                  <td className="py-0.5">
+                    <span className="font-bold mr-1">:</span>
+                    <span className="font-mono text-[13px] text-black font-black">{woId}</span>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold pb-1">Sales Order No</td>
-                  <td className="font-bold pb-1">: <span className="font-mono text-[13px] text-blue-900">{soNo}</span></td>
+                  <td className="font-bold py-0.5">Sales Order No.</td>
+                  <td className="py-0.5">
+                    <span className="font-bold mr-1">:</span>
+                    <span className="font-mono font-bold text-blue-900">{soNo}</span>
+                  </td>
                 </tr>
                 {quotationNo && quotationNo !== '-' && (
                   <tr>
-                    <td className="font-bold pb-1">Quotation Ref</td>
-                    <td className="pb-1 font-mono font-bold text-emerald-800">: {quotationNo}</td>
+                    <td className="font-bold py-0.5">Quotation Ref</td>
+                    <td className="py-0.5">
+                      <span className="font-bold mr-1">:</span>
+                      <span className="font-mono font-bold text-emerald-800">{quotationNo}</span>
+                    </td>
                   </tr>
                 )}
                 <tr>
-                  <td className="font-bold pb-1">Issue Date</td>
-                  <td className="pb-1 font-mono">: {orderDate}</td>
+                  <td className="font-bold py-0.5">Order Issue Date</td>
+                  <td className="py-0.5">
+                    <span className="font-bold mr-1">:</span>
+                    <span className="font-mono font-medium text-neutral-800">{orderDate}</span>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold pb-1">Target Delivery</td>
-                  <td className="pb-1 font-mono font-bold text-black">: {deliveredDate}</td>
+                  <td className="font-bold py-0.5">Target Delivery</td>
+                  <td className="py-0.5">
+                    <span className="font-bold mr-1">:</span>
+                    <span className="font-mono font-black text-black">{deliveredDate}</span>
+                  </td>
                 </tr>
                 {grnNo && grnNo !== '-' && (
                   <tr>
-                    <td className="font-bold pb-1">Sample GRN No</td>
-                    <td className="pb-1 font-mono">: {grnNo}</td>
+                    <td className="font-bold py-0.5">Sample GRN No.</td>
+                    <td className="py-0.5">
+                      <span className="font-bold mr-1">:</span>
+                      <span className="font-mono">{grnNo}</span>
+                    </td>
                   </tr>
                 )}
                 {bomNo && bomNo !== '-' && (
                   <tr>
-                    <td className="font-bold pb-1">BOM No</td>
-                    <td className="pb-1 font-mono">: {bomNo}</td>
+                    <td className="font-bold py-0.5">BOM Ref No.</td>
+                    <td className="py-0.5">
+                      <span className="font-bold mr-1">:</span>
+                      <span className="font-mono">{bomNo}</span>
+                    </td>
                   </tr>
                 )}
                 {projectNo && projectNo !== '-' && (
                   <tr>
-                    <td className="font-bold pb-1">Project No</td>
-                    <td className="pb-1 font-mono">: {projectNo}</td>
+                    <td className="font-bold py-0.5">Project / Job Ref</td>
+                    <td className="py-0.5">
+                      <span className="font-bold mr-1">:</span>
+                      <span className="font-mono">{projectNo}</span>
+                    </td>
                   </tr>
                 )}
                 <tr>
-                  <td className="font-bold pb-1">Prepared by</td>
-                  <td className="pb-1 font-mono font-bold">: {preparedBy}</td>
-                </tr>
-                <tr>
-                  <td className="font-bold pb-1">Priority</td>
-                  <td className="pb-1 font-bold text-black uppercase">: {priority}</td>
+                  <td className="font-bold py-0.5">Prepared By</td>
+                  <td className="py-0.5">
+                    <span className="font-bold mr-1">:</span>
+                    <span className="font-semibold text-black">{preparedBy}</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* ── 4. ITEMS TABLE (EXACT QUOTATION DESCRIPTION, ZERO PRICING, NO IMAGE) ── */}
-        <div className="flex-1 flex flex-col border-b border-black min-h-[360px]">
-          <table className="w-full border-collapse text-[12px]">
+        {/* ── 4. TECHNICAL SCOPE & COMPONENTS TO MANUFACTURE ── */}
+        <div className="border-b border-black">
+          <div className="bg-neutral-100 py-1.5 px-3 border-b border-black font-bold text-[10px] uppercase tracking-wider text-black">
+            Scope of Work &amp; Components to Manufacture:
+          </div>
+          <table className="w-full text-left text-[11px] border-collapse">
             <thead>
-              <tr className="bg-gray-100 border-b border-black text-center font-bold">
-                <th className="py-2 px-2 border-r border-black w-12 text-center">#</th>
-                <th className="py-2 px-4 border-r border-black text-left">DESCRIPTION &amp; TECHNICAL SCOPE</th>
-                <th className="py-2 px-4 w-24 text-center">QTY</th>
+              <tr className="bg-neutral-50 border-b border-black text-[10px] font-bold text-neutral-700 uppercase">
+                <th className="py-1.5 px-2 text-center w-10 border-r border-black">#</th>
+                <th className="py-1.5 px-3 border-r border-black">Component Description &amp; Technical Specifications</th>
+                <th className="py-1.5 px-3 text-center w-24">Batch Qty</th>
               </tr>
             </thead>
             <tbody>
               {displayItems.map((item, idx) => (
-                <tr key={idx} className="border-b border-gray-300">
-                  <td className="py-2.5 px-2 text-center font-mono font-bold border-r border-black align-top">
+                <tr key={idx} className="border-b border-neutral-300 text-black">
+                  <td className="py-2 px-2 text-center font-mono font-bold border-r border-black align-top text-[11px]">
                     {item.sNo}
                   </td>
-                  <td className="py-2.5 px-4 border-r border-black font-medium text-black align-top whitespace-pre-line leading-relaxed">
+                  <td className="py-2 px-3 border-r border-black font-medium text-black align-top whitespace-pre-line leading-relaxed">
                     {item.desc}
                   </td>
-                  <td className="py-2.5 px-4 text-center font-mono font-bold text-black align-top text-[13px]">
+                  <td className="py-2 px-3 text-center font-mono font-black text-black align-top text-[13px]">
                     {item.qty} {item.uom || 'Nos'}
                   </td>
                 </tr>
               ))}
-              {/* Spacer row to maintain clean page proportion */}
-              <tr style={{ height: `${Math.max(140, 360 - displayItems.length * 48)}px` }}>
-                <td className="border-r border-black">&nbsp;</td>
-                <td className="border-r border-black">&nbsp;</td>
-                <td>&nbsp;</td>
-              </tr>
             </tbody>
           </table>
         </div>
 
-        {/* ── 5. OPTIONAL WORKSHOP INSTRUCTIONS / NOTES ── */}
-        {notes && (
-          <div className="p-3 border-b border-black text-[12px] bg-gray-50">
-            <span className="font-bold uppercase tracking-wider text-[10px] text-gray-700 block mb-1">
-              Workshop Instructions &amp; Notes:
-            </span>
-            <p className="whitespace-pre-line leading-relaxed text-black font-medium">
-              {notes}
-            </p>
+        {/* ── 5. ROUTING & FLOOR OPERATIONS (If defined) ── */}
+        {operations.length > 0 && (
+          <div className="border-b border-black">
+            <div className="bg-neutral-100 py-1.5 px-3 border-b border-black font-bold text-[10px] uppercase tracking-wider text-black">
+              Shop Floor Machining Sequence &amp; Operations Routing:
+            </div>
+            <table className="w-full text-left text-[10px] border-collapse">
+              <thead>
+                <tr className="bg-neutral-50 border-b border-black text-[9px] font-bold text-neutral-700 uppercase">
+                  <th className="py-1 px-2 text-center w-8 border-r border-black">Seq</th>
+                  <th className="py-1 px-3 border-r border-black">Operation / Process</th>
+                  <th className="py-1 px-3 border-r border-black">Machine / Workstation</th>
+                  <th className="py-1 px-2 text-center w-16 border-r border-black">Planned</th>
+                  <th className="py-1 px-3 text-center w-28 border-r border-black">Operator Sign / Date</th>
+                  <th className="py-1 px-3 text-center w-20">QC Pass</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operations.map((op: any, oIdx: number) => (
+                  <tr key={oIdx} className="border-b border-neutral-300">
+                    <td className="py-1.5 px-2 text-center font-mono font-bold border-r border-black">
+                      {op.opNumber || (oIdx + 1) * 10}
+                    </td>
+                    <td className="py-1.5 px-3 border-r border-black font-semibold text-black">
+                      {op.operationName || op.name || op.process || 'Machining'}
+                    </td>
+                    <td className="py-1.5 px-3 border-r border-black text-neutral-800">
+                      {op.machineName || op.machine || op.workstation || 'Standard Machine'}
+                    </td>
+                    <td className="py-1.5 px-2 text-center border-r border-black font-mono">
+                      {op.plannedHours ? `${op.plannedHours} hrs` : '-'}
+                    </td>
+                    <td className="py-1.5 px-3 text-center border-r border-black text-neutral-400">
+                      .......................................
+                    </td>
+                    <td className="py-1.5 px-3 text-center text-neutral-400 font-mono">
+                      [ &nbsp; ]
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {/* ── 6. MATERIALS SOURCING & COSTING BOX ── */}
-        <div className="grid grid-cols-2 border-b border-black text-[11.5px]">
-          {/* Left: Materials */}
-          <div className="p-3 border-r border-black">
-            <span className="font-bold uppercase tracking-wider text-[10px] text-gray-700 block mb-2">
-              Materials Verification:
-            </span>
-            <div className="flex items-center gap-6 font-bold">
+        {/* ── 6. MATERIAL SOURCING & WORKSHOP INSTRUCTIONS ── */}
+        <div className="border-b border-black grid grid-cols-2 text-[11px] leading-tight">
+          {/* Material Verification */}
+          <div className="p-2.5 border-r border-black">
+            <div className="font-bold uppercase tracking-wider text-[10px] text-neutral-600 mb-1.5">
+              Material Sourcing &amp; Traceability:
+            </div>
+            <div className="space-y-1 text-[11px]">
               <label className="flex items-center gap-2 cursor-default">
-                <span className="inline-block w-4 h-4 border border-black bg-white"></span>
-                <span>BOM ATTACHED</span>
+                <span className="inline-block w-3.5 h-3.5 border border-black bg-white"></span>
+                <span>BOM Material Issued from Warehouse Stock</span>
               </label>
               <label className="flex items-center gap-2 cursor-default">
-                <span className="inline-block w-4 h-4 border border-black bg-white"></span>
-                <span>FROM THE CUSTOMER</span>
+                <span className="inline-block w-3.5 h-3.5 border border-black bg-white"></span>
+                <span>Customer Supplied Sample / Free-Issue Material</span>
               </label>
+              <label className="flex items-center gap-2 cursor-default">
+                <span className="inline-block w-3.5 h-3.5 border border-black bg-white"></span>
+                <span>Direct Special Purchase / Commercial Sourcing</span>
+              </label>
+            </div>
+            <div className="mt-2 pt-2 border-t border-neutral-300 text-[10px] text-neutral-700">
+              <div><span className="font-bold">Raw Material Spec / Heat #:</span> ............................................</div>
             </div>
           </div>
 
-          {/* Right: Cost Calculated */}
-          <div className="p-3 px-6 flex items-center justify-between">
+          {/* Workshop Technical Notes */}
+          <div className="p-2.5 bg-gray-50/50 flex flex-col justify-between">
             <div>
-              <span className="font-bold uppercase tracking-wider text-[10px] text-gray-700 block mb-1">
-                Cost Calculated:
-              </span>
-              <div className="w-36 border-b border-dotted border-black mt-5"></div>
-              <span className="text-[10px] font-bold text-gray-600 block mt-0.5">Signature</span>
+              <div className="font-bold uppercase tracking-wider text-[10px] text-neutral-600 mb-1">
+                Workshop Instructions &amp; Engineering Notes:
+              </div>
+              <p className="text-neutral-800 m-0 whitespace-pre-line leading-relaxed text-[11px]">
+                {notes || 'Execute machining strictly in accordance with approved CAD drawings, tolerances, and surface finish requirements. Verify dimensions at each critical setup.'}
+              </p>
             </div>
-            <div className="text-right">
-              <div className="w-28 border-b border-dotted border-black mt-7"></div>
-              <span className="text-[10px] font-bold text-gray-600 block mt-0.5">Date</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 7. SIGNATURE ROW 1 (Engineering & Release) ── */}
-        <div className="grid grid-cols-3 border-b border-black text-center text-[11px] py-4 px-2">
-          <div className="flex flex-col items-center">
-            <div className="w-48 border-b border-dotted border-black mb-1"></div>
-            <div className="flex justify-between w-48 font-bold px-1 text-[10px]">
-              <span>CRM</span>
-              <span>DATE</span>
-            </div>
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="w-52 border-b border-dotted border-black mb-1"></div>
-            <div className="flex justify-between w-52 font-bold px-1 text-[10px]">
-              <span>Senior Design Engineer</span>
-              <span>DATE</span>
-            </div>
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="w-48 border-b border-dotted border-black mb-1"></div>
-            <div className="flex justify-between w-48 font-bold px-1 text-[10px]">
-              <span>Workshop Engineer</span>
-              <span>Date</span>
+            <div className="mt-2 pt-1 border-t border-neutral-300 text-[10px] text-neutral-600">
+              Critical Surface Finish: Ra ≤ 1.6µm | Tolerances: ISO 2768-m (unless specified)
             </div>
           </div>
         </div>
 
-        {/* ── 8. SIGNATURE ROW 2 (Completion & Store Handover) ── */}
-        <div className="grid grid-cols-3 border-b border-black text-center text-[11px] py-4 px-2">
-          <div className="flex flex-col items-center">
-            <div className="w-48 border-b border-dotted border-black mb-1"></div>
-            <div className="flex justify-between w-48 font-bold px-1 text-[10px]">
-              <span>Engineer</span>
-              <span>Job Finished Date</span>
-            </div>
-            <span className="text-[9.5px] text-gray-600 mt-0.5">Received the Finished Goods</span>
+        {/* ── 7. PROFESSIONAL AUTHORIZED SIGNATURE BLOCKS ── */}
+        <div className="p-3 border-b border-black">
+          {/* STAGE 1: Pre-Production Engineering & Release Authorization */}
+          <div className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider mb-2">
+            1. Engineering &amp; Pre-Production Release Approval:
           </div>
-          <div className="flex flex-col items-center">
-            <div className="w-48 border-b border-dotted border-black mb-1"></div>
-            <div className="flex justify-between w-48 font-bold px-1 text-[10px]">
-              <span>QC Inspection</span>
-              <span>Final Checked Date</span>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {/* Box 1: Prepared By / CRM Coordinator */}
+            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-800">
+                  Prepared By / Job Coordinator
+                </div>
+                <div className="text-[9px] text-neutral-500">Commercial &amp; Specs Verified</div>
+              </div>
+              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
+                <div className="font-bold text-[11px] text-black truncate">{preparedBy}</div>
+                <div className="text-[9px] text-neutral-500">Date: {orderDate}</div>
+              </div>
             </div>
-            <span className="text-[9.5px] text-gray-600 mt-0.5">Quality Inspection Signed</span>
+
+            {/* Box 2: Senior Design Engineer */}
+            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-800">
+                  Senior Design / CAM Engineer
+                </div>
+                <div className="text-[9px] text-neutral-500">Drawing &amp; Toolpath Approved</div>
+              </div>
+              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
+                <div className="font-bold text-[11px] text-black">Design Engineer Signature</div>
+                <div className="text-[9px] text-neutral-500">Date: .......................................</div>
+              </div>
+            </div>
+
+            {/* Box 3: Production Manager */}
+            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-800">
+                  Production / Works Manager
+                </div>
+                <div className="text-[9px] text-neutral-500">Authorized for Active Machining</div>
+              </div>
+              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
+                <div className="font-bold text-[11px] text-black">Authorized Signature &amp; Stamp</div>
+                <div className="text-[9px] text-neutral-500">Date: .......................................</div>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col items-center">
-            <div className="w-48 border-b border-dotted border-black mb-1"></div>
-            <div className="flex justify-between w-48 font-bold px-1 text-[10px]">
-              <span>Store Keeper</span>
-              <span>Received Date</span>
+
+          {/* STAGE 2: Post-Production Floor Completion & Quality Handover */}
+          <div className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider mb-2">
+            2. Machining Completion, Quality Inspection &amp; Stores Handover:
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {/* Box 4: Workshop Engineer / Lead Machinist */}
+            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-800">
+                  Lead Machinist / Floor In-Charge
+                </div>
+                <div className="text-[9px] text-neutral-500">Machining Completed on Floor</div>
+              </div>
+              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
+                <div className="font-bold text-[11px] text-black">Finished Date: ........................</div>
+                <div className="text-[9px] text-neutral-500">Machine Operator Signature</div>
+              </div>
             </div>
-            <span className="text-[9.5px] text-gray-600 mt-0.5">Received the Finished Goods</span>
+
+            {/* Box 5: Quality Assurance & QC Inspection */}
+            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-800 flex items-center justify-between">
+                  <span>QC &amp; Metrology Inspection</span>
+                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 border border-black rounded">ISO 9001</span>
+                </div>
+                <div className="text-[9px] text-neutral-600 font-bold mt-0.5">
+                  [ &nbsp; ] PASS &nbsp; [ &nbsp; ] REWORK &nbsp; [ &nbsp; ] REJECT
+                </div>
+              </div>
+              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
+                <div className="font-bold text-[11px] text-black">QC Inspector Signature &amp; Stamp</div>
+                <div className="text-[9px] text-neutral-500">Inspection Date: ....................</div>
+              </div>
+            </div>
+
+            {/* Box 6: Store Keeper / Logistics Handover */}
+            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-800">
+                  Finished Goods Store Keeper
+                </div>
+                <div className="text-[9px] text-neutral-500">Accepted into Warehouse Bay</div>
+              </div>
+              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
+                <div className="font-bold text-[11px] text-black">Qty Accepted: ............. Nos</div>
+                <div className="text-[9px] text-neutral-500">Store Officer Signature &amp; Date</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ── 9. FOOTER RELEASE WARNING NOTICE ── */}
-        <div className="p-2 text-center font-bold text-[9.5px] uppercase tracking-wider bg-gray-100">
-          PLEASE ENSURE ALL COLUMNS ARE DULY FILLED AND GOODS HAVE BEEN PROPERLY INSPECTED &amp; SIGNED BEFORE RELEASE
+        {/* ── 8. FOOTER RELEASE WARNING NOTICE ── */}
+        <div className="p-2 text-center font-bold text-[9px] uppercase tracking-wider bg-neutral-100 text-neutral-700">
+          ISO 9001:2015 CERTIFIED PRECISION MANUFACTURING • CONFIDENTIAL WORK TRAVELER • ALL FLOOR ENTRIES &amp; INSPECTIONS MUST BE DULY SIGNED BEFORE COMPONENT DISPATCH
         </div>
       </div>
     </>

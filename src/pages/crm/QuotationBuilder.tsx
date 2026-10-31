@@ -906,34 +906,29 @@ export const QuotationBuilder: React.FC = () => {
   const handlePercentDiscountChange = (val: string) => {
     setCustDiscountType('percent')
     setCustDiscount(val)
-    if (val === '' || isNaN(Number(val))) {
-      setCustDiscountAmount('')
-    } else {
-      const p = Math.max(0, Number(val))
-      setCustDiscountAmount(custSubtotal > 0 ? Number((custSubtotal * (p / 100)).toFixed(2)) : 0)
-    }
   }
 
   const handleAmountDiscountChange = (val: string) => {
     setCustDiscountType('amount')
     setCustDiscountAmount(val)
-    if (val === '' || isNaN(Number(val))) {
-      setCustDiscount('')
-    } else {
-      const a = Math.max(0, Number(val))
-      setCustDiscount(custSubtotal > 0 ? Number(((a / custSubtotal) * 100).toFixed(2)) : 0)
-    }
   }
 
   const handleDiscountTypeToggle = (type: 'percent' | 'amount') => {
-    setCustDiscountType(type)
-    if (type === 'percent') {
-      if (custSubtotal > 0 && custDiscountAmt > 0) {
-        setCustDiscount(Number(((custDiscountAmt / custSubtotal) * 100).toFixed(2)))
+    if (type === custDiscountType) return;
+    setCustDiscountType(type);
+    if (type === 'amount') {
+      if (!custDiscountAmount || Number(custDiscountAmount) === 0) {
+        const pct = Math.max(0, Number(custDiscount) || 0);
+        if (pct > 0 && custSubtotal > 0) {
+          setCustDiscountAmount(Number((custSubtotal * (pct / 100)).toFixed(2)));
+        }
       }
     } else {
-      if (custDiscountAmt > 0) {
-        setCustDiscountAmount(Number(custDiscountAmt.toFixed(2)))
+      if (!custDiscount || Number(custDiscount) === 0) {
+        const amt = Math.max(0, Number(custDiscountAmount) || 0);
+        if (amt > 0 && custSubtotal > 0) {
+          setCustDiscount(Number(((amt / custSubtotal) * 100).toFixed(2)));
+        }
       }
     }
   }
@@ -1038,8 +1033,10 @@ export const QuotationBuilder: React.FC = () => {
         linkedQuoteId: linkedProductQuoteId || null,
         taxEnabled, selectedProfileId,
         boms,
-        custItems, custTerms, custValidity, custDelivery, custDiscount,
-        custDiscountType, custDiscountAmount,
+        custItems, custTerms, custValidity, custDelivery,
+        custDiscount: custDiscountType === 'percent' ? custDiscount : (custSubtotal > 0 ? Number(((custDiscountAmt / custSubtotal) * 100).toFixed(2)) : 0),
+        custDiscountType,
+        custDiscountAmount: custDiscountType === 'amount' ? custDiscountAmount : Number(custDiscountAmt.toFixed(2)),
         selectedTermsPresetId,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
@@ -1365,8 +1362,10 @@ export const QuotationBuilder: React.FC = () => {
       const snapshot: any = {
         docNo, issueNo, issueDate, quoDate, vatNo, tinNo, quotationNo, jobQty, jobItems, attention, subject, attachments, customerName, customerAddress,
         boms: bomsWithTotals,
-        custItems, custTerms, custValidity, custDelivery, custDiscount,
-        custDiscountType, custDiscountAmount,
+        custItems, custTerms, custValidity, custDelivery,
+        custDiscount: custDiscountType === 'percent' ? custDiscount : (custSubtotal > 0 ? Number(((custDiscountAmt / custSubtotal) * 100).toFixed(2)) : 0),
+        custDiscountType,
+        custDiscountAmount: custDiscountType === 'amount' ? custDiscountAmount : Number(custDiscountAmt.toFixed(2)),
         selectedTermsPresetId,
         bankDetailId: bankDetailId || null,
         bankDetails: selectedBank ? JSON.stringify(selectedBank) : (bankDetailId === 'none' ? 'none' : null),
@@ -1544,8 +1543,10 @@ export const QuotationBuilder: React.FC = () => {
         docNo, issueNo, issueDate, quoDate, jobQty, subject,
         taxEnabled, selectedProfileId,
         boms,
-        custItems, custTerms, custValidity, custDelivery, custDiscount,
-        custDiscountType, custDiscountAmount,
+        custItems, custTerms, custValidity, custDelivery,
+        custDiscount: custDiscountType === 'percent' ? custDiscount : (custSubtotal > 0 ? Number(((custDiscountAmt / custSubtotal) * 100).toFixed(2)) : 0),
+        custDiscountType,
+        custDiscountAmount: custDiscountType === 'amount' ? custDiscountAmount : Number(custDiscountAmt.toFixed(2)),
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         selectedProfile, custSscl, custVat, jobSscl, jobVat
@@ -2925,9 +2926,10 @@ export const QuotationBuilder: React.FC = () => {
                       <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">-{formatCurrency(taxEnabled && selectedProfile?.tax1_show_separately === 0 ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100) : custDiscountAmt)}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className={`flex items-center bg-surface2 border rounded-md shadow-inner px-2 py-1 transition-all ${custDiscountType === 'percent' ? 'border-primary/60 ring-1 ring-primary/20 bg-primary/5' : 'border-theme-subtle/50'}`}>
-                        <span className="text-[11px] font-bold text-muted mr-1">%</span>
+                  {custDiscountType === 'percent' ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center bg-surface2 border border-primary/60 ring-1 ring-primary/20 bg-primary/5 rounded-md shadow-inner px-2 py-1 transition-all">
+                        <span className="text-[11px] font-bold text-primary mr-1.5">%</span>
                         <input
                           type="number"
                           min="0"
@@ -2936,13 +2938,23 @@ export const QuotationBuilder: React.FC = () => {
                           onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
                           value={custDiscount}
                           onChange={e => handlePercentDiscountChange(e.target.value)}
-                          onFocus={() => setCustDiscountType('percent')}
                           placeholder="0.00"
                           className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
                         />
                       </div>
-                      <div className={`flex items-center bg-surface2 border rounded-md shadow-inner px-2 py-1 transition-all ${custDiscountType === 'amount' ? 'border-primary/60 ring-1 ring-primary/20 bg-primary/5' : 'border-theme-subtle/50'}`}>
-                        <span className="text-[10px] font-bold text-muted mr-1">LKR</span>
+                      {custSubtotal > 0 && Number(custDiscount) > 0 && (
+                        <div className="flex justify-between items-center text-[10px] px-1 text-muted">
+                          <span>Deduction:</span>
+                          <span className="font-mono font-medium text-primary">
+                            ≈ Rs. {formatCurrency(custDiscountAmt)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center bg-surface2 border border-primary/60 ring-1 ring-primary/20 bg-primary/5 rounded-md shadow-inner px-2 py-1 transition-all">
+                        <span className="text-[10px] font-bold text-primary mr-1.5">LKR</span>
                         <input
                           type="number"
                           min="0"
@@ -2950,12 +2962,20 @@ export const QuotationBuilder: React.FC = () => {
                           onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
                           value={custDiscountAmount}
                           onChange={e => handleAmountDiscountChange(e.target.value)}
-                          onFocus={() => setCustDiscountType('amount')}
                           placeholder="0.00"
                           className="w-full bg-transparent text-right text-[12px] font-bold text-primary outline-none"
                         />
                       </div>
+                      {custSubtotal > 0 && Number(custDiscountAmount) > 0 && (
+                        <div className="flex justify-between items-center text-[10px] px-1 text-muted">
+                          <span>Equivalent rate:</span>
+                          <span className="font-mono font-medium text-primary">
+                            ≈ {((custDiscountAmt / custSubtotal) * 100).toFixed(2)}%
+                          </span>
+                        </div>
+                      )}
                     </div>
+                  )}
                   </div>
                   
                                     {taxEnabled && selectedProfile && (

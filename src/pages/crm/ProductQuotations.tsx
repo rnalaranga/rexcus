@@ -1402,16 +1402,42 @@ export const ProductQuotations: React.FC = () => {
                                       </button>
                                     )}
                                   </div>
-                                  {(latest?.customerPoNo || parsed.customerPoNo) ? (
-                                    <div className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                                      <FileCheck size={12} className="shrink-0" />
-                                      PO: #{latest?.customerPoNo || parsed.customerPoNo}
-                                    </div>
-                                  ) : (
-                                    <div className="text-[11px] text-muted italic">
-                                      No PO attached yet
-                                    </div>
-                                  )}
+                                  {(() => {
+                                    const poVal = latest?.customerPoNo || parsed.customerPoNo;
+                                    const isPoPending = poVal === 'PO PENDING' || latest?.status === 'PO Pending' || (latest as any)?.poStatus === 'PO Pending';
+                                    const isWithoutPo = poVal === 'WITHOUT PO' || latest?.status === 'Without PO' || (latest as any)?.poStatus === 'Without PO';
+                                    const isPoReceived = Boolean(poVal && !isPoPending && !isWithoutPo);
+
+                                    if (isPoReceived) {
+                                      return (
+                                        <div className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                          <FileCheck size={12} className="shrink-0" />
+                                          PO: #{poVal}
+                                        </div>
+                                      );
+                                    }
+                                    if (isPoPending) {
+                                      return (
+                                        <div className="font-mono font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                          <Clock size={12} className="shrink-0" />
+                                          PO Pending
+                                        </div>
+                                      );
+                                    }
+                                    if (isWithoutPo) {
+                                      return (
+                                        <div className="font-mono font-bold text-xs text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                                          <FileCheck size={12} className="shrink-0" />
+                                          Without PO
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div className="text-[11px] text-muted italic">
+                                        No PO attached yet
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
 
                                 {/* Customer Terms & Registration */}
@@ -1459,14 +1485,44 @@ export const ProductQuotations: React.FC = () => {
                               {group.clientCompany && group.clientName ? (
                                 <span>Attn: {group.clientName}</span>
                               ) : null}
-                              {(latest?.customerPoNo || parsed.customerPoNo) && (
-                                <span 
-                                  className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
-                                  title={`Customer PO: ${latest?.customerPoNo || parsed.customerPoNo}`}
-                                >
-                                  <FileCheck size={10} /> PO: {latest?.customerPoNo || parsed.customerPoNo}
-                                </span>
-                              )}
+                              {(() => {
+                                const poVal = latest?.customerPoNo || parsed.customerPoNo;
+                                const isPoPending = poVal === 'PO PENDING' || latest?.status === 'PO Pending' || (latest as any)?.poStatus === 'PO Pending';
+                                const isWithoutPo = poVal === 'WITHOUT PO' || latest?.status === 'Without PO' || (latest as any)?.poStatus === 'Without PO';
+                                const isPoReceived = Boolean(poVal && !isPoPending && !isWithoutPo);
+
+                                if (isPoReceived) {
+                                  return (
+                                    <span 
+                                      className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
+                                      title={`Customer PO: ${poVal}`}
+                                    >
+                                      <FileCheck size={10} /> PO: {poVal}
+                                    </span>
+                                  );
+                                }
+                                if (isPoPending) {
+                                  return (
+                                    <span 
+                                      className="text-amber-600 dark:text-amber-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
+                                      title="Customer PO Pending"
+                                    >
+                                      <Clock size={10} /> PO Pending
+                                    </span>
+                                  );
+                                }
+                                if (isWithoutPo) {
+                                  return (
+                                    <span 
+                                      className="text-sky-600 dark:text-sky-400 font-mono font-semibold flex items-center gap-0.5 shrink-0"
+                                      title="Without Customer PO"
+                                    >
+                                      <FileCheck size={10} /> Without PO
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                           </div>
                         </td>

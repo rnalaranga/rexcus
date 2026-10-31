@@ -1799,6 +1799,11 @@ async function runDatabaseSync() {
     await db.query("UPDATE document_sequences SET next_number = 2206 WHERE id = 'quotation' AND next_number < 2206");
   } catch (err) {}
 
+  // Ensure sales_order next_number starts from 6004 if not set
+  try {
+    await db.query("UPDATE document_sequences SET next_number = 6004 WHERE id = 'sales_order' AND (next_number < 6001 OR next_number = 7528 OR next_number = 7529)");
+  } catch (err) {}
+
   // Auto-seed user_quotation_sequences for users with prefixes
   try {
     const [uRows]: any = await db.query("SELECT id, prefix FROM users WHERE prefix IS NOT NULL AND prefix != ''");
@@ -3593,7 +3598,8 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
     } else if (poStatus === 'Without PO') {
       customerPoNo = customerPoNo?.trim() || 'WITHOUT PO';
     } else {
-      poStatus = customerPoNo ? 'PO Received' : 'PO Received';
+      poStatus = 'PO Received';
+      customerPoNo = customerPoNo?.trim() || '';
     }
 
     if (!customerPoNo && !poStatus) {
@@ -3610,6 +3616,9 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
     if (quote?.data) {
       try {
         qData = typeof quote.data === 'string' ? JSON.parse(quote.data) : quote.data;
+        if (typeof qData === 'string') {
+          try { qData = JSON.parse(qData); } catch (e) {}
+        }
       } catch (e) {}
     }
 
@@ -3620,14 +3629,19 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
     if (expectedPoDate) qData.expectedPoDate = expectedPoDate;
     if (withoutPoReason) qData.withoutPoReason = withoutPoReason;
     if (receivedBy) qData.poReceivedBy = receivedBy;
-    if (notes) qData.customerPoNotes = notes;
+    if (notes !== undefined) {
+      qData.customerPoNotes = notes;
+      qData.notes = notes;
+      qData.description = notes;
+    }
 
     let newStatus = quote.status;
     if (poStatus === 'PO Pending') {
       newStatus = 'PO Pending';
     } else if (poStatus === 'Without PO') {
       newStatus = 'Without PO';
-    } else if (quote.status === 'Approved' || quote.status === 'Sent' || quote.status === 'Draft' || !quote.status) {
+    } else {
+      // PO Received
       newStatus = 'PO Received';
     }
 
@@ -3652,15 +3666,54 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
 
     // If a sales order or finished goods order exists for this quotation, sync PO
     const qNo = quote.quotationNo || quote.docNo || id;
-    await db.query(
-      `UPDATE finished_goods_orders SET 
-        customerPoNo = ?, 
-        customerPoDate = ?, 
-        customerPoAttachment = COALESCE(?, customerPoAttachment),
-        updatedAt = NOW() 
-      WHERE quoteId = ? OR quotationNo = ?`,
-      [customerPoNo, customerPoDate || new Date().toISOString().slice(0, 10), customerPoAttachment || null, id, qNo]
-    ).catch(() => {});
+    if (notes !== undefined && notes !== null && String(notes).trim() !== '') {
+      const orderNoteText = `[PO: ${customerPoNo}] ${notes}`;
+      await db.query(
+        `UPDATE finished_goods_orders SET 
+          customerPoNo = ?, 
+          customerPoDate = ?, 
+          customerPoAttachment = COALESCE(?, customerPoAttachment),
+          notes = CASE 
+            WHEN notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', ?)
+            WHEN notes IS NULL OR notes = '' THEN ?
+            ELSE CONCAT(notes, ' | ', ?)
+          END,
+          updatedAt = NOW() 
+        WHERE quoteId = ? OR quotationNo = ?`,
+        [
+          customerPoNo, 
+          customerPoDate || new Date().toISOString().slice(0, 10), 
+          customerPoAttachment || null,
+          orderNoteText,
+          orderNoteText,
+          orderNoteText,
+          id, 
+          qNo
+        ]
+      ).catch(() => {});
+    } else {
+      await db.query(
+        `UPDATE finished_goods_orders SET 
+          customerPoNo = ?, 
+          customerPoDate = ?, 
+          customerPoAttachment = COALESCE(?, customerPoAttachment),
+          notes = CASE 
+            WHEN ? != 'PO Pending' AND notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', CONCAT('[PO: ', ?, ']'))
+            ELSE notes
+          END,
+          updatedAt = NOW() 
+        WHERE quoteId = ? OR quotationNo = ?`,
+        [
+          customerPoNo, 
+          customerPoDate || new Date().toISOString().slice(0, 10), 
+          customerPoAttachment || null,
+          poStatus,
+          customerPoNo,
+          id, 
+          qNo
+        ]
+      ).catch(() => {});
+    }
 
     // Log to approval logs
     try {
@@ -4958,6 +5011,18 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     const [result]: any = await db.query('INSERT INTO finished_goods_orders SET ?', safeOrder);
     const insertedId = result?.insertId || safeOrder.id;
 
+    // Sync Sales Order document sequence
+    const soNumMatch = safeOrder.orderNo && String(safeOrder.orderNo).match(/\d+$/);
+    if (soNumMatch) {
+      const parsedNum = parseInt(soNumMatch[0], 10);
+      if (!isNaN(parsedNum) && parsedNum >= 1000 && parsedNum < 100000 && parsedNum !== 7528) {
+        await db.query(
+          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'sales_order'",
+          [parsedNum + 1]
+        );
+      }
+    }
+
     if (safeOrder.status === 'Pending Advance Approval') {
       try {
         await db.query(
@@ -5161,10 +5226,26 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
               parsed.soChangeInfo = changeRecord;
               parsed.soChanged = true;
 
-              await db.query(
-                `UPDATE quotations SET soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
-                [JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
-              ).catch(console.error);
+              if (data.customerPoNo !== undefined) {
+                const poStr = String(data.customerPoNo || '').trim();
+                parsed.customerPoNo = poStr || null;
+                let newQuoteStatus = qRow.status;
+                if (poStr && poStr !== 'PO PENDING' && poStr !== 'WITHOUT PO') {
+                  parsed.poStatus = 'PO Received';
+                  if (['PO Pending', 'Without PO', 'Approved', 'Sent', 'Draft'].includes(qRow.status) || !qRow.status) {
+                    newQuoteStatus = 'PO Received';
+                  }
+                }
+                await db.query(
+                  `UPDATE quotations SET customerPoNo = ?, customerPoDate = COALESCE(?, customerPoDate), status = ?, soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
+                  [poStr || null, data.customerPoDate || null, newQuoteStatus, JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
+                ).catch(console.error);
+              } else {
+                await db.query(
+                  `UPDATE quotations SET soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
+                  [JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
+                ).catch(console.error);
+              }
             }
           } catch (qErr) {
             console.error('Error updating quotation with soChangeInfo:', qErr);

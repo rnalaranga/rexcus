@@ -70,96 +70,80 @@ export const SupplierGRNPrintView: React.FC<SupplierGRNPrintViewProps> = ({ grn,
         }
       `}</style>
 
-      {/* ── 1. HEADER (Signature Rex Industries standard format) ── */}
+      {/* ── 1. HEADER (Signature Rex Industries standard format - exact Quotation match) ── */}
       <div className="flex p-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
-        <div className="w-[32%] flex justify-center items-center px-2">
-          <img
-            src={logoUrl}
-            alt="Rex Industries Logo"
-            className="max-h-20 object-contain"
-            onError={(e) => {
-              const target = e.currentTarget;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent) {
-                const fallback = document.createElement('div');
-                fallback.className = 'text-4xl font-black text-red-600 tracking-tighter';
-                fallback.style.fontFamily = 'Impact, sans-serif';
-                fallback.innerText = 'REX';
-                parent.appendChild(fallback);
-              }
-            }}
-          />
+        <div className="w-[32%] flex justify-center items-center">
+          {settings?.company_logo
+            ? <img src={settings.company_logo} alt="Logo" className="max-h-20 object-contain" />
+            : <div className="text-4xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
         </div>
 
         {/* Company Info (Right 68%) */}
-        <div className="w-[68%] pl-3 border-l border-black/40">
+        <div className="w-[68%] pl-3">
           <h1
             className="text-[19px] font-black mb-1 leading-tight tracking-tight text-black"
             style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}
           >
             {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
           </h1>
-          <table className="text-[11px] leading-tight w-full">
+          <table className="text-[11px] leading-tight w-full" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             <tbody>
               <tr>
-                <td className="font-bold w-14 align-top py-0.5">Office</td>
-                <td className="align-top py-0.5">
+                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Office</td>
+                <td className="align-top">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1 whitespace-pre-line text-neutral-800">
-                      {settings?.company_address || settings?.companyAddress || 'No.451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}
+                      {settings?.company_address || settings?.companyAddress || 'No.451/2,Chilaw Road, Kattuwa,\nNegombo,11500,Sri Lanka'}
                     </span>
                   </div>
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top py-0.5">Tel.</td>
-                <td className="align-top py-0.5">
+                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Tel.</td>
+                <td className="align-top">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
-                    <span className="flex-1 text-neutral-800">
+                    <span className="flex-1 text-neutral-800 whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                       {settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}
                     </span>
                   </div>
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top py-0.5">E-mail</td>
-                <td className="align-top py-0.5">
+                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>E-mail</td>
+                <td className="align-top">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
-                    <span className="flex-1 text-neutral-800">
+                    <span className="flex-1 text-neutral-800 whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                       {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}
                     </span>
                   </div>
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top py-0.5">Web</td>
-                <td className="align-top py-0.5">
+                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Web</td>
+                <td className="align-top">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
-                    <span className="flex-1 text-neutral-800">
-                      {settings?.company_website || settings?.companyWebsite || 'www.rexgroup.lk'}
+                    <span className="flex-1 text-neutral-800 whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
+                      {settings?.company_website || settings?.companyWebsite || settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}
                     </span>
                   </div>
                 </td>
               </tr>
-              {(settings?.tax_id || settings?.tin) && (
-                <tr>
-                  <td className="font-bold w-14 align-top py-0.5">TIN</td>
-                  <td className="align-top py-0.5">
-                    <div className="flex items-start">
-                      <span className="font-bold mr-1 shrink-0">:</span>
-                      <span className="flex-1 text-neutral-800 font-mono font-semibold">
-                        {settings?.tax_id || settings?.tin}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              )}
+              <tr>
+                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>TIN</td>
+                <td className="align-top font-bold">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 text-neutral-900 font-mono whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
+                      {settings?.company_tin || settings?.company_vat || settings?.tax_id || settings?.tin || '114106470-7000'}
+                    </span>
+                  </div>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>

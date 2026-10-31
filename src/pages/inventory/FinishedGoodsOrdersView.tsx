@@ -43,7 +43,8 @@ import {
   fetchWorkOrders,
   fetchPaymentReceipts,
   deleteInvoice,
-  fetchAllCustomerGRNs
+  fetchAllCustomerGRNs,
+  fetchNextDocumentNumber
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -358,10 +359,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setEditingOrder(null)
     const initialProduct = preselectedProduct
     const currentYY = String(new Date().getFullYear()).slice(-2);
+    const fallbackOrderNo = `SO-${currentYY}-${Date.now().toString().slice(-4)}`;
+    
     if (initialProduct) {
       setFormData({
         ...initialForm,
-        orderNo: `SO-${currentYY}-${Date.now().toString().slice(-4)}`,
+        orderNo: fallbackOrderNo,
         orderSource: 'ready_made',
         productId: initialProduct?.id || '',
         productName: initialProduct?.name || '',
@@ -371,11 +374,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     } else {
       setFormData({
         ...initialForm,
-        orderNo: `SO-${currentYY}-${Date.now().toString().slice(-4)}`,
+        orderNo: fallbackOrderNo,
         orderSource: 'from_quote'
       })
     }
     setShowOrderModal(true)
+
+    fetchNextDocumentNumber('sales_order', { reserve: false }).then(res => {
+      if (res?.formattedNumber) {
+        setFormData(prev => ({ ...prev, orderNo: res.formattedNumber }));
+      }
+    }).catch(err => {
+      console.warn('Failed to fetch next sales order sequence number:', err);
+    });
   }
 
   const handleOpenEditModal = (order: any) => {
@@ -790,6 +801,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         await updateFinishedGoodsOrder(editingOrder.id, payload)
       } else {
         await createFinishedGoodsOrder(payload)
+        fetchNextDocumentNumber('sales_order', { reserve: true }).catch(console.error);
       }
       refetch()
       setShowOrderModal(false)

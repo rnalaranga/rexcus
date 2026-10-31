@@ -41,34 +41,40 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
   const [customerPoAttachment, setCustomerPoAttachment] = useState('');
   const [customerPoAttachmentName, setCustomerPoAttachmentName] = useState('');
   const [notes, setNotes] = useState('');
+  const [isPreviouslyPending, setIsPreviouslyPending] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !quotationData) return;
     const { group, quotation, type } = quotationData;
     let quoteData: any = {};
-    if (type === 'product') {
-      quoteData = quotation.parsed || {};
-    } else {
-      try {
+    try {
+      if (quotation?.parsed && typeof quotation.parsed === 'object' && Object.keys(quotation.parsed).length > 0) {
+        quoteData = quotation.parsed;
+      } else if (quotation?.data) {
         quoteData = typeof quotation.data === 'string' ? JSON.parse(quotation.data || '{}') : (quotation.data || {});
-      } catch (e) {}
-    }
+        if (typeof quoteData === 'string') {
+          try { quoteData = JSON.parse(quoteData); } catch (e) {}
+        }
+      }
+    } catch (e) {}
 
     const existingPo = quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '';
     const existingStatus = quotation.poStatus || quoteData.poStatus || quotation.status;
+    const hasRealPo = Boolean(existingPo && existingPo !== 'PO PENDING' && existingPo !== 'WITHOUT PO');
+    const wasPending = existingPo === 'PO PENDING' || existingStatus === 'PO Pending';
 
-    if (existingPo === 'PO PENDING' || existingStatus === 'PO Pending') {
-      setPoMode('pending');
-      setCustomerPoNo('');
-    } else if (existingPo === 'WITHOUT PO' || existingStatus === 'Without PO') {
+    setIsPreviouslyPending(wasPending);
+
+    if (existingPo === 'WITHOUT PO' || existingStatus === 'Without PO') {
       setPoMode('without_po');
       setCustomerPoNo('');
-    } else if (existingPo) {
+    } else if (hasRealPo) {
       setPoMode('received');
       setCustomerPoNo(existingPo);
     } else {
+      // Default to 'received' mode so user can immediately record the received PO!
       setPoMode('received');
-      setCustomerPoNo('');
+      setCustomerPoNo(existingPo === 'PO PENDING' ? '' : existingPo);
     }
 
     setCustomerPoDate(quotation.customerPoDate || quoteData.customerPoDate || new Date().toISOString().slice(0, 10));
@@ -77,10 +83,15 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     setCustomerPoAttachment(quotation.customerPoAttachment || quoteData.customerPoAttachment || '');
     setCustomerPoAttachmentName(
       quotation.customerPoAttachment || quoteData.customerPoAttachment 
-        ? `PO_${existingPo || 'Document'}.pdf` 
+        ? `PO_${(hasRealPo ? existingPo : '') || 'Document'}.pdf` 
         : ''
     );
-    setNotes(quoteData.customerPoNotes || '');
+
+    const rawNote = quoteData.customerPoNotes || quoteData.notes || quoteData.description || quotation.notes || '';
+    const cleanNote = typeof rawNote === 'string'
+      ? rawNote.replace(/^\[Status:\s*(?:PO Pending|Without PO)[^\]]*\]\s*/i, '').trim()
+      : '';
+    setNotes(cleanNote || rawNote || '');
   }, [isOpen, quotationData]);
 
   if (!isOpen || !quotationData) return null;
@@ -211,6 +222,16 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
             <AlertCircle size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="text-[11px] text-amber-800 dark:text-amber-300 leading-tight">
               <strong>PO Status Required before creating Sales Order:</strong> If the client provided a PO, enter it below. If not, choose <strong>PO Pending</strong> or <strong>Without PO</strong> to continue.
+            </div>
+          </div>
+        )}
+
+        {/* Notice if quotation was previously PO Pending */}
+        {!isProceedingToSo && isPreviouslyPending && (
+          <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-start gap-2.5">
+            <Clock size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-[11px] text-amber-800 dark:text-amber-300 leading-tight">
+              <strong>Previously marked as PO Pending:</strong> Enter the official Customer PO Number and upload the document below to update status to <strong>PO Received</strong>.
             </div>
           </div>
         )}
