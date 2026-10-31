@@ -433,7 +433,7 @@ export const GRNBuilder: React.FC = () => {
       poId: selectedPoIds[0] || null,
       poIds: JSON.stringify(selectedPoIds),
       supplierId: supplierId || null,
-      date,
+      date: date || new Date().toISOString().slice(0, 10),
       receivedBy,
       vehicleNo,
       storageLocation: assignedLocation,
@@ -446,9 +446,14 @@ export const GRNBuilder: React.FC = () => {
       notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${notes}`
     };
 
-    await createGRN(payload);
-    fetchNextDocumentNumber('purchase_grn', { reserve: true }).catch(console.error);
-    navigate('/purchasing');
+    try {
+      await createGRN(payload);
+      fetchNextDocumentNumber('purchase_grn', { reserve: true }).catch(console.error);
+      navigate('/purchasing');
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'Failed to save GRN');
+    }
   };
 
   const totalOrdered = items.reduce((sum, item) => sum + Number(item.qty || 0), 0);

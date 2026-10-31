@@ -527,7 +527,7 @@ export const MRBuilder: React.FC = () => {
       const payload = {
         id: docNo,
         date,
-        requiredDate,
+        requiredDate: requiredDate || null,
         requestedBy,
         department,
         priority,

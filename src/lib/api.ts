@@ -588,27 +588,87 @@ export const deletePaymentReceipt = async (id: string) => {
 // --- PURCHASING ---
 export const fetchMRs = async () => (await (await fetch(`${API_URL}/purchasing/mrs`)).json());
 export const fetchMRById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`)).json());
-export const createMR = async (data: any) => (await (await fetch(`${API_URL}/purchasing/mrs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const updateMR = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const deleteMR = async (id: string) => (await (await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'DELETE' })).json());
+export const createMR = async (data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/mrs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create Material Request');
+  return json;
+};
+export const updateMR = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to update Material Request');
+  return json;
+};
+export const deleteMR = async (id: string) => {
+  const res = await fetch(`${API_URL}/purchasing/mrs/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to delete Material Request');
+  return json;
+};
 
 export const fetchPOs = async () => (await (await fetch(`${API_URL}/purchasing/pos`)).json());
 export const fetchPOById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`)).json());
-export const createPO = async (data: any) => (await (await fetch(`${API_URL}/purchasing/pos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const updatePO = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const deletePO = async (id: string) => (await (await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'DELETE' })).json());
+export const createPO = async (data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/pos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create Purchase Order');
+  return json;
+};
+export const updatePO = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to update Purchase Order');
+  return json;
+};
+export const deletePO = async (id: string) => {
+  const res = await fetch(`${API_URL}/purchasing/pos/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to delete Purchase Order');
+  return json;
+};
 
 export const fetchGRNs = async () => (await (await fetch(`${API_URL}/purchasing/grns`)).json());
 export const fetchGRNById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`)).json());
-export const createGRN = async (data: any) => (await (await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const updateGRN = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const deleteGRN = async (id: string) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'DELETE' })).json());
+export const createGRN = async (data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create GRN');
+  return json;
+};
+export const updateGRN = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to update GRN');
+  return json;
+};
+export const deleteGRN = async (id: string) => {
+  const res = await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to delete GRN');
+  return json;
+};
 
 export const fetchBills = async () => (await (await fetch(`${API_URL}/purchasing/bills`)).json());
 export const fetchBillsByPO = async (poId: string) => (await (await fetch(`${API_URL}/purchasing/pos/${poId}/bills`)).json());
-export const createBill = async (data: any) => (await (await fetch(`${API_URL}/purchasing/bills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const updateBill = async (id: string, data: any) => (await (await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
-export const deleteBill = async (id: string) => (await (await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'DELETE' })).json());
+export const createBill = async (data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/bills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create Bill');
+  return json;
+};
+export const updateBill = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to update Bill');
+  return json;
+};
+export const deleteBill = async (id: string) => {
+  const res = await fetch(`${API_URL}/purchasing/bills/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to delete Bill');
+  return json;
+};
 
 
 

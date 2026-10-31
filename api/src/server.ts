@@ -5688,6 +5688,9 @@ app.get('/api/purchasing/mrs/:id', async (req, res) => {
 app.post('/api/purchasing/mrs', async (req, res) => {
   try {
     const data = { ...req.body };
+    if (!data.requiredDate || data.requiredDate === '') data.requiredDate = null;
+    if (!data.date || data.date === '') data.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (!data.workOrderNo || data.workOrderNo === '') data.workOrderNo = null;
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
     if (data.poIds && typeof data.poIds === 'object') data.poIds = JSON.stringify(data.poIds);
     if (data.workOrderNos && typeof data.workOrderNos === 'object') {
@@ -5719,6 +5722,9 @@ app.put('/api/purchasing/mrs/:id', async (req, res) => {
   try {
     const data = { ...req.body };
     delete data.id;
+    if (!data.requiredDate || data.requiredDate === '') data.requiredDate = null;
+    if (!data.date || data.date === '') data.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (!data.workOrderNo || data.workOrderNo === '') data.workOrderNo = null;
     if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
     if (data.poIds && typeof data.poIds === 'object') data.poIds = JSON.stringify(data.poIds);
     if (data.workOrderNos && typeof data.workOrderNos === 'object') {
@@ -5782,6 +5788,15 @@ app.get('/api/purchasing/pos/:id', async (req, res) => {
 app.post('/api/purchasing/pos', async (req, res) => {
   try {
     const data = { ...req.body };
+    if (!data.expectedDate || data.expectedDate === '') data.expectedDate = null;
+    if (!data.date || data.date === '') data.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (!data.taxProfileId || data.taxProfileId === '') data.taxProfileId = null;
+    if (!data.mrId || data.mrId === '') data.mrId = null;
+    if (data.shippingCost === '' || isNaN(Number(data.shippingCost))) data.shippingCost = 0;
+    if (data.subtotal === '' || isNaN(Number(data.subtotal))) data.subtotal = 0;
+    if (data.tax === '' || isNaN(Number(data.tax))) data.tax = 0;
+    if (data.totalAmount === '' || isNaN(Number(data.totalAmount))) data.totalAmount = 0;
+
     let itemsArray: any[] = [];
     if (Array.isArray(data.items)) {
       itemsArray = data.items;
@@ -5836,6 +5851,14 @@ app.put('/api/purchasing/pos/:id', async (req, res) => {
   try {
     const data = { ...req.body };
     delete data.id;
+    if (!data.expectedDate || data.expectedDate === '') data.expectedDate = null;
+    if (!data.date || data.date === '') data.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (!data.taxProfileId || data.taxProfileId === '') data.taxProfileId = null;
+    if (!data.mrId || data.mrId === '') data.mrId = null;
+    if (data.shippingCost === '' || isNaN(Number(data.shippingCost))) data.shippingCost = 0;
+    if (data.subtotal === '' || isNaN(Number(data.subtotal))) data.subtotal = 0;
+    if (data.tax === '' || isNaN(Number(data.tax))) data.tax = 0;
+    if (data.totalAmount === '' || isNaN(Number(data.totalAmount))) data.totalAmount = 0;
 
     // Fetch existing PO to detect previously linked MRs
     const [existingRows]: any = await db.query('SELECT mrId, mrIds, items FROM purchase_orders WHERE id = ?', [req.params.id]);
@@ -5952,6 +5975,8 @@ app.get('/api/purchasing/grns/:id', async (req, res) => {
 app.post('/api/purchasing/grns', async (req, res) => {
   try {
     const data = { ...req.body };
+    if (!data.date || data.date === '') data.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    if (!data.poId || data.poId === '') data.poId = null;
     let itemsArray: any[] = [];
     if (Array.isArray(data.items)) {
       itemsArray = data.items;

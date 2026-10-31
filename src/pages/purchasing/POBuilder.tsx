@@ -431,14 +431,14 @@ export const POBuilder: React.FC = () => {
         taxProfileId: (taxEnabled && selectedTaxProfile) ? taxProfileId : null,
         taxBreakdown: (taxEnabled && selectedTaxProfile) ? JSON.stringify(taxBreakdown) : null,
         supplierId, 
-        date, 
-        expectedDate, 
+        date: date || new Date().toISOString().slice(0, 10), 
+        expectedDate: expectedDate || null, 
         items, 
-        subtotal, 
-        tax: totalTax, 
-        totalAmount: grandTotal, 
+        subtotal: Number(subtotal) || 0, 
+        tax: Number(totalTax) || 0, 
+        totalAmount: Number(grandTotal) || 0, 
         notes, 
-        shippingCost, 
+        shippingCost: Number(shippingCost) || 0, 
         shippingMethod, 
         paymentTerms, 
         terms, 
@@ -446,10 +446,12 @@ export const POBuilder: React.FC = () => {
       };
 
       if (id) {
-        await updatePO(id, payload);
+        const res = await updatePO(id, payload);
+        if (res && res.error) throw new Error(res.error);
         toast(`Purchase Order ${docNo} updated successfully!`, 'success');
       } else {
-        await createPO(payload);
+        const res = await createPO(payload);
+        if (res && res.error) throw new Error(res.error);
         try {
           await fetchNextDocumentNumber('purchase_order', { reserve: true });
         } catch (e) {
