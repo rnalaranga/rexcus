@@ -18,8 +18,11 @@ import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { POPrintView } from '@/components/purchasing/POPrintView';
+import { useSettings } from '@/contexts/SettingsContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { exportToPdf } from '@/lib/exportToPdf';
+import { printElement } from '@/lib/printElement';
 
 interface POItem {
   id: string;
@@ -27,6 +30,7 @@ interface POItem {
   desc: string;
   qty: number;
   unitPrice: number;
+  refCost?: number;
   taxRate: number;
   discount: number;
   total: number;
@@ -52,6 +56,8 @@ export const POBuilder: React.FC = () => {
   const { data: pos } = usePurchaseOrders();
   const { data: taxProfiles } = useTaxProfiles();
   const { data: allBills } = useBills();
+  const { settings } = useSettings();
+  const { user } = useAuth();
 
   const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
   const [showQuickItemModal, setShowQuickItemModal] = useState(false);
@@ -183,7 +189,15 @@ export const POBuilder: React.FC = () => {
             setTaxEnabled(true);
           }
           const existingItems = typeof existing.items === 'string' ? JSON.parse(existing.items) : existing.items || [];
-          setItems(existingItems.map((i: any) => ({ taxRate: 0, discount: 0, ...i })));
+          setItems(existingItems.map((i: any) => {
+            const inv = inventory?.find((x: any) => x.id === i.inventoryId);
+            return {
+              taxRate: 0,
+              discount: 0,
+              refCost: Number(i.refCost !== undefined ? i.refCost : (inv?.unitCost || 0)),
+              ...i
+            };
+          }));
           setNotes(existing.notes || '');
           if (existing.shippingCost) setShippingCost(Number(existing.shippingCost));
           if (existing.paymentTerms) setPaymentTerms(existing.paymentTerms);
@@ -299,7 +313,8 @@ export const POBuilder: React.FC = () => {
     const newRows: POItem[] = [];
     for (const i of mrItems) {
       const inv = inventory.find((x: any) => x.id === i.inventoryId);
-      const unitPrice = Number(i.unitCost !== undefined ? i.unitCost : inv?.unitCost) || 0;
+      const stdCost = Number(inv?.unitCost) || 0;
+      const unitPrice = Number(i.unitCost !== undefined ? i.unitCost : stdCost) || 0;
       const requestedQty = Number(i.qty) || 0;
       const key = i.inventoryId || i.desc || i.id;
       const alreadyOrdered = orderedMap[key] || 0;
@@ -313,6 +328,7 @@ export const POBuilder: React.FC = () => {
         desc: i.desc || inv?.name || '',
         qty: itemQty,
         unitPrice,
+        refCost: stdCost,
         taxRate: 0,
         discount: 0,
         total: itemQty * unitPrice,
@@ -350,7 +366,11 @@ export const POBuilder: React.FC = () => {
           const invItem = inventory.find(i => i.id === value);
           if (invItem) {
             updated.desc = invItem.name;
-            updated.unitPrice = Number(invItem.unitCost) || 0;
+            const cost = Number(invItem.unitCost) || 0;
+            updated.refCost = cost;
+            if (!updated.unitPrice || updated.unitPrice === 0) {
+              updated.unitPrice = cost;
+            }
             updated.unit = invItem.uom || 'Nos';
             updated.uom = invItem.uom || 'Nos';
           }
@@ -469,19 +489,11 @@ export const POBuilder: React.FC = () => {
   };
 
   const exportPDF = () => {
-    const element = document.getElementById('po-pdf-content');
-    if (!element) return;
-    const clone = element.cloneNode(true) as HTMLElement;
-    clone.style.display = 'block';
-    document.body.appendChild(clone);
-    const opt: any = { 
-      margin: 10, 
-      filename: `PO_${docNo}.pdf`, 
-      image: { type: 'jpeg', quality: 0.98 }, 
-      html2canvas: { scale: 2, useCORS: true }, 
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } 
-    };
-    html2pdf().from(clone).set(opt).save().then(() => document.body.removeChild(clone));
+    exportToPdf('po-print-section', `PO_${docNo}.pdf`);
+  };
+
+  const handlePrint = () => {
+    printElement('po-print-section', `PO_${docNo}`);
   };
 
   const supplierObj = suppliers.find((s: any) => s.id === supplierId);
@@ -529,7 +541,8 @@ export const POBuilder: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" icon={Printer} onClick={exportPDF}>Export PDF</Button>
+          <Button variant="ghost" size="sm" icon={Printer} onClick={handlePrint}>Print PO</Button>
+          <Button variant="ghost" size="sm" icon={FileText} onClick={exportPDF}>Export PDF</Button>
           <Button variant="primary" size="sm" icon={Save} onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Order'}
           </Button>
@@ -798,7 +811,7 @@ export const POBuilder: React.FC = () => {
                     <tr className="text-[10px] uppercase tracking-widest text-muted">
                       <th className="px-5 py-3">Material / Item</th>
                       <th className="px-3 py-3 text-right">Qty</th>
-                      <th className="px-3 py-3 text-right">Price</th>
+                      <th className="px-3 py-3 text-right">Order Price (LKR)</th>
                       <th className="px-3 py-3 text-right">Disc</th>
                       <th className="px-3 py-3 text-right">Tax%</th>
                       <th className="px-5 py-3 text-right">Total</th>
@@ -851,7 +864,36 @@ export const POBuilder: React.FC = () => {
                           )}
                         </td>
                         <td className="p-2 text-right align-top">
-                          <input type="number" step="0.01" value={item.unitPrice} onChange={e => updateItem(item.id, 'unitPrice', Number(e.target.value))} className="w-24 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right focus:border-primary font-mono" />
+                          <div className="flex flex-col items-end gap-1">
+                            <input 
+                              type="number" 
+                              step="0.01" 
+                              min="0"
+                              value={item.unitPrice} 
+                              onChange={e => updateItem(item.id, 'unitPrice', Number(e.target.value))} 
+                              className="w-24 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right focus:border-primary font-mono font-bold" 
+                            />
+                            {item.refCost !== undefined && item.refCost > 0 && (
+                              <div className="text-[10px] text-right font-mono flex items-center justify-end gap-1 mt-0.5">
+                                <span className="text-muted" title="Inventory standard cost">
+                                  Std: {formatCurrency(item.refCost, true)}
+                                </span>
+                                {item.unitPrice !== item.refCost && (
+                                  <span 
+                                    className={`font-bold text-[9px] px-1 rounded ${
+                                      item.unitPrice > item.refCost 
+                                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                                        : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                    }`}
+                                    title={item.unitPrice > item.refCost ? 'Order price exceeds standard cost' : 'Order price is below standard cost'}
+                                  >
+                                    {item.unitPrice > item.refCost ? '▲' : '▼'}
+                                    {Math.abs(((item.unitPrice - item.refCost) / item.refCost) * 100).toFixed(0)}%
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2 text-right align-top">
                           <input type="number" step="0.01" value={item.discount} onChange={e => updateItem(item.id, 'discount', Number(e.target.value))} className="w-16 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right focus:border-primary font-mono" />
@@ -1039,174 +1081,31 @@ export const POBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* HIDDEN PRINT / PDF TEMPLATE */}
-      <div id="po-pdf-content" style={{ display: 'none', background: 'white', color: 'black', padding: '40px', fontFamily: 'Arial, sans-serif' }}>
-         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '3px solid #1a202c', paddingBottom: '20px', marginBottom: '25px' }}>
-            <div>
-               <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.5px' }}>PURCHASE ORDER</h1>
-               <div style={{ marginTop: '10px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>PO Number</p>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{docNo}</p>
-                  </div>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Date</p>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{date}</p>
-                  </div>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Expected Date</p>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{expectedDate || 'ASAP'}</p>
-                  </div>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Ref MR(s)</p>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#2b6cb0' }}>{selectedMrIds.length > 0 ? selectedMrIds.join(', ') : 'N/A'}</p>
-                  </div>
-               </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-               <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#2b6cb0' }}>REX INDUSTRIES</h2>
-               <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#4a5568' }}>No. 451/2, Chilaw Road, Kattuwa, Negombo, Sri Lanka</p>
-               <p style={{ margin: 0, fontSize: '11px', color: '#4a5568' }}>Tel: 031-2233117 | Email: info@rexgroup.lk</p>
-            </div>
-         </div>
-
-         {/* VENDOR & SHIPPING DETAILS */}
-         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '40px', marginBottom: '25px', fontSize: '12px' }}>
-            <div style={{ flex: 1, border: '1px solid #e2e8f0', padding: '12px', borderRadius: '4px' }}>
-               <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Vendor</p>
-               <h3 style={{ margin: '4px 0', fontSize: '14px', fontWeight: 'bold' }}>{supplierObj?.name || 'Supplier'}</h3>
-               {supplierDetails.address && <p style={{ margin: '2px 0', color: '#4a5568' }}>{supplierDetails.address}</p>}
-               {supplierDetails.contact && <p style={{ margin: '2px 0', color: '#4a5568' }}>Contact: {supplierDetails.contact}</p>}
-               {supplierDetails.email && <p style={{ margin: '2px 0', color: '#4a5568' }}>Email: {supplierDetails.email}</p>}
-               {supplierDetails.phone && <p style={{ margin: '2px 0', color: '#4a5568' }}>Phone: {supplierDetails.phone}</p>}
-               {supplierDetails.vat && <p style={{ margin: '2px 0', color: '#4a5568', fontWeight: 'bold' }}>VAT No: {supplierDetails.vat}</p>}
-            </div>
-            <div style={{ flex: 1, border: '1px solid #e2e8f0', padding: '12px', borderRadius: '4px' }}>
-               <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Shipping & Payment</p>
-               <p style={{ margin: '4px 0', color: '#4a5568' }}><strong>Shipping Method:</strong> {shippingMethod}</p>
-               <p style={{ margin: '4px 0', color: '#4a5568' }}><strong>Payment Terms:</strong> {paymentTerms}</p>
-               <p style={{ margin: '4px 0', color: '#4a5568' }}><strong>Delivery Location:</strong> Rex Industries Factory, Kattuwa</p>
-            </div>
-         </div>
-
-         {/* ITEMS TABLE */}
-         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ background: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
-                <th style={{ padding: '8px 10px', textAlign: 'center', width: '40px' }}>#</th>
-                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Item Description</th>
-                {selectedMrIds.length > 1 && <th style={{ padding: '8px 10px', textAlign: 'center', width: '80px' }}>MR Ref</th>}
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '60px' }}>Qty</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '90px' }}>Unit Price</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '80px' }}>Discount</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '70px' }}>Tax</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: '110px' }}>Total Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, idx) => {
-                const inv = inventory.find(i => i.id === it.inventoryId);
-                return (
-                  <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '8px 10px', textAlign: 'center', color: '#718096' }}>{idx + 1}</td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <strong>{inv?.name || it.desc || it.inventoryId}</strong>
-                      {it.desc && it.desc !== inv?.name && <div style={{ fontSize: '10px', color: '#718096' }}>{it.desc}</div>}
-                    </td>
-                    {selectedMrIds.length > 1 && (
-                      <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: '10px', color: '#2b6cb0', fontWeight: 'bold' }}>
-                        {it.mrId || '-'}
-                      </td>
-                    )}
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>
-                      {it.qty} {it.unit || it.uom || inv?.uom || ''}
-                    </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(Number(it.unitPrice) || 0)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{Number(it.discount) > 0 ? formatCurrency(Number(it.discount)) : '-'}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{Number(it.taxRate) > 0 ? `${it.taxRate}%` : '0%'}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>{formatCurrency(Number(it.total) || 0)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-         </table>
-
-         {/* TOTALS & TERMS */}
-         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '30px', marginBottom: '30px' }}>
-           <div style={{ flex: 1 }}>
-             {notes && (
-               <div style={{ marginBottom: '15px', fontSize: '11px', color: '#4a5568', background: '#f7fafc', padding: '10px', borderLeft: '3px solid #2b6cb0' }}>
-                 <strong>Notes & Remarks:</strong>
-                 <div style={{ whiteSpace: 'pre-line', marginTop: '3px' }}>{notes}</div>
-               </div>
-             )}
-             <div style={{ fontSize: '10px', color: '#718096', whiteSpace: 'pre-line' }}>
-               <strong>Terms & Conditions:</strong><br />
-               {terms}
-             </div>
-           </div>
-
-           <div style={{ width: '260px', background: '#f7fafc', padding: '15px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-               <span>Subtotal:</span>
-               <span style={{ fontWeight: 'bold' }}>{formatCurrency(subtotal)}</span>
-             </div>
-             {totalDiscount > 0 && (
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#e53e3e' }}>
-                 <span>Discount:</span>
-                 <span>-{formatCurrency(totalDiscount)}</span>
-               </div>
-             )}
-             {taxEnabled && selectedTaxProfile && taxBreakdown ? (
-               <>
-                 {taxBreakdown.tax1Rate > 0 && (
-                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                     <span>{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%):</span>
-                     <span style={{ fontWeight: 'bold' }}>{formatCurrency(taxBreakdown.tax1Amount)}</span>
-                   </div>
-                 )}
-                 {taxBreakdown.tax2Rate > 0 && (
-                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                     <span>{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%):</span>
-                     <span style={{ fontWeight: 'bold' }}>{formatCurrency(taxBreakdown.tax2Amount)}</span>
-                   </div>
-                 )}
-               </>
-             ) : (
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                 <span>Tax Amount:</span>
-                 <span>{formatCurrency(totalTax)}</span>
-               </div>
-             )}
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-               <span>Shipping:</span>
-               <span>{formatCurrency(shippingCost)}</span>
-             </div>
-             <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '2px solid #cbd5e0', fontSize: '14px', fontWeight: 900, color: '#2b6cb0' }}>
-               <span>Grand Total:</span>
-               <span>{formatCurrency(grandTotal)}</span>
-             </div>
-           </div>
-         </div>
-
-         {/* SIGNATURE SECTION */}
-         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '50px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-           <div style={{ textAlign: 'center', width: '180px' }}>
-             <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
-             <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Prepared By</p>
-             <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>Purchasing Officer</p>
-           </div>
-           <div style={{ textAlign: 'center', width: '180px' }}>
-             <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
-             <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Checked By</p>
-             <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>Finance Department</p>
-           </div>
-           <div style={{ textAlign: 'center', width: '180px' }}>
-             <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
-             <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Authorized Signatory</p>
-             <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>Managing Director</p>
-           </div>
-         </div>
+      {/* HIDDEN PRINT / PDF TEMPLATE (REX STANDARD FORMAT) */}
+      <div style={{ display: 'none' }}>
+        <POPrintView
+          po={{
+            id: docNo,
+            supplierId,
+            date,
+            expectedDate,
+            items,
+            subtotal,
+            tax: totalTax,
+            shippingCost,
+            totalAmount: grandTotal,
+            notes,
+            terms,
+            shippingMethod,
+            paymentTerms,
+            status,
+            mrIds: selectedMrIds,
+            taxBreakdown,
+            createdBy: user?.name || 'Purchasing Officer'
+          }}
+          supplier={supplierObj}
+          settings={settings}
+        />
       </div>
 
     {/* Quick Modals for Vendors and Items */}

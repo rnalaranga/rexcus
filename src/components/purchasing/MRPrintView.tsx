@@ -31,142 +31,293 @@ export const MRPrintView: React.FC<MRPrintViewProps> = ({ mr, settings }) => {
     workOrders.unshift(mr.workOrderNo);
   }
 
+  const logoUrl = settings?.company_logo || settings?.logo || settings?.companyLogo || '/rex-logo.png';
+
   return (
     <div
       id="mr-print-section"
-      className="bg-white text-black p-8 border border-neutral-300 font-sans mx-auto text-xs"
-      style={{ width: '100%', maxWidth: '210mm', minHeight: '297mm', color: '#000', boxSizing: 'border-box' }}
+      className="bg-white text-black font-sans mx-auto text-xs"
+      style={{
+        width: '100%',
+        maxWidth: '794px',
+        margin: '0 auto',
+        padding: '0',
+        color: '#000000',
+        backgroundColor: '#ffffff',
+        border: '1px solid #000000',
+        boxSizing: 'border-box',
+        fontFamily: 'Arial, Helvetica, sans-serif'
+      }}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between border-b-2 border-black pb-4 mb-5">
-        <div>
-          <h1 className="text-2xl font-black uppercase tracking-tight text-black">
-            {settings?.company_name || 'REX INDUSTRIES (PVT) LTD'}
+      <style>{`
+        #mr-print-section * {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        #mr-print-section table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+        @media print {
+          @page { size: A4 portrait; margin: 8mm 10mm; }
+          html, body { background: #fff !important; color: #000 !important; }
+          #mr-print-section { border: 1px solid #000000 !important; max-width: 100% !important; }
+        }
+      `}</style>
+
+      {/* ── 1. HEADER (Signature Rex Industries standard format) ── */}
+      <div className="flex p-3 border-b border-black items-center">
+        {/* Logo (Left 32%) */}
+        <div className="w-[32%] flex justify-center items-center px-2">
+          <img
+            src={logoUrl}
+            alt="Rex Industries Logo"
+            className="max-h-20 object-contain"
+            onError={(e) => {
+              const target = e.currentTarget;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) {
+                const fallback = document.createElement('div');
+                fallback.className = 'text-4xl font-black text-red-600 tracking-tighter';
+                fallback.style.fontFamily = 'Impact, sans-serif';
+                fallback.innerText = 'REX';
+                parent.appendChild(fallback);
+              }
+            }}
+          />
+        </div>
+
+        {/* Company Info (Right 68%) */}
+        <div className="w-[68%] pl-3 border-l border-black/40">
+          <h1
+            className="text-[19px] font-black mb-1 leading-tight tracking-tight text-black"
+            style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}
+          >
+            {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
           </h1>
-          <p className="text-xs text-neutral-600 mt-1">
-            {settings?.company_address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, Sri Lanka'}
-          </p>
-          <p className="text-xs text-neutral-600">
-            Tel: {settings?.company_phone || '+94 31 2233117'} • Email: {settings?.company_email || 'info@rexgroup.lk'}
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="bg-neutral-900 text-white font-black text-sm px-3.5 py-1.5 uppercase tracking-widest inline-block shadow-sm">
-            MATERIAL REQUISITION NOTE
-          </div>
-          <p className="text-sm font-mono font-bold mt-2 text-black">MR #: {mr.id}</p>
-          <p className="text-xs text-neutral-600">Date: {formatDate(mr.date || mr.createdAt)}</p>
-          <p className="text-xs text-neutral-600">
-            Required By: <span className="font-semibold text-black">{mr.requiredDate ? formatDate(mr.requiredDate) : 'Immediate'}</span>
-          </p>
-        </div>
-      </div>
-
-      {/* Meta Grid */}
-      <div className="grid grid-cols-2 gap-4 border border-black p-4 mb-5 text-xs">
-        <div className="space-y-1.5 border-r border-black/30 pr-4">
-          <p className="font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Requisition Information:</p>
-          <p className="text-neutral-700">
-            <strong>Department:</strong> <span className="font-semibold text-black">{mr.department || 'Production / Engineering'}</span>
-          </p>
-          <p className="text-neutral-700">
-            <strong>Requested By:</strong> <span className="font-semibold text-black">{mr.requestedBy || 'Store Officer'}</span>
-          </p>
-          <p className="text-neutral-700">
-            <strong>Priority:</strong>{' '}
-            <span className={`font-bold uppercase ${
-              mr.priority === 'urgent' ? 'text-red-700' : mr.priority === 'high' ? 'text-amber-700' : 'text-blue-700'
-            }`}>
-              {mr.priority || 'Normal'}
-            </span>
-          </p>
-        </div>
-
-        <div className="space-y-1.5 pl-2">
-          <p className="font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Production & Tracking:</p>
-          <p className="text-neutral-700">
-            <strong>Linked Work Order(s):</strong>{' '}
-            <span className="font-mono font-bold text-purple-700">
-              {workOrders.length > 0 ? workOrders.join(', ') : 'General Inventory / Maintenance'}
-            </span>
-          </p>
-          <p className="text-neutral-700">
-            <strong>Current MR Status:</strong>{' '}
-            <span className="font-bold uppercase text-emerald-800">{mr.status || 'Pending'}</span>
-          </p>
-          {mr.poId && (
-            <p className="text-neutral-700">
-              <strong>Generated PO:</strong> <span className="font-mono font-bold text-blue-700">{mr.poId}</span>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Items Table */}
-      <div className="border border-black mb-5 overflow-hidden">
-        <table className="w-full text-left text-xs border-collapse">
-          <thead>
-            <tr className="bg-neutral-100 border-b border-black text-[10px] uppercase font-bold text-neutral-800">
-              <th className="p-2.5 border-r border-black w-10 text-center">#</th>
-              <th className="p-2.5 border-r border-black">Item & Technical Description</th>
-              <th className="p-2.5 border-r border-black text-right w-24">Req. Qty</th>
-              <th className="p-2.5 border-r border-black text-center w-24">Unit</th>
-              <th className="p-2.5 text-left">Purpose / Specifications</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-black/30">
-            {items.map((it: any, idx: number) => (
-              <tr key={idx}>
-                <td className="p-2.5 border-r border-black text-center font-mono text-neutral-600">{idx + 1}</td>
-                <td className="p-2.5 border-r border-black">
-                  <p className="font-bold text-black">{it.desc || it.name || it.inventoryId || 'Item'}</p>
-                  {it.inventoryId && it.desc && (
-                    <p className="text-[10px] font-mono text-neutral-500">Item Code: {it.inventoryId}</p>
-                  )}
-                </td>
-                <td className="p-2.5 border-r border-black text-right font-mono font-bold text-black">
-                  {it.qty || 1}
-                </td>
-                <td className="p-2.5 border-r border-black text-center font-mono text-neutral-700">
-                  {it.unit || it.uom || 'Nos'}
-                </td>
-                <td className="p-2.5 text-neutral-700">
-                  {it.notes || it.remarks || it.purpose || it.spec || '-'}
+          <table className="text-[11px] leading-tight w-full">
+            <tbody>
+              <tr>
+                <td className="font-bold w-14 align-top py-0.5">Office</td>
+                <td className="align-top py-0.5">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 whitespace-pre-line text-neutral-800">
+                      {settings?.company_address || settings?.companyAddress || 'No.451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}
+                    </span>
+                  </div>
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
+              <tr>
+                <td className="font-bold w-14 align-top py-0.5">Tel.</td>
+                <td className="align-top py-0.5">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 text-neutral-800">
+                      {settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td className="font-bold w-14 align-top py-0.5">E-mail</td>
+                <td className="align-top py-0.5">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 text-neutral-800">
+                      {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td className="font-bold w-14 align-top py-0.5">Web</td>
+                <td className="align-top py-0.5">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 text-neutral-800">
+                      {settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Remarks & Justification */}
-      <div className="border border-black p-3 mb-8 bg-neutral-50">
-        <p className="font-bold uppercase tracking-wider text-[10px] text-neutral-600 mb-1">
-          Requisition Remarks / Justification:
-        </p>
-        <p className="text-neutral-800 whitespace-pre-line leading-relaxed">
-          {mr.notes || 'Materials requested for factory operational and manufacturing requirements.'}
-        </p>
+      {/* ── 2. DOCUMENT TITLE BAR ── */}
+      <div className="text-center font-bold text-[14px] py-1 border-b border-black tracking-widest uppercase bg-gray-50/70">
+        MATERIAL REQUISITION NOTE
       </div>
 
-      {/* Approvals / Signatures */}
-      <div className="grid grid-cols-3 gap-8 mt-16 pt-4 border-t border-neutral-300 text-xs">
-        <div className="text-center">
-          <div className="border-t border-black pt-1.5 mt-8">
-            <p className="font-bold text-black">{mr.requestedBy || 'Initiator'}</p>
-            <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-0.5">Requested By</p>
+      {/* ── 3. METADATA GRID ── */}
+      <div className="flex border-b border-black text-[11px]">
+        {/* REQUISITION INFO (Left 55%) */}
+        <div className="w-[55%] p-2.5 border-r border-black flex flex-col justify-between">
+          <div className="space-y-1">
+            <div className="font-bold italic text-[10px] text-gray-700">REQUISITION SOURCE</div>
+            <div className="flex items-start">
+              <span className="w-24 font-bold shrink-0">Department</span>
+              <span className="font-bold mr-1 shrink-0">:</span>
+              <span className="flex-1 font-semibold text-black">{mr.department || 'Production / Factory'}</span>
+            </div>
+            <div className="flex items-start">
+              <span className="w-24 font-bold shrink-0">Requested By</span>
+              <span className="font-bold mr-1 shrink-0">:</span>
+              <span className="flex-1 font-semibold text-black">{mr.requestedBy || 'Store Officer'}</span>
+            </div>
+            <div className="flex items-start">
+              <span className="w-24 font-bold shrink-0">Priority Level</span>
+              <span className="font-bold mr-1 shrink-0">:</span>
+              <span className={`font-bold uppercase ${
+                mr.priority === 'urgent' ? 'text-red-700' : mr.priority === 'high' ? 'text-amber-700' : 'text-blue-700'
+              }`}>
+                {mr.priority || 'Normal'}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="text-center">
-          <div className="border-t border-black pt-1.5 mt-8">
-            <p className="font-bold text-black">Head of Department / Engineer</p>
-            <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-0.5">Verified & Endorsed</p>
+
+        {/* ORDER / TRACKING DETAILS (Right 45%) */}
+        <div className="w-[45%] p-0">
+          <table className="w-full h-full text-[11px]">
+            <tbody>
+              <tr className="border-b border-black">
+                <td className="p-1.5 border-r border-black font-bold w-28 bg-gray-50/50">MR DATE</td>
+                <td className="p-1.5 font-mono">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1">{formatDate(mr.date || mr.createdAt)}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr className="border-b border-black">
+                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50">MR NO</td>
+                <td className="p-1.5 font-bold font-mono text-black text-[12px]">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1">{mr.id}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr className="border-b border-black">
+                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50">REQUIRED BY</td>
+                <td className="p-1.5 font-mono">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 font-semibold">{mr.requiredDate ? formatDate(mr.requiredDate) : 'Immediate'}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr className="border-b border-black">
+                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50">LINKED WO(S)</td>
+                <td className="p-1.5 font-mono">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1 font-bold text-purple-700">{workOrders.length > 0 ? workOrders.join(', ') : 'General / Stock'}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50">MR STATUS</td>
+                <td className="p-1.5">
+                  <div className="flex items-start">
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="font-bold uppercase text-emerald-800">{mr.status || 'Pending'}</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── 4. ITEMS TABLE ── */}
+      <table className="w-full text-[11px] border-collapse" style={{ tableLayout: 'fixed', borderSpacing: 0 }}>
+        <colgroup>
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '52%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '25%' }} />
+        </colgroup>
+        <thead>
+          <tr className="font-bold border-b border-black text-center bg-gray-50 text-[10.5px]">
+            <th className="p-1.5 border-r border-black font-bold text-center">NO</th>
+            <th className="p-1.5 border-r border-black font-bold text-center">ITEM & TECHNICAL DESCRIPTION</th>
+            <th className="p-1.5 border-r border-black font-bold text-center">REQ. QTY</th>
+            <th className="p-1.5 font-bold text-center">PURPOSE / SPECIFICATIONS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it: any, idx: number) => (
+            <tr key={idx} className="border-b border-black/20">
+              <td className="p-2 border-r border-black text-center align-top font-mono text-neutral-600">
+                {idx + 1}
+              </td>
+              <td className="p-2 border-r border-black align-top">
+                <div className="font-bold text-black leading-tight">
+                  {it.desc || it.name || it.inventoryId || 'Item'}
+                </div>
+                {it.inventoryId && (it.desc || it.name) && (
+                  <div className="text-[9.5px] font-mono text-neutral-500 mt-0.5">
+                    Item Code: {it.inventoryId}
+                  </div>
+                )}
+              </td>
+              <td className="p-2 border-r border-black text-center align-top font-mono font-bold text-black">
+                {it.qty || 1} {it.unit || it.uom || 'Nos'}
+              </td>
+              <td className="p-2 align-top text-neutral-700">
+                {it.notes || it.remarks || it.purpose || it.spec || '-'}
+              </td>
+            </tr>
+          ))}
+          {items.length === 0 && (
+            <tr>
+              <td colSpan={4} className="p-6 text-center text-gray-400 italic">
+                No requisition line items entered.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* ── 5. REMARKS / JUSTIFICATION ── */}
+      <div className="p-3 border-t border-b border-black text-[10.5px]">
+        <div className="font-bold underline uppercase text-neutral-800 text-[10px] mb-1">
+          Remarks & Operational Justification:
+        </div>
+        <div className="whitespace-pre-line text-neutral-800 leading-relaxed">
+          {mr.notes || 'Materials requested for factory operational, fabrication, and engineering requirements.'}
+        </div>
+      </div>
+
+      {/* ── 6. SIGNATURES (Rex Standard 3-box approval) ── */}
+      <div className="grid grid-cols-3 border-collapse text-center text-[10px]">
+        <div className="p-3 border-r border-black flex flex-col justify-between min-h-[95px]">
+          <div className="text-left font-bold text-neutral-500 uppercase">REQUESTED BY</div>
+          <div className="mt-8 border-t border-black pt-1">
+            <div className="font-bold text-black text-[11px]">{mr.requestedBy || 'Initiator'}</div>
+            <div className="text-neutral-500 text-[9.5px]">Operations Officer</div>
           </div>
         </div>
-        <div className="text-center">
-          <div className="border-t border-black pt-1.5 mt-8">
-            <p className="font-bold text-black">Procurement & Stores Head</p>
-            <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-0.5">Approved for Purchase</p>
+
+        <div className="p-3 border-r border-black flex flex-col justify-between min-h-[95px]">
+          <div className="text-left font-bold text-neutral-500 uppercase">VERIFIED & ENDORSED</div>
+          <div className="mt-8 border-t border-black pt-1">
+            <div className="font-bold text-black text-[11px]">Head of Department / Engineer</div>
+            <div className="text-neutral-500 text-[9.5px]">Technical Assessment</div>
+          </div>
+        </div>
+
+        <div className="p-3 flex flex-col justify-between min-h-[95px]">
+          <div className="text-left font-bold text-neutral-500 uppercase">PURCHASING APPROVAL</div>
+          <div className="mt-8 border-t border-black pt-1">
+            <div className="font-bold text-black text-[11px]">Procurement & Stores Head</div>
+            <div className="text-neutral-500 text-[9.5px]">Rex Industries (Pvt) Ltd</div>
           </div>
         </div>
       </div>

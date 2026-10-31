@@ -91,6 +91,7 @@ export const GRNBuilder: React.FC = () => {
   const [status, setStatus] = useState<string>('received');
   
   const [items, setItems] = useState<any[]>([]);
+  const [updateInventoryCosts, setUpdateInventoryCosts] = useState<boolean>(true);
   const [notes, setNotes] = useState<string>('All items inspected and received in good condition.');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
 
@@ -203,7 +204,8 @@ export const GRNBuilder: React.FC = () => {
             qtyReceived: Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.receivedQty !== undefined ? item.receivedQty : item.qty || 0)),
             condition: item.condition || 'Good',
             unit: item.unit || 'Nos',
-            unitCost: item.unitCost || 0
+            poUnitPrice: Number(item.poUnitPrice !== undefined ? item.poUnitPrice : (item.unitPrice || item.unitCost || 0)),
+            unitCost: Number(item.unitCost !== undefined ? item.unitCost : (item.unitPrice || 0))
           }));
 
           setItems(formatted);
@@ -280,6 +282,8 @@ export const GRNBuilder: React.FC = () => {
         const prev = previousReceivedMap[key] || 0;
         const rem = Math.max(0, ordered - prev);
 
+        const poPrice = Number(i.unitPrice !== undefined ? i.unitPrice : (i.unitCost || 0));
+
         consolidatedItems.push({
           ...i,
           id: (i.id || '') + '_' + pid + '_' + idx,
@@ -292,7 +296,8 @@ export const GRNBuilder: React.FC = () => {
           qtyReceived: rem,
           condition: 'Good',
           unit: i.unit || 'Nos',
-          unitCost: i.unitPrice || 0
+          poUnitPrice: poPrice,
+          unitCost: Number(i.unitCost !== undefined ? i.unitCost : poPrice)
         });
       }
     }
@@ -442,6 +447,7 @@ export const GRNBuilder: React.FC = () => {
       mtrCertNo: mtrCertNo.trim() || null,
       quarantineNotes: hasDamaged ? 'Material quarantined due to damaged/rejected items on receipt (ISO 8.5.4 hold)' : null,
       items,
+      updateInventoryCosts,
       status: 'received',
       notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${notes}`
     };
@@ -459,6 +465,10 @@ export const GRNBuilder: React.FC = () => {
   const totalOrdered = items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
   const totalReceived = items.reduce((sum, item) => sum + Number(item.qtyReceived || 0), 0);
   const progress = totalOrdered > 0 ? (totalReceived / totalOrdered) * 100 : (items.length > 0 ? 100 : 0);
+
+  const totalGRNValue = items.reduce((sum, item) => sum + (Number(item.qtyReceived || 0) * Number(item.unitCost || 0)), 0);
+  const totalPOExpectedValue = items.reduce((sum, item) => sum + (Number(item.qtyReceived || 0) * Number(item.poUnitPrice !== undefined ? item.poUnitPrice : (item.unitCost || 0))), 0);
+  const netPriceVariance = totalGRNValue - totalPOExpectedValue;
 
   // Available POs for selection (optionally filtered by supplier)
   const availablePOs = useMemo(() => {
@@ -878,6 +888,69 @@ export const GRNBuilder: React.FC = () => {
                    : `${totalReceived} of ${totalOrdered} units received`}
                </p>
             </GlassCard>
+
+            {/* GRN Valuation & Price Variance Summary */}
+            <GlassCard className="p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-theme-subtle pb-2">
+                <h3 className="font-bold text-[11px] uppercase tracking-wider text-muted flex items-center gap-1.5">
+                  <FileText size={13} className="text-primary" /> Receipt Valuation
+                </h3>
+                <span className="text-[10px] font-mono font-bold text-muted">LKR</span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Total Received Value:</span>
+                  <span className="font-mono font-bold text-sm text-primary">
+                    {formatCurrency(totalGRNValue, true)}
+                  </span>
+                </div>
+
+                {receiptMode === 'po' && (
+                  <>
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-muted">PO Expected Value:</span>
+                      <span className="font-mono text-secondary">
+                        {formatCurrency(totalPOExpectedValue, true)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle text-[11px]">
+                      <span className="font-medium text-muted">Price Variance:</span>
+                      <span className={`font-mono font-bold ${
+                        netPriceVariance === 0 
+                          ? 'text-muted' 
+                          : netPriceVariance > 0 
+                          ? 'text-amber-500' 
+                          : 'text-emerald-500'
+                      }`}>
+                        {netPriceVariance === 0 ? (
+                          '0.00 (Matched)'
+                        ) : netPriceVariance > 0 ? (
+                          `+${formatCurrency(netPriceVariance, true)} (▲ Higher)`
+                        ) : (
+                          `-${formatCurrency(Math.abs(netPriceVariance), true)} (▼ Savings)`
+                        )}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {!isViewMode && (
+                <div className="pt-2.5 border-t border-theme-subtle">
+                  <label className="flex items-start gap-2 cursor-pointer text-[11px] text-secondary leading-tight select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={updateInventoryCosts} 
+                      onChange={e => setUpdateInventoryCosts(e.target.checked)} 
+                      className="mt-0.5 rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                    />
+                    <span>Update inventory purchase cost with this GRN unit cost</span>
+                  </label>
+                </div>
+              )}
+            </GlassCard>
           </div>
 
           {/* Right Column: Freight Breakdown & Inspection Notes */}
@@ -948,14 +1021,17 @@ export const GRNBuilder: React.FC = () => {
                     ) : (
                       <tr className="text-[10px] uppercase tracking-widest text-muted">
                         {selectedPoIds.length > 1 && <th className="px-3 py-3 text-center">PO #</th>}
-                        <th className="px-5 py-3 w-1/3">Material Description</th>
-                        <th className="px-3 py-3 text-center">Ordered Qty</th>
-                        {!isViewMode && <th className="px-3 py-3 text-center">Prev. Received</th>}
-                        {!isViewMode && <th className="px-3 py-3 text-center text-amber-500">Remaining Balance</th>}
+                        <th className="px-5 py-3 w-1/4">Material Description</th>
+                        <th className="px-3 py-3 text-center">Ordered</th>
+                        {!isViewMode && <th className="px-3 py-3 text-center">Prev. Recv</th>}
+                        {!isViewMode && <th className="px-3 py-3 text-center text-amber-500">Remaining</th>}
                         <th className="px-3 py-3 text-center text-primary">
-                          {isViewMode ? 'Received in this GRN' : 'Receiving This GRN'}
+                          {isViewMode ? 'Received Qty' : 'Receiving Qty'}
                         </th>
-                        <th className="px-5 py-3 text-right">Condition</th>
+                        <th className="px-3 py-3 text-right">PO Price (LKR)</th>
+                        <th className="px-3 py-3 text-right text-emerald-500 font-bold">GRN Unit Cost (LKR)</th>
+                        <th className="px-3 py-3 text-right">Line Total</th>
+                        <th className="px-4 py-3 text-center">Condition</th>
                       </tr>
                     )}
                   </thead>
@@ -1071,6 +1147,12 @@ export const GRNBuilder: React.FC = () => {
                         const ordered = Number(item.qty || 0);
                         const prevRecv = Number(item.prevReceived || 0);
                         const remaining = item.remainingQty !== undefined ? Number(item.remainingQty) : Math.max(0, ordered - prevRecv);
+                        const poPrice = Number(item.poUnitPrice !== undefined ? item.poUnitPrice : (item.unitPrice || item.unitCost || 0));
+                        const actualCost = Number(item.unitCost !== undefined ? item.unitCost : poPrice);
+                        const qtyRecv = Number(item.qtyReceived || 0);
+                        const lineTotal = qtyRecv * actualCost;
+                        const priceDiff = actualCost - poPrice;
+                        const diffPercent = poPrice > 0 ? ((priceDiff / poPrice) * 100).toFixed(1) : '0';
                         return (
                           <tr key={idx} className="hover:bg-surface/30 transition-colors">
                             {selectedPoIds.length > 1 && (
@@ -1140,7 +1222,84 @@ export const GRNBuilder: React.FC = () => {
                               )}
                             </td>
 
-                            <td className="p-3 pr-5 text-right">
+                            {/* PO Reference Unit Price */}
+                            <td className="p-3 text-right">
+                              <span className="font-mono text-xs font-semibold text-secondary">
+                                {formatCurrency(poPrice, true)}
+                              </span>
+                            </td>
+
+                            {/* Editable Actual Received Unit Cost */}
+                            <td className="p-3 text-right">
+                              {isViewMode ? (
+                                <div className="flex flex-col items-end">
+                                  <span className="font-mono text-xs font-bold text-primary">
+                                    {formatCurrency(actualCost, true)}
+                                  </span>
+                                  {priceDiff !== 0 && (
+                                    <span className={`text-[9px] font-bold mt-0.5 ${priceDiff > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                      {priceDiff > 0 ? `▲ +${formatCurrency(priceDiff, true)} (+${diffPercent}%)` : `▼ -${formatCurrency(Math.abs(priceDiff), true)} (${diffPercent}%)`}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <input 
+                                      type="number" 
+                                      min="0" 
+                                      step="any" 
+                                      value={item.unitCost !== undefined ? item.unitCost : poPrice} 
+                                      onChange={e => {
+                                        const newItems = [...items];
+                                        newItems[idx].unitCost = Number(e.target.value);
+                                        setItems(newItems);
+                                      }} 
+                                      className="w-24 bg-surface border border-theme-subtle px-2 py-1 rounded text-xs text-right font-mono font-bold text-primary focus:border-primary outline-none" 
+                                    />
+                                    {actualCost !== poPrice && poPrice > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newItems = [...items];
+                                          newItems[idx].unitCost = poPrice;
+                                          setItems(newItems);
+                                        }}
+                                        className="text-[9px] text-muted hover:text-primary underline cursor-pointer"
+                                        title="Reset to PO Price"
+                                      >
+                                        PO
+                                      </button>
+                                    )}
+                                  </div>
+                                  {priceDiff !== 0 && (
+                                    <span 
+                                      className={`text-[9px] font-bold px-1 rounded flex items-center gap-0.5 ${
+                                        priceDiff > 0 
+                                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                                          : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                      }`}
+                                      title={priceDiff > 0 ? 'Supplier price is higher than PO price' : 'Supplier price is lower than PO price'}
+                                    >
+                                      {priceDiff > 0 ? '▲ +' : '▼ -'}
+                                      {formatCurrency(Math.abs(priceDiff), true)} ({priceDiff > 0 ? `+${diffPercent}%` : `${diffPercent}%`})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Line Total Value */}
+                            <td className="p-3 text-right font-mono text-xs font-bold text-rex-600 dark:text-rex-300">
+                              <div>{formatCurrency(lineTotal, true)}</div>
+                              {priceDiff !== 0 && (
+                                <div className="text-[9px] text-muted font-normal mt-0.5">
+                                  PO: {formatCurrency(qtyRecv * poPrice, true)}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3 text-center">
                               {isViewMode ? (
                                 <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold ${
                                   item.condition === 'Good' || !item.condition
@@ -1173,7 +1332,7 @@ export const GRNBuilder: React.FC = () => {
                     )}
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={receiptMode === 'direct' ? (isViewMode ? 5 : 6) : (selectedPoIds.length > 1 ? 7 : 6)} className="p-8 text-center text-muted text-xs">
+                        <td colSpan={receiptMode === 'direct' ? (isViewMode ? 5 : 6) : (selectedPoIds.length > 1 ? 10 : 9)} className="p-8 text-center text-muted text-xs">
                           {receiptMode === 'direct' 
                             ? 'No materials added yet. Click "+ Add Material" above to record incoming items directly without a Purchase Order.'
                             : 'No items loaded. Select one or more Purchase Orders on the left to receive inventory.'}

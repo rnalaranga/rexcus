@@ -6004,6 +6004,9 @@ app.post('/api/purchasing/grns', async (req, res) => {
     }
     data.poIds = JSON.stringify(Array.from(targetPoIds));
 
+    const shouldUpdateCosts = data.updateInventoryCosts !== false;
+    delete data.updateInventoryCosts;
+
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     if (!data.updatedAt) data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
@@ -6013,13 +6016,19 @@ app.post('/api/purchasing/grns', async (req, res) => {
     for (const item of itemsArray) {
       const invId = item.inventoryId || item.id;
       const qtyRecv = Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.qty || 0));
+      const itemUnitCost = Number(item.unitCost !== undefined ? item.unitCost : (item.unitPrice || 0));
+      const totalCost = qtyRecv * itemUnitCost;
       if (invId && qtyRecv > 0) {
         try {
-          const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [invId]);
+          const [invRows]: any = await db.query('SELECT quantity, unitCost FROM inventory WHERE id = ?', [invId]);
           if (invRows.length > 0) {
             const currentQty = Number(invRows[0].quantity || 0);
             const newQty = currentQty + qtyRecv;
-            await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, invId]);
+            if (shouldUpdateCosts && itemUnitCost > 0) {
+              await db.query('UPDATE inventory SET quantity = ?, unitCost = ? WHERE id = ?', [newQty, itemUnitCost, invId]);
+            } else {
+              await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [newQty, invId]);
+            }
 
             const itemPoRef = item.poId || data.poId || 'N/A';
             const ledgerEntry = {
@@ -6028,8 +6037,10 @@ app.post('/api/purchasing/grns', async (req, res) => {
               date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
               type: 'IN',
               qty: qtyRecv,
+              unitCost: itemUnitCost,
+              totalCost,
               reference: data.id,
-              notes: `GRN Received (PO: ${itemPoRef})${item.condition ? ` - Condition: ${item.condition}` : ''}`
+              notes: `GRN Received (PO: ${itemPoRef}, Rate: LKR ${itemUnitCost})${item.condition ? ` - Condition: ${item.condition}` : ''}`
             };
             await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
           }
