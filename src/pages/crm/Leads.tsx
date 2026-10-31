@@ -1636,28 +1636,136 @@ export const Leads: React.FC = () => {
                     className="text-xs"
                   />
                   {formData.customerId && (() => {
-                     const sc = customers.find((x:any) => x.id === formData.customerId);
-                     if (sc && sc.contacts && sc.contacts.length > 0) {
-                        return (
-                           <div className="mt-3 bg-surface p-2 rounded border border-theme-subtle">
-                             <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1 block">Attention / Contact Person</label>
-                             <select className="w-full input-base text-xs" onChange={e => {
-                                 if (!e.target.value) {
-                                     setFormData((f: any) => ({...f, name: sc.name, email: sc.email, phone: sc.phone}));
-                                 } else {
-                                     const contact = sc.contacts.find((x:any) => x.id.toString() === e.target.value);
-                                     if (contact) setFormData((f: any) => ({...f, name: contact.name, email: contact.email, phone: contact.phone}));
-                                 }
-                             }}>
-                                <option value="">{sc.name} (Primary)</option>
-                                {sc.contacts.map((c: any, i: number) => (
-                                   <option key={i} value={c.id}>{c.name} {c.designation ? `- ${c.designation}` : ''}</option>
-                                ))}
-                             </select>
-                           </div>
-                        );
+                     const sc = customers?.find((x: any) => x.id === formData.customerId);
+                     if (!sc) return null;
+
+                     let rawContacts: any[] = [];
+                     if (Array.isArray(sc.contacts)) {
+                       rawContacts = sc.contacts;
+                     } else if (typeof sc.contacts === 'string' && sc.contacts.trim()) {
+                       try {
+                         const parsed = JSON.parse(sc.contacts);
+                         rawContacts = Array.isArray(parsed) ? parsed : [];
+                       } catch (e) {
+                         rawContacts = [];
+                       }
                      }
-                     return null;
+
+                     const contactOptions: Array<{
+                       id: string;
+                       name: string;
+                       designation?: string;
+                       phone?: string;
+                       email?: string;
+                       roleTag: string;
+                     }> = [];
+
+                     if (sc.name) {
+                       contactOptions.push({
+                         id: '__primary__',
+                         name: sc.name,
+                         designation: 'Primary Contact',
+                         phone: sc.phone || sc.phone2 || '',
+                         email: sc.email || '',
+                         roleTag: 'Primary'
+                       });
+                     }
+
+                     if (sc.financeContactName) {
+                       contactOptions.push({
+                         id: '__finance__',
+                         name: sc.financeContactName,
+                         designation: 'Finance',
+                         phone: sc.financeContactPhone || '',
+                         email: sc.financeContactEmail || '',
+                         roleTag: 'Finance'
+                       });
+                     }
+
+                     rawContacts.forEach((c: any, idx: number) => {
+                       if (c && typeof c === 'object' && (c.name || c.phone || c.email)) {
+                         const contactPhone = c.phone || c.mobile || c.tel || c.contactPhone || c.phone1 || '';
+                         contactOptions.push({
+                           id: String(c.id || `contact-${idx}`),
+                           name: c.name || `Contact ${idx + 1}`,
+                           designation: c.designation || '',
+                           phone: contactPhone,
+                           email: c.email || '',
+                           roleTag: c.designation || 'Additional'
+                         });
+                       }
+                     });
+
+                     if (contactOptions.length <= 1) return null;
+
+                     const currentSelectedId = contactOptions.find(c => 
+                       c.name.trim().toLowerCase() === (formData.name || '').trim().toLowerCase()
+                     )?.id || '__primary__';
+
+                     const handleSelectContact = (targetId: string) => {
+                       const chosen = contactOptions.find(c => c.id === targetId);
+                       if (!chosen) return;
+                       setFormData((f: any) => ({
+                         ...f,
+                         name: chosen.name,
+                         phone: chosen.phone ? chosen.phone : (sc.phone || f.phone || ''),
+                         email: chosen.email ? chosen.email : (sc.email || f.email || '')
+                       }));
+                     };
+
+                     return (
+                        <div className="mt-3 bg-surface p-2.5 rounded-lg border border-theme-subtle">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                              <User size={12} className="text-rex-500" />
+                              Attention / Contact Person
+                            </label>
+                            <span className="text-[10px] text-muted font-medium">
+                              {contactOptions.length} contacts available
+                            </span>
+                          </div>
+                          
+                          <select 
+                            className="w-full input-base text-xs font-medium cursor-pointer"
+                            value={currentSelectedId}
+                            onChange={e => handleSelectContact(e.target.value)}
+                          >
+                            {contactOptions.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} {c.designation ? `(${c.designation})` : ''} {c.phone ? `• ${c.phone}` : ''}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Quick Select Chips */}
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {contactOptions.map(c => {
+                              const isSelected = currentSelectedId === c.id;
+                              return (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => handleSelectContact(c.id)}
+                                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
+                                    isSelected 
+                                      ? 'bg-rex-500/15 border-rex-500 text-rex-600 font-bold shadow-sm' 
+                                      : 'bg-surface2/60 border-theme-subtle/80 text-secondary hover:border-rex-500/50 hover:text-primary'
+                                  }`}
+                                  title={`Click to set Attn: ${c.name}${c.designation ? ` (${c.designation})` : ''}${c.phone ? ` • ${c.phone}` : ''}`}
+                                >
+                                  <span>{c.name}</span>
+                                  {c.designation && (
+                                    <span className="opacity-70 text-[9px]">({c.designation})</span>
+                                  )}
+                                  {c.phone && (
+                                    <span className="opacity-80 font-mono text-[9px] text-rex-600 font-semibold">• {c.phone}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                     );
                   })()}
                 </div>
               ) : (
