@@ -4,6 +4,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2, ChevronDown, Eye, ShoppingCart, PackageCheck, Printer } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
+import { POPrintView } from '@/components/purchasing/POPrintView';
+import { MRPrintView } from '@/components/purchasing/MRPrintView';
+import { SupplierGRNPrintView } from '@/components/purchasing/SupplierGRNPrintView';
+import { GatePassPrintView } from '@/components/GatePassPrintView';
 import { useSettings } from '@/contexts/SettingsContext';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
@@ -15,21 +19,21 @@ import { Badge } from '@/components/ui/Badge';
 import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
-import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill, deletePO, deleteMR } from '@/lib/api';
-import { formatCurrency, relativeTime } from '@/lib/utils';
+import { fetchAllCustomerGRNs, fetchGatePasses, deleteGatePass, deleteGRN, deleteCustomerGRN, deleteBill, deletePO, deleteMR } from '@/lib/api';
+import { formatCurrency, relativeTime, formatDate } from '@/lib/utils';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 
-type Tab = 'po' | 'mr' | 'grn' | 'bill';
+type Tab = 'po' | 'mr' | 'grn' | 'bill' | 'gate_pass';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
 
 export const PurchasingHub: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const t = searchParams.get('tab');
-    if (t === 'mr' || t === 'po' || t === 'grn' || t === 'bill') return t as Tab;
+    if (t === 'mr' || t === 'po' || t === 'grn' || t === 'bill' || t === 'gate_pass') return t as Tab;
     return 'po';
   });
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '');
@@ -53,7 +57,7 @@ export const PurchasingHub: React.FC = () => {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t === 'mr' || t === 'po' || t === 'grn' || t === 'bill') {
+    if (t === 'mr' || t === 'po' || t === 'grn' || t === 'bill' || t === 'gate_pass') {
       setActiveTab(t as Tab);
     }
     const s = searchParams.get('search') || searchParams.get('id');
@@ -71,10 +75,21 @@ export const PurchasingHub: React.FC = () => {
 
   const { settings } = useSettings();
   const [printGrnData, setPrintGrnData] = useState<any>(null);
+  const [printPoData, setPrintPoData] = useState<any>(null);
+  const [printMrData, setPrintMrData] = useState<any>(null);
+  const [printSupplierGrnData, setPrintSupplierGrnData] = useState<any>(null);
+  const [printGatePassData, setPrintGatePassData] = useState<any>(null);
   const [custGrns, setCustGrns] = useState<any[]>([]);
+  const [gatePasses, setGatePasses] = useState<any[]>([]);
+
   useEffect(() => {
     fetchAllCustomerGRNs().then(setCustGrns).catch(console.error);
+    fetchGatePasses().then(data => setGatePasses(Array.isArray(data) ? data : [])).catch(console.error);
   }, []);
+
+  const refetchGatePasses = () => {
+    fetchGatePasses().then(data => setGatePasses(Array.isArray(data) ? data : [])).catch(console.error);
+  };
 
   const handleDeletePO = async (id: string) => {
     const ok = await showConfirm(
@@ -164,6 +179,23 @@ export const PurchasingHub: React.FC = () => {
     }
   };
 
+  const handleDeleteGatePass = async (id: string) => {
+    const ok = await showConfirm(
+      `Are you sure you want to permanently delete Gate Pass "${id}"?`,
+      'Delete Gate Pass',
+      { confirmLabel: 'Delete GP', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
+    try {
+      await deleteGatePass(id);
+      toast(`Gate Pass ${id} has been deleted successfully.`, 'success');
+      refetchGatePasses();
+    } catch (e: any) {
+      toast(e.message || 'Failed to delete Gate Pass', 'error');
+    }
+  };
+
   const getSupplierName = (id: string) => suppliers.find((s: any) => s.id === id)?.name || id;
   const getSupplierContact = (id: string) => suppliers.find((s: any) => s.id === id)?.email || 'N/A';
 
@@ -176,6 +208,7 @@ export const PurchasingHub: React.FC = () => {
       case 'mr': navigate('/purchasing/mr-builder'); break;
       case 'grn': navigate('/purchasing/grn-builder'); break;
       case 'bill': navigate('/purchasing/bill-builder'); break;
+      case 'gate_pass': navigate('/inventory?tab=customer_sample'); break;
     }
   };
 
@@ -185,7 +218,15 @@ export const PurchasingHub: React.FC = () => {
     return [...sGrns, ...cGrns].sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
   }, [grns, custGrns]);
 
-  const currentData = activeTab === 'po' ? pos : activeTab === 'mr' ? mrs : activeTab === 'grn' ? combinedGrns : bills;
+  const currentData = activeTab === 'po' 
+    ? pos 
+    : activeTab === 'mr' 
+      ? mrs 
+      : activeTab === 'grn' 
+        ? combinedGrns 
+        : activeTab === 'bill' 
+          ? bills 
+          : gatePasses;
 
   const filtered = currentData.filter((item: any) => {
     const term = search.trim().toLowerCase();
@@ -205,8 +246,11 @@ export const PurchasingHub: React.FC = () => {
       item.requestedBy, 
       item.quoNo,
       item.customerName,
+      item.customerCompany,
       item.leadName,
-      item.vehicleNo
+      item.vehicleNo,
+      item.carrier,
+      item.attention
     ].some(v => v && String(v).toLowerCase().includes(term));
 
     const matchStatus = statusFilter === 'all' || item.status?.toLowerCase() === statusFilter.toLowerCase();
@@ -357,6 +401,22 @@ export const PurchasingHub: React.FC = () => {
                   <span>View / Edit PO</span>
                 </button>
 
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDropdown();
+                    const supp = suppliers.find((s: any) => s.id === row.supplierId);
+                    setPrintPoData({ po: row, supplier: supp });
+                  }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <FileText size={13} className="text-blue-500" />
+                  <span>View PDF / Print PO</span>
+                </button>
+
                 {row.status?.toLowerCase() !== 'draft' && row.status?.toLowerCase() !== 'received' && (
                   <button
                     type="button"
@@ -417,6 +477,21 @@ export const PurchasingHub: React.FC = () => {
                   >
                     <Eye size={13} className="text-zinc-400" />
                     <span>View MR</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closeDropdown();
+                      setPrintMrData(row);
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                  >
+                    <FileText size={13} className="text-blue-500" />
+                    <span>View PDF / Print MR</span>
                   </button>
 
                   {row.status?.toLowerCase() !== 'ordered' ? (
@@ -480,9 +555,35 @@ export const PurchasingHub: React.FC = () => {
                       }}
                       className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                     >
-                      <Printer size={13} className="text-blue-500" />
-                      <span>Print Sample GRN</span>
+                      <FileText size={13} className="text-blue-500" />
+                      <span>View PDF / Print GRN</span>
                     </button>
+
+                    {(row.gatePassId || row.status === 'Dispatched') && (
+                      <button
+                        type="button"
+                        data-no-row-click="true"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          closeDropdown();
+                          const foundGp = gatePasses.find((gp: any) => gp.id === row.gatePassId || gp.grnId === row.id) || {
+                            id: row.gatePassId || `GP-${row.id}`,
+                            customerCompany: row.customerCompany || row.customerName,
+                            attention: row.attention,
+                            quoNo: row.quoNo,
+                            grnId: row.id,
+                            items: row.items,
+                            issuedDate: row.updatedAt || row.createdAt
+                          };
+                          setPrintGatePassData(foundGp);
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                      >
+                        <Truck size={13} className="text-emerald-500" />
+                        <span>View PDF / Print Gate Pass</span>
+                      </button>
+                    )}
 
                     {isAdmin && (
                       <>
@@ -514,6 +615,22 @@ export const PurchasingHub: React.FC = () => {
                     <button
                       type="button"
                       data-no-row-click="true"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        const supp = suppliers.find((s: any) => s.id === row.supplierId);
+                        setPrintSupplierGrnData({ grn: row, supplier: supp });
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <FileText size={13} className="text-blue-500" />
+                      <span>View PDF / Print GRN</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-no-row-click="true"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/bill-builder?grn=${row.id}`); }}
                       className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                     >
@@ -535,6 +652,49 @@ export const PurchasingHub: React.FC = () => {
                         </button>
                       </>
                     )}
+                  </>
+                )}
+              </>
+            )}
+
+            {tab === 'gate_pass' && (
+              <>
+                <div className="px-3.5 py-1 text-[10.5px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                  Gate Pass Actions (#{row.id})
+                </div>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDropdown();
+                    setPrintGatePassData(row);
+                  }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <FileText size={13} className="text-blue-500" />
+                  <span>View PDF / Print Gate Pass</span>
+                </button>
+
+                {isAdmin && (
+                  <>
+                    <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        handleDeleteGatePass(row.id);
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <Trash2 size={13} className="text-rose-500" />
+                      <span>Delete Gate Pass</span>
+                    </button>
                   </>
                 )}
               </>
@@ -1048,6 +1208,96 @@ export const PurchasingHub: React.FC = () => {
         render: (_, row) => renderActionsDropdown('bill', row)
       }
     ];
+
+    if (activeTab === 'gate_pass') {
+      return [
+        {
+          key: 'id', header: 'Gate Pass No', sortable: true,
+          render: (val: any, row: any) => (
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
+                <Truck size={14} />
+              </div>
+              <div>
+                <span className="font-mono font-bold text-primary text-xs">{val}</span>
+                <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+                  <span>{formatDate(row.issuedDate || row.createdAt)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        },
+        {
+          key: 'customerCompany', header: 'Customer / Consignee',
+          render: (val: any, row: any) => (
+            <div className="space-y-0.5">
+              <p className="font-bold text-primary text-xs">{val || row.customerName || 'N/A'}</p>
+              {row.attention && (
+                <p className="text-[11px] text-secondary">Attn: {row.attention}</p>
+              )}
+            </div>
+          )
+        },
+        {
+          key: 'quoNo', header: 'Reference',
+          render: (_: any, row: any) => (
+            <div className="space-y-0.5">
+              {row.quoNo || row.displayQuoNo ? (
+                <Badge variant="info" size="sm" className="font-mono text-[10px]">
+                  {row.quoNo || row.displayQuoNo}
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted">-</span>
+              )}
+              {row.grnId && <div className="text-[10px] text-muted font-mono">GRN: {row.grnId}</div>}
+            </div>
+          )
+        },
+        {
+          key: 'carrier', header: 'Transport / Vehicle',
+          render: (val: any, row: any) => (
+            <div className="text-xs">
+              <span className="font-medium text-primary">{val || 'Hand Delivery'}</span>
+              {row.vehicleNo && <div className="text-[10px] text-muted font-mono">{row.vehicleNo}</div>}
+            </div>
+          )
+        },
+        {
+          key: 'items', header: 'Dispatched Items',
+          render: (val: any) => {
+            let itemsList: any[] = [];
+            try {
+              if (typeof val === 'string' && val.startsWith('[')) itemsList = JSON.parse(val);
+              else if (Array.isArray(val)) itemsList = val;
+              else if (val) itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
+            } catch {
+              itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
+            }
+            return (
+              <div className="space-y-0.5 max-w-xs">
+                {itemsList.slice(0, 2).map((it: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-1.5 text-xs truncate">
+                    <span className="font-medium text-primary truncate">{it.description || it.name}</span>
+                    <span className="text-[10px] font-mono text-muted">x{Number(it.qty || 1)} {it.unit || 'Nos'}</span>
+                  </div>
+                ))}
+                {itemsList.length > 2 && (
+                  <span className="text-[10px] text-muted font-mono">+{itemsList.length - 2} more item(s)</span>
+                )}
+              </div>
+            );
+          }
+        },
+        {
+          key: 'status', header: 'Status', width: '90px',
+          render: (v: any) => <Badge variant="success" size="sm">{v || 'Dispatched'}</Badge>
+        },
+        {
+          key: 'actions', header: 'Actions', align: 'right',
+          render: (_, row) => renderActionsDropdown('gate_pass', row)
+        }
+      ];
+    }
   };
 
   const getAddLabel = () => {
@@ -1056,6 +1306,7 @@ export const PurchasingHub: React.FC = () => {
       case 'mr': return 'Add Material Request';
       case 'grn': return 'Add Receipt (GRN)';
       case 'bill': return 'Add Supplier Bill';
+      case 'gate_pass': return 'Issue Outward GP';
     }
   };
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading purchasing data...</div>;
@@ -1067,6 +1318,7 @@ export const PurchasingHub: React.FC = () => {
       case 'po': return ['all', 'draft', 'sent', 'ordered', 'partially_received', 'received'];
       case 'grn': return ['all', 'received'];
       case 'bill': return ['all', 'unpaid', 'paid'];
+      case 'gate_pass': return ['all'];
       default: return ['all'];
     }
   };
@@ -1095,7 +1347,7 @@ export const PurchasingHub: React.FC = () => {
             <span className="text-xs text-muted flex items-center gap-1.5 font-bold uppercase tracking-wider mr-1">
               <Filter size={12} /> Module:
             </span>
-            {(['po', 'mr', 'grn', 'bill'] as Tab[]).map(t => (
+            {(['po', 'mr', 'grn', 'bill', 'gate_pass'] as Tab[]).map(t => (
               <button 
                 key={t} 
                 onClick={() => { setActiveTab(t); setStatusFilter('all'); setGrnSourceFilter('all'); }} 
@@ -1105,7 +1357,7 @@ export const PurchasingHub: React.FC = () => {
                     : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
                 }`}
               >
-                {t === 'grn' ? 'GRN Receipts' : t.toUpperCase()}
+                {t === 'grn' ? 'GRN Receipts' : t === 'gate_pass' ? 'Gate Passes' : t.toUpperCase()}
               </button>
             ))}
           </div>
@@ -1264,24 +1516,172 @@ export const PurchasingHub: React.FC = () => {
               navigate(`/purchasing/mr-builder/${row.id}`);
             } else if (activeTab === 'bill') {
               navigate(`/purchasing/bill-builder?grn=${row.grnId || row.id}`);
+            } else if (activeTab === 'gate_pass') {
+              setPrintGatePassData(row);
             }
           }}
         />
       </GlassCard>
 
-      <Modal isOpen={!!printGrnData} onClose={() => setPrintGrnData(null)} title="Print Customer GRN" size="xl">
+      {/* Printable PO Modal */}
+      <Modal isOpen={!!printPoData} onClose={() => setPrintPoData(null)} title={`Purchase Order Document - #${printPoData?.po?.id}`} size="xl">
+        {printPoData && (
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-4 max-h-[82vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 px-2">
+              <span className="text-xs text-muted">A4 Vector Document Preview</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportToPdf('po-print-section', `PO_${printPoData.po.id}.pdf`)}
+                  className="bg-surface border border-theme-subtle hover:bg-surface2"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => printElement('po-print-section', `PO_${printPoData.po.id}`)}
+                >
+                  Print PO
+                </Button>
+              </div>
+            </div>
+            <div className="bg-white shadow-xl rounded-none overflow-hidden mx-auto">
+              <POPrintView po={printPoData.po} supplier={printPoData.supplier} settings={settings} />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Printable MR Modal */}
+      <Modal isOpen={!!printMrData} onClose={() => setPrintMrData(null)} title={`Material Requisition Document - #${printMrData?.id}`} size="xl">
+        {printMrData && (
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-4 max-h-[82vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 px-2">
+              <span className="text-xs text-muted">A4 Vector Document Preview</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportToPdf('mr-print-section', `MR_${printMrData.id}.pdf`)}
+                  className="bg-surface border border-theme-subtle hover:bg-surface2"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => printElement('mr-print-section', `MR_${printMrData.id}`)}
+                >
+                  Print MR
+                </Button>
+              </div>
+            </div>
+            <div className="bg-white shadow-xl rounded-none overflow-hidden mx-auto">
+              <MRPrintView mr={printMrData} settings={settings} />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Printable Supplier GRN Modal */}
+      <Modal isOpen={!!printSupplierGrnData} onClose={() => setPrintSupplierGrnData(null)} title={`Goods Receipt Note (GRN) - #${printSupplierGrnData?.grn?.id}`} size="xl">
+        {printSupplierGrnData && (
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-4 max-h-[82vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 px-2">
+              <span className="text-xs text-muted">A4 Vector Document Preview</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportToPdf('supplier-grn-print-section', `GRN_${printSupplierGrnData.grn.id}.pdf`)}
+                  className="bg-surface border border-theme-subtle hover:bg-surface2"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => printElement('supplier-grn-print-section', `GRN_${printSupplierGrnData.grn.id}`)}
+                >
+                  Print GRN
+                </Button>
+              </div>
+            </div>
+            <div className="bg-white shadow-xl rounded-none overflow-hidden mx-auto">
+              <SupplierGRNPrintView grn={printSupplierGrnData.grn} supplier={printSupplierGrnData.supplier} settings={settings} />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Printable Customer GRN Modal */}
+      <Modal isOpen={!!printGrnData} onClose={() => setPrintGrnData(null)} title="Print Customer Sample GRN" size="xl">
         {printGrnData && (
-          <div className="bg-white text-black p-8 max-h-[80vh] overflow-y-auto w-[900px] max-w-full">
-            <CustomerGRNPrintView 
-               grn={printGrnData.grn} 
-               group={printGrnData.group}
-               settings={settings}
-            />
-            <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
-              <Button variant="ghost" onClick={() => {
-                exportToPdf('grn-print-section', `GRN-${printGrnData.grn.id}.pdf`);
-              }} className="bg-surface border border-theme-subtle hover:bg-surface2">Export PDF</Button>
-              <Button variant="primary" onClick={() => printElement('grn-print-section', `GRN_${printGrnData.grn.id}`)}>Print</Button>
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-4 max-h-[82vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 px-2">
+              <span className="text-xs text-muted">A4 Vector Document Preview</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportToPdf('grn-print-section', `GRN-${printGrnData.grn.id}.pdf`)}
+                  className="bg-surface border border-theme-subtle hover:bg-surface2"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => printElement('grn-print-section', `GRN_${printGrnData.grn.id}`)}
+                >
+                  Print GRN
+                </Button>
+              </div>
+            </div>
+            <div className="bg-white shadow-xl rounded-none overflow-hidden mx-auto p-4">
+              <CustomerGRNPrintView 
+                 grn={printGrnData.grn} 
+                 group={printGrnData.group}
+                 settings={settings}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Printable Gate Pass Modal */}
+      <Modal isOpen={!!printGatePassData} onClose={() => setPrintGatePassData(null)} title={`Gate Pass & Delivery Note - #${printGatePassData?.id}`} size="xl">
+        {printGatePassData && (
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-4 max-h-[82vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 px-2">
+              <span className="text-xs text-muted">Official Security & Dispatch Gate Pass</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportToPdf('gatepass-print-section', `GatePass_${printGatePassData.id}.pdf`)}
+                  className="bg-surface border border-theme-subtle hover:bg-surface2"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => printElement('gatepass-print-section', `GatePass_${printGatePassData.id}`)}
+                >
+                  Print Gate Pass
+                </Button>
+              </div>
+            </div>
+            <div className="bg-white shadow-xl rounded-none overflow-hidden mx-auto p-4">
+              <GatePassPrintView gatePass={printGatePassData} settings={settings} />
             </div>
           </div>
         )}
