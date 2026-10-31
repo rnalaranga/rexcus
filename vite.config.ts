@@ -13,4 +13,18 @@ export default defineConfig({
     port: 5173,
     open: true,
   },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('xlsx')) return 'vendor-xlsx';
+            if (id.includes('html2pdf') || id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf';
+            if (id.includes('recharts')) return 'vendor-charts';
+          }
+        },
+      },
+    },
+  },
 })
