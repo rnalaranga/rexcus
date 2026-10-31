@@ -69,13 +69,13 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
       case 'receipt':
         return can('finance.payments.record') || can('finance.invoices.view')
       case 'po':
-        return can('purchasing.po.manage') || can('purchasing.suppliers.view')
+        return can('purchasing.po.manage') || can('purchasing.suppliers.view') || can('production.work_orders.view') || can('quotations.view') || can('crm.customers.view')
       case 'grn':
-        return can('purchasing.grn.manage') || can('inventory.customer_grn.manage') || can('inventory.items.view')
+        return can('purchasing.grn.manage') || can('inventory.customer_grn.manage') || can('inventory.items.view') || can('production.work_orders.view') || can('quotations.view')
       case 'bill':
-        return can('purchasing.bills.manage') || can('finance.invoices.view')
+        return can('purchasing.bills.manage') || can('finance.invoices.view') || can('production.work_orders.view')
       case 'mr':
-        return can('purchasing.mr.manage') || can('inventory.items.view')
+        return can('purchasing.mr.manage') || can('inventory.items.view') || can('production.work_orders.view')
       default:
         return true
     }

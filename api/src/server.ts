@@ -54,6 +54,9 @@ async function getChromeExecutablePath(): Promise<string | null> {
   const possiblePaths = [
     process.env.CHROME_BIN,
     process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -94,12 +97,16 @@ async function getChromeExecutablePath(): Promise<string | null> {
     path.join(process.env.HOME || '/root', '.cache/puppeteer')
   ];
 
-  const binName = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+  const binNames = process.platform === 'win32' 
+    ? ['chrome.exe', 'msedge.exe'] 
+    : ['Google Chrome for Testing', 'Google Chrome', 'Chromium', 'chrome'];
   for (const dir of checkDirs) {
-    const found = findBinaryRecursively(dir, binName);
-    if (found && fs.existsSync(found)) {
-      cachedChromePath = found;
-      return found;
+    for (const bName of binNames) {
+      const found = findBinaryRecursively(dir, bName);
+      if (found && fs.existsSync(found)) {
+        cachedChromePath = found;
+        return found;
+      }
     }
   }
 
@@ -148,10 +155,53 @@ async function getChromeExecutablePath(): Promise<string | null> {
 }
 
 // ==========================
-// HIGH-PRECISION VECTOR PDF EXPORT (PUPPETEER CHROMIUM)
+// HIGH-PRECISION VECTOR PDF EXPORT (WARM BROWSER POOL)
 // ==========================
+let sharedWarmBrowser: any = null;
+
+async function getWarmBrowser() {
+  if (sharedWarmBrowser && sharedWarmBrowser.connected) {
+    return sharedWarmBrowser;
+  }
+  const chromePath = await getChromeExecutablePath();
+  if (!chromePath) return null;
+
+  try {
+    sharedWarmBrowser = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--mute-audio'
+      ]
+    });
+
+    sharedWarmBrowser.on('disconnected', () => {
+      sharedWarmBrowser = null;
+    });
+
+    return sharedWarmBrowser;
+  } catch (err) {
+    console.error('[Rex PDF] Failed to launch warm browser:', err);
+    sharedWarmBrowser = null;
+    return null;
+  }
+}
+
 app.post('/api/export-pdf', async (req, res) => {
-  let browser = null;
+  let page: any = null;
   try {
     const { 
       html, 
@@ -166,27 +216,12 @@ app.post('/api/export-pdf', async (req, res) => {
       return res.status(400).json({ error: 'HTML content is required' });
     }
 
-    const chromePath = await getChromeExecutablePath();
-    if (!chromePath) {
-      return res.status(500).json({ error: 'Chrome/Chromium executable not found on server' });
+    const browser = await getWarmBrowser();
+    if (!browser) {
+      return res.status(500).json({ error: 'Chrome/Chromium executable not found or failed to initialize' });
     }
 
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
-    });
-
-    const page = await browser.newPage();
+    page = await browser.newPage();
     const isLandscape = orientation === 'landscape';
     await page.setViewport({ 
       width: isLandscape ? 1123 : 794, 
@@ -205,9 +240,6 @@ app.post('/api/export-pdf', async (req, res) => {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <link rel="preconnect" href="https://fonts.googleapis.com">
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
           <style>
             @page {
               size: A4 ${orientation};
@@ -223,11 +255,11 @@ app.post('/api/export-pdf', async (req, res) => {
               padding: 0 !important;
               background: #ffffff !important;
               color: #000000 !important;
-              font-family: 'Inter', Arial, Helvetica, sans-serif;
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               font-size: 11px;
             }
             .font-mono {
-              font-family: 'JetBrains Mono', Courier, monospace !important;
+              font-family: 'JetBrains Mono', Menlo, Monaco, Consolas, Courier, monospace !important;
             }
             table {
               border-collapse: collapse !important;
@@ -300,7 +332,7 @@ app.post('/api/export-pdf', async (req, res) => {
       </html>
     `;
 
-    await page.setContent(fullHtml, { waitUntil: ['load', 'networkidle0'], timeout: 20000 });
+    await page.setContent(fullHtml, { waitUntil: 'load', timeout: 8000 });
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
@@ -315,9 +347,6 @@ app.post('/api/export-pdf', async (req, res) => {
       }
     });
 
-    await browser.close();
-    browser = null;
-
     if (returnBase64) {
       const base64 = Buffer.from(pdfBuffer).toString('base64');
       return res.json({ success: true, base64: `data:application/pdf;base64,${base64}` });
@@ -329,11 +358,12 @@ app.post('/api/export-pdf', async (req, res) => {
     res.end(Buffer.from(pdfBuffer));
 
   } catch (err: any) {
-    if (browser) {
-      try { await browser.close(); } catch(e) {}
-    }
     console.error('PDF export error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate PDF' });
+  } finally {
+    if (page) {
+      try { await page.close(); } catch(e) {}
+    }
   }
 });
 
@@ -2207,7 +2237,18 @@ app.put('/api/sequences/user-quotations/:prefix', async (req, res) => {
 app.post('/api/sequences/next', async (req, res) => {
   try {
     const { type = 'quotation', userPrefix, customerPrefix, reserve = false, userId } = req.body;
-    const [rows]: any = await db.query('SELECT * FROM document_sequences WHERE id = ? LIMIT 1', [type]);
+    const typeAliasMap: Record<string, string> = {
+      'po': 'purchase_order',
+      'mr': 'material_request',
+      'grn': 'purchase_grn',
+      'wo': 'work_order',
+      'so': 'sales_order',
+      'inv': 'invoice',
+      'cgrn': 'customer_grn',
+      'pgrn': 'purchase_grn',
+    };
+    const seqType = typeAliasMap[String(type).toLowerCase()] || type;
+    const [rows]: any = await db.query('SELECT * FROM document_sequences WHERE id = ? LIMIT 1', [seqType]);
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: `Sequence '${type}' not found` });
     }
@@ -2223,7 +2264,7 @@ app.post('/api/sequences/next', async (req, res) => {
     const userQuoPrefix = cleanUserPfx ? (cleanUserPfx.endsWith('SQ') ? cleanUserPfx : `${cleanUserPfx}SQ`) : 'SQ';
 
     // Check if this quotation sequence should use user-specific prefix sequence
-    const isUserQuotation = ((type === 'quotation' || type === 'product_quotation') && Boolean(seq.include_user_prefix) && Boolean(cleanUserPfx));
+    const isUserQuotation = ((seqType === 'quotation' || seqType === 'product_quotation') && Boolean(seq.include_user_prefix) && Boolean(cleanUserPfx));
 
     if (isUserQuotation) {
       const [uRows]: any = await db.query(
@@ -2244,7 +2285,7 @@ app.post('/api/sequences/next', async (req, res) => {
     const paddedNumber = String(currentNum).padStart(padding, '0');
 
     const parts: string[] = [];
-    if (type === 'quotation' || type === 'product_quotation') {
+    if (seqType === 'quotation' || seqType === 'product_quotation') {
       // Always starts with [userprefix]SQ (e.g. RSSQ, RNSQ) or SQ
       parts.push(userQuoPrefix);
 
@@ -2278,14 +2319,14 @@ app.post('/api/sequences/next', async (req, res) => {
       } else {
         await db.query(
           'UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = ?',
-          [type]
+          [seqType]
         );
       }
     }
 
     res.json({
       success: true,
-      type,
+      type: seqType,
       userPrefix: normalizedUserPrefix || null,
       number: currentNum,
       paddedNumber,
@@ -5658,6 +5699,18 @@ app.post('/api/purchasing/mrs', async (req, res) => {
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await db.query('INSERT INTO material_requests SET ?', data);
+
+    const numMatch = data.id && String(data.id).match(/\d+$/);
+    if (numMatch) {
+      const parsedNum = parseInt(numMatch[0], 10);
+      if (!isNaN(parsedNum)) {
+        await db.query(
+          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'material_request'",
+          [parsedNum + 1]
+        );
+      }
+    }
+
     res.json({ success: true, id: data.id });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
@@ -5762,6 +5815,17 @@ app.post('/api/purchasing/pos', async (req, res) => {
     // Sync all affected Material Requests
     if (targetMrIds.size > 0) {
       await syncMRFulfillmentStatus(Array.from(targetMrIds));
+    }
+
+    const numMatch = data.id && String(data.id).match(/\d+$/);
+    if (numMatch) {
+      const parsedNum = parseInt(numMatch[0], 10);
+      if (!isNaN(parsedNum)) {
+        await db.query(
+          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'purchase_order'",
+          [parsedNum + 1]
+        );
+      }
     }
 
     res.json({ success: true, id: data.id });
@@ -5953,6 +6017,17 @@ app.post('/api/purchasing/grns', async (req, res) => {
     // Sync all linked POs
     if (targetPoIds.size > 0) {
       await syncPOReceiptStatus(Array.from(targetPoIds));
+    }
+
+    const numMatch = data.id && String(data.id).match(/\d+$/);
+    if (numMatch) {
+      const parsedNum = parseInt(numMatch[0], 10);
+      if (!isNaN(parsedNum)) {
+        await db.query(
+          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'purchase_grn'",
+          [parsedNum + 1]
+        );
+      }
     }
 
     res.json({ success: true, id: data.id });

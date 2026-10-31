@@ -12,10 +12,13 @@ export interface ExportPdfOptions {
   preserveFullHeight?: boolean;
 }
 
+let cachedStyles: string[] | null = null;
+
 /**
  * Collect all active style definitions and stylesheets from the document head.
  */
 function collectDocumentStyles(): string[] {
+  if (cachedStyles && cachedStyles.length > 0) return cachedStyles;
   const styles: string[] = [];
 
   // 1. Gather all CSS rules from loaded document stylesheets (inlines compiled Tailwind & custom CSS)
@@ -61,29 +64,24 @@ function collectDocumentStyles(): string[] {
     }
   });
 
+  cachedStyles = styles;
   return styles;
 }
 
 /**
- * Pre-render helper: ensures all fonts and images inside element are 100% loaded.
+ * Pre-render helper: ensures all fonts and images inside element are loaded.
  */
 async function ensureAssetsLoaded(element: HTMLElement): Promise<void> {
-  if (document.fonts && document.fonts.ready) {
-    try {
-      await document.fonts.ready;
-    } catch (e) {
-      // Continue even if font ready check fails
-    }
-  }
-
   const images = Array.from(element.querySelectorAll('img'));
+  const pending = images.filter(img => !img.complete);
+  if (pending.length === 0) return;
+
   await Promise.all(
-    images.map(img => {
-      if (img.complete) return Promise.resolve();
+    pending.map(img => {
       return new Promise<void>(resolve => {
         img.onload = () => resolve();
         img.onerror = () => resolve();
-        setTimeout(resolve, 800);
+        setTimeout(resolve, 300);
       });
     })
   );

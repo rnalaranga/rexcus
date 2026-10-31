@@ -12,7 +12,7 @@ import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useTaxProfiles } from '@/hooks/useFinance';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useMaterialRequests, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
-import { createPO, updatePO, fetchPOs } from '@/lib/api';
+import { createPO, updatePO, fetchPOs, fetchNextDocumentNumber } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
@@ -92,9 +92,25 @@ export const POBuilder: React.FC = () => {
     toast(`Material ${newItem.name} created and added to line items!`, 'success');
   };
 
-  const [docNo, setDocNo] = useState('PO-' + Date.now().toString().slice(-4));
+  const [docNo, setDocNo] = useState('');
   const [status, setStatus] = useState('DRAFT');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Fetch next PO serial number from document sequence variables when creating new PO
+  useEffect(() => {
+    if (!id) {
+      fetchNextDocumentNumber('purchase_order', { reserve: false }).then(res => {
+        if (res?.formattedNumber) {
+          setDocNo(res.formattedNumber);
+        } else {
+          setDocNo('PO-' + Date.now().toString().slice(-4));
+        }
+      }).catch(err => {
+        console.error('Failed to fetch next PO document number:', err);
+        setDocNo('PO-' + Date.now().toString().slice(-4));
+      });
+    }
+  }, [id]);
   
   const [supplierId, setSupplierId] = useState('');
   const [supplierDetails, setSupplierDetails] = useState({ contact: '', email: '', phone: '', address: '', vat: '', svat: '', brNumber: '' });
@@ -434,6 +450,11 @@ export const POBuilder: React.FC = () => {
         toast(`Purchase Order ${docNo} updated successfully!`, 'success');
       } else {
         await createPO(payload);
+        try {
+          await fetchNextDocumentNumber('purchase_order', { reserve: true });
+        } catch (e) {
+          console.warn('Failed to reserve PO sequence number:', e);
+        }
         toast(`Purchase Order ${docNo} created successfully!`, 'success');
       }
       navigate('/purchasing');
@@ -484,9 +505,25 @@ export const POBuilder: React.FC = () => {
                 {status}
               </span>
             </div>
-            <p className="text-[11px] text-muted mt-0.5">
-              {docNo} {selectedMrIds.length > 0 ? `• Linked to MR(s): ${selectedMrIds.join(', ')}` : ''}
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[11px] text-muted font-medium">PO #:</span>
+              {id ? (
+                <span className="font-mono font-bold text-xs text-primary">{docNo}</span>
+              ) : (
+                <input
+                  type="text"
+                  value={docNo}
+                  onChange={(e) => setDocNo(e.target.value.toUpperCase())}
+                  className="bg-surface2/60 border border-theme-subtle px-1.5 py-0.5 rounded text-xs font-mono font-bold text-primary focus:outline-none focus:border-rex-500 w-36"
+                  placeholder="PO-..."
+                />
+              )}
+              {selectedMrIds.length > 0 && (
+                <span className="text-[11px] text-muted truncate max-w-xs">
+                  • Linked to MR(s): {selectedMrIds.join(', ')}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">

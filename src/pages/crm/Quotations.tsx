@@ -2373,6 +2373,18 @@ export const Quotations: React.FC = () => {
                                 });
                               }
 
+                              const customerPoNum = (latestMain as any)?.customerPoNumber || (group as any)?.customerPoNumber || linkedOrder?.customerPoNumber;
+                              if (customerPoNum) {
+                                traces.push({
+                                  type: 'po',
+                                  title: 'Customer PO',
+                                  reference: customerPoNum,
+                                  subtitle: 'Client Purchase Order',
+                                  statusBadge: { label: 'PO Received', variant: 'success' },
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder?.orderNo || customerPoNum)}`
+                                });
+                              }
+
                               if (linkedInvoice) {
                                 traces.push({
                                   type: 'invoice',

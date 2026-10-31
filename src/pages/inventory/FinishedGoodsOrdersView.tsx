@@ -1978,6 +1978,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               navigateUrl: `/production/work-orders?search=${encodeURIComponent(existingWO.orderNo || existingWO.id)}`
                             });
                           }
+                          if (order.customerPoNumber) {
+                            traces.push({
+                              type: 'po',
+                              title: 'Customer PO',
+                              reference: order.customerPoNumber,
+                              subtitle: 'Customer Purchase Order',
+                              statusBadge: { label: 'Customer PO', variant: 'info' }
+                            });
+                          }
                           if (linkedProforma) {
                             traces.push({
                               type: 'proforma',

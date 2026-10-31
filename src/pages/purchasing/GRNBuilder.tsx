@@ -16,7 +16,7 @@ import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
-import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN } from '@/lib/api';
+import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN, fetchNextDocumentNumber } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 export const GRNBuilder: React.FC = () => {
@@ -59,8 +59,20 @@ export const GRNBuilder: React.FC = () => {
   };
 
   const [loading, setLoading] = useState<boolean>(isViewMode);
-  const [docNo, setDocNo] = useState<string>(targetId || ('GRN-' + Date.now().toString().slice(-4)));
+  const [docNo, setDocNo] = useState<string>(targetId || '');
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    if (!targetId) {
+      fetchNextDocumentNumber('purchase_grn', { reserve: false }).then(res => {
+        if (res?.formattedNumber) setDocNo(res.formattedNumber);
+        else setDocNo('GRN-' + Date.now().toString().slice(-4));
+      }).catch(err => {
+        console.error('Failed to fetch next GRN document number:', err);
+        setDocNo('GRN-' + Date.now().toString().slice(-4));
+      });
+    }
+  }, [targetId]);
   const [receivedBy, setReceivedBy] = useState<string>('Warehouse Manager');
   const [vehicleNo, setVehicleNo] = useState<string>('');
   const [storageLocation, setStorageLocation] = useState<string>('Main Warehouse - Receiving Bay');
@@ -435,6 +447,7 @@ export const GRNBuilder: React.FC = () => {
     };
 
     await createGRN(payload);
+    fetchNextDocumentNumber('purchase_grn', { reserve: true }).catch(console.error);
     navigate('/purchasing');
   };
 

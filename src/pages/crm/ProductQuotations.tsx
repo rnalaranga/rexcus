@@ -1583,6 +1583,18 @@ export const ProductQuotations: React.FC = () => {
                                 });
                               }
 
+                              const custPo = latest?.customerPoNumber || group.customerPoNumber || linkedOrder?.customerPoNumber;
+                              if (custPo) {
+                                traces.push({
+                                  type: 'po',
+                                  title: 'Customer PO',
+                                  reference: custPo,
+                                  subtitle: 'Client Purchase Order',
+                                  statusBadge: { label: 'PO Received', variant: 'success' },
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder?.orderNo || custPo)}`
+                                });
+                              }
+
                               if (linkedInvoice) {
                                 traces.push({
                                   type: 'invoice',

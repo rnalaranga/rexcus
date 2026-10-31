@@ -10,7 +10,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useInventory } from '@/hooks/useData';
-import { createMR, updateMR, fetchMRs, fetchWorkOrders } from '@/lib/api';
+import { createMR, updateMR, fetchMRs, fetchWorkOrders, fetchNextDocumentNumber } from '@/lib/api';
 import { usePurchaseOrders } from '@/hooks/usePurchasing';
 import { formatCurrency, cn } from '@/lib/utils';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
@@ -250,8 +250,20 @@ export const MRBuilder: React.FC = () => {
   const { data: inventory } = useInventory();
   const { data: pos } = usePurchaseOrders();
 
-  const [docNo, setDocNo] = useState('MR-' + Date.now().toString().slice(-4));
+  const [docNo, setDocNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    if (!id) {
+      fetchNextDocumentNumber('material_request', { reserve: false }).then(res => {
+        if (res?.formattedNumber) setDocNo(res.formattedNumber);
+        else setDocNo('MR-' + Date.now().toString().slice(-4));
+      }).catch(err => {
+        console.error('Failed to fetch next MR document number:', err);
+        setDocNo('MR-' + Date.now().toString().slice(-4));
+      });
+    }
+  }, [id]);
   const [requiredDate, setRequiredDate] = useState('');
   const [requestedBy, setRequestedBy] = useState('Production Supervisor');
   const [department, setDepartment] = useState('Production');
@@ -532,6 +544,7 @@ export const MRBuilder: React.FC = () => {
         await updateMR(id, payload);
       } else {
         await createMR(payload);
+        fetchNextDocumentNumber('material_request', { reserve: true }).catch(console.error);
       }
       navigate('/purchasing');
     } catch (e) {

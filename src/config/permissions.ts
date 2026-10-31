@@ -215,13 +215,16 @@ export const hasPermission = (
 ): boolean => {
   if (userRole === 'admin') return true;
 
-  // STRICT POLICY: Quotation, Invoice, Sales Order, and Work Order deletion is EXCLUSIVELY reserved for Admin.
+  // STRICT POLICY: Quotation, Invoice, Sales Order, Work Order, PO, MR, and GRN deletion is EXCLUSIVELY reserved for Admin.
   if (
     requiredPermission === 'quotations.delete' ||
     requiredPermission === 'invoices.delete' ||
     requiredPermission === 'sales_orders.delete' ||
     requiredPermission === 'work_orders.delete' ||
-    requiredPermission === 'finance.invoices.delete'
+    requiredPermission === 'finance.invoices.delete' ||
+    requiredPermission === 'purchasing.pos.delete' ||
+    requiredPermission === 'purchasing.grns.delete' ||
+    requiredPermission === 'purchasing.mrs.delete'
   ) {
     return false;
   }

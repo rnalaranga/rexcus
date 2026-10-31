@@ -14,10 +14,11 @@ import { Badge } from '@/components/ui/Badge';
 import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
-import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill } from '@/lib/api';
+import { fetchAllCustomerGRNs, deleteGRN, deleteCustomerGRN, deleteBill, deletePO, deleteMR } from '@/lib/api';
 import { formatCurrency, relativeTime } from '@/lib/utils';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
@@ -36,6 +37,17 @@ export const PurchasingHub: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const navigate = useNavigate();
+
+  const { user } = useAuth();
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin') ||
+    user?.role === 'superadmin' ||
+    user?.role === 'director'
+  );
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -60,6 +72,26 @@ export const PurchasingHub: React.FC = () => {
   useEffect(() => {
     fetchAllCustomerGRNs().then(setCustGrns).catch(console.error);
   }, []);
+
+  const handleDeletePO = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to delete Purchase Order ${id}?\n\nThis will remove the PO and recalculate linked Material Requests.`)) return;
+    try {
+      await deletePO(id);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete Purchase Order');
+    }
+  };
+
+  const handleDeleteMR = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to delete Material Request ${id}?`)) return;
+    try {
+      await deleteMR(id);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete Material Request');
+    }
+  };
 
   const handleDeleteSupplierGRN = async (id: string) => {
     if (!window.confirm(`Are you sure you want to delete GRN ${id}?\n\nThis will revert received stock in inventory and update the PO status.`)) return;
@@ -264,6 +296,33 @@ export const PurchasingHub: React.FC = () => {
               });
             });
 
+            // Linked Work Orders from MRs
+            const linkedWos = new Set<string>();
+            linkedMrList.forEach(mrId => {
+              const mrObj = mrs.find((m: any) => m.id === mrId);
+              if (mrObj) {
+                if (mrObj.workOrderNo) linkedWos.add(mrObj.workOrderNo);
+                if (mrObj.jobNo) linkedWos.add(mrObj.jobNo);
+                if (mrObj.workOrderId) linkedWos.add(mrObj.workOrderId);
+                if (mrObj.workOrderNos) {
+                  try {
+                    const wNos = typeof mrObj.workOrderNos === 'string' ? JSON.parse(mrObj.workOrderNos) : mrObj.workOrderNos;
+                    if (Array.isArray(wNos)) wNos.forEach((w: string) => linkedWos.add(w));
+                  } catch {}
+                }
+              }
+            });
+            linkedWos.forEach(woNum => {
+              traces.push({
+                type: 'work_order',
+                title: 'Production Job',
+                reference: woNum,
+                subtitle: 'Linked Work Order',
+                statusBadge: { label: 'WO Linked', variant: 'info' },
+                navigateUrl: `/production/work-orders?search=${encodeURIComponent(woNum)}`
+              });
+            });
+
             const matchedGrns = combinedGrns.filter((g: any) => g.poId === row.id || (g.poIds && g.poIds.includes(row.id)));
             matchedGrns.forEach((g: any) => {
               traces.push({
@@ -320,6 +379,17 @@ export const PurchasingHub: React.FC = () => {
             >
               + Bill
             </Button>
+            {isAdmin && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => handleDeletePO(row.id)} 
+                className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10 font-medium"
+                title="Delete Purchase Order"
+              >
+                Delete
+              </Button>
+            )}
           </div>
         )}
       ];
@@ -411,7 +481,16 @@ export const PurchasingHub: React.FC = () => {
                   ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
                   : (row.poId ? [row.poId] : []));
             
-            linkedPoList.forEach(poNum => {
+            // Also scan pos array to find any PO referencing this MR
+            const allLinkedPoIds = new Set<string>(linkedPoList);
+            pos.forEach((p: any) => {
+              const pMrIds = Array.isArray(p.mrIds) ? p.mrIds : (typeof p.mrIds === 'string' ? JSON.parse(p.mrIds || '[]') : [p.mrId].filter(Boolean));
+              if (p.mrId === row.id || pMrIds.includes(row.id)) {
+                allLinkedPoIds.add(p.id);
+              }
+            });
+
+            Array.from(allLinkedPoIds).forEach(poNum => {
               traces.push({
                 type: 'po',
                 title: 'Purchase Order',
@@ -464,6 +543,17 @@ export const PurchasingHub: React.FC = () => {
                     {linkedPoList.length > 1 ? `View POs (${linkedPoList.length})` : 'View PO'}
                   </Button>
                 )
+              )}
+              {isAdmin && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => handleDeleteMR(row.id)} 
+                  className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10 font-medium"
+                  title="Delete Material Request"
+                >
+                  Delete
+                </Button>
               )}
             </div>
           );
@@ -574,13 +664,17 @@ export const PurchasingHub: React.FC = () => {
                {row.isCustomerSample ? (
                   <>
                     <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-xs uppercase h-7 px-2.5 rounded-none text-blue-500">Print Sample GRN</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomerGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                    {isAdmin && (
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomerGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                    )}
                   </>
                ) : (
                   <>
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none text-primary">View</Button>
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none text-emerald-500">Create Bill</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplierGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                    {isAdmin && (
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplierGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
+                    )}
                   </>
                )}
             </div>
@@ -677,15 +771,17 @@ export const PurchasingHub: React.FC = () => {
             >
               Pay / Ledger
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => handleDeleteBill(row.id)} 
-              className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10"
-              title="Delete this bill and revert supplier ledger"
-            >
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => handleDeleteBill(row.id)} 
+                className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                title="Delete this bill and revert supplier ledger"
+              >
+                Delete
+              </Button>
+            )}
           </div>
         )
       }

@@ -13,7 +13,7 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
-import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs, fetchAllCustomerGRNs } from '@/lib/api'
+import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs, fetchAllCustomerGRNs, fetchPOs, fetchGRNs } from '@/lib/api'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
@@ -52,6 +52,8 @@ export const WorkOrders: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
   const [mrs, setMrs] = useState<any[]>([])
+  const [pos, setPos] = useState<any[]>([])
+  const [grns, setGrns] = useState<any[]>([])
   const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -80,7 +82,7 @@ export const WorkOrders: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true)
     try {
-      const [wos, emps, machs, invs, custs, quotes, ords, invcs, matReqs, cGrns] = await Promise.all([
+      const [wos, emps, machs, invs, custs, quotes, ords, invcs, matReqs, cGrns, pOrders, pGrns] = await Promise.all([
         fetchWorkOrders().catch(() => []),
         fetch(`${API_URL}/hr/employees`).then(r => r.json()).catch(() => []),
         fetch(`${API_URL}/production/machineries`).then(r => r.json()).catch(() => []),
@@ -90,7 +92,9 @@ export const WorkOrders: React.FC = () => {
         fetchFinishedGoodsOrders().catch(() => []),
         fetchInvoices().catch(() => []),
         fetchMRs().catch(() => []),
-        fetchAllCustomerGRNs().catch(() => [])
+        fetchAllCustomerGRNs().catch(() => []),
+        fetchPOs().catch(() => []),
+        fetchGRNs().catch(() => [])
       ])
       setAllCustomerGrns(Array.isArray(cGrns) ? cGrns : [])
 
@@ -103,6 +107,8 @@ export const WorkOrders: React.FC = () => {
       setOrders(Array.isArray(ords) ? ords : [])
       setInvoices(Array.isArray(invcs) ? invcs : [])
       setMrs(Array.isArray(matReqs) ? matReqs : [])
+      setPos(Array.isArray(pOrders) ? pOrders : [])
+      setGrns(Array.isArray(pGrns) ? pGrns : [])
 
       // Update active studio WO if one is currently open
       if (activeStudioWO) {
@@ -265,6 +271,57 @@ export const WorkOrders: React.FC = () => {
         navigateUrl: `/purchasing?tab=mr&search=${encodeURIComponent(mrNum)}`
       })
     }
+
+    // 5. Linked Purchase Orders (PO)
+    const linkedPoIds = new Set<string>();
+    linkedMrs.forEach((m: any) => {
+      if (m.poId) linkedPoIds.add(m.poId);
+      if (m.poIds) {
+        try {
+          const parsed = typeof m.poIds === 'string' ? JSON.parse(m.poIds) : m.poIds;
+          if (Array.isArray(parsed)) parsed.forEach((p: string) => linkedPoIds.add(p));
+        } catch {
+          if (typeof m.poIds === 'string') linkedPoIds.add(m.poIds);
+        }
+      }
+    });
+
+    // Also match POs directly by mrId or notes or items
+    pos.forEach((p: any) => {
+      const pMrIds = Array.isArray(p.mrIds) ? p.mrIds : (typeof p.mrIds === 'string' ? JSON.parse(p.mrIds || '[]') : [p.mrId].filter(Boolean));
+      if (linkedMrs.some((m: any) => m.id === p.mrId || pMrIds.includes(m.id))) {
+        linkedPoIds.add(p.id);
+      } else if (row.orderNo && p.notes && p.notes.includes(row.orderNo)) {
+        linkedPoIds.add(p.id);
+      }
+    });
+
+    Array.from(linkedPoIds).forEach(poId => {
+      const poObj = pos.find((p: any) => p.id === poId);
+      traces.push({
+        type: 'po',
+        title: 'Purchase Order',
+        reference: poId,
+        subtitle: poObj ? `Supplier PO • ${poObj.supplierName || formatCurrency(Number(poObj.totalAmount || 0), true)}` : 'Supplier PO',
+        statusBadge: { label: poObj?.status || 'PO Issued', variant: 'success' },
+        navigateUrl: `/purchasing/po-builder/${poId}`
+      });
+    });
+
+    // 6. Linked Goods Received Notes (GRN)
+    const matchedGrns = grns.filter((g: any) => 
+      linkedPoIds.has(g.poId) || (g.poIds && Array.from(linkedPoIds).some(pid => g.poIds.includes(pid)))
+    );
+    matchedGrns.forEach((g: any) => {
+      traces.push({
+        type: 'grn',
+        title: 'Goods Receipt',
+        reference: g.id,
+        subtitle: `Received: ${g.date || g.createdAt || ''}`,
+        statusBadge: { label: g.status || 'Received', variant: 'info' },
+        navigateUrl: `/purchasing/grn-builder/${g.id}`
+      });
+    });
 
     return traces
   }
@@ -809,6 +866,19 @@ export const WorkOrders: React.FC = () => {
                             <span className="text-rex-600 dark:text-rex-400 hover:underline font-bold flex items-center gap-0.5">
                               Studio <ArrowRight size={11}/>
                             </span>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteWoId(wo.id);
+                                }}
+                                className="text-[10px] font-semibold text-rose-500 hover:text-rose-400 hover:underline flex items-center gap-0.5 ml-auto"
+                                title="Delete Work Order"
+                              >
+                                <Trash2 size={10} /> Delete
+                              </button>
+                            )}
                           </div>
                         </GlassCard>
                       )
