@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2 } from 'lucide-react';
+import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2, ChevronDown, Eye, ShoppingCart, PackageCheck, Printer } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -19,6 +20,7 @@ import { formatCurrency, relativeTime } from '@/lib/utils';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
@@ -60,13 +62,14 @@ export const PurchasingHub: React.FC = () => {
     }
   }, [searchParams]);
 
-  const { data: mrs, loading: loadingMRs } = useMaterialRequests();
-  const { data: pos, loading: loadingPOs } = usePurchaseOrders();
-  const { data: grns, loading: loadingGRNs } = useGRNs();
-  const { data: bills, loading: loadingBills } = useBills();
+  const { showConfirm, toast } = useDialog();
+  const { data: mrs, loading: loadingMRs, refetch: refetchMRs } = useMaterialRequests();
+  const { data: pos, loading: loadingPOs, refetch: refetchPOs } = usePurchaseOrders();
+  const { data: grns, loading: loadingGRNs, refetch: refetchGRNs } = useGRNs();
+  const { data: bills, loading: loadingBills, refetch: refetchBills } = useBills();
   const { data: suppliers } = useSuppliers();
 
-    const { settings } = useSettings();
+  const { settings } = useSettings();
   const [printGrnData, setPrintGrnData] = useState<any>(null);
   const [custGrns, setCustGrns] = useState<any[]>([]);
   useEffect(() => {
@@ -74,52 +77,90 @@ export const PurchasingHub: React.FC = () => {
   }, []);
 
   const handleDeletePO = async (id: string) => {
-    if (!window.confirm(`Are you sure you want to delete Purchase Order ${id}?\n\nThis will remove the PO and recalculate linked Material Requests.`)) return;
+    const ok = await showConfirm(
+      `Are you sure you want to permanently delete Purchase Order "${id}"?\n\nThis will remove the PO and recalculate fulfillment statuses on linked Material Requests.`,
+      'Delete Purchase Order',
+      { confirmLabel: 'Delete PO', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
     try {
       await deletePO(id);
-      window.location.reload();
+      toast(`Purchase Order ${id} has been deleted successfully.`, 'success');
+      refetchPOs();
+      refetchMRs();
     } catch (e: any) {
-      alert(e.message || 'Failed to delete Purchase Order');
+      toast(e.message || 'Failed to delete Purchase Order', 'error');
     }
   };
 
   const handleDeleteMR = async (id: string) => {
-    if (!window.confirm(`Are you sure you want to delete Material Request ${id}?`)) return;
+    const ok = await showConfirm(
+      `Are you sure you want to delete Material Request "${id}"?`,
+      'Delete Material Request',
+      { confirmLabel: 'Delete MR', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
     try {
       await deleteMR(id);
-      window.location.reload();
+      toast(`Material Request ${id} has been deleted successfully.`, 'success');
+      refetchMRs();
     } catch (e: any) {
-      alert(e.message || 'Failed to delete Material Request');
+      toast(e.message || 'Failed to delete Material Request', 'error');
     }
   };
 
   const handleDeleteSupplierGRN = async (id: string) => {
-    if (!window.confirm(`Are you sure you want to delete GRN ${id}?\n\nThis will revert received stock in inventory and update the PO status.`)) return;
+    const ok = await showConfirm(
+      `Are you sure you want to delete Goods Receipt "${id}"?\n\nThis will revert received stock in inventory and update the PO fulfillment status.`,
+      'Delete Goods Receipt',
+      { confirmLabel: 'Delete GRN', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
     try {
       await deleteGRN(id);
-      window.location.reload();
+      toast(`GRN ${id} has been deleted and inventory stock reverted.`, 'success');
+      refetchGRNs();
+      refetchPOs();
     } catch (e: any) {
-      alert(e.message || 'Failed to delete GRN');
+      toast(e.message || 'Failed to delete GRN', 'error');
     }
   };
 
   const handleDeleteCustomerGRN = async (id: string) => {
-    if (!window.confirm(`Are you sure you want to delete customer sample GRN ${id}?`)) return;
+    const ok = await showConfirm(
+      `Are you sure you want to delete Customer Sample GRN "${id}"?`,
+      'Delete Customer Sample GRN',
+      { confirmLabel: 'Delete Sample GRN', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
     try {
       await deleteCustomerGRN(id);
       setCustGrns(prev => prev.filter(g => g.id !== id));
+      toast(`Customer Sample GRN ${id} has been deleted.`, 'success');
     } catch (e: any) {
-      alert(e.message || 'Failed to delete customer sample GRN');
+      toast(e.message || 'Failed to delete customer sample GRN', 'error');
     }
   };
 
   const handleDeleteBill = async (id: string) => {
-    if (!window.confirm(`Are you sure you want to delete Bill ${id}?\n\nThis will revert the entry in the supplier ledger and recalculate the PO billing status.`)) return;
+    const ok = await showConfirm(
+      `Are you sure you want to delete Supplier Bill "${id}"?\n\nThis will revert the entry in the supplier ledger and recalculate the PO billing status.`,
+      'Delete Supplier Bill',
+      { confirmLabel: 'Delete Bill', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
     try {
       await deleteBill(id);
-      window.location.reload();
+      toast(`Bill ${id} has been deleted successfully.`, 'success');
+      refetchBills();
+      refetchPOs();
     } catch (e: any) {
-      alert(e.message || 'Failed to delete Bill');
+      toast(e.message || 'Failed to delete Bill', 'error');
     }
   };
 
@@ -195,6 +236,348 @@ export const PurchasingHub: React.FC = () => {
 
     return matchSearch && matchStatus && matchSupplier && matchGrnSource && matchDate;
   });
+
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.purchasing-action-menu-dropdown') && !target.closest('.purchasing-action-trigger-btn')) {
+        setOpenActionId(null);
+        setActionCoords(null);
+      }
+    };
+    window.addEventListener('click', handleGlobalClick);
+    const handleScroll = () => {
+      setOpenActionId(null);
+      setActionCoords(null);
+    };
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, []);
+
+  const renderActionsDropdown = (tab: Tab, row: any) => {
+    const isOpen = openActionId === row.id;
+
+    let menuStyle: React.CSSProperties = {};
+    if (isOpen && actionCoords) {
+      const PADDING = 8;
+      const MENU_WIDTH = 220;
+
+      let left = actionCoords.right - MENU_WIDTH;
+      if (left < PADDING) left = PADDING;
+      if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+        left = window.innerWidth - MENU_WIDTH - PADDING;
+      }
+
+      const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING;
+      const spaceAbove = actionCoords.top - PADDING;
+      const openUpwards = spaceBelow < 240 && spaceAbove > spaceBelow;
+
+      menuStyle = {
+        position: 'fixed',
+        left: `${left}px`,
+        width: `${MENU_WIDTH}px`,
+        zIndex: 99999,
+        maxHeight: openUpwards ? `${Math.min(380, spaceAbove)}px` : `${Math.min(380, spaceBelow)}px`,
+        ...(openUpwards 
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
+        )
+      };
+    }
+
+    const closeDropdown = () => {
+      setOpenActionId(null);
+      setActionCoords(null);
+    };
+
+    return (
+      <div 
+        className="relative inline-block text-left" 
+        data-no-row-click="true"
+        onClick={e => { e.preventDefault(); e.stopPropagation(); }}
+      >
+        <button
+          type="button"
+          data-no-row-click="true"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (openActionId === row.id) {
+              closeDropdown();
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setOpenActionId(row.id);
+              setActionCoords({
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height
+              });
+            }
+          }}
+          className={`purchasing-action-trigger-btn relative h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
+            isOpen
+              ? 'bg-rex-600 text-white border-rex-600'
+              : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+          }`}
+          title="Actions"
+        >
+          <span>Actions</span>
+          <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
+          <div
+            data-no-row-click="true"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            style={menuStyle}
+            className="purchasing-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100"
+          >
+            {tab === 'po' && (
+              <>
+                <div className="px-3.5 py-1 text-[10.5px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                  PO Actions (#{row.id})
+                </div>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/po-builder/${row.id}`); }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  <Eye size={13} className="text-zinc-400" />
+                  <span>View / Edit PO</span>
+                </button>
+
+                {row.status?.toLowerCase() !== 'draft' && row.status?.toLowerCase() !== 'received' && (
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/grn-builder?po=${row.id}`); }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                  >
+                    <PackageCheck size={13} className="text-emerald-500" />
+                    <span>{row.status?.toLowerCase() === 'partially_received' ? 'Receive Balance (GRN)' : 'Receive GRN'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/bill-builder?po=${row.id}`); }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <CreditCard size={13} className="text-amber-500" />
+                  <span>Record Vendor Bill (+ Bill)</span>
+                </button>
+
+                {isAdmin && (
+                  <>
+                    <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); handleDeletePO(row.id); }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <Trash2 size={13} className="text-rose-500" />
+                      <span>Delete PO</span>
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+
+            {tab === 'mr' && (() => {
+              const linkedPoList: string[] = Array.isArray(row.poIds) 
+                ? row.poIds 
+                : (typeof row.poIds === 'string'
+                    ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                    : (row.poId ? [row.poId] : []));
+
+              return (
+                <>
+                  <div className="px-3.5 py-1 text-[10.5px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                    MR Actions (#{row.id})
+                  </div>
+
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/mr-builder/${row.id}`); }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Eye size={13} className="text-zinc-400" />
+                    <span>View MR</span>
+                  </button>
+
+                  {row.status?.toLowerCase() !== 'ordered' ? (
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/po-builder?mr=${row.id}`); }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <ShoppingCart size={13} className="text-blue-500" />
+                      <span>{row.status === 'partially_ordered' ? 'Order Balance (PO)' : 'Create PO'}</span>
+                    </button>
+                  ) : (
+                    linkedPoList.length > 0 && (
+                      <button
+                        type="button"
+                        data-no-row-click="true"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/po-builder/${linkedPoList[linkedPoList.length - 1]}`); }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                      >
+                        <ShoppingCart size={13} className="text-emerald-500" />
+                        <span>{linkedPoList.length > 1 ? `View POs (${linkedPoList.length})` : 'View PO'}</span>
+                      </button>
+                    )
+                  )}
+
+                  {isAdmin && (
+                    <>
+                      <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                      <button
+                        type="button"
+                        data-no-row-click="true"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); handleDeleteMR(row.id); }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                      >
+                        <Trash2 size={13} className="text-rose-500" />
+                        <span>Delete MR</span>
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
+            {tab === 'grn' && (
+              <>
+                <div className="px-3.5 py-1 text-[10.5px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                  GRN Actions (#{row.id})
+                </div>
+
+                {row.isCustomerSample ? (
+                  <>
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } });
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <Printer size={13} className="text-blue-500" />
+                      <span>Print Sample GRN</span>
+                    </button>
+
+                    {isAdmin && (
+                      <>
+                        <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                        <button
+                          type="button"
+                          data-no-row-click="true"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); handleDeleteCustomerGRN(row.id); }}
+                          className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                        >
+                          <Trash2 size={13} className="text-rose-500" />
+                          <span>Delete Sample GRN</span>
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/grn-builder/${row.id}`); }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Eye size={13} className="text-zinc-400" />
+                      <span>View GRN Details</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/bill-builder?grn=${row.id}`); }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <CreditCard size={13} className="text-emerald-500" />
+                      <span>Create Vendor Bill</span>
+                    </button>
+
+                    {isAdmin && (
+                      <>
+                        <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                        <button
+                          type="button"
+                          data-no-row-click="true"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); handleDeleteSupplierGRN(row.id); }}
+                          className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                        >
+                          <Trash2 size={13} className="text-rose-500" />
+                          <span>Delete GRN</span>
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {tab === 'bill' && (
+              <>
+                <div className="px-3.5 py-1 text-[10.5px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+                  Bill Actions (#{row.id})
+                </div>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/inventory/suppliers/${row.supplierId}`); }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <CreditCard size={13} className="text-amber-500" />
+                  <span>Supplier Ledger / Pay</span>
+                </button>
+
+                {isAdmin && (
+                  <>
+                    <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); handleDeleteBill(row.id); }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <Trash2 size={13} className="text-rose-500" />
+                      <span>Delete Bill</span>
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>,
+          document.body
+        )}
+      </div>
+    );
+  };
 
   const generateColumns = (): Column<any>[] => {
     if (activeTab === 'po') {
@@ -357,41 +740,7 @@ export const PurchasingHub: React.FC = () => {
             );
           }
         },
-        { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          <div className="flex items-center justify-end gap-1.5">
-            <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/po-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none">View</Button>
-            {row.status?.toLowerCase() !== 'draft' && row.status?.toLowerCase() !== 'received' && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => navigate(`/purchasing/grn-builder?po=${row.id}`)} 
-                className={`text-xs uppercase h-7 px-2.5 rounded-none ${row.status?.toLowerCase() === 'partially_received' ? 'text-amber-500 font-bold hover:text-amber-400' : 'text-emerald-500'}`}
-              >
-                {row.status?.toLowerCase() === 'partially_received' ? 'Receive Balance' : 'GRN'}
-              </Button>
-            )}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate(`/purchasing/bill-builder?po=${row.id}`)} 
-              className="text-xs uppercase h-7 px-2.5 rounded-none text-amber-500 hover:text-amber-400 font-semibold border border-amber-500/20"
-              title="Record Vendor Invoice for this PO"
-            >
-              + Bill
-            </Button>
-            {isAdmin && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => handleDeletePO(row.id)} 
-                className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10 font-medium"
-                title="Delete Purchase Order"
-              >
-                Delete
-              </Button>
-            )}
-          </div>
-        )}
+        { key: 'actions', header: 'Actions', align: 'right', render: (_, row) => renderActionsDropdown('po', row) }
       ];
     }
     if (activeTab === 'mr') {
@@ -511,53 +860,7 @@ export const PurchasingHub: React.FC = () => {
             );
           }
         },
-        { key: 'actions', header: '', align: 'right', render: (_, row) => {
-          const linkedPoList: string[] = Array.isArray(row.poIds) 
-            ? row.poIds 
-            : (typeof row.poIds === 'string'
-                ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
-                : (row.poId ? [row.poId] : []));
-
-          return (
-            <div className="flex items-center justify-end gap-1.5">
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/mr-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none">
-                View MR
-              </Button>
-              {row.status?.toLowerCase() !== 'ordered' ? (
-                <Button 
-                  variant="primary" 
-                  size="sm" 
-                  onClick={() => navigate(`/purchasing/po-builder?mr=${row.id}`)} 
-                  className={`text-xs uppercase h-7 px-2.5 rounded-none ${row.status === 'partially_ordered' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}
-                >
-                  {row.status === 'partially_ordered' ? 'Order Balance' : 'Create PO'}
-                </Button>
-              ) : (
-                linkedPoList.length > 0 && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => navigate(`/purchasing/po-builder/${linkedPoList[linkedPoList.length - 1]}`)} 
-                    className="text-xs uppercase h-7 px-2.5 rounded-none text-emerald-500 hover:text-emerald-400 font-semibold"
-                  >
-                    {linkedPoList.length > 1 ? `View POs (${linkedPoList.length})` : 'View PO'}
-                  </Button>
-                )
-              )}
-              {isAdmin && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => handleDeleteMR(row.id)} 
-                  className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10 font-medium"
-                  title="Delete Material Request"
-                >
-                  Delete
-                </Button>
-              )}
-            </div>
-          );
-        }}
+        { key: 'actions', header: 'Actions', align: 'right', render: (_, row) => renderActionsDropdown('mr', row) }
       ];
     }
     if (activeTab === 'grn') {
@@ -659,26 +962,7 @@ export const PurchasingHub: React.FC = () => {
             );
           }
         },
-        { key: 'actions', header: '', align: 'right', render: (_, row) => (
-          <div className="flex justify-end gap-1.5 items-center">
-               {row.isCustomerSample ? (
-                  <>
-                    <Button variant="ghost" size="sm" onClick={() => setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } })} className="text-xs uppercase h-7 px-2.5 rounded-none text-blue-500">Print Sample GRN</Button>
-                    {isAdmin && (
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomerGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
-                    )}
-                  </>
-               ) : (
-                  <>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/grn-builder/${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none text-primary">View</Button>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/bill-builder?grn=${row.id}`)} className="text-xs uppercase h-7 px-2.5 rounded-none text-emerald-500">Create Bill</Button>
-                    {isAdmin && (
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteSupplierGRN(row.id)} className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10">Delete</Button>
-                    )}
-                  </>
-               )}
-            </div>
-        )}
+        { key: 'actions', header: 'Actions', align: 'right', render: (_, row) => renderActionsDropdown('grn', row) }
       ];
     }
     return [
@@ -760,30 +1044,8 @@ export const PurchasingHub: React.FC = () => {
         }
       },
       {
-        key: 'actions', header: '', align: 'right',
-        render: (_, row) => (
-          <div className="flex justify-end gap-1.5 items-center">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate(`/inventory/suppliers/${row.supplierId}`)} 
-              className="text-xs uppercase h-7 px-2.5 rounded-none text-amber-500 font-semibold hover:text-amber-400"
-            >
-              Pay / Ledger
-            </Button>
-            {isAdmin && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => handleDeleteBill(row.id)} 
-                className="text-xs uppercase h-7 px-2.5 rounded-none text-red-500 hover:text-red-400 hover:bg-red-500/10"
-                title="Delete this bill and revert supplier ledger"
-              >
-                Delete
-              </Button>
-            )}
-          </div>
-        )
+        key: 'actions', header: 'Actions', align: 'right',
+        render: (_, row) => renderActionsDropdown('bill', row)
       }
     ];
   };
@@ -989,6 +1251,7 @@ export const PurchasingHub: React.FC = () => {
           data={filtered} 
           keyExtractor={row => row.id} 
           onRowClick={row => {
+            if (openActionId) return;
             if (activeTab === 'grn') {
               if (row.isCustomerSample) {
                 setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } });

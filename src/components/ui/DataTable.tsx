@@ -93,7 +93,22 @@ export function DataTable<T>({
               displayData.map(row => (
                 <tr
                   key={keyExtractor(row)}
-                  onClick={() => onRowClick?.(row)}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement | null;
+                    if (
+                      target && (
+                        target.closest('button') ||
+                        target.closest('a') ||
+                        target.closest('input') ||
+                        target.closest('.purchasing-action-trigger-btn') ||
+                        target.closest('.purchasing-action-menu-dropdown') ||
+                        target.closest('[data-no-row-click]')
+                      )
+                    ) {
+                      return;
+                    }
+                    onRowClick?.(row);
+                  }}
                   className={cn(
                     'border-b border-theme-subtle transition-colors duration-100 table-row-hover',
                     onRowClick && 'cursor-pointer',
