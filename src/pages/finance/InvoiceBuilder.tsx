@@ -69,7 +69,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [company, setCompany] = useState<any>({});
   const [deliveryDate, setDeliveryDate] = useState(date);
-  const [placeOfSupply, setPlaceOfSupply] = useState('');
+  const [placeOfSupply, setPlaceOfSupply] = useState('Negombo');
   const [modeOfPayment, setModeOfPayment] = useState('Credit');
   const [additionalInfo, setAdditionalInfo] = useState('');
   const [quotationNo, setQuotationNo] = useState('');
@@ -874,6 +874,11 @@ export const InvoiceBuilder: React.FC = () => {
         invoiceNo: cleanDocNo, 
         customerId, 
         leadId: customerId, 
+        customerName: selectedCustomer?.name || customCustomer?.name || '',
+        customerCompany: selectedCustomer?.company || customCustomer?.company || selectedCustomer?.name || '',
+        customerAddress: selectedCustomer?.address || customCustomer?.address || '',
+        customerPhone: selectedCustomer?.phone || customCustomer?.phone || '',
+        customerEmail: selectedCustomer?.email || customCustomer?.email || '',
         attention, 
         date, 
         dueDate: dueDate || null, 
@@ -898,8 +903,8 @@ export const InvoiceBuilder: React.FC = () => {
           reference: `Advance Receipt ${r.receiptNo || ''}`
         }))) : null,
         deliveryDate: deliveryDate || null, 
-        placeOfSupply, 
-        modeOfPayment,
+        placeOfSupply: placeOfSupply || 'Negombo',
+    modeOfPayment,
         additionalInfo,
         quotationNo, 
         dispatchNo, 
@@ -961,7 +966,9 @@ export const InvoiceBuilder: React.FC = () => {
     dispatchNo, 
     orderNo, 
     poNo, 
-    customer: selectedCustomer, 
+    customer: selectedCustomer,
+    customerAddress: selectedCustomer?.address || customCustomer?.address || '',
+    customerPhone: selectedCustomer?.phone || customCustomer?.phone || '',
     customerVat, 
     items, 
     subtotal, 

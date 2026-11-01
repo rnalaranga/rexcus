@@ -87,6 +87,9 @@ export const TEMPLATES = [
 ];
 
 export interface InvoicePreviewProps {
+  dueDate?: string;
+  customerAddress?: string;
+  customerPhone?: string;
   docNo?: string;
   date?: string;
   deliveryDate?: string;
@@ -120,9 +123,10 @@ export interface InvoicePreviewProps {
 }
 
 // ─── Print Preview (Gazette Extraordinary No. 2481/22 Annexure I Specimen) ────
-export const InvoicePreview: React.FC<InvoicePreviewProps> = ({ 
-  docNo, 
-  date, 
+export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
+  docNo,
+  date,
+  dueDate,
   deliveryDate, 
   placeOfSupply, 
   additionalInfo,
@@ -130,7 +134,9 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   dispatchNo, 
   orderNo, 
   poNo, 
-  customer, 
+  customer,
+  customerAddress,
+  customerPhone,
   customerVat, 
   items = [], 
   subtotal = 0, 
@@ -163,6 +169,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     ? parsedDiscountAmount 
     : (Number(discount || 0) > 0 && effectiveGrossAmount > 0 ? (effectiveGrossAmount * (Number(discount) / 100)) : 0);
 
+  const purchaserAddress = customer?.address || customerAddress || customer?.deliveryAddress || customer?.billingAddress || '-';
+  const purchaserPhone = customer?.phone || customerPhone || customer?.mobile || '-';
   const invoiceDateFormatted = formatGazetteDate(date);
   const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
 
@@ -179,7 +187,27 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   if (poNo) infoItems.push({ label: 'PO No.', value: String(poNo) });
   if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
   if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
-  if (dispatchNo) infoItems.push({ label: 'Dispatch No.', value: String(dispatchNo) });
+
+  // Dispatch No.
+  const effectiveDispatch = dispatchNo && String(dispatchNo).trim() ? String(dispatchNo).trim() : 'Direct Delivery';
+  infoItems.push({ label: 'Dispatch No.', value: effectiveDispatch });
+
+  // Payment Due Date
+  let displayDueDate = '';
+  if (dueDate) {
+    displayDueDate = formatGazetteDate(dueDate);
+  } else if (date) {
+    try {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) {
+        d.setDate(d.getDate() + 30);
+        displayDueDate = formatGazetteDate(d.toISOString());
+      }
+    } catch (e) {}
+  }
+  if (displayDueDate && displayDueDate !== '-') {
+    infoItems.push({ label: 'Payment Due Date', value: displayDueDate });
+  }
   // Determine Payment Terms value (concise string: e.g. "Advance Deposit (30%)" or "Bank Wire / TT")
   let cleanPaymentTerms = '';
   if (paymentTerms && String(paymentTerms).trim() && !String(paymentTerms).trim().startsWith('{')) {
@@ -536,12 +564,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               </div>
               <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'flex-start' }}>
                 <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Address :</span>
-                <span style={{ whiteSpace: 'pre-wrap', flex: 1 }}>{customer?.address || '-'}</span>
+                <span style={{ whiteSpace: 'pre-wrap', flex: 1 }}>{purchaserAddress}</span>
               </div>
             </div>
             <div style={{ marginTop: '6px', display: 'flex', alignItems: 'flex-start' }}>
               <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Telephone No.:*</span>
-              <span style={{ flex: 1 }}>{customer?.phone || '-'}</span>
+              <span style={{ flex: 1 }}>{purchaserPhone}</span>
             </div>
           </div>
         </div>
@@ -554,7 +582,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </div>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Place of Supply :*</span>{' '}
-            <span>{placeOfSupply || '-'}</span>
+            <span>{placeOfSupply && placeOfSupply.trim() ? placeOfSupply : 'Negombo'}</span>
           </div>
           <div style={{ padding: '6px 10px' }}>
             <span style={{ fontWeight: '700' }}>Dispatch No. / Gate Pass :*</span>{' '}

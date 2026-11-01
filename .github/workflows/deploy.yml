@@ -17,10 +17,12 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          timeout: 60s
+          command_timeout: 25m
           script: |
             set -e
             echo "=== Rexcus Deployment Started ==="
-            export NODE_OPTIONS="--max-old-space-size=4096"
+            export NODE_OPTIONS="--max-old-space-size=2048"
 
             # 1. Project Directory එකට යෑම
             cd /var/www/rexnw
@@ -32,29 +34,41 @@ jobs:
             git clean -fd
 
             # 3. Frontend Build කිරීම
-            echo "Installing root dependencies..."
-            npm install
+            echo "Installing root dependencies (offline-preferred for speed)..."
+            npm install --prefer-offline --no-audit
             echo "Building frontend..."
             npm run build
 
-            # 4. Backend Dependencies Update කිරීම (api folder එක ඇත්නම්)
+            # 4. Backend Dependencies Update කිරීම
             if [ -d "api" ]; then
               echo "Installing API dependencies..."
               cd api
-              npm install
-              echo "Setting up Chrome for Puppeteer vector PDF..."
-              rm -rf /var/www/rexnw/api/chrome-bin
-              npx @puppeteer/browsers install chrome@stable --path /var/www/rexnw/api/chrome-bin || true
+              npm install --prefer-offline --no-audit
+
+              # Chrome setup for Puppeteer vector PDF (skip if already installed)
+              CHROME_PATH=$(find /var/www/rexnw/api/chrome-bin -name chrome -o -name chrome.exe 2>/dev/null | head -n 1 || true)
+              if [ -z "$CHROME_PATH" ] || [ ! -x "$CHROME_PATH" ]; then
+                echo "Chrome binary not found. Downloading Chrome for Puppeteer..."
+                rm -rf /var/www/rexnw/api/chrome-bin
+                npx @puppeteer/browsers install chrome@stable --path /var/www/rexnw/api/chrome-bin || true
+              else
+                echo "Chrome binary already present at: $CHROME_PATH (skipping download)"
+              fi
               cd ..
             fi
 
-            # Linux headless Chrome dependencies and unzip archiver
-            echo "Checking Linux Chromium packages and unzip..."
-            (sudo apt-get update -y && sudo apt-get install -y unzip chromium-browser chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libasound2) || true
+            # 5. Linux headless Chrome dependencies and unzip archiver (skip if unzip already installed)
+            if ! command -v unzip &> /dev/null; then
+              echo "Installing system packages..."
+              (sudo apt-get update -y && sudo apt-get install -y unzip chromium-browser chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libasound2) || true
+            else
+              echo "System dependencies already installed (skipping apt-get)"
+            fi
 
-            # 5. PM2 Backend Process එක Restart කිරීම
+            # 6. PM2 Backend Process එක Restart කිරීම
             echo "Restarting backend via PM2..."
             pm2 restart rexnw-backend --update-env || pm2 restart all
+            pm2 save || true
             pm2 status
 
             echo "=== Rexcus ERP Deployment Completed Successfully! ==="

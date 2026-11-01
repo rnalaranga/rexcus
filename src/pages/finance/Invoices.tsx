@@ -222,7 +222,7 @@ export const Invoices: React.FC = () => {
   }
 
   const getCustomerInfo = (inv: any) => {
-    if (!inv) return { id: '', name: 'Unknown Customer', company: 'Unknown Company' };
+    if (!inv) return { id: '', name: 'Unknown Customer', company: 'Unknown Company', address: '', phone: '', email: '', vat: '' };
     const custId = inv.customerId || inv.leadId;
 
     // 1. Direct match in customers
@@ -234,7 +234,9 @@ export const Invoices: React.FC = () => {
           name: match.name || match.company || 'Customer',
           company: match.company || match.name || '',
           email: match.email || '',
-          phone: match.phone || ''
+          phone: match.phone || '',
+          address: match.address || inv.customerAddress || '',
+          vat: match.vat || inv.customerVat || ''
         };
       }
     }
@@ -248,19 +250,23 @@ export const Invoices: React.FC = () => {
           name: match.name || match.company || 'Lead',
           company: match.company || match.name || '',
           email: match.email || '',
-          phone: match.phone || ''
+          phone: match.phone || '',
+          address: match.address || inv.customerAddress || '',
+          vat: match.vat || inv.customerVat || ''
         };
       }
     }
 
     // 3. Data from server query join
-    if (inv.customerCompany || inv.customerName) {
+    if (inv.customerCompany || inv.customerName || inv.customerAddress) {
       return {
         id: custId || '',
         name: inv.customerName || inv.customerCompany || '',
         company: inv.customerCompany || inv.customerName || '',
         email: inv.customerEmail || '',
-        phone: inv.customerPhone || ''
+        phone: inv.customerPhone || '',
+        address: inv.customerAddress || '',
+        vat: inv.customerVat || ''
       };
     }
 
@@ -277,7 +283,9 @@ export const Invoices: React.FC = () => {
               name: cust.name || cust.company || '',
               company: cust.company || cust.name || '',
               email: cust.email || '',
-              phone: cust.phone || ''
+              phone: cust.phone || '',
+              address: cust.address || inv.customerAddress || '',
+              vat: cust.vat || inv.customerVat || ''
             };
           }
           const lead = leads?.find((l: any) => l.id === quo.leadId);
@@ -287,52 +295,90 @@ export const Invoices: React.FC = () => {
               name: lead.name || lead.company || '',
               company: lead.company || lead.name || '',
               email: lead.email || '',
-              phone: lead.phone || ''
+              phone: lead.phone || '',
+              address: lead.address || inv.customerAddress || '',
+              vat: lead.vat || inv.customerVat || ''
             };
           }
         }
-        if (quo.leadCompany || quo.leadName) {
+        if (quo.leadCompany || quo.leadName || quo.leadAddress) {
           return {
             id: quo.leadId || '',
             name: quo.leadName || quo.leadCompany || '',
-            company: quo.leadCompany || quo.leadName || ''
+            company: quo.leadCompany || quo.leadName || '',
+            email: quo.leadEmail || '',
+            phone: quo.leadPhone || '',
+            address: quo.leadAddress || inv.customerAddress || '',
+            vat: quo.leadVat || inv.customerVat || ''
           };
         }
         try {
           const parsed = JSON.parse(quo.data || '{}');
-          if (parsed.customerName || parsed.customerCompany) {
+          if (parsed.customerName || parsed.customerCompany || parsed.customerAddress) {
             return {
               id: quo.leadId || '',
               name: parsed.customerName || parsed.customerCompany || '',
-              company: parsed.customerCompany || parsed.customerName || ''
+              company: parsed.customerCompany || parsed.customerName || '',
+              email: parsed.customerEmail || '',
+              phone: parsed.customerPhone || '',
+              address: parsed.customerAddress || parsed.address || inv.customerAddress || '',
+              vat: parsed.vatNo || parsed.tinNo || inv.customerVat || ''
             };
           }
         } catch (e) {}
       }
     }
 
-    // 5. Attention field
+    // 5. Finished goods order lookup (if orderNo)
+    if (inv.orderNo && allOrders && allOrders.length > 0) {
+      const ord = allOrders.find((o: any) => o.orderNo === inv.orderNo || o.id === inv.orderNo);
+      if (ord) {
+        return {
+          id: ord.customerId || custId || '',
+          name: ord.customerName || '',
+          company: ord.customerCompany || ord.customerName || '',
+          phone: ord.customerPhone || '',
+          email: ord.customerEmail || '',
+          address: ord.deliveryAddress || inv.customerAddress || '',
+          vat: inv.customerVat || ''
+        };
+      }
+    }
+
+    // 6. Attention field
     if (inv.attention && inv.attention.trim()) {
       return {
         id: custId || '',
         name: inv.attention.trim(),
-        company: inv.attention.trim()
+        company: inv.attention.trim(),
+        address: inv.customerAddress || '',
+        phone: inv.customerPhone || '',
+        email: inv.customerEmail || '',
+        vat: inv.customerVat || ''
       };
     }
 
-    // 6. Alphanumeric ID fallback
+    // 7. Alphanumeric ID fallback
     if (custId && custId !== 'WALK-IN') {
       return {
         id: custId,
         name: custId,
-        company: custId
+        company: custId,
+        address: inv.customerAddress || '',
+        phone: inv.customerPhone || '',
+        email: inv.customerEmail || '',
+        vat: inv.customerVat || ''
       };
     }
 
     return {
       id: '',
       name: 'Walk-in / Direct Customer',
-      company: 'Walk-in Customer'
+      company: 'Walk-in Customer',
+      address: inv.customerAddress || '',
+      phone: inv.customerPhone || '',
+      email: inv.customerEmail || '',
+      vat: inv.customerVat || ''
     };
   };
 
@@ -931,7 +977,7 @@ export const Invoices: React.FC = () => {
                 date={viewInvoice.date}
                 dueDate={viewInvoice.dueDate}
                 deliveryDate={viewInvoice.deliveryDate || viewInvoice.date}
-                placeOfSupply={viewInvoice.placeOfSupply || ''}
+                placeOfSupply={viewInvoice.placeOfSupply || 'Negombo'}
                 modeOfPayment={viewInvoice.modeOfPayment || 'Credit'}
                 additionalInfo={viewInvoice.additionalInfo || ''}
                 attention={viewInvoice.attention || ''}
@@ -939,8 +985,13 @@ export const Invoices: React.FC = () => {
                 dispatchNo={viewInvoice.dispatchNo || ''}
                 orderNo={viewInvoice.orderNo || ''}
                 poNo={viewInvoice.poNo || ''}
-                customer={getCustomerInfo(viewInvoice)}
-                customerVat={viewInvoice.customerVat || ''}
+                customer={{
+                  ...getCustomerInfo(viewInvoice),
+                  address: getCustomerInfo(viewInvoice).address || viewInvoice.customerAddress || viewInvoice.deliveryAddress || ''
+                }}
+                customerAddress={getCustomerInfo(viewInvoice).address || viewInvoice.customerAddress || viewInvoice.deliveryAddress || ''}
+                customerPhone={getCustomerInfo(viewInvoice).phone || viewInvoice.customerPhone || ''}
+                customerVat={viewInvoice.customerVat || getCustomerInfo(viewInvoice).vat || ''}
                 items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ 
                   reference: i.reference || '',
                   description: i.desc || i.description, 
