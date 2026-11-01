@@ -33,6 +33,9 @@ import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrder
 import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
 import { WorkOrderFullBomAdjustModal } from '@/components/production/WorkOrderFullBomAdjustModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
+import { GatePassPrintModal } from '@/components/GatePassPrintModal'
+import { ShoppingBag } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
@@ -71,6 +74,8 @@ export const WorkOrderDetail: React.FC = () => {
   const [adjustBomPartIndex, setAdjustBomPartIndex] = useState(0)
   const [showPartialDispatchModal, setShowPartialDispatchModal] = useState(false)
   const [showPrintTravelerModal, setShowPrintTravelerModal] = useState(false)
+  const [printSalesOrder, setPrintSalesOrder] = useState<any | null>(null)
+  const [printGatePass, setPrintGatePass] = useState<any | null>(null)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
@@ -1163,10 +1168,80 @@ export const WorkOrderDetail: React.FC = () => {
                   }}
                   className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
                 >
-                  <Printer size={14} className="text-muted shrink-0" />
+                  <Printer size={14} className="text-amber-500 shrink-0" />
                   <div>
-                    <span className="font-semibold block">Print Job Traveler</span>
+                    <span className="font-semibold block">Print Job Traveler (WO)</span>
                     <span className="text-[10px] text-muted">Shop floor routing traveler sheet</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    const previewSO = {
+                      id: `SO-${wo?.orderNo || wo?.id}`,
+                      orderNo: wo?.orderNo || wo?.id,
+                      quotationNo: wo?.quotationNo || wo?.sourceQuoteNo || null,
+                      quoteId: wo?.sourceQuoteId || wo?.quotationId || null,
+                      customerId: wo?.customerId,
+                      customerName: wo?.customerName || wo?.customer || 'Valued Customer',
+                      orderDate: wo?.createdAt || new Date().toISOString(),
+                      targetDeliveryDate: wo?.deadline || null,
+                      paymentTerms: 'Standard Terms',
+                      subtotal: Number(wo?.costSummary?.actualTotalCost || 0),
+                      totalPrice: Number(wo?.costSummary?.actualTotalCost || 0),
+                      status: wo?.status || 'In Production',
+                      items: (wo?.items && wo?.items.length > 0) ? wo.items : [{
+                        description: wo?.productName || wo?.partName || wo?.title || 'Precision Machined Component',
+                        qty: wo?.jobQty || 1,
+                        unitPrice: 0,
+                        amount: 0,
+                        uom: wo?.uom || 'Nos'
+                      }]
+                    };
+                    setPrintSalesOrder(previewSO);
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-blue-600 dark:text-blue-400 cursor-pointer transition-colors"
+                >
+                  <ShoppingBag size={14} className="shrink-0" />
+                  <div>
+                    <span className="font-semibold block">Print Sales Order (SO)</span>
+                    <span className="text-[10px] text-muted">Commercial sales order document</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    const previewGP = {
+                      id: `DN-${wo?.orderNo || wo?.id}`,
+                      type: 'goods_delivery',
+                      orderNo: wo?.orderNo || wo?.id,
+                      quoNo: wo?.quotationNo || null,
+                      customerName: wo?.customerName || wo?.customer || 'Customer',
+                      customerCompany: wo?.customerName || wo?.customer || 'Customer',
+                      carrier: 'REX Transport',
+                      reason: `Finished Goods Delivery for Work Order ${wo?.orderNo || wo?.id}`,
+                      items: [{
+                        description: wo?.productName || wo?.partName || wo?.title || 'Manufactured Item',
+                        qty: wo?.jobQty || 1,
+                        unit: wo?.uom || 'Nos',
+                        remarks: `WO #${wo?.orderNo || wo?.id}`
+                      }],
+                      issuedBy: 'Production Store',
+                      status: 'Ready for Dispatch',
+                      createdAt: new Date().toISOString()
+                    };
+                    setPrintGatePass(previewGP);
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-emerald-600 dark:text-emerald-400 cursor-pointer transition-colors"
+                >
+                  <Truck size={14} className="shrink-0" />
+                  <div>
+                    <span className="font-semibold block">Print Dispatch Note / Gate Pass</span>
+                    <span className="text-[10px] text-muted">Security delivery gate pass document</span>
                   </div>
                 </button>
 
@@ -2737,6 +2812,24 @@ export const WorkOrderDetail: React.FC = () => {
         photos={activeViewingPhotos?.photos || []}
         title={activeViewingPhotos?.title || 'Sample Photos'}
       />
+
+      {printSalesOrder && (
+        <SalesOrderPrintModal
+          isOpen={!!printSalesOrder}
+          onClose={() => setPrintSalesOrder(null)}
+          order={printSalesOrder}
+          settings={settings}
+        />
+      )}
+
+      {printGatePass && (
+        <GatePassPrintModal
+          isOpen={!!printGatePass}
+          onClose={() => setPrintGatePass(null)}
+          gatePass={printGatePass}
+          settings={settings}
+        />
+      )}
 
       {/* ── PRODUCTION WORK ORDER & JOB TRAVELER PRINT MODAL ──────── */}
       {showPrintTravelerModal && (

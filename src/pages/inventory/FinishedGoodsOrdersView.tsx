@@ -1368,7 +1368,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </button>
             )}
 
-            {/* 3. Dispatch & Gate Pass */}
+            {/* 3. Dispatch & Gate Pass (Direct Dispatch without Work Order) */}
             {remainingToDispatch > 0 && !order.isDispatched ? (
               <button
                 type="button"
@@ -1376,12 +1376,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   setOpenActionOrderId(null)
                   handleOpenDispatchModal(order)
                 }}
-                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-emerald-600 dark:text-emerald-400 font-medium"
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-emerald-600 dark:text-emerald-400 font-bold"
+                title="Directly dispatch finished goods and generate security Gate Pass without requiring a Work Order"
               >
                 <span className="flex items-center gap-2">
-                  <Truck size={13} /> Record Partial Dispatch
+                  <Truck size={13} className="text-emerald-500" /> Dispatch Goods (Issue Gate Pass)
                 </span>
-                <span className="text-[10px] font-mono px-1 py-0.2 bg-emerald-500/10 border border-emerald-500/20">{remainingToDispatch} left</span>
+                <span className="text-[10px] font-mono px-1 py-0.2 bg-emerald-500/15 border border-emerald-500/30 font-semibold">{remainingToDispatch} to send</span>
               </button>
             ) : (
               <button
@@ -1390,12 +1391,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   setOpenActionOrderId(null)
                   handleViewGatePass(order)
                 }}
-                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
+                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-emerald-600 dark:text-emerald-400 font-medium"
               >
                 <span className="flex items-center gap-2">
-                  <Truck size={13} className="text-emerald-500" /> View Delivery Gate Pass
+                  <Truck size={13} className="text-emerald-500" /> View / Print Gate Pass (Dispatched)
                 </span>
-                <span className="text-[10px] text-muted font-mono">DN/GP</span>
+                <span className="text-[10px] text-muted font-mono">Gate Pass</span>
               </button>
             )}
 
@@ -1431,20 +1432,98 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             )}
 
             <div className="my-1 border-t border-theme-subtle" />
+            <div className="px-3 py-1 text-[10px] font-bold text-muted uppercase tracking-wider font-mono">
+              Print Documents
+            </div>
 
-            {/* 5. Print Order PDF */}
+            {/* Print Sales Order */}
             <button
               type="button"
               onClick={() => {
                 setOpenActionOrderId(null)
                 setPrintOrder(order)
               }}
-              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-secondary hover:text-primary font-medium"
+              className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-primary font-medium"
             >
-              <Printer size={13} /> Print Sales Order Document
+              <Printer size={13} className="text-blue-500" /> Print Sales Order Document
             </button>
 
-            {/* 6. Edit Order */}
+            {/* Print Work Order (Traveler) - available for all orders */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                const targetWO = existingWO || {
+                  id: `WO-${order.orderNo || order.id}`,
+                  orderNo: order.orderNo,
+                  title: `WO: ${order.orderNo} - ${order.customerName}`,
+                  customerName: order.customerName,
+                  customer: order.customerName,
+                  salesOrderNo: order.orderNo,
+                  quoteId: order.quoteId,
+                  quotationNo: order.quotationNo,
+                  jobQty: Math.max(1, Number(order.qty || 1)),
+                  productName: order.productName || (orderItems?.[0]?.description) || 'Precision Component',
+                  items: orderItems,
+                  status: existingWO?.status || 'Confirmed Order (Factory Traveler)',
+                  date: order.orderDate || order.createdAt
+                };
+                setPrintWorkOrderTarget(targetWO);
+              }}
+              className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-primary font-medium"
+            >
+              <Factory size={13} className="text-amber-500" /> Print Work Order (Traveler)
+            </button>
+
+            {/* Print Dispatch Note / Gate Pass */}
+            <button
+              type="button"
+              onClick={async () => {
+                setOpenActionOrderId(null)
+                if (order.gatePassId || order.gatePassNo) {
+                  await handleViewGatePass(order)
+                } else {
+                  const targetGP = {
+                    id: order.gatePassNo || `DN-${order.orderNo || order.id}`,
+                    type: 'goods_delivery',
+                    orderNo: order.orderNo,
+                    orderId: order.id,
+                    quoNo: order.quotationNo,
+                    customerName: order.customerName,
+                    customerCompany: order.customerName,
+                    attention: order.attention || order.customerName,
+                    address: order.deliveryAddress,
+                    phone: order.customerPhone,
+                    email: order.customerEmail,
+                    carrier: order.carrier || 'REX Transport',
+                    vehicleNo: order.vehicleNo,
+                    driverName: order.driverName,
+                    reason: `Finished Goods Delivery for Order ${order.orderNo}`,
+                    items: (orderItems && orderItems.length > 0) ? orderItems.map((it) => ({
+                      description: it.description || it.productName || order.productName,
+                      qty: it.qty || order.qty || 1,
+                      unit: it.uom || 'Nos',
+                      remarks: `Order #${order.orderNo}`
+                    })) : [{
+                      description: order.productName || 'Order Items',
+                      qty: order.qty || 1,
+                      unit: 'Nos',
+                      remarks: `Order #${order.orderNo}`
+                    }],
+                    issuedBy: 'Store Keeper / Dispatch',
+                    status: order.isDispatched ? 'Dispatched' : 'Preview / Pending Dispatch',
+                    createdAt: order.orderDate || order.createdAt
+                  };
+                  setPrintGatePass(targetGP);
+                }
+              }}
+              className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-primary font-medium"
+            >
+              <Truck size={13} className="text-emerald-500" /> Print Dispatch Note / Gate Pass
+            </button>
+
+            <div className="my-1 border-t border-theme-subtle" />
+{/* 6. Edit Order */}
             <button
               type="button"
               onClick={() => {

@@ -10,8 +10,9 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
   // Parse items
   let itemsList: any[] = [];
   try {
-    if (typeof gatePass.items === 'string' && gatePass.items.startsWith('[')) {
-      itemsList = JSON.parse(gatePass.items);
+    if (typeof gatePass.items === 'string' && (gatePass.items.startsWith('[') || gatePass.items.startsWith('{'))) {
+      const parsed = JSON.parse(gatePass.items);
+      itemsList = Array.isArray(parsed) ? parsed : [parsed];
     } else if (Array.isArray(gatePass.items)) {
       itemsList = gatePass.items;
     } else if (gatePass.items) {
@@ -21,11 +22,22 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
     itemsList = [{ description: String(gatePass.items || ''), qty: 1, unit: 'Nos', remarks: '' }];
   }
 
+  if (itemsList.length === 0 && gatePass.description) {
+    itemsList = [{
+      description: gatePass.description,
+      qty: Number(gatePass.qty) || 1,
+      unit: gatePass.unit || 'Nos',
+      remarks: gatePass.remarks || ''
+    }];
+  }
+
   const company = gatePass.customerCompany || gatePass.companyName || gatePass.leadCompany || gatePass.customerName || gatePass.leadName || 'N/A';
-  const person = gatePass.attention || gatePass.personName || gatePass.customerName || gatePass.leadName || '';
-  const address = gatePass.address || gatePass.customerAddress || '';
+  const person = gatePass.attention || gatePass.personName || gatePass.contactPerson || '';
+  const address = gatePass.address || gatePass.customerAddress || gatePass.deliveryAddress || '';
   const phone = gatePass.phone || gatePass.customerPhone || '';
   const email = gatePass.email || gatePass.customerEmail || '';
+
+  const isHalfPage = itemsList.length <= 6;
 
   return (
     <>
@@ -34,11 +46,13 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
           width: 100% !important;
           max-width: 794px !important;
           margin: 0 auto !important;
-          font-family: Arial, sans-serif !important;
+          font-family: Arial, Helvetica, sans-serif !important;
           color: #000000 !important;
           background: #ffffff !important;
           border: 1px solid #000000 !important;
           box-sizing: border-box !important;
+          font-size: 10.5px !important;
+          line-height: 1.3 !important;
         }
         #gatepass-print-section * {
           box-sizing: border-box !important;
@@ -53,212 +67,336 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
         #gatepass-print-section .border-r { border-right: 1px solid #000000 !important; }
         #gatepass-print-section .border-t { border-top: 1px solid #000000 !important; }
         #gatepass-print-section .flex { display: flex !important; }
-        #gatepass-print-section .bg-gray-100 { background-color: #f3f4f6 !important; }
         #gatepass-print-section .bg-gray-50 { background-color: #f9fafb !important; }
+        #gatepass-print-section .print-no-break { page-break-inside: avoid !important; break-inside: avoid !important; }
         @media print {
-          @page { size: A4 portrait; margin: 6mm 8mm; }
-          html, body { background: #fff !important; color: #000 !important; }
+          @page {
+            size: A4 portrait;
+            margin: 6mm 8mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * { visibility: hidden !important; }
+          #gatepass-print-wrapper, #gatepass-print-wrapper * { visibility: visible !important; }
+          #gatepass-print-wrapper {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+          #gatepass-print-section {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: auto !important;
+            height: auto !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
         }
       `}</style>
-      <div 
-        id="gatepass-print-section" 
-        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm" 
-        style={{ width: '100%', maxWidth: '794px', minHeight: '1050px', color: '#000', fontFamily: 'Arial, sans-serif' }}
-      >
-        {/* Header Row */}
-        <div className="flex border-b border-black">
-          <div className="w-[30%] flex items-center justify-center p-4 border-r border-black bg-white">
-            {settings?.company_logo ? (
-              <img src={settings.company_logo} alt="Logo" className="w-full object-contain" style={{ maxHeight: '80px' }} />
-            ) : (
-              <div className="text-3xl text-red-600 font-bold flex items-center gap-2 tracking-tighter">
-                <span className="text-5xl">⚙️</span> REX
-              </div>
-            )}
-          </div>
-          <div className="w-[70%] p-4 pl-6 text-[13px] leading-tight bg-white">
-            <h1 className="text-[22px] font-black uppercase text-black mb-1">REX INDUSTRIES (PVT) LTD</h1>
-            <table className="w-full text-[13px]">
-              <tbody>
-                <tr>
-                  <td className="font-bold align-top w-16 pb-1">Office</td>
-                  <td className="pb-1">: No.451/2, Chilaw Road, Kattuwa,<br />: Negombo, 11500, Sri Lanka</td>
-                </tr>
-                <tr>
-                  <td className="font-bold pb-1">Tel.</td>
-                  <td className="pb-1">: 0094-31-2233117 / 2233315 / 2223136</td>
-                </tr>
-                <tr>
-                  <td className="font-bold pb-1">E-mail</td>
-                  <td className="pb-1">: info@rexgroup.lk</td>
-                </tr>
-                <tr>
-                  <td className="font-bold">Web</td>
-                  <td>: www.rexgroup.lk</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Title Bar */}
-        <div className="bg-gray-100 border-b border-black text-center py-2.5 font-bold text-[16px] uppercase tracking-wider">
-          {gatePass.type === 'goods_delivery' || gatePass.type === 'sales_delivery' ? 'GATE PASS (GOODS DISPATCH & DELIVERY)' : 'SAMPLE GATE PASS (OUTWARD)'}
-        </div>
-
-        {/* Details Section */}
-        <div className="flex border-b border-black text-[13px]">
-          {/* Left Side: Customer / Consignee Details */}
-          <div className="w-[50%] p-3.5 pl-4 border-r border-black">
-            <span className="font-bold italic underline mb-2 block text-[13px]">Customer / Consignee Details :</span>
-            <div className="leading-snug space-y-0.5">
-              <div className="font-bold text-[14px] text-black">{company}</div>
-              {person && person !== company && (
-                <div><span className="font-semibold text-gray-700">Attn:</span> {person}</div>
+      <div id="gatepass-print-wrapper" className="w-full flex flex-col justify-start">
+        <div 
+          id="gatepass-print-section" 
+          className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm print:shadow-none" 
+          style={{ width: '100%', maxWidth: '794px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '10.5px', boxSizing: 'border-box' }}
+        >
+          {/* Header Row (Compact Letterhead matching Quotation & Invoice) */}
+          <div className="flex border-b border-black items-center p-2.5 print-no-break">
+            <div className="w-[28%] flex items-center justify-center p-1.5 border-r border-black bg-white">
+              {settings?.company_logo ? (
+                <img src={settings.company_logo} alt="Logo" className="max-h-12 object-contain" />
+              ) : (
+                <div className="text-3xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>
+                  REX
+                </div>
               )}
-              {address && <div className="text-gray-800 whitespace-pre-line">{address}</div>}
-              {phone && <div><span className="font-semibold text-gray-700">Tel:</span> {phone}</div>}
-              {email && <div><span className="font-semibold text-gray-700">Email:</span> {email}</div>}
+            </div>
+            <div className="w-[72%] pl-3 text-[10px] leading-tight bg-white">
+              <h1 className="text-[16px] font-black uppercase text-black mb-0.5 leading-tight" style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}>
+                {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
+              </h1>
+              <table className="w-full text-[10px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+                <tbody>
+                  <tr>
+                    <td className="font-bold align-top w-12 pb-0.5 whitespace-nowrap">Office</td>
+                    <td className="pb-0.5 align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1 whitespace-pre-line">{settings?.company_address || settings?.companyAddress || 'No.451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-bold align-top w-12 pb-0.5 whitespace-nowrap">Tel.</td>
+                    <td className="pb-0.5 align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-bold align-top w-12 pb-0.5 whitespace-nowrap">E-mail</td>
+                    <td className="pb-0.5 align-top">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-bold align-top w-12 whitespace-nowrap">TIN</td>
+                    <td className="align-top font-bold">
+                      <div className="flex items-start">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1 font-mono">{settings?.company_tin || settings?.company_vat || settings?.tax_id || settings?.tin || '114106470-7000'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Right Side: Gate Pass Meta */}
-          <div className="w-[50%] p-3.5 pl-4">
-            <table className="w-full leading-snug">
+          {/* Title Bar */}
+          <div className="bg-gray-50 border-b border-black text-center py-1 font-bold text-[12px] uppercase tracking-wider print-no-break">
+            {gatePass.type === 'goods_delivery' || gatePass.type === 'sales_delivery' 
+              ? 'GATE PASS / GOODS DISPATCH NOTE' 
+              : 'SAMPLE GATE PASS (OUTWARD)'}
+          </div>
+
+          {/* Details Section: 2 Columns */}
+          <div className="flex border-b border-black text-[10.5px] print-no-break">
+            {/* Left Side: Customer / Consignee Details */}
+            <div className="w-[52%] p-2 border-r border-black flex flex-col justify-between">
+              <div>
+                <span className="font-bold italic text-[9.5px] text-gray-700 mb-0.5 block uppercase">Customer / Consignee Details :</span>
+                <div className="font-bold text-[11.5px] text-black uppercase leading-tight">{company}</div>
+                {person && person !== company && (
+                  <div className="text-[10px] font-semibold text-gray-800 mt-0.5">
+                    <span className="font-bold">Attn:</span> {person}
+                  </div>
+                )}
+                {address && (
+                  <div className="text-gray-800 whitespace-pre-line text-[10px] leading-snug mt-0.5">{address}</div>
+                )}
+              </div>
+              <div className="mt-1.5 space-y-0.5 text-[10px]">
+                {phone && (
+                  <div className="flex items-start">
+                    <span className="w-12 font-bold shrink-0">Tel</span>
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1">{phone}</span>
+                  </div>
+                )}
+                {email && (
+                  <div className="flex items-start">
+                    <span className="w-12 font-bold shrink-0">Email</span>
+                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="flex-1">{email}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Side: Gate Pass Metadata Table */}
+            <div className="w-[48%] p-0">
+              <table className="w-full h-full text-[10.5px]">
+                <tbody>
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">GATE PASS NO</td>
+                    <td className="p-1 px-2 font-bold font-mono">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1 text-neutral-900">{gatePass.id || gatePass.gatePassNo}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">DATED</td>
+                    <td className="p-1 px-2 font-mono">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{formatDate(gatePass.issuedDate || gatePass.createdAt || gatePass.date)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {gatePass.orderNo && (
+                    <tr className="border-b border-black">
+                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">SO REF</td>
+                      <td className="p-1 px-2 font-mono font-bold text-blue-900">
+                        <div className="flex items-center">
+                          <span className="font-bold mr-1 shrink-0">:</span>
+                          <span className="flex-1">{gatePass.orderNo}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {(gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo) && (
+                    <tr className="border-b border-black">
+                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">QUO REF</td>
+                      <td className="p-1 px-2 font-mono font-semibold text-emerald-800">
+                        <div className="flex items-center">
+                          <span className="font-bold mr-1 shrink-0">:</span>
+                          <span className="flex-1">{gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {gatePass.grnId && (
+                    <tr className="border-b border-black">
+                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">SAMPLE GRN</td>
+                      <td className="p-1 px-2 font-mono">
+                        <div className="flex items-center">
+                          <span className="font-bold mr-1 shrink-0">:</span>
+                          <span className="flex-1">{gatePass.grnId}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">CARRIER / VEHICLE</td>
+                    <td className="p-1 px-2">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{gatePass.carrier || 'Hand Delivery'} {gatePass.vehicleNo ? `(${gatePass.vehicleNo})` : ''}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {gatePass.driverName && (
+                    <tr className="border-b border-black">
+                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">DRIVER / CONTACT</td>
+                      <td className="p-1 px-2">
+                        <div className="flex items-center">
+                          <span className="font-bold mr-1 shrink-0">:</span>
+                          <span className="flex-1">{gatePass.driverName}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">PURPOSE</td>
+                    <td className="p-1 px-2">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{gatePass.reason || 'Goods Delivery / Dispatch'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Line Items Table with exact column alignment */}
+          <div className="w-full">
+            <table className="w-full text-[10.5px] border-collapse" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '50%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-black text-center font-bold text-[10px] bg-gray-50/80">
+                  <th className="py-1 border-r border-black text-center">#</th>
+                  <th className="py-1 border-r border-black text-left px-2">Item & Description</th>
+                  <th className="py-1 border-r border-black text-center">Qty.</th>
+                  <th className="py-1 border-r border-black text-center">Unit</th>
+                  <th className="py-1 text-left px-2">Remarks / Condition</th>
+                </tr>
+              </thead>
               <tbody>
-                <tr>
-                  <td className="w-36 font-bold pb-1.5">Gate Pass No.</td>
-                  <td className="font-bold pb-1.5">: <span className="font-mono text-[14px]">{gatePass.id}</span></td>
-                </tr>
-                <tr>
-                  <td className="font-bold pb-1.5">Dated</td>
-                  <td className="pb-1.5">: {formatDate(gatePass.issuedDate || gatePass.createdAt)}</td>
-                </tr>
-                {gatePass.orderNo && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Sales Order Ref</td>
-                    <td className="pb-1.5 font-mono font-bold text-blue-900">: {gatePass.orderNo}</td>
-                  </tr>
-                )}
-                {(gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo) && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Quotation Ref</td>
-                    <td className="pb-1.5 font-semibold text-blue-900">: {gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo}</td>
-                  </tr>
-                )}
-                {gatePass.grnId && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Sample GRN Ref</td>
-                    <td className="pb-1.5 font-mono">: {gatePass.grnId}</td>
-                  </tr>
-                )}
-                <tr>
-                  <td className="font-bold pb-1.5">Carrier / Vehicle</td>
-                  <td className="pb-1.5">: {gatePass.carrier || 'Hand Delivery'} {gatePass.vehicleNo ? `(${gatePass.vehicleNo})` : ''}</td>
-                </tr>
-                {gatePass.driverName && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Driver / Contact</td>
-                    <td className="pb-1.5">: {gatePass.driverName}</td>
-                  </tr>
-                )}
-                <tr>
-                  <td className="font-bold">Purpose / Reason</td>
-                  <td>: {gatePass.reason || 'Goods Delivery / Dispatch'}</td>
-                </tr>
+                {itemsList.map((item: any, idx: number) => {
+                  const qtyVal = Number(item.qty || 1);
+                  const formattedQty = Number.isInteger(qtyVal) ? qtyVal.toString() : qtyVal.toFixed(2);
+                  const desc = item.description || item.items || item.desc || item.productName || 'Sample Item';
+                  const unit = item.unit || item.uom || 'Nos';
+                  const remarks = item.remarks || item.notes || gatePass.notes || '-';
+
+                  return (
+                    <tr key={idx} className="border-b border-black text-[10px] leading-snug">
+                      <td className="py-1.5 text-center border-r border-black font-mono font-semibold align-top">
+                        {idx + 1}
+                      </td>
+                      <td className="py-1.5 px-2 border-r border-black align-top font-medium whitespace-pre-wrap">
+                        {desc}
+                      </td>
+                      <td className="py-1.5 text-center border-r border-black font-mono font-bold align-top">
+                        {formattedQty}
+                      </td>
+                      <td className="py-1.5 text-center border-r border-black align-top">
+                        {unit}
+                      </td>
+                      <td className="py-1.5 px-2 text-left align-top text-gray-700">
+                        {remarks}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
 
-        {/* Table Area (Flex to stretch lines) */}
-        <div className="flex-1 flex flex-col min-h-[460px]">
-          {/* Table Header */}
-          <div className="flex border-b border-black text-center font-bold text-[13px] bg-gray-50">
-            <div className="w-12 py-2 border-r border-black">#</div>
-            <div className="flex-1 py-2 border-r border-black text-left px-3">Item & Description</div>
-            <div className="w-24 py-2 border-r border-black">Qty.</div>
-            <div className="w-24 py-2 border-r border-black">Unit</div>
-            <div className="w-44 py-2">Remarks / Condition</div>
-          </div>
+          {/* Special Instructions / Notes Banner */}
+          {gatePass.notes && (
+            <div className="border-t border-black p-1.5 px-2.5 bg-gray-50/50 text-[10px] print-no-break">
+              <span className="font-bold">Instructions / Dispatch Notes: </span>
+              <span>{gatePass.notes}</span>
+            </div>
+          )}
 
-          {/* Table Body */}
-          <div className="flex flex-1 text-[13px]">
-            <div className="w-12 p-3 border-r border-black text-center leading-relaxed font-mono">
-              {itemsList.map((_, idx) => (
-                <div key={idx} className="py-0.5">{idx + 1}</div>
-              ))}
+          {/* Footer / Signatures */}
+          <div className="border-t border-black p-2.5 pt-4 bg-white print-no-break">
+            <div className="mb-3 text-[10px] flex justify-between">
+              <div>
+                <span className="font-semibold text-gray-600">Issued By: </span>
+                <span className="font-bold">{gatePass.issuedBy || 'System Admin'}</span>
+              </div>
+              <div className="text-gray-500 text-[9.5px]">
+                Pass Type: Outward Goods Dispatch / Non-Returnable
+              </div>
             </div>
-            <div className="flex-1 p-3 border-r border-black whitespace-pre-wrap leading-relaxed">
-              {itemsList.map((item: any, idx: number) => (
-                <div key={idx} className="py-0.5 font-medium">
-                  {item.description || item.items || 'Sample Item'}
-                </div>
-              ))}
-            </div>
-            <div className="w-24 p-3 border-r border-black text-center leading-relaxed font-mono">
-              {itemsList.map((item: any, idx: number) => (
-                <div key={idx} className="py-0.5">
-                  {Number(item.qty || 1).toFixed(2)}
-                </div>
-              ))}
-            </div>
-            <div className="w-24 p-3 border-r border-black text-center leading-relaxed">
-              {itemsList.map((item: any, idx: number) => (
-                <div key={idx} className="py-0.5">
-                  {item.unit || 'Nos'}
-                </div>
-              ))}
-            </div>
-            <div className="w-44 p-3 text-left leading-relaxed text-[12px] text-gray-700">
-              {itemsList.map((item: any, idx: number) => (
-                <div key={idx} className="py-0.5">
-                  {item.remarks || gatePass.notes || '-'}
-                </div>
-              ))}
+
+            <div className="grid grid-cols-4 gap-3 text-center text-[10px] font-semibold">
+              <div>
+                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
+                Prepared By
+              </div>
+              <div>
+                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
+                Checked By / Store
+              </div>
+              <div>
+                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
+                Authorized Signatory
+              </div>
+              <div>
+                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
+                Received By / Consignee
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Special Instructions / Notes Banner */}
-        {gatePass.notes && (
-          <div className="border-t border-black p-3 bg-gray-50 text-[12px]">
-            <span className="font-bold">Instructions / Dispatch Notes: </span>
-            <span>{gatePass.notes}</span>
+        {/* Half-page cut guide indicator for standard half-page dispatches on A4 */}
+        {isHalfPage && (
+          <div className="hidden print:flex items-center justify-between text-[8.5px] text-gray-400 mt-2 px-1 pt-1 border-t border-dashed border-gray-400 w-full max-w-[794px] mx-auto print-avoid-break">
+            <span>✂ Cut here (Half Page Dispatch Slip)</span>
+            <span>REX INDUSTRIES (PVT) LTD - ERP SYSTEM</span>
           </div>
         )}
-
-        {/* Footer / Signatures matching Rex sample format */}
-        <div className="border-t border-black p-4 pt-10 mt-auto bg-white">
-          <div className="mb-4 pl-4 text-[13px] flex justify-between">
-            <div>
-              <span className="font-semibold text-gray-600">Issued By: </span>
-              <span className="font-bold">{gatePass.issuedBy || 'System Admin'}</span>
-            </div>
-            <div className="text-gray-500 text-[11px]">
-              Pass Type: Outward Non-Returnable / Sample Return
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-4 text-center text-[12px] font-semibold">
-            <div>
-              <div className="border-t border-dotted border-black mb-1 mx-2"></div>
-              Prepared By
-            </div>
-            <div>
-              <div className="border-t border-dotted border-black mb-1 mx-2"></div>
-              Checked By / Store
-            </div>
-            <div>
-              <div className="border-t border-dotted border-black mb-1 mx-2"></div>
-              Authorized / Manager
-            </div>
-            <div>
-              <div className="border-t border-dotted border-black mb-1 mx-2"></div>
-              Received By / Consignee
-            </div>
-          </div>
-        </div>
       </div>
     </>
   );

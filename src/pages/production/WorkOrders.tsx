@@ -18,6 +18,9 @@ import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdo
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
+import { GatePassPrintModal } from '@/components/GatePassPrintModal'
+import { ShoppingBag, Truck } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
@@ -75,6 +78,89 @@ export const WorkOrders: React.FC = () => {
   const [activeStudioWO, setActiveStudioWO] = useState<any>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [printWo, setPrintWo] = useState<any | null>(null)
+  const [printSalesOrder, setPrintSalesOrder] = useState<any | null>(null)
+  const [printGatePass, setPrintGatePass] = useState<any | null>(null)
+
+  const handlePrintSalesOrder = (row: any) => {
+    const linkedOrder = orders.find((o: any) => 
+      (row.orderNo && o.orderNo === row.orderNo) ||
+      (row.id && o.id === row.orderNo) ||
+      (row.sourceQuoteId && o.quoteId === row.sourceQuoteId) ||
+      (row.quotationNo && o.quotationNo === row.quotationNo)
+    );
+    if (linkedOrder) {
+      setPrintSalesOrder(linkedOrder);
+    } else {
+      const previewSO = {
+        id: `SO-${row.orderNo || row.id}`,
+        orderNo: row.orderNo || row.id,
+        quotationNo: row.quotationNo || row.sourceQuoteNo || null,
+        quoteId: row.sourceQuoteId || row.quotationId || null,
+        customerId: row.customerId,
+        customerName: row.customerName || row.customer || 'Valued Customer',
+        orderDate: row.createdAt || new Date().toISOString(),
+        targetDeliveryDate: row.deadline || null,
+        paymentTerms: 'Standard Terms',
+        subtotal: Number(row.costSummary?.actualTotalCost || 0),
+        totalPrice: Number(row.costSummary?.actualTotalCost || 0),
+        status: row.status || 'In Production',
+        items: (row.items && row.items.length > 0) ? row.items : [{
+          description: row.productName || row.partName || row.title || 'Precision Machined Component',
+          qty: row.jobQty || 1,
+          unitPrice: 0,
+          amount: 0,
+          uom: row.uom || 'Nos'
+        }]
+      };
+      setPrintSalesOrder(previewSO);
+    }
+  };
+
+  const handlePrintGatePass = async (row: any) => {
+    const linkedOrder = orders.find((o: any) => 
+      (row.orderNo && o.orderNo === row.orderNo) ||
+      (row.id && o.id === row.orderNo) ||
+      (row.sourceQuoteId && o.quoteId === row.sourceQuoteId) ||
+      (row.quotationNo && o.quotationNo === row.quotationNo)
+    );
+    if (linkedOrder?.gatePassId || linkedOrder?.gatePassNo) {
+      const gpId = linkedOrder.gatePassId || linkedOrder.gatePassNo;
+      try {
+        const res = await fetch(`${API_URL}/gate-passes/${gpId}`);
+        if (res.ok) {
+          const gp = await res.json();
+          setPrintGatePass(gp);
+          return;
+        }
+      } catch (e) {}
+    }
+    const previewGP = {
+      id: linkedOrder?.gatePassNo || `DN-${row.orderNo || row.id}`,
+      type: 'goods_delivery',
+      orderNo: row.orderNo || row.id,
+      orderId: linkedOrder?.id || null,
+      quoNo: row.quotationNo || null,
+      customerName: row.customerName || row.customer || 'Customer',
+      customerCompany: row.customerName || row.customer || 'Customer',
+      address: linkedOrder?.deliveryAddress || '',
+      phone: linkedOrder?.customerPhone || '',
+      email: linkedOrder?.customerEmail || '',
+      carrier: linkedOrder?.carrier || 'REX Transport',
+      vehicleNo: linkedOrder?.vehicleNo || '',
+      driverName: linkedOrder?.driverName || '',
+      reason: `Finished Goods Delivery for Work Order ${row.orderNo || row.id}`,
+      items: [{
+        description: row.productName || row.partName || row.title || 'Manufactured Item',
+        qty: row.jobQty || 1,
+        unit: row.uom || 'Nos',
+        remarks: `WO #${row.orderNo || row.id}`
+      }],
+      issuedBy: user?.name || 'Production Store',
+      status: 'Ready for Dispatch',
+      createdAt: new Date().toISOString()
+    };
+    setPrintGatePass(previewGP);
+  };
   const [deleteWoId, setDeleteWoId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -555,9 +641,29 @@ export const WorkOrders: React.FC = () => {
             size="sm" 
             onClick={() => setPrintWo(row)}
             className="text-xs font-semibold text-secondary hover:text-primary border border-theme-subtle hover:bg-surface2 rounded-none h-7 px-2"
-            title="Print Job Traveler"
+            title="Print Production Work Order & Job Traveler"
           >
-            <Printer size={12} className="mr-1 text-muted"/> Print
+            <Printer size={12} className="mr-1 text-muted"/> WO
+          </Button>
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handlePrintSalesOrder(row)}
+            className="text-xs font-semibold text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 rounded-none h-7 px-2"
+            title="Print Commercial Sales Order Document"
+          >
+            <ShoppingBag size={12} className="mr-1 text-blue-500"/> SO
+          </Button>
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handlePrintGatePass(row)}
+            className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 rounded-none h-7 px-2"
+            title="Print Security Gate Pass / Dispatch Note"
+          >
+            <Truck size={12} className="mr-1 text-emerald-500"/> DN
           </Button>
 
           <TraceabilityDropdown
@@ -968,6 +1074,24 @@ export const WorkOrders: React.FC = () => {
         photos={activeViewingPhotos?.photos || []}
         title={activeViewingPhotos?.title || 'Sample Photos'}
       />
+
+      {printSalesOrder && (
+        <SalesOrderPrintModal
+          isOpen={!!printSalesOrder}
+          onClose={() => setPrintSalesOrder(null)}
+          order={printSalesOrder}
+          settings={settings}
+        />
+      )}
+
+      {printGatePass && (
+        <GatePassPrintModal
+          isOpen={!!printGatePass}
+          onClose={() => setPrintGatePass(null)}
+          gatePass={printGatePass}
+          settings={settings}
+        />
+      )}
 
       {printWo && (
         <WorkOrderPrintModal

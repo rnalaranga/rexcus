@@ -2,7 +2,7 @@ import React from 'react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 function toWords(num: number): string {
-  if (num === 0) return 'Zero';
+  if (num === 0) return 'Zero Rupees Only';
   const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   const g = ['', 'Thousand', 'Million', 'Billion'];
@@ -49,24 +49,25 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
   }
 
   // Fallback to single product if itemsList is empty
-  if (itemsList.length === 0 && order.productName) {
+  if (itemsList.length === 0 && (order.productName || order.partName || order.title)) {
     itemsList = [{
       productId: order.productId,
-      description: order.productName,
+      description: order.productName || order.partName || order.title,
       productSku: order.productSku,
-      qty: Number(order.qty) || 1,
+      qty: Number(order.qty || order.jobQty) || 1,
       unitPrice: Number(order.unitPrice) || 0,
       amount: Number(order.totalPrice) || (Number(order.qty || 1) * Number(order.unitPrice || 0)),
-      uom: 'Nos'
+      uom: order.uom || 'Nos'
     }];
   }
 
-  const customerName = order.customerName || customer?.company || customer?.name || 'Valued Customer';
-  const attention = order.attention || customer?.attention || customer?.contactPerson || '';
-  const customerAddress = order.deliveryAddress || customer?.address || '';
+  const customerName = order.customerName || order.clientName || customer?.company || customer?.name || 'Valued Customer';
+  const attention = order.attention || customer?.attention || customer?.contactPerson || customer?.name || '';
+  const customerAddress = order.deliveryAddress || order.customerAddress || customer?.address || '';
   const customerPhone = order.customerPhone || customer?.phone || '';
   const customerEmail = order.customerEmail || customer?.email || '';
-  const vatNumber = customer?.vat || '';
+  const vatNumber = customer?.vat || order.customerVat || '';
+  const tinNumber = customer?.tin || customer?.brNumber || order.customerTin || '';
 
   const subtotal = Number(order.subtotal) || itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
   let taxAmount = Number(order.taxAmount) || 0;
@@ -82,11 +83,13 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
           width: 100% !important;
           max-width: 794px !important;
           margin: 0 auto !important;
-          font-family: Arial, sans-serif !important;
+          font-family: Arial, Helvetica, sans-serif !important;
           color: #000000 !important;
           background: #ffffff !important;
           border: 1px solid #000000 !important;
           box-sizing: border-box !important;
+          font-size: 11px !important;
+          line-height: 1.35 !important;
         }
         #sales-order-print-section * {
           box-sizing: border-box !important;
@@ -103,48 +106,97 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
         #sales-order-print-section .flex { display: flex !important; }
         #sales-order-print-section .bg-gray-100 { background-color: #f3f4f6 !important; }
         #sales-order-print-section .bg-gray-50 { background-color: #f9fafb !important; }
+        #sales-order-print-section .print-no-break { page-break-inside: avoid !important; break-inside: avoid !important; }
         @media print {
           @page { size: A4 portrait; margin: 6mm 8mm; }
-          html, body { background: #fff !important; color: #000 !important; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * { visibility: hidden !important; }
+          #sales-order-print-section, #sales-order-print-section * { visibility: visible !important; }
+          #sales-order-print-section {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
         }
       `}</style>
       <div 
         id="sales-order-print-section"
-        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm"
-        style={{ width: '100%', maxWidth: '794px', minHeight: '1050px', color: '#000', fontFamily: 'Arial, sans-serif' }}
+        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm print:shadow-none"
+        style={{ width: '100%', maxWidth: '794px', minHeight: '1050px', color: '#000', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', boxSizing: 'border-box' }}
       >
-        {/* Top Letterhead Header */}
-        <div className="flex border-b border-black">
-          <div className="w-[30%] flex items-center justify-center p-4 border-r border-black bg-white">
+        {/* Top Letterhead Header (matching QuotationPrintView) */}
+        <div className="flex border-b border-black items-center p-3 print-no-break">
+          <div className="w-[30%] flex items-center justify-center p-2 border-r border-black bg-white">
             {settings?.company_logo ? (
-              <img src={settings.company_logo} alt="Company Logo" className="w-full object-contain" style={{ maxHeight: '80px' }} />
+              <img src={settings.company_logo} alt="Company Logo" className="max-h-20 object-contain" />
             ) : (
-              <div className="text-3xl text-red-600 font-bold flex items-center gap-2 tracking-tighter">
-                <span className="text-5xl">⚙️</span> REX
+              <div className="text-4xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>
+                REX
               </div>
             )}
           </div>
-          <div className="w-[70%] p-4 pl-6 text-[12px] leading-tight bg-white">
-            <h1 className="text-[20px] font-black uppercase text-black mb-1">
-              {settings?.company_name || 'REX INDUSTRIES (PVT) LTD'}
+          <div className="w-[70%] pl-3 text-[11px] leading-tight bg-white">
+            <h1 className="text-[19px] font-black uppercase text-black mb-1 leading-tight" style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}>
+              {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
             </h1>
-            <table className="w-full text-[12px] leading-tight">
+            <table className="w-full text-[11px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
               <tbody>
                 <tr>
-                  <td className="font-bold align-top w-16 pb-1">Office</td>
-                  <td className="pb-1">: {settings?.company_address || 'No. 451/2, Chilaw Road, Kattuwa, Negombo, 11500, Sri Lanka'}</td>
+                  <td className="font-bold align-top w-14 pb-0.5 whitespace-nowrap">Office</td>
+                  <td className="pb-0.5 align-top">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 whitespace-pre-line">{settings?.company_address || settings?.companyAddress || 'No.451/2,Chilaw Road, Kattuwa,\nNegombo,11500,Sri Lanka'}</span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold pb-1">Tel.</td>
-                  <td className="pb-1">: {settings?.company_phone || '0094-31-2233117 / 2233315 / 2223136'}</td>
+                  <td className="font-bold align-top w-14 pb-0.5 whitespace-nowrap">Tel.</td>
+                  <td className="pb-0.5 align-top">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1">{settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}</span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold pb-1">E-mail</td>
-                  <td className="pb-1">: {settings?.company_email || 'info@rexgroup.lk'}</td>
+                  <td className="font-bold align-top w-14 pb-0.5 whitespace-nowrap">E-mail</td>
+                  <td className="pb-0.5 align-top">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1">{settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}</span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="font-bold">Web</td>
-                  <td>: {settings?.company_web || 'www.rexgroup.lk'}</td>
+                  <td className="font-bold align-top w-14 pb-0.5 whitespace-nowrap">Web</td>
+                  <td className="pb-0.5 align-top">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1">{settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="font-bold align-top w-14 whitespace-nowrap">TIN</td>
+                  <td className="align-top font-bold">
+                    <div className="flex items-start">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 font-mono">{settings?.company_tin || settings?.company_vat || settings?.tax_id || settings?.tin || '114106470-7000'}</span>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -152,92 +204,159 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
         </div>
 
         {/* Title Bar */}
-        <div className="bg-gray-100 border-b border-black text-center py-2.5 font-bold text-[16px] uppercase tracking-wider flex items-center justify-center gap-3">
+        <div className="bg-gray-50 border-b border-black text-center py-1 font-bold text-[13px] uppercase tracking-widest flex items-center justify-center gap-2 print-no-break">
           <span>SALES ORDER / ORDER CONFIRMATION</span>
-          <span className="text-[12px] font-mono bg-white border border-black px-2 py-0.5 rounded text-gray-800">
-            {order.status || 'Confirmed'}
-          </span>
+          {order.status && (
+            <span className="text-[10px] font-mono border border-black px-1.5 py-0.2 rounded tracking-normal bg-white">
+              {order.status}
+            </span>
+          )}
         </div>
 
-        {/* Details Section */}
-        <div className="flex border-b border-black text-[13px]">
-          {/* Left: Customer Information */}
-          <div className="w-[50%] p-3.5 pl-4 border-r border-black">
-            <span className="font-bold italic underline mb-2 block text-[13px]">Customer / Bill To :</span>
-            <div className="leading-snug space-y-1">
-              <div className="font-bold text-[15px] text-black">{customerName}</div>
-              {attention && (
-                <div className="text-[13px] font-semibold text-black">
-                  <span className="font-bold text-gray-800">Attn:</span> {attention}
+        {/* Customer & Order Metadata Details Section */}
+        <div className="flex border-b border-black text-[11px] print-no-break">
+          {/* Left: Customer Information (matching Quotation TO block) */}
+          <div className="w-[52%] p-2.5 border-r border-black flex flex-col justify-between">
+            <div>
+              <div className="font-bold italic mb-0.5 text-[10px] text-gray-700 uppercase">CUSTOMER / BILL TO</div>
+              {customerName && (
+                <div className="font-bold text-[12px] uppercase leading-tight text-black">
+                  {customerName}
                 </div>
               )}
               {customerAddress && (
-                <div className="text-gray-800 whitespace-pre-line text-[12px]">
+                <div className="whitespace-pre-line text-[10.5px] leading-snug text-black mt-0.5">
                   {customerAddress}
                 </div>
               )}
+            </div>
+            <div className="mt-2 space-y-0.5 font-medium text-[10.5px]">
+              {attention && (
+                <div className="flex items-start">
+                  <span className="w-16 font-bold shrink-0">Attn</span>
+                  <span className="font-bold mr-1 shrink-0">:</span>
+                  <span className="flex-1">{attention}</span>
+                </div>
+              )}
               {customerPhone && (
-                <div><span className="font-semibold text-gray-700">Phone:</span> {customerPhone}</div>
+                <div className="flex items-start">
+                  <span className="w-16 font-bold shrink-0">Phone</span>
+                  <span className="font-bold mr-1 shrink-0">:</span>
+                  <span className="flex-1">{customerPhone}</span>
+                </div>
               )}
               {customerEmail && (
-                <div><span className="font-semibold text-gray-700">Email:</span> {customerEmail}</div>
+                <div className="flex items-start">
+                  <span className="w-16 font-bold shrink-0">Email</span>
+                  <span className="font-bold mr-1 shrink-0">:</span>
+                  <span className="flex-1">{customerEmail}</span>
+                </div>
               )}
-              {vatNumber && (
-                <div><span className="font-semibold text-gray-700">VAT / TIN:</span> {vatNumber}</div>
+              {(vatNumber || tinNumber) && (
+                <div className="flex items-start">
+                  <span className="w-16 font-bold shrink-0">{vatNumber ? 'VAT No.' : 'TIN No.'}</span>
+                  <span className="font-bold mr-1 shrink-0">:</span>
+                  <span className="flex-1 font-mono">{vatNumber || tinNumber}</span>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Right: Order Metadata */}
-          <div className="w-[50%] p-3.5 pl-4">
-            <table className="w-full leading-snug text-[13px]">
+          {/* Right: Order Metadata with fixed label widths and aligned colons */}
+          <div className="w-[48%] p-0">
+            <table className="w-full h-full text-[11px]">
               <tbody>
-                <tr>
-                  <td className="w-36 font-bold pb-1.5">Sales Order No</td>
-                  <td className="font-bold pb-1.5">: <span className="font-mono text-[14px] text-blue-900">{order.orderNo}</span></td>
+                <tr className="border-b border-black">
+                  <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">SO NO</td>
+                  <td className="p-1 px-2 font-bold font-mono">
+                    <div className="flex items-center">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1 text-blue-900">{order.orderNo || order.id}</span>
+                    </div>
+                  </td>
                 </tr>
+                <tr className="border-b border-black">
+                  <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">ORDER DATE</td>
+                  <td className="p-1 px-2 font-mono">
+                    <div className="flex items-center">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1">{formatDate(order.orderDate || order.createdAt)}</span>
+                    </div>
+                  </td>
+                </tr>
+                {order.quotationNo && (
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">QUO REF</td>
+                    <td className="p-1 px-2 font-mono font-semibold text-emerald-800">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{order.quotationNo}</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {order.customerPoNo && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Customer PO No</td>
-                    <td className="pb-1.5 font-mono font-bold text-black">: {order.customerPoNo}</td>
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">CUST PO NO</td>
+                    <td className="p-1 px-2 font-mono font-bold">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{order.customerPoNo}</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
                 {order.customerPoDate && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Customer PO Date</td>
-                    <td className="pb-1.5 font-mono">: {formatDate(order.customerPoDate)}</td>
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">CUST PO DATE</td>
+                    <td className="p-1 px-2 font-mono">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{formatDate(order.customerPoDate)}</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
-                <tr>
-                  <td className="font-bold pb-1.5">Order Date</td>
-                  <td className="pb-1.5 font-mono">: {formatDate(order.orderDate || order.createdAt)}</td>
-                </tr>
-                {order.quotationNo && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Quotation Ref</td>
-                    <td className="pb-1.5 font-mono font-semibold text-emerald-800">: {order.quotationNo}</td>
-                  </tr>
-                )}
-                <tr>
-                  <td className="font-bold pb-1.5">Target Delivery</td>
-                  <td className="pb-1.5 font-mono">: {order.targetDeliveryDate ? formatDate(order.targetDeliveryDate) : 'Standard Schedule'}</td>
+                <tr className={order.paymentTerms || order.gatePassNo || order.invoiceNo ? "border-b border-black" : ""}>
+                  <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">DELIVERY</td>
+                  <td className="p-1 px-2 font-mono">
+                    <div className="flex items-center">
+                      <span className="font-bold mr-1 shrink-0">:</span>
+                      <span className="flex-1">{order.targetDeliveryDate ? formatDate(order.targetDeliveryDate) : 'Standard Schedule'}</span>
+                    </div>
+                  </td>
                 </tr>
                 {order.paymentTerms && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Payment Terms</td>
-                    <td className="pb-1.5">: {order.paymentTerms}</td>
+                  <tr className={order.gatePassNo || order.invoiceNo ? "border-b border-black" : ""}>
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">PAYMENT</td>
+                    <td className="p-1 px-2">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{order.paymentTerms}</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
                 {order.gatePassNo && (
-                  <tr>
-                    <td className="font-bold pb-1.5">Gate Pass Ref</td>
-                    <td className="pb-1.5 font-mono">: {order.gatePassNo}</td>
+                  <tr className={order.invoiceNo ? "border-b border-black" : ""}>
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">GATE PASS REF</td>
+                    <td className="p-1 px-2 font-mono">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{order.gatePassNo}</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
                 {order.invoiceNo && (
                   <tr>
-                    <td className="font-bold pb-1.5">Invoice Ref</td>
-                    <td className="pb-1.5 font-mono">: {order.invoiceNo}</td>
+                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">INVOICE REF</td>
+                    <td className="p-1 px-2 font-mono">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-1 shrink-0">:</span>
+                        <span className="flex-1">{order.invoiceNo}</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -245,23 +364,23 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
           </div>
         </div>
 
-        {/* Line Items Table with true HTML table for exact column alignment */}
-        <div className="flex-1 min-h-[360px]">
-          <table className="w-full text-[12px] border-collapse" style={{ tableLayout: 'fixed' }}>
+        {/* Line Items Table with exact column alignments and crisp 11px font */}
+        <div className="flex-1 min-h-[380px] flex flex-col justify-between">
+          <table className="w-full text-[11px] border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '48%' }} />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '47%' }} />
               <col style={{ width: '12%' }} />
-              <col style={{ width: '16%' }} />
+              <col style={{ width: '18%' }} />
               <col style={{ width: '18%' }} />
             </colgroup>
             <thead>
-              <tr className="border-b border-black text-center font-bold text-[12.5px] bg-gray-50">
-                <th className="py-2 border-r border-black text-center">#</th>
-                <th className="py-2 border-r border-black text-left px-3">Item Description & Specification</th>
-                <th className="py-2 border-r border-black text-center">Qty</th>
-                <th className="py-2 border-r border-black text-right px-3">Unit Price (Rs)</th>
-                <th className="py-2 text-right px-3">Amount (Rs)</th>
+              <tr className="border-b border-black text-center font-bold text-[11px] bg-gray-50/80">
+                <th className="py-1.5 border-r border-black text-center">#</th>
+                <th className="py-1.5 border-r border-black text-left px-2.5">Item Description & Specification</th>
+                <th className="py-1.5 border-r border-black text-center">Qty</th>
+                <th className="py-1.5 border-r border-black text-right px-2.5">Unit Price (Rs)</th>
+                <th className="py-1.5 text-right px-2.5">Amount (Rs)</th>
               </tr>
             </thead>
             <tbody>
@@ -269,91 +388,97 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                 const itemQty = Number(item.qty) || 1;
                 const itemUnitPrice = Number(item.unitPrice) || 0;
                 const lineTotal = Number(item.amount) || (itemQty * itemUnitPrice);
-                const desc = item.description || item.productName || 'Order Item';
+                const desc = item.description || item.productName || item.desc || 'Order Item';
 
                 return (
-                  <tr key={idx} className="border-b border-gray-300 text-[12px] leading-snug">
-                    <td className="py-2.5 text-center border-r border-black font-semibold align-top font-mono">
+                  <tr key={idx} className="border-b border-black text-[11px] leading-snug">
+                    <td className="py-2 text-center border-r border-black font-semibold align-top font-mono">
                       {idx + 1}
                     </td>
-                    <td className="py-2.5 px-3 border-r border-black align-top">
-                      <div className="font-bold text-[12.5px] text-black whitespace-pre-line">{desc}</div>
+                    <td className="py-2 px-2.5 border-r border-black align-top">
+                      <div className="font-bold text-[11.5px] text-black whitespace-pre-line">{desc}</div>
                       {item.productSku && (
-                        <div className="text-[11px] font-mono text-gray-600 mt-0.5">SKU: {item.productSku}</div>
+                        <div className="text-[10px] font-mono text-gray-600 mt-0.5">SKU: {item.productSku}</div>
+                      )}
+                      {item.specs && (
+                        <div className="text-[10px] text-gray-700 mt-0.5">{item.specs}</div>
                       )}
                       {item.notes && (
-                        <div className="text-[11px] italic text-gray-500 mt-0.5">{item.notes}</div>
+                        <div className="text-[10px] italic text-gray-500 mt-0.5">{item.notes}</div>
                       )}
                     </td>
-                    <td className="py-2.5 text-center border-r border-black font-mono font-bold align-top">
-                      {itemQty} {item.uom || 'Nos'}
+                    <td className="py-2 text-center border-r border-black font-mono font-bold align-top">
+                      {itemQty} {item.uom || item.unit || 'Nos'}
                     </td>
-                    <td className="py-2.5 px-3 text-right border-r border-black font-mono align-top">
+                    <td className="py-2 px-2.5 text-right border-r border-black font-mono align-top">
                       {formatCurrency(itemUnitPrice)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold align-top">
+                    <td className="py-2 px-2.5 text-right font-mono font-bold align-top">
                       {formatCurrency(lineTotal)}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-            <tfoot>
-              {/* Financial Summary & Totals */}
-              <tr className="border-t border-black bg-gray-50 text-[12.5px]">
-                <td colSpan={3} className="p-3 border-r border-black align-middle">
-                  <span className="font-semibold text-gray-700 italic">
-                    Amount in words: <strong className="text-black font-bold not-italic">{toWords(totalPrice)}</strong>
-                  </span>
-                </td>
-                <td colSpan={2} className="p-0 align-top">
-                  <div className="flex justify-between py-1.5 px-4 border-b border-gray-200 text-xs">
-                    <span className="font-semibold text-gray-700">Subtotal:</span>
-                    <span className="font-mono font-bold">{formatCurrency(subtotal)}</span>
-                  </div>
-                  {taxAmount > 0 && (
-                    <div className="flex justify-between py-1.5 px-4 border-b border-gray-200 text-xs">
-                      <span className="font-semibold text-gray-700">Taxes (VAT / SSCL):</span>
-                      <span className="font-mono font-bold">{formatCurrency(taxAmount)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between py-2 px-4 bg-gray-200 font-bold text-[13px]">
-                    <span>Total Order Value:</span>
-                    <span className="font-mono text-blue-900">{formatCurrency(totalPrice)}</span>
-                  </div>
-                </td>
-              </tr>
-            </tfoot>
           </table>
+
+          {/* Financial Summary & Totals */}
+          <div className="border-t border-black bg-gray-50/50 flex text-[11px] print-no-break">
+            <div className="w-[52%] p-2.5 border-r border-black flex items-center">
+              <span className="font-medium text-gray-700 italic">
+                Amount in words: <strong className="text-black font-bold not-italic">{toWords(totalPrice)}</strong>
+              </span>
+            </div>
+            <div className="w-[48%] p-0">
+              <table className="w-full text-[11px]">
+                <tbody>
+                  <tr className="border-b border-black">
+                    <td className="p-1 px-2.5 font-semibold text-gray-700">Subtotal</td>
+                    <td className="p-1 px-2.5 text-right font-mono font-bold">{formatCurrency(subtotal)}</td>
+                  </tr>
+                  {taxAmount > 0 && (
+                    <tr className="border-b border-black">
+                      <td className="p-1 px-2.5 font-semibold text-gray-700">Taxes (VAT / SSCL)</td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">{formatCurrency(taxAmount)}</td>
+                    </tr>
+                  )}
+                  <tr className="bg-gray-100 font-bold text-[11.5px]">
+                    <td className="p-1.5 px-2.5">Total Order Value</td>
+                    <td className="p-1.5 px-2.5 text-right font-mono text-blue-900">{formatCurrency(totalPrice)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         {/* Order Terms & Notes */}
-        <div className="p-3.5 border-t border-black text-[11px] leading-relaxed bg-white">
-          <div className="font-bold underline uppercase mb-1">Standard Terms & Conditions:</div>
+        <div className="p-2.5 px-3 border-t border-black text-[10px] leading-tight bg-white print-no-break">
+          <div className="font-bold underline uppercase mb-0.5">Standard Terms & Conditions:</div>
           <ol className="list-decimal pl-4 space-y-0.5 text-gray-700">
             <li>Delivery will be made as per the agreed target schedule upon official order confirmation.</li>
             <li>All goods supplied remain the property of REX Industries (Pvt) Ltd until full invoice settlement.</li>
             <li>Claims or discrepancies regarding supplied items must be notified in writing within 48 hours of dispatch.</li>
             {order.notes && (
-              <li className="font-semibold text-black mt-1">Special Instructions: {order.notes}</li>
+              <li className="font-semibold text-black mt-0.5">Special Instructions: {order.notes}</li>
             )}
           </ol>
         </div>
 
         {/* Signatures Footer */}
-        <div className="border-t border-black p-4 bg-white">
-          <div className="grid grid-cols-3 gap-6 pt-10 text-center text-[12px]">
+        <div className="border-t border-black p-3 pt-6 bg-white print-no-break">
+          <div className="grid grid-cols-3 gap-6 text-center text-[10.5px]">
             <div>
-              <div className="border-t border-black pt-1.5 font-bold">Prepared By</div>
-              <div className="text-[10px] text-gray-600 mt-0.5">Sales Department</div>
+              <div className="border-t border-black pt-1 font-bold">Prepared By</div>
+              <div className="text-[9.5px] text-gray-600">Sales Department</div>
             </div>
             <div>
-              <div className="border-t border-black pt-1.5 font-bold">Authorized Signatory</div>
-              <div className="text-[10px] text-gray-600 mt-0.5">REX Industries (Pvt) Ltd</div>
+              <div className="border-t border-black pt-1 font-bold">Authorized Signatory</div>
+              <div className="text-[9.5px] text-gray-600">REX Industries (Pvt) Ltd</div>
             </div>
             <div>
-              <div className="border-t border-black pt-1.5 font-bold">Customer Acceptance</div>
-              <div className="text-[10px] text-gray-600 mt-0.5">Signature & Company Seal</div>
+              <div className="border-t border-black pt-1 font-bold">Customer Acceptance</div>
+              <div className="text-[9.5px] text-gray-600">Signature & Company Seal</div>
             </div>
           </div>
         </div>

@@ -27,13 +27,16 @@ import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModa
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { QuotationStageSnapshotModal } from '@/components/crm/QuotationStageSnapshotModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
-import { GitBranch } from 'lucide-react'
+import { GitBranch, Printer, Factory, Truck } from 'lucide-react'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
 import { exportPdf } from '@/lib/exportPdf'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
+import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
+import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
+import { GatePassPrintModal } from '@/components/GatePassPrintModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { FileSpreadsheet } from 'lucide-react'
@@ -96,6 +99,9 @@ export const ProductQuotations: React.FC = () => {
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
   const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
+  const [printSalesOrder, setPrintSalesOrder] = useState<any | null>(null)
+  const [printWorkOrder, setPrintWorkOrder] = useState<any | null>(null)
+  const [printGatePass, setPrintGatePass] = useState<any | null>(null)
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -853,6 +859,187 @@ export const ProductQuotations: React.FC = () => {
                 </button>
               </>
             )}
+
+            {/* Print Documents: Sales Order, Work Order, Dispatch Gate Pass */}
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+            <div className="px-3.5 py-1 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
+              Print Documents
+            </div>
+
+            {/* Print Quotation */}
+            <button
+              type="button"
+              onClick={() => {
+                setPreviewData({
+                  quotation: latest,
+                  lead: {
+                    name: group.leadName,
+                    company: group.leadCompany,
+                    email: group.leadEmail,
+                    address: group.leadAddress,
+                    vat: group.leadVat
+                  }
+                });
+                setOpenActionId(null);
+                setActionCoords(null);
+              }}
+              className="w-full px-3.5 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+            >
+              <Printer size={13} className="shrink-0 text-zinc-500" />
+              <span>Print Quotation (PDF)</span>
+            </button>
+
+            {/* Print Sales Order */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionId(null);
+                setActionCoords(null);
+                const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                if (linkedOrder) {
+                  setPrintSalesOrder(linkedOrder);
+                } else {
+                  const cust = customers.find(c => c.id === group.leadId || c.company === group.clientCompany || c.name === group.clientName) || leads.find(l => l.id === group.leadId);
+                  const parsed = latest?.parsed || {};
+                  const previewSO = {
+                    id: `SO-${group.quoNo}`,
+                    orderNo: `SO-${group.quoNo}`,
+                    quotationNo: group.quoNo,
+                    quoteId: latest?.id,
+                    customerId: cust?.id || group.leadId,
+                    customerName: group.clientName || group.clientCompany || 'Valued Customer',
+                    customerAddress: group.clientAddress || cust?.address || '',
+                    customerPhone: group.clientPhone || cust?.phone || '',
+                    customerEmail: group.clientEmail || cust?.email || '',
+                    orderDate: latest?.date || latest?.createdAt || new Date().toISOString(),
+                    targetDeliveryDate: parsed.deliveryPeriod || parsed.validityPeriod || null,
+                    paymentTerms: parsed.paymentTerms || cust?.paymentTerms || 'Standard Terms',
+                    subtotal: Number(latest?.totalAmount || parsed.subtotal || parsed.total || 0),
+                    totalPrice: Number(latest?.totalAmount || parsed.total || 0),
+                    status: 'Confirmed (From Quotation)',
+                    items: (parsed.custItems && parsed.custItems.length > 0) ? parsed.custItems.map((it: any) => ({
+                      description: it.desc || it.description || it.name,
+                      qty: Number(it.qty) || 1,
+                      unitPrice: Number(it.unitPrice) || 0,
+                      amount: Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0)),
+                      uom: it.unit || it.uom || 'Nos'
+                    })) : [{
+                      description: parsed.subject || `Quotation ${group.quoNo} Items`,
+                      qty: 1,
+                      unitPrice: Number(latest?.totalAmount || parsed.total || 0),
+                      amount: Number(latest?.totalAmount || parsed.total || 0),
+                      uom: 'Nos'
+                    }]
+                  };
+                  setPrintSalesOrder(previewSO);
+                }
+              }}
+              className="w-full px-3.5 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+            >
+              <ShoppingBag size={13} className="shrink-0 text-blue-500" />
+              <span>Print Sales Order</span>
+            </button>
+
+            {/* Print Work Order (Traveler) */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionId(null);
+                setActionCoords(null);
+                const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                const existingWO = workOrders.find((wo: any) => (wo.quoteId && String(wo.quoteId) === String(latest?.id)) || (wo.orderNo && linkedOrder && wo.orderNo === linkedOrder.orderNo));
+                if (existingWO) {
+                  setPrintWorkOrder(existingWO);
+                } else {
+                  const parsed = latest?.parsed || {};
+                  const targetItems = parsed.custItems || parsed.items || [];
+                  const previewWO = {
+                    id: `WO-${group.quoNo}`,
+                    orderNo: `WO-${group.quoNo}`,
+                    title: `WO: ${group.quoNo} - ${group.clientName || group.clientCompany}`,
+                    customerName: group.clientName || group.clientCompany || 'Customer',
+                    customer: group.clientName || group.clientCompany || 'Customer',
+                    salesOrderNo: linkedOrder?.orderNo || `SO-${group.quoNo}`,
+                    quotationNo: group.quoNo,
+                    quoteId: latest?.id,
+                    sourceQuoteId: latest?.id,
+                    jobQty: targetItems.reduce((s: number, it: any) => s + (Number(it.qty) || 1), 0) || 1,
+                    productName: parsed.subject || (targetItems?.[0]?.desc) || 'Catalog Finished Product',
+                    items: targetItems,
+                    bom: parsed.boms || [],
+                    operations: [
+                      { operationName: 'Precision Fabrication & Machining', plannedHours: 2 }
+                    ],
+                    status: 'Confirmed (From Quotation)',
+                    date: latest?.date || latest?.createdAt || new Date().toISOString()
+                  };
+                  setPrintWorkOrder(previewWO);
+                }
+              }}
+              className="w-full px-3.5 py-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+            >
+              <Factory size={13} className="shrink-0 text-amber-500" />
+              <span>Print Work Order (Traveler)</span>
+            </button>
+
+            {/* Print Delivery Gate Pass / Dispatch Note */}
+            <button
+              type="button"
+              onClick={async () => {
+                setOpenActionId(null);
+                setActionCoords(null);
+                const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latest?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                if (linkedOrder?.gatePassId || linkedOrder?.gatePassNo) {
+                  const gpId = linkedOrder.gatePassId || linkedOrder.gatePassNo;
+                  try {
+                    const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes/${gpId}`);
+                    if (res.ok) {
+                      const gp = await res.json();
+                      setPrintGatePass(gp);
+                      return;
+                    }
+                  } catch (e) {}
+                }
+                const parsed = latest?.parsed || {};
+                const targetItems = parsed.custItems || parsed.items || [];
+                const previewGP = {
+                  id: linkedOrder?.gatePassNo || `DN-${group.quoNo}`,
+                  type: 'goods_delivery',
+                  quoNo: group.quoNo,
+                  orderNo: linkedOrder?.orderNo || `SO-${group.quoNo}`,
+                  orderId: linkedOrder?.id || null,
+                  customerName: group.clientName || group.clientCompany || 'Customer',
+                  customerCompany: group.clientName || group.clientCompany || 'Customer',
+                  attention: parsed.attention || group.clientContact || '',
+                  address: group.clientAddress || '',
+                  phone: group.clientPhone || '',
+                  email: group.clientEmail || '',
+                  carrier: linkedOrder?.carrier || 'REX Transport',
+                  vehicleNo: linkedOrder?.vehicleNo || '',
+                  driverName: linkedOrder?.driverName || '',
+                  reason: `Finished Goods Delivery for Quotation ${group.quoNo}`,
+                  items: targetItems.length > 0 ? targetItems.map((it: any) => ({
+                    description: it.desc || it.description || it.name || 'Component Item',
+                    qty: it.qty || 1,
+                    unit: it.unit || it.uom || 'Nos',
+                    remarks: `Quotation #${group.quoNo}`
+                  })) : [{
+                    description: parsed.subject || 'Finished Goods Component',
+                    qty: 1,
+                    unit: 'Nos',
+                    remarks: `Quotation #${group.quoNo}`
+                  }],
+                  issuedBy: user?.name || 'Store Keeper',
+                  status: linkedOrder?.isDispatched ? 'Dispatched' : 'Preview / Pending Dispatch',
+                  createdAt: new Date().toISOString()
+                };
+                setPrintGatePass(previewGP);
+              }}
+              className="w-full px-3.5 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+            >
+              <Truck size={13} className="shrink-0 text-emerald-500" />
+              <span>Print Delivery Gate Pass</span>
+            </button>
 
             {/* Approval Actions */}
             {latest?.type !== 'draft' && latest?.type !== 'product_draft' && ((status === 'Draft' || !status || status === 'Rejected') || (canApprove && status === 'Pending Approval')) && (
@@ -2291,6 +2478,34 @@ export const ProductQuotations: React.FC = () => {
             refetch();
             toast('Advance Proforma Invoice generated successfully!', 'success');
           }}
+        />
+      )}
+
+      {/* ── SALES ORDER, WORK ORDER & GATE PASS PRINT MODALS ── */}
+      {printSalesOrder && (
+        <SalesOrderPrintModal
+          isOpen={!!printSalesOrder}
+          onClose={() => setPrintSalesOrder(null)}
+          order={printSalesOrder}
+          settings={settings}
+        />
+      )}
+
+      {printWorkOrder && (
+        <WorkOrderPrintModal
+          isOpen={!!printWorkOrder}
+          onClose={() => setPrintWorkOrder(null)}
+          workOrder={printWorkOrder}
+          settings={settings}
+        />
+      )}
+
+      {printGatePass && (
+        <GatePassPrintModal
+          isOpen={!!printGatePass}
+          onClose={() => setPrintGatePass(null)}
+          gatePass={printGatePass}
+          settings={settings}
         />
       )}
 
