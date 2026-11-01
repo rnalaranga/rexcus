@@ -277,7 +277,12 @@ app.post('/api/export-pdf', async (req, res) => {
             #sales-order-print-section,
             #work-order-print-section,
             #gatepass-print-section,
+            #gatepass-print-wrapper,
+            #po-print-section,
+            #mr-print-section,
             #grn-print-section,
+            #supplier-grn-print-section,
+            #customer-grn-print-section,
             #receipt-print-section,
             #invoice-preview,
             .printable-document {

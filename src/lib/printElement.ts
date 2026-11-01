@@ -74,7 +74,11 @@ export async function printElement(elementId: string, docTitle: string = 'Docume
     }
     #print-section,
     #invoice-preview,
+    #po-print-section,
+    #mr-print-section,
     #grn-print-section,
+    #supplier-grn-print-section,
+    #customer-grn-print-section,
     #gatepass-print-section,
     #sales-order-print-section,
     #work-order-print-section,

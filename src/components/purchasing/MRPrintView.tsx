@@ -60,9 +60,39 @@ export const MRPrintView: React.FC<MRPrintViewProps> = ({ mr, settings }) => {
           width: 100% !important;
         }
         @media print {
-          @page { size: A4 portrait; margin: 8mm 10mm; }
-          html, body { background: #fff !important; color: #000 !important; }
-          #mr-print-section { border: 1px solid #000000 !important; max-width: 100% !important; }
+          @page { size: A4 portrait; margin: 6mm 8mm; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * { visibility: hidden !important; }
+          [class*="fixed"], [class*="backdrop"], [role="dialog"], .fixed {
+            position: static !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          #mr-print-section, #mr-print-section * { visibility: visible !important; }
+          #mr-print-section {
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            min-height: 0 !important;
+            height: auto !important;
+          }
         }
       `}</style>
 

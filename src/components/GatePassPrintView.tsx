@@ -83,11 +83,22 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
             print-color-adjust: exact !important;
           }
           body * { visibility: hidden !important; }
+          /* Neutralize modal and fixed positioning wrappers on print */
+          [class*="fixed"], [class*="backdrop"], [role="dialog"], .fixed {
+            position: static !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
           #gatepass-print-wrapper, #gatepass-print-wrapper * { visibility: visible !important; }
           #gatepass-print-wrapper {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: static !important;
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
@@ -194,14 +205,14 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
               <div className="mt-1.5 space-y-0.5 text-[10px]">
                 {phone && (
                   <div className="flex items-start">
-                    <span className="w-12 font-bold shrink-0">Tel</span>
+                    <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "48px", whiteSpace: "nowrap", flexShrink: 0 }}>Tel</span>
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1">{phone}</span>
                   </div>
                 )}
                 {email && (
                   <div className="flex items-start">
-                    <span className="w-12 font-bold shrink-0">Email</span>
+                    <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "48px", whiteSpace: "nowrap", flexShrink: 0 }}>Email</span>
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1">{email}</span>
                   </div>
@@ -214,7 +225,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
               <table className="w-full h-full text-[10.5px]">
                 <tbody>
                   <tr className="border-b border-black">
-                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">GATE PASS NO</td>
+                    <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>GATE PASS NO</td>
                     <td className="p-1 px-2 font-bold font-mono">
                       <div className="flex items-center">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -223,7 +234,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                     </td>
                   </tr>
                   <tr className="border-b border-black">
-                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">DATED</td>
+                    <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>DATED</td>
                     <td className="p-1 px-2 font-mono">
                       <div className="flex items-center">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -233,7 +244,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   </tr>
                   {gatePass.orderNo && (
                     <tr className="border-b border-black">
-                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">SO REF</td>
+                      <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>SO REF</td>
                       <td className="p-1 px-2 font-mono font-bold text-blue-900">
                         <div className="flex items-center">
                           <span className="font-bold mr-1 shrink-0">:</span>
@@ -244,7 +255,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   )}
                   {(gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo) && (
                     <tr className="border-b border-black">
-                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">QUO REF</td>
+                      <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>QUO REF</td>
                       <td className="p-1 px-2 font-mono font-semibold text-emerald-800">
                         <div className="flex items-center">
                           <span className="font-bold mr-1 shrink-0">:</span>
@@ -255,7 +266,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   )}
                   {gatePass.grnId && (
                     <tr className="border-b border-black">
-                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">SAMPLE GRN</td>
+                      <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>SAMPLE GRN</td>
                       <td className="p-1 px-2 font-mono">
                         <div className="flex items-center">
                           <span className="font-bold mr-1 shrink-0">:</span>
@@ -265,7 +276,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                     </tr>
                   )}
                   <tr className="border-b border-black">
-                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">CARRIER / VEHICLE</td>
+                    <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>CARRIER / VEHICLE</td>
                     <td className="p-1 px-2">
                       <div className="flex items-center">
                         <span className="font-bold mr-1 shrink-0">:</span>
@@ -275,7 +286,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   </tr>
                   {gatePass.driverName && (
                     <tr className="border-b border-black">
-                      <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">DRIVER / CONTACT</td>
+                      <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>DRIVER / CONTACT</td>
                       <td className="p-1 px-2">
                         <div className="flex items-center">
                           <span className="font-bold mr-1 shrink-0">:</span>
@@ -285,7 +296,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                     </tr>
                   )}
                   <tr>
-                    <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">PURPOSE</td>
+                    <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>PURPOSE</td>
                     <td className="p-1 px-2">
                       <div className="flex items-center">
                         <span className="font-bold mr-1 shrink-0">:</span>

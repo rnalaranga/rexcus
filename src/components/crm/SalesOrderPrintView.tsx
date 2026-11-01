@@ -118,22 +118,35 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
             print-color-adjust: exact !important;
           }
           body * { visibility: hidden !important; }
+          /* Neutralize modal and fixed positioning wrappers on print */
+          [class*="fixed"], [class*="backdrop"], [role="dialog"], .fixed {
+            position: static !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
           #sales-order-print-section, #sales-order-print-section * { visibility: visible !important; }
           #sales-order-print-section {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: static !important;
             width: 100% !important;
             max-width: 100% !important;
-            margin: 0 !important;
+            margin: 0 auto !important;
             padding: 0 !important;
             box-shadow: none !important;
+            min-height: 0 !important;
+            height: auto !important;
           }
         }
       `}</style>
       <div 
         id="sales-order-print-section"
-        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm print:shadow-none"
+        className="bg-white mx-auto border border-black flex flex-col text-black shadow-sm print:shadow-none print:min-h-0 print:h-auto"
         style={{ width: '100%', maxWidth: '794px', minHeight: '1050px', color: '#000', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', boxSizing: 'border-box' }}
       >
         {/* Top Letterhead Header (matching QuotationPrintView) */}
@@ -233,28 +246,28 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
             <div className="mt-2 space-y-0.5 font-medium text-[10.5px]">
               {attention && (
                 <div className="flex items-start">
-                  <span className="w-16 font-bold shrink-0">Attn</span>
+                  <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "75px", whiteSpace: "nowrap", flexShrink: 0 }}>Attn</span>
                   <span className="font-bold mr-1 shrink-0">:</span>
                   <span className="flex-1">{attention}</span>
                 </div>
               )}
               {customerPhone && (
                 <div className="flex items-start">
-                  <span className="w-16 font-bold shrink-0">Phone</span>
+                  <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "75px", whiteSpace: "nowrap", flexShrink: 0 }}>Phone</span>
                   <span className="font-bold mr-1 shrink-0">:</span>
                   <span className="flex-1">{customerPhone}</span>
                 </div>
               )}
               {customerEmail && (
                 <div className="flex items-start">
-                  <span className="w-16 font-bold shrink-0">Email</span>
+                  <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "75px", whiteSpace: "nowrap", flexShrink: 0 }}>Email</span>
                   <span className="font-bold mr-1 shrink-0">:</span>
                   <span className="flex-1">{customerEmail}</span>
                 </div>
               )}
               {(vatNumber || tinNumber) && (
                 <div className="flex items-start">
-                  <span className="w-16 font-bold shrink-0">{vatNumber ? 'VAT No.' : 'TIN No.'}</span>
+                  <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "75px", whiteSpace: "nowrap", flexShrink: 0 }}>{vatNumber ? "VAT No." : "TIN No."}</span>
                   <span className="font-bold mr-1 shrink-0">:</span>
                   <span className="flex-1 font-mono">{vatNumber || tinNumber}</span>
                 </div>
@@ -267,7 +280,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
             <table className="w-full h-full text-[11px]">
               <tbody>
                 <tr className="border-b border-black">
-                  <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">SO NO</td>
+                  <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "115px", whiteSpace: "nowrap" }}>SO NO</td>
                   <td className="p-1 px-2 font-bold font-mono">
                     <div className="flex items-center">
                       <span className="font-bold mr-1 shrink-0">:</span>
@@ -276,7 +289,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                   </td>
                 </tr>
                 <tr className="border-b border-black">
-                  <td className="p-1 px-2 border-r border-black font-bold w-28 whitespace-nowrap">ORDER DATE</td>
+                  <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "115px", whiteSpace: "nowrap" }}>ORDER DATE</td>
                   <td className="p-1 px-2 font-mono">
                     <div className="flex items-center">
                       <span className="font-bold mr-1 shrink-0">:</span>

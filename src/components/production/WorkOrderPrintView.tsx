@@ -169,8 +169,39 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
         }
         @media print {
           @page { size: A4 portrait; margin: 6mm 8mm; }
-          html, body { background: #fff !important; color: #000 !important; }
-          #work-order-print-section { border: 1px solid #000000 !important; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * { visibility: hidden !important; }
+          /* Neutralize modal and fixed positioning wrappers on print */
+          [class*="fixed"], [class*="backdrop"], [role="dialog"], .fixed {
+            position: static !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          #work-order-print-section, #work-order-print-section * { visibility: visible !important; }
+          #work-order-print-section {
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            min-height: 0 !important;
+            height: auto !important;
+          }
         }
       `}</style>
 
@@ -333,14 +364,14 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
             <table className="w-full text-[11px] leading-relaxed">
               <tbody>
                 <tr>
-                  <td className="w-32 font-bold py-0.5">Work Order No.</td>
+                  <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Work Order No.</td>
                   <td className="py-0.5">
                     <span className="font-bold mr-1">:</span>
                     <span className="font-mono text-[13px] text-black font-black">{woId}</span>
                   </td>
                 </tr>
                 <tr>
-                  <td className="font-bold py-0.5">Sales Order No.</td>
+                  <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Sales Order No.</td>
                   <td className="py-0.5">
                     <span className="font-bold mr-1">:</span>
                     <span className="font-mono font-bold text-blue-900">{soNo}</span>
@@ -348,7 +379,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                 </tr>
                 {quotationNo && quotationNo !== '-' && (
                   <tr>
-                    <td className="font-bold py-0.5">Quotation Ref</td>
+                    <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Quotation Ref</td>
                     <td className="py-0.5">
                       <span className="font-bold mr-1">:</span>
                       <span className="font-mono font-bold text-emerald-800">{quotationNo}</span>
@@ -356,14 +387,14 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                   </tr>
                 )}
                 <tr>
-                  <td className="font-bold py-0.5">Order Issue Date</td>
+                  <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Order Issue Date</td>
                   <td className="py-0.5">
                     <span className="font-bold mr-1">:</span>
                     <span className="font-mono font-medium text-neutral-800">{orderDate}</span>
                   </td>
                 </tr>
                 <tr>
-                  <td className="font-bold py-0.5">Target Delivery</td>
+                  <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Target Delivery</td>
                   <td className="py-0.5">
                     <span className="font-bold mr-1">:</span>
                     <span className="font-mono font-black text-black">{deliveredDate}</span>
@@ -371,7 +402,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                 </tr>
                 {grnNo && grnNo !== '-' && (
                   <tr>
-                    <td className="font-bold py-0.5">Sample GRN No.</td>
+                    <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Sample GRN No.</td>
                     <td className="py-0.5">
                       <span className="font-bold mr-1">:</span>
                       <span className="font-mono">{grnNo}</span>
@@ -380,7 +411,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                 )}
                 {bomNo && bomNo !== '-' && (
                   <tr>
-                    <td className="font-bold py-0.5">BOM Ref No.</td>
+                    <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>BOM Ref No.</td>
                     <td className="py-0.5">
                       <span className="font-bold mr-1">:</span>
                       <span className="font-mono">{bomNo}</span>
@@ -389,7 +420,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                 )}
                 {projectNo && projectNo !== '-' && (
                   <tr>
-                    <td className="font-bold py-0.5">Project / Job Ref</td>
+                    <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Project / Job Ref</td>
                     <td className="py-0.5">
                       <span className="font-bold mr-1">:</span>
                       <span className="font-mono">{projectNo}</span>
@@ -397,7 +428,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                   </tr>
                 )}
                 <tr>
-                  <td className="font-bold py-0.5">Prepared By</td>
+                  <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Prepared By</td>
                   <td className="py-0.5">
                     <span className="font-bold mr-1">:</span>
                     <span className="font-semibold text-black">{preparedBy}</span>
