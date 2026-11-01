@@ -22,24 +22,43 @@ jobs:
           script: |
             set -e
             echo "=== Rexcus Deployment Started ==="
-            export NODE_OPTIONS="--max-old-space-size=2048"
 
-            # 1. Project Directory එකට යෑම
+            # 0. Safety trap: whatever happens, always ensure PM2 backend is running upon exit
+            trap 'echo "Safety trap: Ensuring backend is running..."; pm2 restart rexnw-backend --update-env || pm2 restart all || true; pm2 status || true' EXIT
+
+            # Immediately recover backend from 500 Bad Gateway right at the start
+            echo "Quick-starting backend to resolve 500 Bad Gateway immediately..."
+            pm2 restart rexnw-backend --update-env || pm2 restart all || true
+
+            # 1. Enable 2GB SWAP memory on VPS if not already active (Eliminates OOM exit code 137 forever)
+            if [ $(swapon --show | wc -l) -le 1 ]; then
+              echo "No swap file detected. Creating 2GB swap space to prevent memory kills..."
+              (sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048) && \
+              sudo chmod 600 /swapfile && \
+              sudo mkswap /swapfile && \
+              sudo swapon /swapfile && \
+              (grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab) || true
+              echo "Swap setup completed!"
+            else
+              echo "Swap memory already active."
+            fi
+
+            # 2. Project Directory එකට යෑම
             cd /var/www/rexnw
 
-            # 2. Local modifications discard කර GitHub එකෙන් අලුත්ම Code එකට sync කිරීම
+            # 3. Local modifications discard කර GitHub එකෙන් අලුත්ම Code එකට sync කිරීම
             echo "Fetching latest changes from origin/main..."
             git fetch origin main
             git reset --hard origin/main
             git clean -fd
 
-            # 3. Frontend Build කිරීම
-            echo "Installing root dependencies (offline-preferred for speed)..."
+            # 4. Frontend Build කිරීම
+            echo "Installing root dependencies..."
             npm install --prefer-offline --no-audit
             echo "Building frontend..."
             npm run build
 
-            # 4. Backend Dependencies Update කිරීම
+            # 5. Backend Dependencies Update කිරීම
             if [ -d "api" ]; then
               echo "Installing API dependencies..."
               cd api
@@ -57,7 +76,7 @@ jobs:
               cd ..
             fi
 
-            # 5. Linux headless Chrome dependencies and unzip archiver (skip if unzip already installed)
+            # 6. Linux headless Chrome dependencies and unzip archiver (skip if already present)
             if ! command -v unzip &> /dev/null; then
               echo "Installing system packages..."
               (sudo apt-get update -y && sudo apt-get install -y unzip chromium-browser chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libasound2) || true
@@ -65,8 +84,8 @@ jobs:
               echo "System dependencies already installed (skipping apt-get)"
             fi
 
-            # 6. PM2 Backend Process එක Restart කිරීම
-            echo "Restarting backend via PM2..."
+            # 7. Final PM2 Backend Restart & Save
+            echo "Final PM2 restart and save..."
             pm2 restart rexnw-backend --update-env || pm2 restart all
             pm2 save || true
             pm2 status
