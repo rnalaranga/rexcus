@@ -187,6 +187,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const cleanPoNo = (poNo || customerPoNo || '').toString().trim();
   const infoItems: { label: string; value: string }[] = [];
 
+  if (cleanPoNo) infoItems.push({ label: 'PO No.', value: String(cleanPoNo) });
   if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
   if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
 
@@ -503,26 +504,16 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       {/* ── 2. TOP SECTION TABLE GRID ── */}
       <div style={{ border: tableBorder, borderBottom: 'none' }}>
         
-        {/* ROW 1: Date of Invoice & Tax Invoice No. / Invoice No. & Customer PO No. */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: cleanPoNo ? '1fr 1.2fr 1fr' : '1fr 1fr', 
-          borderBottom: tableBorder 
-        }}>
+        {/* ROW 1: Date of Invoice & Tax Invoice No. / Invoice No. */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: tableBorder }}>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Date of Invoice:</span>{' '}
             <span>{invoiceDateFormatted}</span>
           </div>
-          <div style={{ padding: '6px 10px', borderRight: cleanPoNo ? tableBorder : 'none' }}>
+          <div style={{ padding: '6px 10px' }}>
             <span style={{ fontWeight: '700' }}>{invoiceDocLabel}</span>{' '}
             <span style={{ fontWeight: '700' }}>{docNo}</span>
           </div>
-          {cleanPoNo ? (
-            <div style={{ padding: '6px 10px', backgroundColor: '#f8fafc' }}>
-              <span style={{ fontWeight: '700' }}>Customer PO No.:</span>{' '}
-              <span style={{ fontWeight: '800', fontFamily: 'monospace', color: '#000000' }}>{cleanPoNo}</span>
-            </div>
-          ) : null}
         </div>
 
         {/* ROW 2: Supplier Details & Purchaser Details */}
@@ -556,12 +547,6 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                 <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Purchaser's TIN :</span>
                 <span style={{ flex: 1 }}>{customerVat || customer?.vat || customer?.tin || '-'}</span>
               </div>
-              {cleanPoNo ? (
-                <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'flex-start' }}>
-                  <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Customer PO No. :</span>
-                  <span style={{ fontWeight: '800', fontFamily: 'monospace', color: '#000000', flex: 1 }}>{cleanPoNo}</span>
-                </div>
-              ) : null}
               <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'flex-start' }}>
                 <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Purchaser's Name :</span>
                 <span style={{ fontWeight: '700', flex: 1 }}>
@@ -573,7 +558,6 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                     }
                     return rawCompany;
                   })()}
-                  {attention ? ` - Attn: ${attention}` : ''}
                 </span>
               </div>
               <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'flex-start' }}>
@@ -588,7 +572,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </div>
         </div>
 
-        {/* ROW 3: Date of Supply, Place of Supply & Dispatch / Gate Pass No. */}
+        {/* ROW 3: Date of Supply, Place of Supply & Dispatch No. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1fr', borderBottom: tableBorder }}>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Date of Supply :</span>{' '}
@@ -596,10 +580,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </div>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Place of Supply :*</span>{' '}
-            <span>{placeOfSupply && placeOfSupply.trim() ? placeOfSupply : 'Negombo'}</span>
+            <span>Negombo</span>
           </div>
           <div style={{ padding: '6px 10px' }}>
-            <span style={{ fontWeight: '700' }}>Dispatch No. / Gate Pass :*</span>{' '}
+            <span style={{ fontWeight: '700' }}>Dispatch No. :*</span>{' '}
             <span style={{ fontWeight: '800', fontFamily: 'monospace', color: '#000000' }}>{dispatchNo || 'Direct Delivery'}</span>
           </div>
         </div>

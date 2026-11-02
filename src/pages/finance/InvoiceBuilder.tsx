@@ -234,7 +234,7 @@ export const InvoiceBuilder: React.FC = () => {
               } catch (e) {}
             }
             if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
-            if (ord.deliveryAddress) setPlaceOfSupply(ord.deliveryAddress);
+            setPlaceOfSupply('Negombo');
             if (ord.paymentTerms) setNotes(ord.paymentTerms);
             if (ord.taxProfileId) setTaxProfileId(ord.taxProfileId);
             if (Number(ord.taxAmount) > 0 || ord.taxProfileId) {
@@ -1380,8 +1380,8 @@ export const InvoiceBuilder: React.FC = () => {
                     <input type="text" value={quotationNo} onChange={e => setQuotationNo(e.target.value)} placeholder="AHSQ-..." className={docInputClass} />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Dispatch No / Gate Pass</label>
-                    <input type="text" value={dispatchNo} onChange={e => setDispatchNo(e.target.value)} placeholder="GP-XXXX / DN-..." className={docInputClass} />
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Dispatch No</label>
+                    <input type="text" value={dispatchNo} onChange={e => setDispatchNo(e.target.value)} placeholder="DN-..." className={docInputClass} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Order No (SO)</label>
