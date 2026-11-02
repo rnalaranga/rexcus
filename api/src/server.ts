@@ -4945,8 +4945,10 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     const id = data.id || `FGO-${Date.now().toString().slice(-6)}`;
     const currentYY = String(new Date().getFullYear()).slice(-2);
     let orderNo = (data.orderNo || `SO-${currentYY}-${Date.now().toString().slice(-4)}`).trim();
-    // Shorten any 4-digit year (YYYY) in Sales Order number to 2-digit (YY)
-    orderNo = orderNo.replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3').replace(/^SO-20(\d{2})-/i, 'SO-$1-');
+    // Shorten standard SO-20YY- prefix to SO-YY- while preserving custom order numbers
+    if (/^SO-20\d{2}-/i.test(orderNo)) {
+      orderNo = orderNo.replace(/^SO-20(\d{2})-/i, 'SO-$1-');
+    }
     
     // Parse items if provided
     let itemsList: any[] = [];

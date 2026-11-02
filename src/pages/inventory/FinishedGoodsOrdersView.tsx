@@ -6,7 +6,7 @@ import {
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
-  ShoppingBag, Receipt, UploadCloud, Paperclip, Camera
+  ShoppingBag, Receipt, UploadCloud, Paperclip, Camera, Maximize2, Minimize2
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +16,7 @@ import { SearchBar } from '@/components/ui/SearchBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations, useInvoices } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useTaxProfiles } from '@/hooks/useFinance'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
@@ -80,6 +81,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: leads = [] } = useLeads()
   const { data: rawQuotations = [] } = useQuotations()
   const { data: allInvoices = [], refetch: refetchInvoices } = useInvoices()
+  const { data: taxProfiles = [] } = useTaxProfiles()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
@@ -139,6 +141,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }, [])
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showOrderModal, setShowOrderModal] = useState(false)
+  const [isOrderModalExpanded, setIsOrderModalExpanded] = useState(false)
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
@@ -423,7 +426,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     fetchNextDocumentNumber('sales_order', { reserve: false }).then(res => {
       if (res?.formattedNumber) {
-        setFormData(prev => ({ ...prev, orderNo: res.formattedNumber }));
+        setFormData(prev => {
+          // If user has already modified or entered a custom SO number, do NOT overwrite it!
+          if (prev.orderNo && prev.orderNo !== fallbackOrderNo) {
+            return prev;
+          }
+          return { ...prev, orderNo: res.formattedNumber };
+        });
       }
     }).catch(err => {
       console.warn('Failed to fetch next sales order sequence number:', err);
@@ -691,6 +700,114 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
+  const calculateCurrentSubtotal = (f: typeof formData) => {
+    if ((f.orderSource === 'from_quote' || f.orderSource === 'custom_job') && f.items && f.items.length > 0) {
+      return f.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
+    }
+    return (Number(f.qty) || 1) * (Number(f.unitPrice) || 0);
+  };
+
+  const calculateOrderTaxes = useCallback((
+    subtotal: number,
+    profileId?: string,
+    customRate?: number
+  ) => {
+    const sub = Math.max(0, Number(subtotal) || 0);
+    const pId = profileId !== undefined ? profileId : formData.taxProfileId;
+    if (!pId || pId === 'none' || pId === 'no_tax') {
+      return {
+        taxAmount: 0,
+        taxRate: 0,
+        totalPrice: sub
+      };
+    }
+    if (pId === 'custom') {
+      const rate = Math.max(0, Number(customRate !== undefined ? customRate : formData.taxRate) || 0);
+      const taxAmount = Number(((sub * rate) / 100).toFixed(2));
+      return {
+        taxAmount,
+        taxRate: rate,
+        totalPrice: Number((sub + taxAmount).toFixed(2))
+      };
+    }
+
+    const profile = taxProfiles?.find((p: any) => p.id === pId);
+    if (!profile) {
+      if (formData.taxRate > 0) {
+        const taxAmount = Number(((sub * formData.taxRate) / 100).toFixed(2));
+        return {
+          taxAmount,
+          taxRate: formData.taxRate,
+          totalPrice: Number((sub + taxAmount).toFixed(2))
+        };
+      }
+      return {
+        taxAmount: 0,
+        taxRate: 0,
+        totalPrice: sub
+      };
+    }
+
+    const t1 = Number(profile.tax1_rate || 0) / 100;
+    const t2 = Number(profile.tax2_rate || 0) / 100;
+    const sscl = sub * t1;
+    const vat = profile.tax2_compound ? (sub + sscl) * t2 : sub * t2;
+    const taxAmount = Number((sscl + vat).toFixed(2));
+    const effectiveRate = sub > 0 ? Number(((taxAmount / sub) * 100).toFixed(2)) : (Number(profile.tax2_rate) || 0);
+    return {
+      taxAmount,
+      taxRate: effectiveRate,
+      totalPrice: Number((sub + taxAmount).toFixed(2))
+    };
+  }, [taxProfiles, formData.taxProfileId, formData.taxRate]);
+
+  const handleTaxProfileChange = (profileId: string) => {
+    setFormData(prev => {
+      const currentSub = calculateCurrentSubtotal(prev);
+      const { taxAmount, taxRate, totalPrice } = calculateOrderTaxes(currentSub, profileId);
+      return {
+        ...prev,
+        taxProfileId: profileId,
+        taxAmount,
+        taxRate,
+        subtotal: currentSub,
+        totalPrice
+      };
+    });
+  };
+
+  const handleCustomTaxRateChange = (rateVal: string) => {
+    setFormData(prev => {
+      const currentSub = calculateCurrentSubtotal(prev);
+      const rate = Math.max(0, Number(rateVal) || 0);
+      const taxAmount = Number(((currentSub * rate) / 100).toFixed(2));
+      return {
+        ...prev,
+        taxProfileId: 'custom',
+        taxRate: rate,
+        taxAmount,
+        subtotal: currentSub,
+        totalPrice: Number((currentSub + taxAmount).toFixed(2))
+      };
+    });
+  };
+
+  const handleCustomTaxAmountChange = (amtVal: string) => {
+    setFormData(prev => {
+      const currentSub = calculateCurrentSubtotal(prev);
+      const taxAmount = Math.max(0, Number(amtVal) || 0);
+      const rate = currentSub > 0 ? Number(((taxAmount / currentSub) * 100).toFixed(2)) : 0;
+      return {
+        ...prev,
+        taxProfileId: 'custom',
+        taxRate: rate,
+        taxAmount,
+        subtotal: currentSub,
+        totalPrice: Number((currentSub + taxAmount).toFixed(2))
+      };
+    });
+  };
+
   const handleItemChangeInOrder = (idx: number, field: string, value: any) => {
     setFormData(prev => {
       const newItems = [...(prev.items || [])];
@@ -701,14 +818,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       newItems[idx] = it;
 
       const subtotal = newItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
-      let taxAmount = prev.taxAmount;
-      if (prev.taxRate > 0) {
-        taxAmount = Number(((subtotal * prev.taxRate) / 100).toFixed(2));
-      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
-        const ratio = prev.taxAmount / prev.subtotal;
-        taxAmount = Number((subtotal * ratio).toFixed(2));
-      }
-      const totalPrice = subtotal + taxAmount;
+      const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
 
       return {
         ...prev,
@@ -741,11 +851,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       if ((prev.items || []).length <= 1) return prev;
       const newItems = prev.items.filter((_: any, i: number) => i !== idx);
       const subtotal = newItems.reduce((acc: number, x: any) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
-      let taxAmount = prev.taxAmount;
-      if (prev.taxRate > 0) {
-        taxAmount = Number(((subtotal * prev.taxRate) / 100).toFixed(2));
-      }
-      const totalPrice = subtotal + taxAmount;
+      const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
       return {
         ...prev,
         items: newItems,
@@ -835,10 +941,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       ? (hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock')
       : (formData.orderSource === 'from_quote' ? 'Quoted Spec' : 'Custom Production');
 
-    const cleanOrderNo = (formData.orderNo || '')
-      .trim()
-      .replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3')
-      .replace(/^SO-20(\d{2})-/i, 'SO-$1-');
+    const rawOrderNo = (formData.orderNo || '').trim();
+    const cleanOrderNo = /^SO-20\d{2}-/i.test(rawOrderNo)
+      ? rawOrderNo.replace(/^SO-20(\d{2})-/i, 'SO-$1-')
+      : rawOrderNo;
 
     const totalQty = (formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && itemsList.length > 0
       ? itemsList.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)
@@ -2293,23 +2399,39 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       {/* CREATE / EDIT ORDER MODAL */}
       {showOrderModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
-          <div className="relative w-full max-w-3xl bg-surface border border-theme-subtle rounded-none shadow-2xl p-6 overflow-hidden max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 mb-4 border-b border-theme-subtle">
-              <h3 className="text-base font-bold text-primary flex items-center gap-2">
-                <ShoppingBag size={18} className="text-blue-600" />
-                {editingOrder ? `Edit Sales Order #${formData.orderNo}` : 'New Sales Order'}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
+          <div className={`relative w-full bg-surface border border-theme-subtle rounded-none shadow-2xl p-4 sm:p-6 transition-all duration-200 overflow-hidden flex flex-col ${
+            isOrderModalExpanded
+              ? 'max-w-[98vw] h-[96vh] max-h-[96vh]'
+              : 'max-w-3xl max-h-[92vh]'
+          }`}>
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-theme-subtle shrink-0">
+              <h3 className="text-base font-bold text-primary flex items-center gap-2 truncate pr-2">
+                <ShoppingBag size={18} className="text-blue-600 shrink-0" />
+                <span>{editingOrder ? `Edit Sales Order #${formData.orderNo}` : 'New Sales Order'}</span>
               </h3>
-              <button
-                type="button"
-                onClick={() => setShowOrderModal(false)}
-                className="p-1.5 rounded-none text-muted hover:text-primary hover:bg-surface2"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsOrderModalExpanded(!isOrderModalExpanded)}
+                  title={isOrderModalExpanded ? "Restore standard size" : "Expand width (Full View)"}
+                  className="p-1.5 text-muted hover:text-primary hover:bg-surface2 transition-colors cursor-pointer"
+                >
+                  {isOrderModalExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowOrderModal(false)}
+                  title="Close modal"
+                  className="p-1.5 text-muted hover:text-primary hover:bg-surface2 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleSaveOrder} className="space-y-4">
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 -mr-1">
+              <form onSubmit={handleSaveOrder} className="space-y-4">
               {/* Order Source / Category Switcher */}
               <div>
                 <label className="block text-xs font-semibold text-secondary mb-1.5">
@@ -2357,14 +2479,40 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">Sales Order #</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.orderNo}
-                    onChange={e => setFormData({ ...formData, orderNo: e.target.value })}
-                    className="w-full input-base font-mono text-xs"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-secondary">
+                      Sales Order # <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-muted font-medium">Custom / Auto</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={formData.orderNo}
+                      onChange={e => setFormData({ ...formData, orderNo: e.target.value })}
+                      placeholder="e.g. SO-26-0042 or Custom SO #"
+                      className="w-full input-base font-mono text-xs font-bold text-blue-600 dark:text-blue-400 pr-16"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetchNextDocumentNumber('sales_order', { reserve: false });
+                          if (res?.formattedNumber) {
+                            setFormData(prev => ({ ...prev, orderNo: res.formattedNumber }));
+                          }
+                        } catch (err) {}
+                      }}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 px-2 py-0.5 text-[10px] font-bold text-muted hover:text-primary bg-surface2 hover:bg-surface border border-theme-subtle rounded transition-colors cursor-pointer"
+                      title="Reset to Next Auto Sequence Number"
+                    >
+                      Auto #
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted mt-0.5">
+                    Custom order number ඇතුළත් කළ හැක, නැතහොත් "Auto #" ඔබන්න.
+                  </p>
                 </div>
 
                 <div>
@@ -2787,7 +2935,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         step="1"
                         required
                         value={formData.qty}
-                        onChange={e => setFormData({ ...formData, qty: e.target.value })}
+                        onChange={e => {
+                          const newQty = e.target.value;
+                          setFormData(prev => {
+                            const sub = (Number(newQty) || 0) * (Number(prev.unitPrice) || 0);
+                            const { taxAmount, totalPrice } = calculateOrderTaxes(sub, prev.taxProfileId, prev.taxRate);
+                            return { ...prev, qty: newQty, subtotal: sub, taxAmount, totalPrice };
+                          });
+                        }}
                         className="w-full input-base font-mono font-bold text-sm"
                       />
                     </div>
@@ -2800,12 +2955,112 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         step="0.01"
                         required
                         value={formData.unitPrice}
-                        onChange={e => setFormData({ ...formData, unitPrice: e.target.value })}
+                        onChange={e => {
+                          const newPrice = e.target.value;
+                          setFormData(prev => {
+                            const sub = (Number(prev.qty) || 0) * (Number(newPrice) || 0);
+                            const { taxAmount, totalPrice } = calculateOrderTaxes(sub, prev.taxProfileId, prev.taxRate);
+                            return { ...prev, unitPrice: newPrice, subtotal: sub, taxAmount, totalPrice };
+                          });
+                        }}
                         className="w-full input-base font-mono font-bold text-sm"
                       />
                     </div>
                   </>
                 )}
+
+                {/* ── TAXES & PRICING CONFIGURATION (APPLY TAXES TO FINAL VALUE) ── */}
+                <div className="sm:col-span-2 p-3.5 bg-indigo-500/5 border border-indigo-500/20 rounded-none space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Receipt size={15} className="text-indigo-600 dark:text-indigo-400" />
+                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                        Apply Taxes to Final Value (බදු සැකසුම්)
+                      </span>
+                    </div>
+                    {formData.taxAmount > 0 && (
+                      <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400 px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/25">
+                        +{formatCurrency(formData.taxAmount)} ({formData.taxRate}%)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Tax Profile Dropdown */}
+                    <div className={formData.taxProfileId === 'custom' ? 'sm:col-span-1' : 'sm:col-span-2'}>
+                      <label className="block text-xs font-semibold text-secondary mb-1">
+                        Tax Profile / Tax Policy
+                      </label>
+                      <select
+                        value={formData.taxProfileId || 'no_tax'}
+                        onChange={e => handleTaxProfileChange(e.target.value)}
+                        className="w-full input-base text-xs font-medium"
+                      >
+                        <option value="no_tax">No Tax / 0% (Tax Exempt)</option>
+                        {taxProfiles?.map((p: any) => {
+                          const t1 = Number(p.tax1_rate || 0);
+                          const t2 = Number(p.tax2_rate || 0);
+                          const rateLabel = t1 > 0 && t2 > 0 
+                            ? `${p.tax1_name || 'SSCL'} ${t1}% + ${p.tax2_name || 'VAT'} ${t2}%`
+                            : (t2 > 0 ? `${p.tax2_name || 'VAT'} ${t2}%` : (t1 > 0 ? `${p.tax1_name || 'SSCL'} ${t1}%` : '0%'));
+                          return (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({rateLabel})
+                            </option>
+                          );
+                        })}
+                        <option value="custom">Custom Tax Rate (%) / Amount</option>
+                      </select>
+                    </div>
+
+                    {/* If Custom, show custom inputs */}
+                    {formData.taxProfileId === 'custom' ? (
+                      <>
+                        <div>
+                          <label className="block text-xs font-semibold text-secondary mb-1">
+                            Tax Rate (%)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={formData.taxRate}
+                              onChange={e => handleCustomTaxRateChange(e.target.value)}
+                              placeholder="e.g. 18"
+                              className="w-full input-base font-mono text-xs pr-8"
+                            />
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted font-bold text-xs">%</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-secondary mb-1">
+                            Tax Amount (Rs.)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.taxAmount}
+                            onChange={e => handleCustomTaxAmountChange(e.target.value)}
+                            placeholder="Rs. 0.00"
+                            className="w-full input-base font-mono text-xs"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col justify-center">
+                        <span className="text-[10px] text-muted block mb-0.5">Applied Tax Status</span>
+                        <span className="text-xs font-mono font-semibold text-primary truncate">
+                          {formData.taxProfileId && formData.taxProfileId !== 'no_tax' 
+                            ? (taxProfiles?.find((p: any) => p.id === formData.taxProfileId)?.name || 'Standard Tax Profile')
+                            : 'Tax Exempt (0.00%)'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">Order Status</label>
@@ -2829,13 +3084,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     <div className="flex justify-between text-secondary text-[11px]">
                       <span>Subtotal:</span>
                       <span className="font-semibold text-primary">
-                        {formatCurrency(
-                          formData.subtotal || (
-                            (formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0
-                              ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
-                              : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
-                          )
-                        )}
+                        {formatCurrency(formData.subtotal || calculateCurrentSubtotal(formData))}
                       </span>
                     </div>
                     {Number(formData.discount || 0) > 0 && (
@@ -2844,10 +3093,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         <span>-{formatCurrency(formData.discount)}</span>
                       </div>
                     )}
-                    {Number(formData.taxAmount || 0) > 0 && (
+                    {Number(formData.taxAmount || 0) > 0 ? (
                       <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
-                        <span>Taxes (VAT / SSCL):</span>
+                        <span>Taxes ({formData.taxRate > 0 ? `${formData.taxRate}%` : 'VAT / SSCL'}):</span>
                         <span>+{formatCurrency(formData.taxAmount)}</span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between text-muted text-[10px]">
+                        <span>Taxes:</span>
+                        <span>Rs. 0.00 (Exempt)</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm font-black text-rex-600 pt-1 border-t border-theme-subtle">
@@ -2855,11 +3109,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       <span>
                         {formatCurrency(
                           formData.totalPrice || (
-                            (Number(formData.subtotal) || (
-                              (formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0
-                                ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
-                                : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
-                            )) + Number(formData.taxAmount || 0)
+                            (Number(formData.subtotal) || calculateCurrentSubtotal(formData)) + Number(formData.taxAmount || 0)
                           )
                         )}
                       </span>
@@ -2997,6 +3247,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 </Button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       , document.body)}
