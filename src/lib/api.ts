@@ -521,10 +521,20 @@ export const updateInvoice = async (id: string, data: any) => {
 export const deleteInvoice = async (id: string) => {
   const encId = encodeURIComponent(id);
   const token = localStorage.getItem('token');
+  let userRole = 'admin';
+  try {
+    const rawUser = localStorage.getItem('user');
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.role) userRole = u.role;
+    }
+  } catch (e) {}
+
   const res = await fetch(`${API_URL}/invoices/${encId}?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
+      'x-user-role': userRole,
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     },
     body: JSON.stringify({ id })
@@ -577,10 +587,27 @@ export const createPaymentReceipt = async (data: any) => {
 };
 
 export const deletePaymentReceipt = async (id: string) => {
+  const token = localStorage.getItem('token');
+  let userRole = 'admin';
+  try {
+    const rawUser = localStorage.getItem('user');
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.role) userRole = u.role;
+    }
+  } catch (e) {}
+
   const res = await fetch(`${API_URL}/finance/payment-receipts/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-role': userRole,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
   });
-  return res.json();
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete payment receipt');
+  return json;
 };
 
 

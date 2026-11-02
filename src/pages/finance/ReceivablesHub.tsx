@@ -17,7 +17,7 @@ import { useAccounts } from '@/hooks/useFinance';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice } from '@/lib/api';
+import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice, deletePaymentReceipt } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
@@ -239,6 +239,50 @@ export const ReceivablesHub: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to delete proforma invoice:', err);
       toast(err.message || 'Failed to delete proforma invoice', 'error');
+    }
+  };
+
+  const handleDeleteInvoice = async (invoice: any) => {
+    if (!invoice) return;
+    const invNo = invoice.invoiceNo || invoice.id;
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete Invoice "${invNo}"? Any GL journal postings will be reversed, and this invoice will be permanently removed.`,
+      'Delete Invoice'
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteInvoice(invoice.id || invoice.invoiceNo);
+      toast(`Invoice ${invNo} deleted successfully`, 'success');
+      refetchInvoices();
+      loadAging();
+    } catch (err: any) {
+      console.error('Failed to delete invoice:', err);
+      toast(err.message || 'Failed to delete invoice', 'error');
+    }
+  };
+
+  const handleDeleteReceipt = async (receipt: any) => {
+    if (!receipt) return;
+    const recNo = receipt.receiptNo || receipt.id;
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete Payment Receipt "${recNo}" for ${formatCurrency(Number(receipt.amount || 0))}? This action will reverse any deposit entries and cannot be undone.`,
+      'Delete Payment Receipt'
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await deletePaymentReceipt(receipt.id);
+      if (res && res.error) {
+        throw new Error(res.error);
+      }
+      toast(`Payment receipt ${recNo} deleted successfully`, 'success');
+      loadReceipts();
+      refetchInvoices();
+      loadAging();
+    } catch (err: any) {
+      console.error('Failed to delete payment receipt:', err);
+      toast(err.message || 'Failed to delete payment receipt', 'error');
     }
   };
 
@@ -645,6 +689,14 @@ export const ReceivablesHub: React.FC = () => {
                             >
                               Record Payment
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Trash2}
+                              onClick={() => handleDeleteInvoice(inv)}
+                              className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 text-xs px-2"
+                              title="Delete Invoice"
+                            />
                           </div>
                         </td>
                       </tr>
@@ -884,15 +936,25 @@ export const ReceivablesHub: React.FC = () => {
                         {rec.receivedBy || 'Accounts Officer'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={Receipt}
-                          onClick={() => setPrintReceipt(rec)}
-                          className="text-xs text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/10"
-                        >
-                          View Voucher
-                        </Button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Receipt}
+                            onClick={() => setPrintReceipt(rec)}
+                            className="text-xs text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/10"
+                          >
+                            View Voucher
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Trash2}
+                            onClick={() => handleDeleteReceipt(rec)}
+                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 text-xs px-2"
+                            title="Delete Payment Receipt"
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}

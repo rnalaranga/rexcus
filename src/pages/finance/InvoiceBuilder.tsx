@@ -841,7 +841,8 @@ export const InvoiceBuilder: React.FC = () => {
       (isSsclSeparate && taxBreakdown.tax1Amount > 0)
     )
   );
-  const creditWarning = selectedCustomer && Number(selectedCustomer.creditLimit) > 0 && (Number(selectedCustomer.totalRevenue || 0) + total > Number(selectedCustomer.creditLimit));
+  const customerOutstanding = Number(selectedCustomer?.outstandingBalance ?? 0);
+  const creditWarning = selectedCustomer && Number(selectedCustomer.creditLimit) > 0 && ((customerOutstanding + total) > Number(selectedCustomer.creditLimit));
 
   const handleSave = async () => {
     if (!customerId) return showError('Please select a customer.');
@@ -1188,7 +1189,7 @@ export const InvoiceBuilder: React.FC = () => {
                   {creditWarning && (
                     <div className="flex items-start gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-xs">
                       <AlertCircle size={12} className="shrink-0 mt-0.5" />
-                      <span>⚠ Exceeds credit limit of {formatCurrency(selectedCustomer!.creditLimit)}.</span>
+                      <span>⚠ Exceeds credit limit of {formatCurrency(selectedCustomer!.creditLimit)} (Current Debt: {formatCurrency(customerOutstanding)} + New: {formatCurrency(total)}).</span>
                     </div>
                   )}
                 </div>

@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2, FileCheck, Eye } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2, FileCheck, Eye, CreditCard, AlertCircle, Clock } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useDeals, useFollowups, useLeads, useQuotations } from '@/hooks/useData'
-import { updateCustomer, fetchCustomer, fetchAllCustomerGRNs } from '@/lib/api'
+import { updateCustomer, fetchCustomer, fetchAllCustomerGRNs, addInvoicePayment, deleteInvoice } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
 import { useAccounts } from '@/hooks/useFinance'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -25,7 +25,7 @@ export const CustomerDetail: React.FC = () => {
   const { data: allFollowups } = useFollowups()
   const { data: leads } = useLeads()
   const { data: accounts } = useAccounts()
-  const { showError, toast } = useDialog()
+  const { showError, toast, showConfirm } = useDialog()
 
   const [currentCustomer, setCurrentCustomer] = useState<any>(null)
   const [loadingCustomer, setLoadingCustomer] = useState(true)
@@ -63,13 +63,47 @@ export const CustomerDetail: React.FC = () => {
       .then(data => setCurrencies(Array.isArray(data) ? data : [])).catch(console.error);
   }, []);
   
-  // Ledger & Tabs View State
-  const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'quotations' | 'samples' | 'pos'>('overview')
+  // Invoices & Ledger Tabs View State
+  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'ledger' | 'quotations' | 'samples' | 'pos'>('overview')
+  const [customerInvoices, setCustomerInvoices] = useState<any[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
+  const [invoiceSearch, setInvoiceSearch] = useState('')
+  const [paymentInvoice, setPaymentInvoice] = useState<any | null>(null)
+  const [submittingInvoicePayment, setSubmittingInvoicePayment] = useState(false)
+  const [invoicePaymentForm, setInvoicePaymentForm] = useState({
+    amount: '',
+    method: 'Bank Transfer',
+    accountId: '',
+    reference: '',
+    date: new Date().toISOString().slice(0, 10),
+    notes: ''
+  })
+
   const [grns, setGrns] = useState<any[]>([])
   const [customerPos, setCustomerPos] = useState<{ quotePos: any[], orderPos: any[] }>({ quotePos: [], orderPos: [] })
   const [posLoading, setPosLoading] = useState(false)
 
   const customer = currentCustomer || customers?.find((c: any) => c.id === id)
+
+  const loadCustomerInvoices = React.useCallback(async () => {
+    if (!id) return;
+    setInvoicesLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/invoices`);
+      const data = await res.json();
+      setCustomerInvoices(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to load customer invoices:', e);
+      setCustomerInvoices([]);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  }, [id]);
+
+  React.useEffect(() => {
+    loadCustomerInvoices();
+  }, [loadCustomerInvoices]);
 
   React.useEffect(() => {
     if (activeTab === 'pos' && id) {
@@ -103,17 +137,70 @@ export const CustomerDetail: React.FC = () => {
   const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [adjustType, setAdjustType] = useState<'adjust' | 'opening'>('adjust')
 
+  const loadLedgerData = React.useCallback(() => {
+    if (!id) return;
+    setLedgerLoading(true);
+    import('@/lib/api').then(({ fetchPartyLedger }) => {
+      fetchPartyLedger(id).then(data => {
+        setLedgerData(data || { lines: [], balance: 0 });
+        setLedgerLoading(false);
+      }).catch(() => setLedgerLoading(false));
+    });
+  }, [id]);
+
   React.useEffect(() => {
-    if (activeTab === 'ledger' && id) {
-      setLedgerLoading(true);
-      import('@/lib/api').then(({ fetchPartyLedger }) => {
-        fetchPartyLedger(id).then(data => {
-          setLedgerData(data || { lines: [], balance: 0 });
-          setLedgerLoading(false);
-        }).catch(() => setLedgerLoading(false));
-      });
+    if (activeTab === 'ledger' || activeTab === 'overview') {
+      loadLedgerData();
     }
-  }, [activeTab, id]);
+  }, [activeTab, loadLedgerData]);
+
+  const handleRecordInvoicePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentInvoice) return;
+    const amt = parseFloat(invoicePaymentForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      showError('Please enter a valid payment amount greater than zero');
+      return;
+    }
+    setSubmittingInvoicePayment(true);
+    try {
+      const res = await addInvoicePayment(paymentInvoice.id, {
+        amount: amt,
+        method: invoicePaymentForm.method,
+        accountId: invoicePaymentForm.accountId || null,
+        reference: invoicePaymentForm.reference || null,
+        date: invoicePaymentForm.date
+      });
+      if (res && res.error) {
+        throw new Error(res.error || 'Failed to record payment');
+      }
+      toast(`Payment of ${formatCurrency(amt)} recorded successfully for Invoice ${paymentInvoice.invoiceNo || paymentInvoice.id}!`, 'success');
+      setPaymentInvoice(null);
+      await Promise.all([loadCustomerInvoices(), loadCustomerData(), loadLedgerData(), refetch()]);
+    } catch (err: any) {
+      showError(err?.message || 'Failed to record payment');
+    } finally {
+      setSubmittingInvoicePayment(false);
+    }
+  };
+
+  const handleDeleteCustomerInvoice = async (invoice: any) => {
+    if (!invoice) return;
+    const invNo = invoice.invoiceNo || invoice.id;
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete Invoice "${invNo}"? Any GL journal postings will be reversed and this invoice permanently removed.`,
+      'Delete Invoice'
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteInvoice(invoice.id || invoice.invoiceNo);
+      toast(`Invoice ${invNo} deleted successfully`, 'success');
+      await Promise.all([loadCustomerInvoices(), loadCustomerData(), loadLedgerData(), refetch()]);
+    } catch (err: any) {
+      showError(err?.message || 'Failed to delete invoice');
+    }
+  };
 
   // Safely parse additional contacts from customer record
   const additionalContacts: any[] = React.useMemo(() => {
@@ -326,30 +413,36 @@ export const CustomerDetail: React.FC = () => {
            >
              Overview
            </button>
-                        <button 
-               onClick={() => setActiveTab('ledger')}
-               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'ledger' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
-             >
-               Ledger & Financials
-             </button>
-             <button 
-               onClick={() => setActiveTab('quotations')}
-               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'quotations' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
-             >
-               Quotations
-             </button>
-             <button 
-               onClick={() => setActiveTab('samples')}
-               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'samples' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
-             >
-               Customer Samples
-             </button>
-             <button 
-               onClick={() => setActiveTab('pos')}
-               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'pos' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
-             >
-               Customer POs
-             </button>
+           <button 
+             onClick={() => setActiveTab('invoices')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'invoices' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+           >
+             Invoices ({customerInvoices.length})
+           </button>
+           <button 
+             onClick={() => setActiveTab('ledger')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'ledger' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+           >
+             Ledger & Financials
+           </button>
+           <button 
+             onClick={() => setActiveTab('quotations')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'quotations' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+           >
+             Quotations
+           </button>
+           <button 
+             onClick={() => setActiveTab('samples')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'samples' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+           >
+             Customer Samples
+           </button>
+           <button 
+             onClick={() => setActiveTab('pos')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'pos' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+           >
+             Customer POs
+           </button>
         </div>
         <Button variant="ghost" size="sm" icon={Edit2} onClick={() => handleEditOpen(false)}>Edit</Button>
         <Button variant="primary" size="sm" icon={Briefcase} onClick={() => navigate('/crm/deals')}>New Deal</Button>
@@ -417,18 +510,63 @@ export const CustomerDetail: React.FC = () => {
                 {customer.creditLimitStatus === 'pending' ? <Badge value={`Limit Pending: ${customer.pendingCreditLimit}`} variant="error" size="md" /> : null}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4 mt-5 pt-4 border-t border-rex-500/20">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5 pt-4 border-t border-rex-500/20">
               <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest">Lifetime Value</p>
-                <p className="text-lg font-bold text-rex-600 dark:text-rex-300 mt-0.5">{formatCurrency(customer.lifetimeValue, true, customer.currency)}</p>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-semibold">Total Invoiced</p>
+                <p className="text-lg font-black text-primary mt-0.5">
+                  {formatCurrency(customer.totalInvoiced || customer.lifetimeValue || 0, true, customer.currency)}
+                </p>
+                <p className="text-[10px] text-muted font-mono">{customerInvoices.length} Invoices Recorded</p>
               </div>
               <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest">Total Revenue</p>
-                <p className="text-lg font-bold text-primary mt-0.5">{formatCurrency(customer.totalRevenue, true, customer.currency)}</p>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-semibold">Total Collected</p>
+                <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  {formatCurrency(customer.totalRevenue || 0, true, customer.currency)}
+                </p>
+                <p className="text-[10px] text-muted">Settled Payments</p>
               </div>
               <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest">Open Deals</p>
-                <p className="text-lg font-bold text-primary mt-0.5">{customer.openDeals}</p>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-semibold">Outstanding Due</p>
+                <p className={`text-lg font-black mt-0.5 ${Number(customer.outstandingBalance ?? ledgerData.balance ?? 0) > 0 ? 'text-rex-600 dark:text-rex-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {formatCurrency(customer.outstandingBalance ?? ledgerData.balance ?? 0, true, customer.currency)}
+                </p>
+                {Number(customer.overdueBalance || 0) > 0 ? (
+                  <p className="text-[10px] text-red-500 font-bold">
+                    Overdue: {formatCurrency(customer.overdueBalance, true, customer.currency)}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-muted">Current Debt</p>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] text-muted uppercase tracking-widest font-semibold">Credit Limit</p>
+                  {Number(customer.creditLimit || 0) > 0 && (
+                    <span className="text-[10px] font-mono font-bold text-secondary">
+                      {customer.creditUsagePct ?? Math.min(100, Math.round(((customer.outstandingBalance ?? ledgerData.balance ?? 0) / Number(customer.creditLimit)) * 100))}%
+                    </span>
+                  )}
+                </div>
+                <p className="text-lg font-bold text-primary mt-0.5">
+                  {Number(customer.creditLimit || 0) > 0 ? formatCurrency(customer.creditLimit, true, customer.currency) : 'No Limit'}
+                </p>
+                {Number(customer.creditLimit || 0) > 0 ? (
+                  <div className="mt-1">
+                    <div className="w-full bg-surface2 h-1.5 overflow-hidden border border-theme-subtle">
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          (customer.creditUsagePct || 0) > 90 ? 'bg-red-500' : (customer.creditUsagePct || 0) > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, customer.creditUsagePct || Math.round(((customer.outstandingBalance ?? ledgerData.balance ?? 0) / Number(customer.creditLimit)) * 100))}%` }}
+                      />
+                    </div>
+                    <p className="text-[9.5px] text-muted mt-0.5 truncate">
+                      Available: {formatCurrency(customer.availableCredit ?? Math.max(0, Number(customer.creditLimit) - (customer.outstandingBalance ?? ledgerData.balance ?? 0)), true, customer.currency)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-muted">{customer.creditDays || 30} Days Terms</p>
+                )}
               </div>
             </div>
           </div>
@@ -592,6 +730,208 @@ export const CustomerDetail: React.FC = () => {
             )}
           </GlassCard>
         </div>
+      )}
+
+      {activeTab === 'invoices' && (
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-4 border-b border-theme-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-surface2/40">
+            <div>
+              <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <FileText size={15} className="text-rex-500" />
+                Customer Invoices &amp; Billing History
+              </h2>
+              <p className="text-[11px] text-muted mt-0.5">
+                Total Invoiced: <span className="font-bold font-mono text-primary">{formatCurrency(customer.totalInvoiced || customer.lifetimeValue || 0, false, customer.currency)}</span> &bull; 
+                Total Collected: <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(customer.totalRevenue || 0, false, customer.currency)}</span> &bull; 
+                Outstanding Due: <span className="font-bold font-mono text-rex-600 dark:text-rex-400">{formatCurrency(customer.outstandingBalance ?? ledgerData.balance ?? 0, false, customer.currency)}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Filter tabs */}
+              <div className="flex bg-surface border border-theme-subtle rounded-none p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceFilter('all')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${invoiceFilter === 'all' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  All ({customerInvoices.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceFilter('unpaid')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${invoiceFilter === 'unpaid' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  Unpaid ({customerInvoices.filter((i: any) => (Number(i.total || i.amount || 0) - Number(i.paidAmount || 0)) > 0).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceFilter('paid')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${invoiceFilter === 'paid' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  Paid ({customerInvoices.filter((i: any) => Number(i.total || i.amount || 0) > 0 && (Number(i.total || i.amount || 0) - Number(i.paidAmount || 0)) <= 0).length})
+                </button>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/finance/invoices')}
+                className="text-xs shrink-0"
+              >
+                + New Invoice
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            {invoicesLoading ? (
+              <div className="p-12 text-center text-muted animate-pulse">Loading customer invoices...</div>
+            ) : customerInvoices.filter((inv: any) => {
+              const totalAmt = Number(inv.total || inv.amount || 0);
+              const paidAmt = Number(inv.paidAmount || 0);
+              const balDue = Math.max(0, totalAmt - paidAmt);
+              if (invoiceFilter === 'unpaid' && balDue <= 0) return false;
+              if (invoiceFilter === 'paid' && (totalAmt <= 0 || balDue > 0)) return false;
+              return true;
+            }).length === 0 ? (
+              <div className="p-12 text-center text-muted">
+                <FileText size={36} className="mx-auto mb-2 opacity-40 text-muted" />
+                <p className="text-sm font-semibold text-primary">No invoices found</p>
+                <p className="text-xs text-muted mt-1">There are no invoices matching the selected filter for this customer.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-theme-subtle bg-surface2/60 text-[10.5px] uppercase tracking-wider text-muted font-bold">
+                    <th className="px-4 py-3">Invoice No</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Due Date</th>
+                    <th className="px-4 py-3 text-right">Total Amount</th>
+                    <th className="px-4 py-3 text-right">Paid Amount</th>
+                    <th className="px-4 py-3 text-right">Balance Due</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle">
+                  {customerInvoices.filter((inv: any) => {
+                    const totalAmt = Number(inv.total || inv.amount || 0);
+                    const paidAmt = Number(inv.paidAmount || 0);
+                    const balDue = Math.max(0, totalAmt - paidAmt);
+                    if (invoiceFilter === 'unpaid' && balDue <= 0) return false;
+                    if (invoiceFilter === 'paid' && (totalAmt <= 0 || balDue > 0)) return false;
+                    return true;
+                  }).map((inv: any) => {
+                    const totalAmt = Number(inv.total || inv.amount || 0);
+                    const paidAmt = Number(inv.paidAmount || 0);
+                    const balDue = Math.max(0, totalAmt - paidAmt);
+                    const isOverdue = balDue > 0 && inv.dueDate && new Date(inv.dueDate) < new Date();
+                    const isOpening = inv.invoiceType === 'opening' || inv.isOpeningBalance;
+
+                    return (
+                      <tr key={inv.id} className="hover:bg-surface2/30 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-primary">
+                          <div className="flex items-center gap-1.5">
+                            <span>{inv.invoiceNo || inv.id}</span>
+                            {isOpening && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                Opening
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                          {formatDate(inv.date)}
+                        </td>
+                        <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                          {inv.dueDate ? (
+                            <span className={isOverdue ? 'text-red-500 font-bold' : ''}>
+                              {formatDate(inv.dueDate)}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                          {formatCurrency(totalAmt, false, customer.currency)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                          {paidAmt > 0 ? formatCurrency(paidAmt, false, customer.currency) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold">
+                          {balDue > 0 ? (
+                            <span className={isOverdue ? 'text-red-600 dark:text-red-400' : 'text-rex-600 dark:text-rex-400'}>
+                              {formatCurrency(balDue, false, customer.currency)}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-normal">Rs. 0.00</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {balDue <= 0 ? (
+                            <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                              Paid
+                            </span>
+                          ) : isOverdue ? (
+                            <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-red-500/10 text-red-600 border border-red-500/30">
+                              Overdue
+                            </span>
+                          ) : paidAmt > 0 ? (
+                            <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                              Partial
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-neutral-500/10 text-neutral-600 dark:text-neutral-300 border border-neutral-500/30">
+                              Unpaid
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {balDue > 0 && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => {
+                                  setPaymentInvoice(inv);
+                                  setInvoicePaymentForm({
+                                    amount: String(balDue),
+                                    method: 'Bank Transfer',
+                                    accountId: accounts.find(a => a.subtype === 'Bank' || a.subtype === 'Current Asset')?.id || '',
+                                    reference: '',
+                                    date: new Date().toISOString().slice(0, 10),
+                                    notes: `Settlement for Invoice #${inv.invoiceNo || inv.id}`
+                                  });
+                                }}
+                                className="text-[11px] h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                              >
+                                Record Payment
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate('/finance/invoices')}
+                              className="text-[11px] h-7 px-2"
+                              title="View in Invoices Hub"
+                            >
+                              <Eye size={12} className="mr-1" /> View
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Trash2}
+                              onClick={() => handleDeleteCustomerInvoice(inv)}
+                              className="text-red-500 hover:text-red-600 hover:bg-red-500/10 text-xs px-2 h-7"
+                              title="Delete Invoice"
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </GlassCard>
       )}
       
       {activeTab === 'ledger' && (
@@ -1434,6 +1774,116 @@ export const CustomerDetail: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Record Invoice Payment Modal */}
+      {paymentInvoice && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPaymentInvoice(null)}
+          title={`Record Payment - Invoice ${paymentInvoice.invoiceNo || paymentInvoice.id}`}
+        >
+          <form onSubmit={handleRecordInvoicePayment} className="space-y-4">
+            <div className="p-3 bg-surface2/50 border border-theme-subtle rounded-none flex items-center justify-between text-xs">
+              <div>
+                <span className="text-muted block text-[10px] font-bold uppercase">Customer</span>
+                <span className="font-bold text-primary">{customer.company || customer.name}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-muted block text-[10px] font-bold uppercase">Balance Due</span>
+                <span className="font-mono font-bold text-rose-600 text-sm">
+                  {formatCurrency(Math.max(0, Number(paymentInvoice.total || paymentInvoice.amount || 0) - Number(paymentInvoice.paidAmount || 0)))}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">
+                  Payment Amount (Rs.) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={invoicePaymentForm.amount}
+                  onChange={e => setInvoicePaymentForm({ ...invoicePaymentForm, amount: e.target.value })}
+                  className="w-full input-base text-xs font-mono font-bold"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={invoicePaymentForm.date}
+                  onChange={e => setInvoicePaymentForm({ ...invoicePaymentForm, date: e.target.value })}
+                  className="w-full input-base text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={invoicePaymentForm.method}
+                  onChange={e => setInvoicePaymentForm({ ...invoicePaymentForm, method: e.target.value })}
+                  className="w-full input-base text-xs"
+                >
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Online / Card">Online / Card</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">
+                  Deposit Account (Bank / Cash)
+                </label>
+                <select
+                  value={invoicePaymentForm.accountId}
+                  onChange={e => setInvoicePaymentForm({ ...invoicePaymentForm, accountId: e.target.value })}
+                  className="w-full input-base text-xs"
+                >
+                  <option value="">-- Auto Match Bank / Cash --</option>
+                  {accounts.filter(a => a.subtype === 'Bank' || a.subtype === 'Current Asset').map(a => (
+                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="text-xs">
+              <label className="block text-xs font-semibold text-secondary mb-1">
+                Reference / Cheque No / Slip No
+              </label>
+              <input
+                type="text"
+                value={invoicePaymentForm.reference}
+                onChange={e => setInvoicePaymentForm({ ...invoicePaymentForm, reference: e.target.value })}
+                className="w-full input-base text-xs"
+                placeholder="e.g. CHQ-992384 or Transfer Ref"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-theme-subtle">
+              <Button variant="ghost" type="button" onClick={() => setPaymentInvoice(null)} disabled={submittingInvoicePayment}>
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" disabled={submittingInvoicePayment} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                {submittingInvoicePayment ? 'Recording...' : 'Save Payment & Issue Receipt'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   )
 }

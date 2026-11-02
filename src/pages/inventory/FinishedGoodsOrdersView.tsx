@@ -450,6 +450,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       source = 'custom_job';
     }
 
+    if (source === 'custom_job' && parsedItems.length === 0) {
+      parsedItems = [{
+        productId: order.productId || 'CUSTOM-ITEM-1',
+        productName: order.productName || 'Custom Machining Item',
+        description: order.description || order.productName || '',
+        qty: Number(order.qty) || 1,
+        unitPrice: Number(order.unitPrice) || 0,
+        amount: (Number(order.qty) || 1) * (Number(order.unitPrice) || 0),
+        uom: order.uom || 'Nos'
+      }];
+    }
+
     const ordSubtotal = Number(order.subtotal) || (Number(order.totalPrice || 0) - Number(order.taxAmount || 0));
     const ordTaxAmount = Number(order.taxAmount) || 0;
     const ordTotalPrice = Number(order.totalPrice) || (ordSubtotal + ordTaxAmount);
@@ -517,17 +529,29 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           items: []
         };
       } else {
+        const defaultItems = prev.items && prev.items.length > 0 ? prev.items : [{
+          productId: 'CUSTOM-ITEM-1',
+          productName: 'Custom Machining Item',
+          description: prev.description || '',
+          qty: 1,
+          unitPrice: 0,
+          amount: 0,
+          uom: 'Nos'
+        }];
+        const subtotal = defaultItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
         return {
           ...prev,
           orderSource: src,
           quoteId: '',
           quotationNo: '',
           productId: 'CUSTOM-JOB',
-          productName: '',
-          productSku: '',
-          unitPrice: '',
-          uom: 'Nos',
-          items: []
+          productName: prev.productName || '',
+          productSku: prev.productSku || '',
+          unitPrice: String(defaultItems[0]?.unitPrice || 0),
+          uom: prev.uom || 'Nos',
+          items: defaultItems,
+          subtotal: subtotal || prev.subtotal,
+          totalPrice: subtotal + (Number(prev.taxAmount) || 0)
         };
       }
     });
@@ -766,19 +790,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       toast('Permission denied: Sales order changes require Admin approval.', 'error')
       return
     }
-    if (!formData.productName || !formData.customerName) return
+    const resolvedProductName = formData.productName || (formData.items && formData.items.length > 0 ? (formData.items[0].description?.split('\n')[0] || formData.items[0].productName) : '');
+    if (!resolvedProductName || !formData.customerName) {
+      toast('Please enter customer and order details', 'error');
+      return;
+    }
     setSubmitting(true)
 
     // Build items list
     let itemsList: any[] = [];
-    if (formData.orderSource === 'from_quote' && formData.items && formData.items.length > 0) {
+    if ((formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0) {
       itemsList = formData.items;
     } else if (formData.orderSource === 'ready_made') {
       itemsList = [{
         productId: formData.productId,
-        productName: formData.productName,
+        productName: formData.productName || resolvedProductName,
         productSku: formData.productSku,
-        description: formData.productName,
+        description: formData.productName || resolvedProductName,
         qty: Number(formData.qty) || 1,
         unitPrice: Number(formData.unitPrice) || 0,
         amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
@@ -787,9 +815,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     } else {
       itemsList = [{
         productId: 'CUSTOM-JOB',
-        productName: formData.productName,
+        productName: formData.productName || resolvedProductName,
         productSku: formData.productSku,
-        description: formData.description || formData.productName,
+        description: formData.description || formData.productName || resolvedProductName,
         qty: Number(formData.qty) || 1,
         unitPrice: Number(formData.unitPrice) || 0,
         amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
@@ -797,9 +825,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }];
     }
 
-    const itemSum = itemsList.length > 1 && formData.orderSource === 'from_quote'
-      ? itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
-      : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0);
+    const itemSum = itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
 
     const finalSubtotal = Number(formData.subtotal) || itemSum;
     const finalTaxAmount = Number(formData.taxAmount) || 0;
@@ -814,14 +840,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       .replace(/([-_\/])20(\d{2})([-_\/])/g, '$1$2$3')
       .replace(/^SO-20(\d{2})-/i, 'SO-$1-');
 
+    const totalQty = (formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && itemsList.length > 0
+      ? itemsList.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)
+      : (Number(formData.qty) || 1);
+
+    const primaryUnitPrice = itemsList.length === 1
+      ? Number(itemsList[0].unitPrice)
+      : (Number(formData.unitPrice) || (itemsList.length > 0 ? Number(itemsList[0].unitPrice) : 0));
+
     const payload = {
       ...formData,
+      productName: resolvedProductName,
       orderNo: cleanOrderNo || formData.orderNo,
       items: itemsList,
-      qty: itemsList.length > 1 && formData.orderSource === 'from_quote'
-        ? itemsList.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)
-        : (Number(formData.qty) || 1),
-      unitPrice: Number(formData.unitPrice) || (itemsList.length === 1 ? Number(itemsList[0].unitPrice) : 0),
+      qty: totalQty,
+      unitPrice: primaryUnitPrice,
       subtotal: finalSubtotal,
       taxAmount: finalTaxAmount,
       taxRate: Number(formData.taxRate) || 0,
@@ -2538,71 +2571,145 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                 {/* 3. CUSTOM MACHINING / JOB ENTRY */}
                 {formData.orderSource === 'custom_job' && (
-                  <>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-secondary mb-1">
-                        Custom Machining / Job Title <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.productName}
-                        onChange={e => setFormData({ ...formData, productName: e.target.value })}
-                        placeholder="e.g. Stainless Steel Shaft Machining & Keyway (Drawing #DR-401)"
-                        className="w-full input-base text-xs font-medium"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-semibold text-secondary">
-                          Job Description & Scope of Work (Line-by-Line / Bullets)
-                        </label>
+                  <div className="sm:col-span-2 space-y-3">
+                    {/* Line Items Table */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                          <Package size={13} className="text-blue-500" />
+                          Order Line Items ({(formData.items || []).length})
+                        </span>
                         <button
                           type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, description: addBulletToText(prev.description) }))}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded transition-colors flex items-center gap-1 cursor-pointer"
+                          onClick={handleAddItemToOrder}
+                          className="px-2 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 flex items-center gap-1 transition-colors cursor-pointer"
                         >
-                          <Plus size={12} /> Add Bullet (•)
+                          <Plus size={11} /> Add Item
                         </button>
                       </div>
-                      <textarea
-                        rows={4}
-                        value={formData.description}
-                        onChange={e => setFormData({ ...formData, description: e.target.value })}
-                        onKeyDown={e => handleBulletKeyDown(e, formData.description, val => setFormData(prev => ({ ...prev, description: val })))}
-                        placeholder={`Enter manufacturing scope & specs line-by-line (Press Enter for next bullet):\n• Material: Stainless Steel 316 Shaft\n• Turning, facing & keyway milling as per Drawing #DR-401\n• Tolerance: ±0.02mm | Finish: Ground`}
-                        className="w-full p-2.5 rounded border border-theme-subtle bg-surface text-xs font-mono text-primary leading-relaxed focus:outline-none focus:border-blue-500 shadow-xs resize-y"
-                      />
+
+                      <div className="overflow-x-auto border border-theme-subtle bg-surface">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-surface2/60 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                            <tr>
+                              <th className="px-2.5 py-1.5">Item Description</th>
+                              <th className="px-2 py-1.5 text-right w-20">Qty</th>
+                              <th className="px-2 py-1.5 w-16">Unit</th>
+                              <th className="px-2 py-1.5 text-right w-28">Unit Price</th>
+                              <th className="px-2.5 py-1.5 text-right w-28">Total</th>
+                              <th className="px-1.5 py-1.5 text-center w-8"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-theme-subtle/40">
+                            {(formData.items && formData.items.length > 0 ? formData.items : [{
+                              productId: 'CUSTOM-ITEM-1',
+                              productName: 'Custom Machining Item',
+                              description: '',
+                              qty: 1,
+                              unitPrice: 0,
+                              amount: 0,
+                              uom: 'Nos'
+                            }]).map((it: any, idx: number) => {
+                              const lTot = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+                              return (
+                                <tr key={idx} className="hover:bg-surface2/20">
+                                  <td className="p-1.5">
+                                    <div className="relative">
+                                      <textarea
+                                        rows={2}
+                                        value={it.description || it.productName || ''}
+                                        onChange={e => handleItemChangeInOrder(idx, 'description', e.target.value)}
+                                        onKeyDown={e => handleBulletKeyDown(e, it.description || it.productName || '', val => handleItemChangeInOrder(idx, 'description', val))}
+                                        placeholder="Description (Press Enter for • bullet)..."
+                                        className="w-full p-1.5 text-xs font-mono bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none leading-relaxed resize-y"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleItemChangeInOrder(idx, 'description', addBulletToText(it.description || it.productName || ''))}
+                                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 mt-0.5 cursor-pointer font-medium"
+                                        title="Add bullet point"
+                                      >
+                                        <Plus size={10} /> Add Bullet (•)
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="p-1.5 text-right">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      step="any"
+                                      value={it.qty}
+                                      onChange={e => handleItemChangeInOrder(idx, 'qty', e.target.value)}
+                                      className="w-full h-7 px-1 text-right font-mono text-xs font-bold bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                    />
+                                  </td>
+                                  <td className="p-1.5">
+                                    <input
+                                      type="text"
+                                      value={it.uom || 'Nos'}
+                                      onChange={e => handleItemChangeInOrder(idx, 'uom', e.target.value)}
+                                      className="w-full h-7 px-1 text-center font-mono text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                    />
+                                  </td>
+                                  <td className="p-1.5 text-right">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={it.unitPrice}
+                                      onChange={e => handleItemChangeInOrder(idx, 'unitPrice', e.target.value)}
+                                      className="w-full h-7 px-1.5 text-right font-mono text-xs font-bold bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
+                                    />
+                                  </td>
+                                  <td className="p-1.5 text-right font-mono font-bold text-primary text-[11px]">
+                                    {formatCurrency(lTot)}
+                                  </td>
+                                  <td className="p-1.5 text-center">
+                                    {(formData.items || []).length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveItemFromOrder(idx)}
+                                        className="p-1 text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                        title="Remove item"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-secondary mb-1">Drawing / Job Code (SKU)</label>
-                      <input
-                        type="text"
-                        value={formData.productSku}
-                        onChange={e => setFormData({ ...formData, productSku: e.target.value })}
-                        placeholder="e.g. JOB-DR-401"
-                        className="w-full input-base font-mono text-xs"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-secondary mb-1">
+                          Order Title / Job Scope <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.productName}
+                          onChange={e => setFormData({ ...formData, productName: e.target.value })}
+                          placeholder="e.g. Stainless Steel Shaft Machining & Fabrication"
+                          className="w-full input-base text-xs font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-secondary mb-1">Drawing / Job Code (SKU)</label>
+                        <input
+                          type="text"
+                          value={formData.productSku}
+                          onChange={e => setFormData({ ...formData, productSku: e.target.value })}
+                          placeholder="e.g. JOB-DR-401"
+                          className="w-full input-base font-mono text-xs"
+                        />
+                      </div>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-secondary mb-1">Unit of Measure (UOM)</label>
-                      <select
-                        value={formData.uom}
-                        onChange={e => setFormData({ ...formData, uom: e.target.value })}
-                        className="w-full input-base text-xs font-medium"
-                      >
-                        <option value="Nos">Nos</option>
-                        <option value="Sets">Sets</option>
-                        <option value="Lots">Lots</option>
-                        <option value="Meters">Meters</option>
-                        <option value="Kg">Kg</option>
-                        <option value="Pcs">Pcs</option>
-                      </select>
-                    </div>
-                  </>
+                  </div>
                 )}
 
                 {/* Customer Details */}
@@ -2670,31 +2777,35 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">Order Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    required
-                    value={formData.qty}
-                    onChange={e => setFormData({ ...formData, qty: e.target.value })}
-                    className="w-full input-base font-mono font-bold text-sm"
-                  />
-                </div>
+                {formData.orderSource === 'ready_made' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">Order Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        value={formData.qty}
+                        onChange={e => setFormData({ ...formData, qty: e.target.value })}
+                        className="w-full input-base font-mono font-bold text-sm"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">Unit Price (Rs)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={formData.unitPrice}
-                    onChange={e => setFormData({ ...formData, unitPrice: e.target.value })}
-                    className="w-full input-base font-mono font-bold text-sm"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">Unit Price (Rs)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={formData.unitPrice}
+                        onChange={e => setFormData({ ...formData, unitPrice: e.target.value })}
+                        className="w-full input-base font-mono font-bold text-sm"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">Order Status</label>
@@ -2720,7 +2831,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       <span className="font-semibold text-primary">
                         {formatCurrency(
                           formData.subtotal || (
-                            formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
+                            (formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0
                               ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
                               : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
                           )
@@ -2745,7 +2856,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         {formatCurrency(
                           formData.totalPrice || (
                             (Number(formData.subtotal) || (
-                              formData.orderSource === 'from_quote' && formData.items && formData.items.length > 1
+                              (formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0
                                 ? formData.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0)
                                 : (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0)
                             )) + Number(formData.taxAmount || 0)

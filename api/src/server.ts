@@ -1752,7 +1752,8 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN soChangeInfo LONGTEXT DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN soChanged TINYINT(1) DEFAULT 0",
     "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''",
-    "ALTER TABLE invoices MODIFY COLUMN deliveryDate DATE DEFAULT NULL"
+    "ALTER TABLE invoices MODIFY COLUMN deliveryDate DATE DEFAULT NULL",
+    "UPDATE journal_lines SET partyId = NULL, partyType = NULL WHERE accountId IN (SELECT id FROM chart_of_accounts WHERE type IN ('Revenue', 'Equity', 'Liability')) AND partyId IS NOT NULL"
   ];
 
   for (const patch of patches) {
@@ -2590,8 +2591,29 @@ app.delete('/api/roles/:id', async (req, res) => {
 app.get('/api/customers', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const [rows] = await db.query('SELECT * FROM customers ORDER BY joinDate DESC') as any[];
+    const [rows] = await db.query(`
+      SELECT c.*,
+        COALESCE(inv.totalInvoiced, 0) as dynamicInvoiced,
+        COALESCE(inv.totalPaid, 0) as dynamicPaid,
+        COALESCE(inv.outstandingBalance, 0) as dynamicOutstanding
+      FROM customers c
+      LEFT JOIN (
+        SELECT 
+          COALESCE(customerId, leadId) as partyId,
+          SUM(CASE WHEN (status IS NULL OR (status NOT IN ('draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN total ELSE 0 END) as totalInvoiced,
+          SUM(CASE WHEN (status IS NULL OR (status NOT IN ('draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN paidAmount ELSE 0 END) as totalPaid,
+          SUM(CASE WHEN (status IS NULL OR (status NOT IN ('paid', 'draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN (total - COALESCE(paidAmount, 0)) ELSE 0 END) as outstandingBalance
+        FROM invoices
+        GROUP BY COALESCE(customerId, leadId)
+      ) inv ON c.id = inv.partyId
+      ORDER BY c.joinDate DESC
+    `) as any[];
     for (const r of rows) {
+      if (Number(r.dynamicInvoiced) > 0) {
+        r.lifetimeValue = Number(r.dynamicInvoiced);
+        r.totalRevenue = Number(r.dynamicPaid);
+      }
+      r.outstandingBalance = Number(r.dynamicOutstanding || 0);
       if (typeof r.contacts === 'string') {
         try {
           let parsed = JSON.parse(r.contacts);
@@ -2632,8 +2654,64 @@ app.get('/api/customers/:id', async (req, res) => {
     } else if (!Array.isArray(r.contacts)) {
       r.contacts = [];
     }
+
+    // Dynamic Live Financial Aggregations (Invoiced, Collected, Unpaid, Credit Usage)
+    try {
+      const [invStats]: any = await db.query(`
+        SELECT 
+          COUNT(*) as invoicesCount,
+          COALESCE(SUM(CASE WHEN (status IS NULL OR (status NOT IN ('draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN total ELSE 0 END), 0) as totalInvoiced,
+          COALESCE(SUM(CASE WHEN (status IS NULL OR (status NOT IN ('draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN paidAmount ELSE 0 END), 0) as totalPaid,
+          COALESCE(SUM(CASE WHEN (status IS NULL OR (status NOT IN ('paid', 'draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN (total - COALESCE(paidAmount, 0)) ELSE 0 END), 0) as outstandingBalance,
+          COALESCE(SUM(CASE WHEN (status IS NULL OR (status NOT IN ('paid', 'draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) AND (dueDate IS NOT NULL AND dueDate < CURDATE()) THEN (total - COALESCE(paidAmount, 0)) ELSE 0 END), 0) as overdueBalance
+        FROM invoices
+        WHERE customerId = ? OR leadId = ?
+      `, [r.id, r.id]);
+
+      const stats = invStats[0] || {};
+      const creditLimit = Number(r.creditLimit || 0);
+      const outstanding = Number(stats.outstandingBalance || 0);
+      const availableCredit = creditLimit > 0 ? Math.max(0, creditLimit - outstanding) : 0;
+      const creditUsagePct = creditLimit > 0 ? Math.min(100, Math.round((outstanding / creditLimit) * 100)) : 0;
+
+      const [dealStats]: any = await db.query(`
+        SELECT COUNT(*) as openDealsCount 
+        FROM deals 
+        WHERE (customerId = ? OR leadId = ?) AND (stage IS NULL OR stage NOT LIKE 'closed_%')
+      `, [r.id, r.id]);
+
+      r.totalInvoiced = Number(stats.totalInvoiced || 0);
+      r.totalRevenue = Number(stats.totalPaid || 0);
+      if (r.totalInvoiced > 0) {
+        r.lifetimeValue = r.totalInvoiced;
+      }
+      r.outstandingBalance = outstanding;
+      r.overdueBalance = Number(stats.overdueBalance || 0);
+      r.availableCredit = availableCredit;
+      r.creditUsagePct = creditUsagePct;
+      r.invoicesCount = Number(stats.invoicesCount || 0);
+      r.openDeals = Number(dealStats[0]?.openDealsCount ?? r.openDeals ?? 0);
+    } catch (statErr) {
+      console.warn('Customer stats aggregation warning:', statErr);
+    }
+
     res.json(r);
-  } catch (error) {
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/customers/:id/invoices', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await db.query(
+      `SELECT * FROM invoices 
+       WHERE customerId = ? OR leadId = ? 
+       ORDER BY date DESC, id DESC`,
+      [id, id]
+    );
+    res.json(rows);
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -7018,9 +7096,10 @@ app.post('/api/invoices', async (req, res) => {
         });
 
         const customerPartyId = data.customerId || data.leadId || null;
+        // LKAS 1 Subledger: Only Accounts Receivable (1200) holds customer partyId. Offset Equity has null partyId.
         const lines = [
           ['JL-' + Date.now().toString().slice(-6) + '1', jeId, arAcc[0].id, invTotal, 0, customerPartyId, 'Customer'],
-          ['JL-' + Date.now().toString().slice(-6) + '2', jeId, equityId, 0, invTotal, customerPartyId, 'Customer']
+          ['JL-' + Date.now().toString().slice(-6) + '2', jeId, equityId, 0, invTotal, null, null]
         ];
         await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
         await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, arAcc[0].id]);
@@ -7036,9 +7115,11 @@ app.post('/api/invoices', async (req, res) => {
 
         await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.invoiceNo || data.id, description: 'Auto GL: Invoice Issued', totalAmount: invTotal });
 
+        // LKAS 1 Subledger: Only Accounts Receivable holds customer partyId. Sales Revenue belongs to entity income (null partyId).
+        const customerPartyId = data.customerId || data.leadId || null;
         const lines: any[] = [
-          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, invTotal, 0, data.customerId, 'Customer'],
-          ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, invSub, data.customerId, 'Customer']
+          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, arAcc[0].id, invTotal, 0, customerPartyId, 'Customer'],
+          ['JL-' + Date.now().toString().slice(-5) + '2', jeId, salesAcc[0].id, 0, invSub, null, null]
         ];
         
         let getOrCreateTaxAcc = async () => {
@@ -7877,13 +7958,16 @@ app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
 
 app.get('/api/finance/party/:id/ledger', async (req, res) => {
   try {
-    const [lines] = await db.query(
-      `SELECT jl.*, je.date, je.reference, je.description as entryDescription
+    const partyId = req.params.id;
+    // LKAS 1 Subledger: Only Accounts Receivable debtor control entries are subledgered
+    const [lines]: any = await db.query(
+      `SELECT jl.*, je.date, je.reference, je.description as entryDescription, coa.name as accountName, coa.type as accountType
        FROM journal_lines jl
        JOIN journal_entries je ON jl.entryId = je.id
-       WHERE jl.partyId = ?
-       ORDER BY je.date ASC`,
-      [req.params.id]
+       LEFT JOIN chart_of_accounts coa ON jl.accountId = coa.id
+       WHERE jl.partyId = ? AND (coa.type IS NULL OR coa.type = 'Asset' OR coa.id = 'ACC-002' OR coa.subtype = 'Accounts Receivable' OR coa.name LIKE '%Receivable%')
+       ORDER BY je.date ASC, je.id ASC`,
+      [partyId]
     );
     let runningBalance = 0;
     const linesWithBalance = lines.map((l: any) => {
@@ -7893,7 +7977,7 @@ app.get('/api/finance/party/:id/ledger', async (req, res) => {
       return { ...l, runningBalance };
     });
     res.json({ lines: linesWithBalance, balance: runningBalance });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 // Taxes

@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, Building2, Calendar, DollarSign, FileText, 
   AlertCircle, CheckCircle2, Clock, ShieldCheck, User 
@@ -53,6 +54,18 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
       setCustomerId(initialCustomerId);
     }
   }, [initialCustomerId]);
+
+  // Lock body scroll when modal is active
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   const selectedCustomer = useMemo(() => {
     return customers.find((c: any) => c.id === customerId) || null;
@@ -131,9 +144,15 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-3 overflow-y-auto animate-fade-in">
-      <div className="w-full max-w-xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+      {/* Full screen White Ice Glass backdrop covering 100% of viewport */}
+      <div 
+        className="fixed inset-0 bg-ice-blur bg-white/60 dark:bg-white/15 backdrop-blur-md transition-opacity cursor-pointer animate-fade-in"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 w-full max-w-xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2/60">
           <div className="flex items-center gap-2.5">
@@ -317,6 +336,7 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
