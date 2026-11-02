@@ -360,45 +360,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
             </table>
           </div>
 
-          {/* Special Instructions / Notes Banner */}
-          {gatePass.notes && (
-            <div className="border-t border-black p-1.5 px-2.5 bg-gray-50/50 text-[10px] print-no-break">
-              <span className="font-bold">Instructions / Dispatch Notes: </span>
-              <span>{gatePass.notes}</span>
-            </div>
-          )}
 
-          {/* Footer / Signatures */}
-          <div className="border-t border-black p-2.5 pt-4 bg-white print-no-break">
-            <div className="mb-3 text-[10px] flex justify-between">
-              <div>
-                <span className="font-semibold text-gray-600">Issued By: </span>
-                <span className="font-bold">{gatePass.issuedBy || 'System Admin'}</span>
-              </div>
-              <div className="text-gray-500 text-[9.5px]">
-                Pass Type: Outward Goods Dispatch / Non-Returnable
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-3 text-center text-[10px] font-semibold">
-              <div>
-                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
-                Prepared By
-              </div>
-              <div>
-                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
-                Checked By / Store
-              </div>
-              <div>
-                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
-                Authorized Signatory
-              </div>
-              <div>
-                <div className="border-t border-dotted border-black mb-1 mx-1"></div>
-                Received By / Consignee
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Half-page cut guide indicator for standard half-page dispatches on A4 */}
