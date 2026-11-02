@@ -357,11 +357,16 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
       const res = await fetch(`${API}/api/users/${showEditUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: showEditUser.name, role: showEditUser.role, prefix: showEditUser.prefix })
+        body: JSON.stringify({
+          name: showEditUser.name,
+          username: showEditUser.username?.trim().toLowerCase(),
+          role: showEditUser.role,
+          prefix: showEditUser.prefix
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      showToast('success', 'User updated successfully');
+      showToast('success', 'User details and username updated safely');
       setShowEditUser(null);
       fetchUsers();
       fetchRoles();
@@ -1526,6 +1531,19 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                 onChange={e => setShowEditUser({ ...showEditUser, name: e.target.value })}
                 className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all"
               />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Username</label>
+              <input
+                type="text"
+                value={showEditUser.username || ''}
+                onChange={e => setShowEditUser({ ...showEditUser, username: e.target.value.toLowerCase().replace(/\s+/g, '') })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm font-mono focus:border-rex-500 outline-none transition-all"
+                placeholder="e.g. kasun.p"
+              />
+              <p className="text-[11px] text-muted mt-1 leading-snug">
+                Used for system login. All existing documents, quotes, orders, and ledger movements created by this user will be safely preserved.
+              </p>
             </div>
             <div>
               <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">User Prefix</label>

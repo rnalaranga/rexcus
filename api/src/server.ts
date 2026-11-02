@@ -2114,13 +2114,125 @@ app.post('/api/users', async (req, res) => {
 });
 
 app.put('/api/users/:id', async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const { name, role, prefix } = req.body;
-    await db.query('UPDATE users SET name=?, role=?, prefix=? WHERE id=?', [name, role, prefix || null, req.params.id]);
-    res.json({ success: true });
-  } catch (error) {
-    console.error(error);
+    const userId = req.params.id;
+    const { name, role, prefix, username } = req.body;
+
+    // 1. Fetch current user record
+    const [existingUsers]: any = await conn.query('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!existingUsers || existingUsers.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const currentUser = existingUsers[0];
+    const oldUsername = currentUser.username;
+    const oldName = currentUser.name;
+    const cleanUsername = username !== undefined && username !== null ? String(username).trim().toLowerCase() : oldUsername;
+
+    // 2. Format validation for username
+    if (!cleanUsername || cleanUsername.length < 2) {
+      return res.status(400).json({ error: 'Username must be at least 2 characters long' });
+    }
+    if (/\s/.test(cleanUsername)) {
+      return res.status(400).json({ error: 'Username cannot contain spaces' });
+    }
+
+    // 3. Uniqueness check if username changed
+    if (cleanUsername !== oldUsername) {
+      const [dups]: any = await conn.query('SELECT id FROM users WHERE username = ? AND id != ?', [cleanUsername, userId]);
+      if (dups && dups.length > 0) {
+        return res.status(400).json({ error: `Username "${cleanUsername}" is already taken by another user` });
+      }
+    }
+
+    // 4. Begin atomic transaction to safely update user and cascade to historical audit trails
+    await conn.beginTransaction();
+
+    // 4.1 Update users table
+    await conn.query(
+      'UPDATE users SET name = COALESCE(?, name), username = ?, role = COALESCE(?, role), prefix = ? WHERE id = ?',
+      [name !== undefined && name !== null ? String(name).trim() : null, cleanUsername, role || null, prefix !== undefined && prefix !== null ? String(prefix).trim().toUpperCase() : null, userId]
+    );
+
+    // 4.2 If username has changed, cascade update to maintain absolute integrity of all past entries
+    if (cleanUsername !== oldUsername) {
+      // quotations: createdBy column and createdByUsername in JSON data
+      await conn.query('UPDATE quotations SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+      try {
+        await conn.query(
+          "UPDATE quotations SET data = JSON_SET(data, '$.createdByUsername', ?) WHERE JSON_UNQUOTE(JSON_EXTRACT(data, '$.createdByUsername')) = ?",
+          [cleanUsername, oldUsername]
+        );
+      } catch (err) {
+        // Safe fallback if JSON function or data format varies
+      }
+
+      // journal_entries
+      await conn.query('UPDATE journal_entries SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+
+      // purchase_orders
+      await conn.query('UPDATE purchase_orders SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+
+      // stock_ledger
+      await conn.query('UPDATE stock_ledger SET user = ? WHERE user = ?', [cleanUsername, oldUsername]);
+
+      // approval_logs
+      await conn.query('UPDATE approval_logs SET actionBy = ? WHERE actionBy = ?', [cleanUsername, oldUsername]);
+
+      // finished_goods_orders
+      await conn.query('UPDATE finished_goods_orders SET lastEditedBy = ? WHERE lastEditedBy = ?', [cleanUsername, oldUsername]);
+
+      // gate_passes
+      await conn.query('UPDATE gate_passes SET issuedBy = ? WHERE issuedBy = ?', [cleanUsername, oldUsername]);
+
+      // grns & customer_grns
+      await conn.query('UPDATE grns SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE customer_grns SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
+
+      // payment_receipts
+      await conn.query('UPDATE payment_receipts SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
+
+      // material_requests
+      await conn.query('UPDATE material_requests SET requestedBy = ? WHERE requestedBy = ?', [cleanUsername, oldUsername]);
+
+      // Quality & Maintenance registers
+      await conn.query('UPDATE ncr_records SET detectedBy = ? WHERE detectedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE ncr_records SET approvedBy = ? WHERE approvedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE ncr_records SET closedBy = ? WHERE closedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE qc_inspections SET inspectedBy = ? WHERE inspectedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE rework_logs SET resolvedBy = ? WHERE resolvedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE engineering_change_orders SET requestedBy = ? WHERE requestedBy = ?', [cleanUsername, oldUsername]);
+      await conn.query('UPDATE engineering_change_orders SET approvedBy = ? WHERE approvedBy = ?', [cleanUsername, oldUsername]);
+
+      // user_quotation_sequences
+      await conn.query('UPDATE user_quotation_sequences SET user_id = ? WHERE user_id = ?', [cleanUsername, oldUsername]);
+    }
+
+    // 4.3 If full name changed, update createdByName in quotations for consistency
+    const cleanName = name !== undefined && name !== null ? String(name).trim() : null;
+    if (cleanName && cleanName !== oldName) {
+      await conn.query('UPDATE quotations SET createdByName = ? WHERE createdBy = ? OR createdBy = ?', [cleanName, cleanUsername, userId]);
+    }
+
+    await conn.commit();
+
+    res.json({
+      success: true,
+      message: 'User and records updated safely',
+      user: {
+        id: userId,
+        name: cleanName || currentUser.name,
+        username: cleanUsername,
+        role: role || currentUser.role,
+        prefix: prefix !== undefined && prefix !== null ? String(prefix).trim().toUpperCase() : currentUser.prefix
+      }
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error in PUT /api/users/:id:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  } finally {
+    conn.release();
   }
 });
 
