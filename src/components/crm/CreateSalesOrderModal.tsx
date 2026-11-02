@@ -353,6 +353,45 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     });
   };
 
+  const handleBulletKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    currentValue: string,
+    setValue: (val: string) => void
+  ) => {
+    if (e.key === 'Enter') {
+      const textarea = e.currentTarget;
+      const cursor = textarea.selectionStart;
+      const textBeforeCursor = currentValue.substring(0, cursor);
+      const currentLine = textBeforeCursor.split('\n').pop() || '';
+      if (currentLine.trim() === '•' || currentLine.trim() === '-') {
+        e.preventDefault();
+        const lineStart = cursor - currentLine.length;
+        const textAfterCursor = currentValue.substring(cursor);
+        const nextVal = currentValue.substring(0, lineStart) + textAfterCursor;
+        setValue(nextVal);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = lineStart;
+        }, 0);
+        return;
+      }
+      if (currentLine.trim().startsWith('•') || currentLine.trim().startsWith('-')) {
+        e.preventDefault();
+        const prefix = currentLine.trim().startsWith('•') ? '\n• ' : '\n- ';
+        const textAfterCursor = currentValue.substring(cursor);
+        const nextVal = textBeforeCursor + prefix + textAfterCursor;
+        setValue(nextVal);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = cursor + prefix.length;
+        }, 0);
+      }
+    }
+  };
+
+  const addBulletToText = (currentValue: string): string => {
+    if (!currentValue || currentValue.trim() === '') return '• ';
+    return currentValue.endsWith('\n') ? `${currentValue}• ` : `${currentValue}\n• `;
+  };
+
   const handleAddItem = () => {
     setFormData(prev => {
       const newItem = {
@@ -633,13 +672,24 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       return (
                         <tr key={idx} className="hover:bg-surface2/20">
                           <td className="p-2">
-                            <input
-                              type="text"
-                              value={it.description || it.productName || ''}
-                              onChange={e => handleItemChange(idx, 'description', e.target.value)}
-                              placeholder="Item description / manufacturing scope..."
-                              className="w-full h-8 px-2 text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
-                            />
+                            <div className="relative">
+                              <textarea
+                                rows={2}
+                                value={it.description || it.productName || ''}
+                                onChange={e => handleItemChange(idx, 'description', e.target.value)}
+                                onKeyDown={e => handleBulletKeyDown(e, it.description || it.productName || '', val => handleItemChange(idx, 'description', val))}
+                                placeholder="Item description / manufacturing scope (Press Enter for • bullet)..."
+                                className="w-full p-1.5 text-xs font-mono bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none leading-relaxed resize-y"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleItemChange(idx, 'description', addBulletToText(it.description || it.productName || ''))}
+                                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 mt-0.5 cursor-pointer font-medium"
+                                title="Add bullet point"
+                              >
+                                <Plus size={10} /> Add Bullet (•)
+                              </button>
+                            </div>
                           </td>
                           <td className="p-2 text-right">
                             <input

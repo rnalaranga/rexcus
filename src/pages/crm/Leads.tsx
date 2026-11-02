@@ -2923,6 +2923,10 @@ export const Leads: React.FC = () => {
                 } catch(e) {
                   parsed = previewQuoteData.quotation;
                 }
+                if (previewQuoteData.quotation?.deletedAt || previewQuoteData.quotation?.isDeleted) {
+                  parsed.isDeleted = true;
+                  parsed.deletedAt = previewQuoteData.quotation.deletedAt;
+                }
                 if (!parsed.vatNo && previewQuoteData.lead?.vat) parsed.vatNo = previewQuoteData.lead.vat;
                 if (!parsed.tinNo && (previewQuoteData.lead?.tin || previewQuoteData.lead?.brNumber)) parsed.tinNo = previewQuoteData.lead.tin || previewQuoteData.lead.brNumber;
                 if (!parsed.customerAddress && previewQuoteData.lead?.address) parsed.customerAddress = previewQuoteData.lead.address;

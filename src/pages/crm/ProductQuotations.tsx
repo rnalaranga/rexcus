@@ -2251,7 +2251,9 @@ export const ProductQuotations: React.FC = () => {
                 data={{
                   ...previewData.quotation.parsed,
                   status: previewData.quotation?.status || previewData.quotation.parsed?.status || 'Draft',
-                  approvedBy: previewData.quotation?.approvedBy || previewData.quotation.parsed?.approvedBy
+                  approvedBy: previewData.quotation?.approvedBy || previewData.quotation.parsed?.approvedBy,
+                  isDeleted: Boolean(previewData.quotation?.deletedAt || previewData.quotation?.isDeleted || previewData.quotation.parsed?.isDeleted),
+                  deletedAt: previewData.quotation?.deletedAt || previewData.quotation.parsed?.deletedAt
                 }}
                 type="main"
                 lead={previewData.lead}
@@ -2300,7 +2302,9 @@ export const ProductQuotations: React.FC = () => {
                 data={{
                   ...emailModalData.quotation?.parsed,
                   status: emailModalData.quotation?.status || emailModalData.quotation?.parsed?.status || 'Draft',
-                  approvedBy: emailModalData.quotation?.approvedBy || emailModalData.quotation?.parsed?.approvedBy
+                  approvedBy: emailModalData.quotation?.approvedBy || emailModalData.quotation?.parsed?.approvedBy,
+                  isDeleted: Boolean(emailModalData.quotation?.deletedAt || emailModalData.quotation?.isDeleted || emailModalData.quotation?.parsed?.isDeleted),
+                  deletedAt: emailModalData.quotation?.deletedAt || emailModalData.quotation?.parsed?.deletedAt
                 }}
                 type="main"
                 lead={emailModalData.lead}

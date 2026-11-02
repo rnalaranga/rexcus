@@ -577,7 +577,7 @@ export const Quotations: React.FC = () => {
   const [endDate, setEndDate] = useState('')
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([])
   const [woDialog, setWoDialog] = useState<{type: 'confirm'|'success'|'error', group?: any, latestMain?: any, msg?: string, woId?: string} | null>(null)
-  const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any } | null>(null)
+  const [previewData, setPreviewData] = useState<{ quotation: any, type: string, lead: any, isDeleted?: boolean } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
   const [grnDialog, setGrnDialog] = useState<{ group?: any, latestMain?: any, items?: any[], receivedAt?: string, notes?: string, photos?: any[] } | null>(null)
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
@@ -2623,7 +2623,7 @@ export const Quotations: React.FC = () => {
                                 variant="ghost"
                                 size="sm"
                                 icon={Eye}
-                                onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                                onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', isDeleted: group.isDeleted, lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
                                 className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
                                 title="View Document Preview"
                               >
@@ -2656,7 +2656,7 @@ export const Quotations: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               icon={Eye}
-                              onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                              onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', isDeleted: group.isDeleted, lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
                               className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
                               title="View Document Preview"
                             >
@@ -2982,7 +2982,7 @@ export const Quotations: React.FC = () => {
                         variant="ghost"
                         size="sm"
                         icon={Eye}
-                        onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
+                        onClick={() => setPreviewData({ quotation: latestMain || displayQ, type: 'main', isDeleted: group.isDeleted, lead: { name: group.leadName, company: group.leadCompany, email: group.leadEmail, address: group.leadAddress, vat: group.leadVat, svat: group.leadSvat } })}
                         className="h-7 text-xs px-2 border border-theme-subtle rounded-none hover:bg-surface2"
                         title="View Document Preview"
                       >
@@ -3092,6 +3092,10 @@ export const Quotations: React.FC = () => {
                data={((): any => {
                   const parsed = typeof previewData.quotation.data === 'string' ? JSON.parse(previewData.quotation.data) : previewData.quotation.data;
                   parsed.status = previewData.quotation?.status || parsed.status || 'Draft';
+                  if (previewData.isDeleted || previewData.quotation?.deletedAt || previewData.quotation?.isDeleted) {
+                    parsed.isDeleted = true;
+                    parsed.deletedAt = previewData.quotation?.deletedAt || parsed.deletedAt;
+                  }
                   if (parsed.taxEnabled && parsed.selectedProfileId && !parsed.selectedProfile && taxProfiles) {
                       parsed.selectedProfile = taxProfiles.find((p: any) => p.id === parsed.selectedProfileId);
                       if (parsed.selectedProfile) {
@@ -3149,15 +3153,17 @@ export const Quotations: React.FC = () => {
             <div className="mt-6 flex justify-end gap-3 pb-6 border-t border-theme-subtle pt-6">
               {(() => {
                 const isQuoteApproved = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].includes(previewData?.quotation?.status);
+                const isQuoteTrash = Boolean(previewData?.isDeleted || previewData?.quotation?.deletedAt || previewData?.quotation?.isDeleted);
+                const canPrintOrExport = isQuoteApproved || isQuoteTrash;
                 return (
                   <>
                     <Button 
                       variant="primary" 
                       icon={Mail} 
-                      disabled={!isQuoteApproved}
+                      disabled={!isQuoteApproved || isQuoteTrash}
                       onClick={() => {
-                        if (!isQuoteApproved) {
-                          toast(`Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before emailing.`, 'error');
+                        if (!isQuoteApproved || isQuoteTrash) {
+                          toast(isQuoteTrash ? 'Cannot email a quotation in Trash.' : `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before emailing.`, 'error');
                           return;
                         }
                         let parsed: any = {};
@@ -3171,39 +3177,39 @@ export const Quotations: React.FC = () => {
                           elementIdToPdf: 'print-section'
                         });
                       }} 
-                      className={`text-white font-bold text-xs ${!isQuoteApproved ? 'opacity-40 cursor-not-allowed bg-blue-600/50' : 'bg-blue-600 hover:bg-blue-700'}`}
-                      title={!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to email.` : 'Email Quotation'}
+                      className={`text-white font-bold text-xs ${(!isQuoteApproved || isQuoteTrash) ? 'opacity-40 cursor-not-allowed bg-blue-600/50' : 'bg-blue-600 hover:bg-blue-700'}`}
+                      title={isQuoteTrash ? 'Cannot email a quotation in Trash' : (!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to email.` : 'Email Quotation')}
                     >
                       Email Quotation
                     </Button>
                     <Button 
                       variant="ghost" 
-                      disabled={!isQuoteApproved}
+                      disabled={!canPrintOrExport}
                       onClick={async () => {
-                        if (!isQuoteApproved) {
+                        if (!canPrintOrExport) {
                           toast(`Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before exporting.`, 'error');
                           return;
                         }
                         const quoteNo = previewData?.quotation?.quotationNo || previewData?.quotation?.id || 'Quote';
                         await exportPdf('print-section', `Quotation_${quoteNo}.pdf`);
                       }} 
-                      className={`bg-surface border border-theme-subtle font-semibold ${!isQuoteApproved ? 'opacity-40 cursor-not-allowed text-muted' : 'hover:bg-surface2'}`}
-                      title={!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to export.` : 'Export PDF'}
+                      className={`bg-surface border border-theme-subtle font-semibold ${!canPrintOrExport ? 'opacity-40 cursor-not-allowed text-muted' : 'hover:bg-surface2'}`}
+                      title={!canPrintOrExport ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to export.` : 'Export PDF'}
                     >
                       Export PDF
                     </Button>
                     <Button 
                       variant="primary" 
-                      disabled={!isQuoteApproved}
+                      disabled={!canPrintOrExport}
                       onClick={() => {
-                        if (!isQuoteApproved) {
+                        if (!canPrintOrExport) {
                           toast(`Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved before printing.`, 'error');
                           return;
                         }
                         printElement('print-section', previewData?.quotation?.quotationNo || 'Quotation');
                       }}
-                      className={!isQuoteApproved ? 'opacity-40 cursor-not-allowed' : ''}
-                      title={!isQuoteApproved ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to print.` : 'Print Quotation'}
+                      className={!canPrintOrExport ? 'opacity-40 cursor-not-allowed' : ''}
+                      title={!canPrintOrExport ? `Quotation status is "${previewData?.quotation?.status || 'Draft'}". Must be Approved to print.` : 'Print Quotation'}
                     >
                       Print Quotation
                     </Button>

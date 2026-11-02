@@ -79,7 +79,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   }
   const toAddress = data.customerAddress || data.address || lead?.address || ''
   
-  const custItems = data.custItems || []
+  const custItems = (Array.isArray(data.custItems) && data.custItems.length > 0) ? data.custItems : (Array.isArray(data.items) ? data.items : [])
   const custDiscount = data.custDiscount || 0
   const custDiscountType = data.custDiscountType || 'percent'
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
@@ -104,12 +104,21 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const isApproved = ['Approved', 'Sent', 'Accepted', 'In Production', 'PO Received', 'Without PO'].some(
     s => s.toLowerCase() === quoteStatus.toLowerCase()
   ) || Boolean(data.isApproved || data.approvedBy);
+  const isTrash = Boolean(
+    data.isDeleted || 
+    data.deletedAt || 
+    quoteStatus.toLowerCase() === 'trash' || 
+    data.inTrash ||
+    data.is_deleted
+  );
   const showDraftWatermark = Boolean(
     !isApproved && 
     quoteStatus.toLowerCase() !== 'template' &&
     quotationType !== 'template' &&
     data.showDraftWatermark !== false
   );
+  const showWatermark = isTrash || showDraftWatermark;
+  const watermarkText = isTrash ? 'TRASH' : 'DRAFT';
 
   let multiplier = 1;
   let unitPriceDivisor = 1;
@@ -450,8 +459,8 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
       >
         <div className="border border-black flex flex-col flex-1 justify-between print:min-h-0 print:h-auto print:block print:border-black relative overflow-hidden" style={{ minHeight: '1040px' }}>
           
-          {/* DRAFT WATERMARK (CENTERED) */}
-          {showDraftWatermark && (
+          {/* WATERMARK (DRAFT / TRASH - CENTERED) */}
+          {showWatermark && (
             <div
               className="draft-watermark"
               style={{
@@ -480,7 +489,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               }}
               aria-hidden="true"
             >
-              DRAFT
+              {watermarkText}
             </div>
           )}
           
@@ -633,8 +642,8 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               </tr>
             </thead>
             <tbody>
-              {(quotationType === 'customer' || quotationType === 'main') && custItems.map((item: any, idx: number) => {
-                const { titleLine, detailLines } = cleanDescLines(item.desc || '');
+              {quotationType !== 'job' && custItems.map((item: any, idx: number) => {
+                const { titleLine, detailLines } = cleanDescLines(item.desc || item.description || item.name || item.text || '');
 
                 return (
                   <tr key={idx} className="border-b border-black/20 print-no-break">

@@ -1275,11 +1275,34 @@ export default function Approvals() {
           <div className="space-y-4">
             <div className="bg-white text-black p-4 rounded-none overflow-y-auto max-h-[70vh] border shadow-inner">
               <QuotationPrintView
-                data={{
-                  ...previewQuote.quote,
-                  ...(typeof previewQuote.quote.data === 'string' ? JSON.parse(previewQuote.quote.data || '{}') : previewQuote.quote.data)
-                }}
-                type={previewQuote.quote.type || 'main'}
+                data={((): any => {
+                  let parsed: any = {};
+                  try {
+                    parsed = typeof previewQuote.quote.data === 'string'
+                      ? JSON.parse(previewQuote.quote.data || '{}')
+                      : (previewQuote.quote.data || {});
+                  } catch (e) {
+                    parsed = {};
+                  }
+                  const merged = {
+                    ...previewQuote.quote,
+                    ...parsed,
+                    status: previewQuote.quote.status || parsed.status || 'Draft',
+                    custItems: (Array.isArray(parsed.custItems) && parsed.custItems.length > 0)
+                      ? parsed.custItems
+                      : ((Array.isArray(previewQuote.quote.custItems) && previewQuote.quote.custItems.length > 0)
+                          ? previewQuote.quote.custItems
+                          : (parsed.items || []))
+                  };
+                  if (!merged.vatNo && previewQuote.lead?.vat) merged.vatNo = previewQuote.lead.vat;
+                  if (!merged.tinNo && (previewQuote.lead?.tin || previewQuote.lead?.brNumber)) merged.tinNo = previewQuote.lead.tin || previewQuote.lead.brNumber;
+                  if (!merged.customerAddress && (previewQuote.lead?.address || previewQuote.quote.leadAddress)) merged.customerAddress = previewQuote.lead?.address || previewQuote.quote.leadAddress;
+                  if (!merged.customerName && (previewQuote.lead?.company || previewQuote.lead?.name || previewQuote.quote.leadCompany || previewQuote.quote.leadName)) {
+                    merged.customerName = previewQuote.lead?.company || previewQuote.lead?.name || previewQuote.quote.leadCompany || previewQuote.quote.leadName;
+                  }
+                  return merged;
+                })()}
+                type={previewQuote.quote.type === 'job' ? 'job' : 'main'}
                 lead={previewQuote.lead}
                 settings={settings}
               />

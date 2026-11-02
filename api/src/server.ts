@@ -6866,14 +6866,12 @@ app.post('/api/invoices', async (req, res) => {
         ];
         
         let getOrCreateTaxAcc = async () => {
-          const [defTax] = await db.query('SELECT id FROM chart_of_accounts WHERE name LIKE "%Tax Payable%" OR code = "2200" LIMIT 1') as any;
+          const [defTax] = await db.query('SELECT id FROM chart_of_accounts WHERE id IN ("acc_2200", "acc_2210") OR code = "2200" OR name LIKE "%Tax Payable%" LIMIT 1') as any;
           if (defTax[0]) return defTax[0].id;
-          const newId = 'ACC-' + Date.now().toString().slice(-6) + Math.floor(Math.random()*10);
-          await db.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "2200", "Tax Payable", "Liability", "Tax", 0, NOW())', [newId]);
-          return newId;
+          return 'acc_2200';
         };
 
-        // Use tax profile accounts if available
+        // Use tax profile accounts if available (IRD RAMIS Compliance: VAT 18% & SSCL 2.5%)
         if (taxBreakdown && data.taxProfileId) {
           const [profile] = await db.query('SELECT * FROM tax_profiles WHERE id = ?', [data.taxProfileId]) as any;
           const prof = profile[0];
@@ -6882,29 +6880,25 @@ app.post('/api/invoices', async (req, res) => {
             const tax2Amt = Number(taxBreakdown.tax2Amount) || 0;
 
             if (tax1Amt > 0) {
-              let tax1AccId = prof.tax1_accountId;
-              if (!tax1AccId) tax1AccId = await getOrCreateTaxAcc();
-              if (tax1AccId) {
-                lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, tax1AccId, 0, tax1Amt, null, null]);
-                await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax1Amt, tax1AccId]);
-              }
+              let tax1AccId = prof.tax1_accountId || 'acc_2220';
+              const [exists1]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = ?', [tax1AccId]);
+              if (!exists1.length) tax1AccId = await getOrCreateTaxAcc();
+              lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, tax1AccId, 0, tax1Amt, null, null]);
+              await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax1Amt, tax1AccId]);
             }
             if (tax2Amt > 0) {
-              let tax2AccId = prof.tax2_accountId;
-              if (!tax2AccId) tax2AccId = await getOrCreateTaxAcc();
-              if (tax2AccId) {
-                lines.push(['JL-' + Date.now().toString().slice(-5) + '4', jeId, tax2AccId, 0, tax2Amt, null, null]);
-                await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax2Amt, tax2AccId]);
-              }
+              let tax2AccId = prof.tax2_accountId || 'acc_2210';
+              const [exists2]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = ?', [tax2AccId]);
+              if (!exists2.length) tax2AccId = await getOrCreateTaxAcc();
+              lines.push(['JL-' + Date.now().toString().slice(-5) + '4', jeId, tax2AccId, 0, tax2Amt, null, null]);
+              await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax2Amt, tax2AccId]);
             }
           }
         } else if (Number(data.taxAmount) > 0) {
           // Fallback: generic tax payable
           const taxAccId = await getOrCreateTaxAcc();
-          if (taxAccId) {
-            lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, taxAccId, 0, Number(data.taxAmount), null, null]);
-            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [Number(data.taxAmount), taxAccId]);
-          }
+          lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, taxAccId, 0, Number(data.taxAmount), null, null]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [Number(data.taxAmount), taxAccId]);
         }
 
         // Account for advance receipts previously issued
@@ -7858,6 +7852,17 @@ app.post('/api/finance/journals', async (req, res) => {
     
     if (!lines || !Array.isArray(lines) || lines.length < 2) {
       return res.status(400).json({ error: 'A journal entry must contain at least 2 lines.' });
+    }
+
+    // Strict Double-Entry Validation Rule (LKAS 1 / SLFRS)
+    const totalDebitSum = lines.reduce((sum: number, l: any) => sum + (Number(l.debit) || 0), 0);
+    const totalCreditSum = lines.reduce((sum: number, l: any) => sum + (Number(l.credit) || 0), 0);
+    const variance = Math.abs(totalDebitSum - totalCreditSum);
+    if (variance > 0.01) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `Double-Entry Validation Failed (LKAS 1): Total Debits (${totalDebitSum.toFixed(2)}) must equal Total Credits (${totalCreditSum.toFixed(2)}). Variance: ${variance.toFixed(2)}`
+      });
     }
 
     const docId = id || `JE-${Date.now().toString().slice(-6)}`;

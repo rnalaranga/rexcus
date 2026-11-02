@@ -308,6 +308,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     quotationNo: '',
     productId: '',
     productName: '',
+    description: '',
     productSku: '',
     uom: 'Nos',
     customerId: '',
@@ -336,6 +337,45 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const [formData, setFormData] = useState(initialForm)
+
+  const handleBulletKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    currentValue: string,
+    setValue: (val: string) => void
+  ) => {
+    if (e.key === 'Enter') {
+      const textarea = e.currentTarget;
+      const cursor = textarea.selectionStart;
+      const textBeforeCursor = currentValue.substring(0, cursor);
+      const currentLine = textBeforeCursor.split('\n').pop() || '';
+      if (currentLine.trim() === '•' || currentLine.trim() === '-') {
+        e.preventDefault();
+        const lineStart = cursor - currentLine.length;
+        const textAfterCursor = currentValue.substring(cursor);
+        const nextVal = currentValue.substring(0, lineStart) + textAfterCursor;
+        setValue(nextVal);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = lineStart;
+        }, 0);
+        return;
+      }
+      if (currentLine.trim().startsWith('•') || currentLine.trim().startsWith('-')) {
+        e.preventDefault();
+        const prefix = currentLine.trim().startsWith('•') ? '\n• ' : '\n- ';
+        const textAfterCursor = currentValue.substring(cursor);
+        const nextVal = textBeforeCursor + prefix + textAfterCursor;
+        setValue(nextVal);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = cursor + prefix.length;
+        }, 0);
+      }
+    }
+  };
+
+  const addBulletToText = (currentValue: string): string => {
+    if (!currentValue || currentValue.trim() === '') return '• ';
+    return currentValue.endsWith('\n') ? `${currentValue}• ` : `${currentValue}\n• `;
+  };
 
   const handlePoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -368,6 +408,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         orderSource: 'ready_made',
         productId: initialProduct?.id || '',
         productName: initialProduct?.name || '',
+        description: initialProduct?.description || initialProduct?.specs || '',
         productSku: initialProduct?.sku || '',
         unitPrice: initialProduct?.unitPrice ? String(initialProduct.unitPrice) : '0'
       })
@@ -422,6 +463,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       quotationNo: order.quotationNo || '',
       productId: order.productId || '',
       productName: order.productName || '',
+      description: order.description || (parsedItems[0]?.description) || order.productName || '',
       productSku: order.productSku || '',
       uom: order.uom || 'Nos',
       customerId: order.customerId || '',
@@ -747,7 +789,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         productId: 'CUSTOM-JOB',
         productName: formData.productName,
         productSku: formData.productSku,
-        description: formData.productName,
+        description: formData.description || formData.productName,
         qty: Number(formData.qty) || 1,
         unitPrice: Number(formData.unitPrice) || 0,
         amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
@@ -2371,13 +2413,24 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                     return (
                                       <tr key={idx} className="hover:bg-surface2/20">
                                         <td className="p-1.5">
-                                          <input
-                                            type="text"
-                                            value={it.description || it.productName || ''}
-                                            onChange={e => handleItemChangeInOrder(idx, 'description', e.target.value)}
-                                            placeholder="Description..."
-                                            className="w-full h-7 px-1.5 text-xs bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none"
-                                          />
+                                          <div className="relative">
+                                            <textarea
+                                              rows={2}
+                                              value={it.description || it.productName || ''}
+                                              onChange={e => handleItemChangeInOrder(idx, 'description', e.target.value)}
+                                              onKeyDown={e => handleBulletKeyDown(e, it.description || it.productName || '', val => handleItemChangeInOrder(idx, 'description', val))}
+                                              placeholder="Description (Press Enter for • bullet)..."
+                                              className="w-full p-1.5 text-xs font-mono bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none leading-relaxed resize-y"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleItemChangeInOrder(idx, 'description', addBulletToText(it.description || it.productName || ''))}
+                                              className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 mt-0.5 cursor-pointer font-medium"
+                                              title="Add bullet point"
+                                            >
+                                              <Plus size={10} /> Add Bullet (•)
+                                            </button>
+                                          </div>
                                         </td>
                                         <td className="p-1.5 text-right">
                                           <input
@@ -2497,6 +2550,29 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         onChange={e => setFormData({ ...formData, productName: e.target.value })}
                         placeholder="e.g. Stainless Steel Shaft Machining & Keyway (Drawing #DR-401)"
                         className="w-full input-base text-xs font-medium"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-secondary">
+                          Job Description & Scope of Work (Line-by-Line / Bullets)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, description: addBulletToText(prev.description) }))}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus size={12} /> Add Bullet (•)
+                        </button>
+                      </div>
+                      <textarea
+                        rows={4}
+                        value={formData.description}
+                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                        onKeyDown={e => handleBulletKeyDown(e, formData.description, val => setFormData(prev => ({ ...prev, description: val })))}
+                        placeholder={`Enter manufacturing scope & specs line-by-line (Press Enter for next bullet):\n• Material: Stainless Steel 316 Shaft\n• Turning, facing & keyway milling as per Drawing #DR-401\n• Tolerance: ±0.02mm | Finish: Ground`}
+                        className="w-full p-2.5 rounded border border-theme-subtle bg-surface text-xs font-mono text-primary leading-relaxed focus:outline-none focus:border-blue-500 shadow-xs resize-y"
                       />
                     </div>
 

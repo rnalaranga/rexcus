@@ -360,7 +360,93 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
             </table>
           </div>
 
+          {/* Special Instructions / Notes (if present) */}
+          {Boolean(gatePass.notes || gatePass.specialInstructions) && (
+            <div className="border-t border-black p-2 text-[10px] bg-white print-no-break">
+              <span className="font-bold uppercase text-[9px] text-gray-700 block mb-0.5">Special Instructions / Dispatch Notes:</span>
+              <div className="text-gray-800 whitespace-pre-wrap leading-tight">{gatePass.notes || gatePass.specialInstructions}</div>
+            </div>
+          )}
 
+          {/* Customer Acceptance Notice */}
+          <div className="border-t border-black bg-gray-50/70 px-2.5 py-1 text-[9px] text-gray-700 flex items-center justify-between print-no-break">
+            <span><strong>Customer Acceptance:</strong> Received the above goods in sound condition, complete quantity and satisfactory order.</span>
+            <span className="font-mono text-[8px] text-gray-500 font-bold uppercase tracking-wider">REX-F-DSP-01</span>
+          </div>
+
+          {/* 3-Column Formal Signatures Block: Stores, Security Check, Customer */}
+          <div className="border-t border-black grid grid-cols-3 divide-x divide-black text-[10px] bg-white print-no-break">
+            {/* 1. STORES / DISPATCHED BY */}
+            <div className="p-2 flex flex-col justify-between" style={{ minHeight: '92px' }}>
+              <div>
+                <div className="font-bold uppercase text-black text-[9.5px] flex items-center justify-between">
+                  <span>1. Stores / Dispatched By</span>
+                  <span className="text-[8px] text-gray-500 font-normal">Internal</span>
+                </div>
+                <div className="text-[8.5px] text-gray-600 mt-0.5">
+                  Goods picked, packed & verified
+                </div>
+                {(gatePass.dispatchedBy || gatePass.issuedBy || gatePass.preparedBy) && (
+                  <div className="font-bold text-[10px] text-black mt-1 font-mono">
+                    {gatePass.dispatchedBy || gatePass.issuedBy || gatePass.preparedBy}
+                  </div>
+                )}
+              </div>
+              <div className="mt-auto pt-2">
+                <div className="border-b border-dotted border-black mb-1"></div>
+                <div className="flex justify-between items-center text-[8.5px] text-gray-700">
+                  <span className="font-bold">Stores Officer Signature</span>
+                  <span>Date: ................</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. SECURITY CHECK / GATE CLEARANCE */}
+            <div className="p-2 flex flex-col justify-between bg-gray-50/30" style={{ minHeight: '92px' }}>
+              <div>
+                <div className="font-bold uppercase text-black text-[9.5px] flex items-center justify-between">
+                  <span>2. Security Check</span>
+                  <span className="text-[8px] font-semibold text-emerald-800 bg-emerald-50 px-1 border border-emerald-300">Gate Out</span>
+                </div>
+                <div className="text-[8.5px] text-gray-600 mt-0.5">
+                  Physical count & vehicle verified
+                </div>
+                <div className="text-[8.5px] text-gray-800 font-mono mt-1">
+                  Vehicle: <span className="font-bold text-black">{gatePass.vehicleNo || gatePass.carrier || 'Hand/Direct'}</span>
+                </div>
+              </div>
+              <div className="mt-auto pt-2">
+                <div className="border-b border-dotted border-black mb-1"></div>
+                <div className="flex justify-between items-center text-[8.5px] text-gray-700">
+                  <span className="font-bold">Security Officer Signature</span>
+                  <span>Time: ...........</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. CUSTOMER / RECEIVED BY */}
+            <div className="p-2 flex flex-col justify-between" style={{ minHeight: '92px' }}>
+              <div>
+                <div className="font-bold uppercase text-black text-[9.5px] flex items-center justify-between">
+                  <span>3. Customer / Received By</span>
+                  <span className="text-[8px] text-gray-500 font-normal">Consignee</span>
+                </div>
+                <div className="text-[8.5px] text-gray-600 mt-0.5">
+                  Name: ............................................
+                </div>
+                <div className="text-[8.5px] text-gray-600 mt-1">
+                  NIC / Tel: .......................................
+                </div>
+              </div>
+              <div className="mt-auto pt-2">
+                <div className="border-b border-dotted border-black mb-1"></div>
+                <div className="flex justify-between items-center text-[8.5px] text-gray-700">
+                  <span className="font-bold">Signature & Rubber Stamp</span>
+                  <span>Date: ................</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Half-page cut guide indicator for standard half-page dispatches on A4 */}
