@@ -117,30 +117,30 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
         }
       `}</style>
 
-      {/* ── 1. HEADER (Signature Rex Industries standard format - exact Quotation match) ── */}
-      <div className="flex p-3 border-b border-black items-center">
+      {/* ── 1. HEADER (Signature Rex Industries standard format) ── */}
+      <div className="flex py-2 px-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
         <div className="w-[32%] flex justify-center items-center">
-          {settings?.company_logo
-            ? <img src={settings.company_logo} alt="Logo" className="max-h-20 object-contain" />
-            : <div className="text-4xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
+          {logoUrl
+            ? <img src={logoUrl} alt="Logo" className="max-h-[88px] w-auto max-w-full object-contain" />
+            : <div className="text-5xl font-extrabold text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
         </div>
 
         {/* Company Info (Right 68%) */}
         <div className="w-[68%] pl-3">
           <h1
-            className="text-[19px] font-black mb-1 leading-tight tracking-tight text-black"
-            style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}
+            className="text-[17px] font-bold mb-1 leading-tight tracking-tight text-neutral-900"
+            style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
           >
             {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
           </h1>
           <table className="text-[11px] leading-tight w-full" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             <tbody>
               <tr>
-                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Office</td>
+                <td className="font-medium text-neutral-700 w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Office</td>
                 <td className="align-top">
                   <div className="flex items-start">
-                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="font-medium text-neutral-400 mr-1.5 shrink-0">:</span>
                     <span className="flex-1 whitespace-pre-line text-neutral-800">
                       {settings?.company_address || settings?.companyAddress || 'No.451/2,Chilaw Road, Kattuwa,\nNegombo,11500,Sri Lanka'}
                     </span>
@@ -148,10 +148,10 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Tel.</td>
+                <td className="font-medium text-neutral-700 w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Tel.</td>
                 <td className="align-top">
                   <div className="flex items-start">
-                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="font-medium text-neutral-400 mr-1.5 shrink-0">:</span>
                     <span className="flex-1 text-neutral-800 whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                       {settings?.company_phone || settings?.companyPhone || '0094-31-2233117 / 2233315 / 2223136'}
                     </span>
@@ -159,10 +159,10 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>E-mail</td>
+                <td className="font-medium text-neutral-700 w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>E-mail</td>
                 <td className="align-top">
                   <div className="flex items-start">
-                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="font-medium text-neutral-400 mr-1.5 shrink-0">:</span>
                     <span className="flex-1 text-neutral-800 whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                       {settings?.company_email || settings?.companyEmail || 'info@rexgroup.lk'}
                     </span>
@@ -170,10 +170,10 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Web</td>
+                <td className="font-medium text-neutral-700 w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Web</td>
                 <td className="align-top">
                   <div className="flex items-start">
-                    <span className="font-bold mr-1 shrink-0">:</span>
+                    <span className="font-medium text-neutral-400 mr-1.5 shrink-0">:</span>
                     <span className="flex-1 text-neutral-800 whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                       {settings?.company_web || settings?.companyWeb || 'www.rexgroup.lk'}
                     </span>
@@ -181,11 +181,11 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr>
-                <td className="font-bold w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>TIN</td>
-                <td className="align-top font-bold">
+                <td className="font-medium text-neutral-700 w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>TIN</td>
+                <td className="align-top">
                   <div className="flex items-start">
-                    <span className="font-bold mr-1 shrink-0">:</span>
-                    <span className="flex-1 text-neutral-900 font-mono whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
+                    <span className="font-medium text-neutral-400 mr-1.5 shrink-0">:</span>
+                    <span className="flex-1 text-neutral-900 font-semibold font-mono whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                       {settings?.company_tin || settings?.company_vat || settings?.tin || '114106470-7000'}
                     </span>
                   </div>

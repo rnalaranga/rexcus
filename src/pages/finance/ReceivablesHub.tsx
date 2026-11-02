@@ -21,6 +21,7 @@ import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice } from '@/lib/ap
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
+import { CreateOpeningOutstandingModal } from '@/components/finance/CreateOpeningOutstandingModal';
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner';
 
 type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
@@ -67,6 +68,7 @@ export const ReceivablesHub: React.FC = () => {
   // Advance Receipt Modal States
   const [isCreateReceiptOpen, setIsCreateReceiptOpen] = useState(false);
   const [printReceipt, setPrintReceipt] = useState<any | null>(null);
+  const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
 
   // Fetch AR Aging Report Data
   const loadAging = useCallback(() => {
@@ -399,6 +401,15 @@ export const ReceivablesHub: React.FC = () => {
             Export Report
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            icon={Plus}
+            onClick={() => setIsOpeningModalOpen(true)}
+            className="text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
+          >
+            + Add Opening Outstanding
+          </Button>
+          <Button
             variant="primary"
             size="sm"
             icon={Receipt}
@@ -584,7 +595,14 @@ export const ReceivablesHub: React.FC = () => {
                     return (
                       <tr key={inv.id} className="hover:bg-surface2/30 transition-colors">
                         <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
-                          {inv.invoiceNo || inv.id}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{inv.invoiceNo || inv.id}</span>
+                            {inv.invoiceType === 'opening' && (
+                              <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 uppercase tracking-tight">
+                                Opening
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-semibold text-primary">
                           {inv.customerName || inv.customerId || 'Customer'}
@@ -1036,6 +1054,16 @@ export const ReceivablesHub: React.FC = () => {
           onDelete={handleDeleteProforma}
         />
       )}
+
+      {/* ADD OPENING OUTSTANDING INVOICE MODAL */}
+      <CreateOpeningOutstandingModal
+        isOpen={isOpeningModalOpen}
+        onClose={() => setIsOpeningModalOpen(false)}
+        onSuccess={() => {
+          loadAging();
+          refetchInvoices();
+        }}
+      />
     </div>
   );
 };

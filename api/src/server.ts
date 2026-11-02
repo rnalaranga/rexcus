@@ -6839,7 +6839,7 @@ app.post('/api/invoices', async (req, res) => {
         'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Sales%" OR name LIKE "%Revenue%") AND type = "Revenue" LIMIT 1'
       ) as any;
       let [arAcc] = await db.query(
-        'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Accounts Receivable%" OR name LIKE "%Receivable%") AND type = "Asset" LIMIT 1'
+        'SELECT id FROM chart_of_accounts WHERE (id = "ACC-002" OR code = "1200" OR name LIKE "%Accounts Receivable%" OR name LIKE "%Receivable%") AND type = "Asset" ORDER BY CASE WHEN id = "ACC-002" THEN 1 WHEN code = "1200" THEN 2 ELSE 3 END LIMIT 1'
       ) as any;
 
       if (arAcc.length === 0) {
@@ -6849,7 +6849,39 @@ app.post('/api/invoices', async (req, res) => {
       }
 
       const isProformaInvoice = Boolean(data.isProforma || data.invoiceType === 'proforma' || data.status === 'proforma');
-      if (!isProformaInvoice && arAcc.length > 0 && salesAcc.length > 0) {
+      const isOpeningInvoice = Boolean(data.invoiceType === 'opening' || data.isOpeningBalance || data.status === 'opening');
+
+      if (isOpeningInvoice && arAcc.length > 0) {
+        // LKAS 1 / LKAS 8 Opening AR Recognition:
+        // Debit: Accounts Receivable (1200)
+        // Credit: Opening Balance Equity / Retained Earnings (3900)
+        // Strictly Zero Revenue & Zero Tax liability!
+        const jeId = 'JE-OPN-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 100);
+        const invTotal = Number(data.total) || Number(data.amount) || 0;
+
+        let [equityAcc]: any = await db.query(
+          'SELECT id FROM chart_of_accounts WHERE (id = "acc_3900" OR code = "3900" OR type = "Equity") LIMIT 1'
+        );
+        const equityId = equityAcc.length > 0 ? equityAcc[0].id : 'acc_3900';
+
+        await db.query('INSERT INTO journal_entries SET ?', {
+          id: jeId,
+          date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
+          reference: data.invoiceNo || data.id,
+          description: `Auto GL: Customer Opening Outstanding (${data.invoiceNo || data.id}) - ${data.customerName || data.customerCompany || 'Customer'}`,
+          totalAmount: invTotal,
+          status: 'posted'
+        });
+
+        const customerPartyId = data.customerId || data.leadId || null;
+        const lines = [
+          ['JL-' + Date.now().toString().slice(-6) + '1', jeId, arAcc[0].id, invTotal, 0, customerPartyId, 'Customer'],
+          ['JL-' + Date.now().toString().slice(-6) + '2', jeId, equityId, 0, invTotal, customerPartyId, 'Customer']
+        ];
+        await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, arAcc[0].id]);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, equityId]);
+      } else if (!isProformaInvoice && arAcc.length > 0 && salesAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
         const invTotal = Number(data.total) || 0;
         const invSub = Number(data.subtotal) || invTotal;

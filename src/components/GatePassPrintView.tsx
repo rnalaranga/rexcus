@@ -233,7 +233,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                       </div>
                     </td>
                   </tr>
-                  <tr className="border-b border-black">
+                  <tr className={Boolean(gatePass.orderNo || gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo || gatePass.grnId) ? "border-b border-black" : ""}>
                     <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>DATED</td>
                     <td className="p-1 px-2 font-mono">
                       <div className="flex items-center">
@@ -243,7 +243,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                     </td>
                   </tr>
                   {gatePass.orderNo && (
-                    <tr className="border-b border-black">
+                    <tr className={Boolean(gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo || gatePass.grnId) ? "border-b border-black" : ""}>
                       <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>SO REF</td>
                       <td className="p-1 px-2 font-mono font-bold text-blue-900">
                         <div className="flex items-center">
@@ -254,7 +254,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                     </tr>
                   )}
                   {(gatePass.quoNo || gatePass.quotationDocNo || gatePass.displayQuoNo) && (
-                    <tr className="border-b border-black">
+                    <tr className={Boolean(gatePass.grnId) ? "border-b border-black" : ""}>
                       <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>QUO REF</td>
                       <td className="p-1 px-2 font-mono font-semibold text-emerald-800">
                         <div className="flex items-center">
@@ -265,7 +265,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                     </tr>
                   )}
                   {gatePass.grnId && (
-                    <tr className="border-b border-black">
+                    <tr>
                       <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>SAMPLE GRN</td>
                       <td className="p-1 px-2 font-mono">
                         <div className="flex items-center">
@@ -275,35 +275,6 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                       </td>
                     </tr>
                   )}
-                  <tr className="border-b border-black">
-                    <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>CARRIER / VEHICLE</td>
-                    <td className="p-1 px-2">
-                      <div className="flex items-center">
-                        <span className="font-bold mr-1 shrink-0">:</span>
-                        <span className="flex-1">{gatePass.carrier || 'Hand Delivery'} {gatePass.vehicleNo ? `(${gatePass.vehicleNo})` : ''}</span>
-                      </div>
-                    </td>
-                  </tr>
-                  {gatePass.driverName && (
-                    <tr className="border-b border-black">
-                      <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>DRIVER / CONTACT</td>
-                      <td className="p-1 px-2">
-                        <div className="flex items-center">
-                          <span className="font-bold mr-1 shrink-0">:</span>
-                          <span className="flex-1">{gatePass.driverName}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td className="p-1 px-2 border-r border-black font-bold whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>PURPOSE</td>
-                    <td className="p-1 px-2">
-                      <div className="flex items-center">
-                        <span className="font-bold mr-1 shrink-0">:</span>
-                        <span className="flex-1">{gatePass.reason || 'Goods Delivery / Dispatch'}</span>
-                      </div>
-                    </td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -360,14 +331,6 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
             </table>
           </div>
 
-          {/* Special Instructions / Notes (if present) */}
-          {Boolean(gatePass.notes || gatePass.specialInstructions) && (
-            <div className="border-t border-black p-2 text-[10px] bg-white print-no-break">
-              <span className="font-bold uppercase text-[9px] text-gray-700 block mb-0.5">Special Instructions / Dispatch Notes:</span>
-              <div className="text-gray-800 whitespace-pre-wrap leading-tight">{gatePass.notes || gatePass.specialInstructions}</div>
-            </div>
-          )}
-
           {/* Customer Acceptance Notice */}
           <div className="border-t border-black bg-gray-50/70 px-2.5 py-1 text-[9px] text-gray-700 flex items-center justify-between print-no-break">
             <span><strong>Customer Acceptance:</strong> Received the above goods in sound condition, complete quantity and satisfactory order.</span>
@@ -383,14 +346,6 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   <span>1. Stores / Dispatched By</span>
                   <span className="text-[8px] text-gray-500 font-normal">Internal</span>
                 </div>
-                <div className="text-[8.5px] text-gray-600 mt-0.5">
-                  Goods picked, packed & verified
-                </div>
-                {(gatePass.dispatchedBy || gatePass.issuedBy || gatePass.preparedBy) && (
-                  <div className="font-bold text-[10px] text-black mt-1 font-mono">
-                    {gatePass.dispatchedBy || gatePass.issuedBy || gatePass.preparedBy}
-                  </div>
-                )}
               </div>
               <div className="mt-auto pt-2">
                 <div className="border-b border-dotted border-black mb-1"></div>
@@ -407,12 +362,6 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                 <div className="font-bold uppercase text-black text-[9.5px] flex items-center justify-between">
                   <span>2. Security Check</span>
                   <span className="text-[8px] font-semibold text-emerald-800 bg-emerald-50 px-1 border border-emerald-300">Gate Out</span>
-                </div>
-                <div className="text-[8.5px] text-gray-600 mt-0.5">
-                  Physical count & vehicle verified
-                </div>
-                <div className="text-[8.5px] text-gray-800 font-mono mt-1">
-                  Vehicle: <span className="font-bold text-black">{gatePass.vehicleNo || gatePass.carrier || 'Hand/Direct'}</span>
                 </div>
               </div>
               <div className="mt-auto pt-2">
