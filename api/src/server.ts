@@ -5011,6 +5011,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     const order = {
       id,
       orderNo,
+      orderSource: data.orderSource || (data.quoteId || data.quotationNo ? 'from_quote' : (data.productId?.startsWith('CUSTOM') || itemsList.length > 0 ? 'custom_job' : 'ready_made')),
       productId: primaryId,
       productName: primaryName,
       productSku: primarySku,
@@ -5323,38 +5324,38 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
       const prevTotal = Number(existing.totalPrice || 0);
       const newTotal = Number(data.totalPrice !== undefined ? data.totalPrice : existing.totalPrice || 0);
       if (data.totalPrice !== undefined && Math.abs(prevTotal - newTotal) > 0.01) {
-        changes.push(`Total Amount: Rs. ${prevTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} → Rs. ${newTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+        changes.push(`Total Amount: Rs. ${prevTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} -> Rs. ${newTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
       }
 
       // Compare Subtotal
       const prevSubtotal = Number(existing.subtotal || 0);
       const newSubtotal = Number(data.subtotal !== undefined ? data.subtotal : existing.subtotal || 0);
       if (data.subtotal !== undefined && Math.abs(prevSubtotal - newSubtotal) > 0.01) {
-        changes.push(`Subtotal: Rs. ${prevSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} → Rs. ${newSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+        changes.push(`Subtotal: Rs. ${prevSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} -> Rs. ${newSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
       }
 
       // Compare Tax Amount
       const prevTax = Number(existing.taxAmount || 0);
       const newTax = Number(data.taxAmount !== undefined ? data.taxAmount : existing.taxAmount || 0);
       if (data.taxAmount !== undefined && Math.abs(prevTax - newTax) > 0.01) {
-        changes.push(`Tax: Rs. ${prevTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} → Rs. ${newTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+        changes.push(`Tax: Rs. ${prevTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} -> Rs. ${newTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
       }
 
       // Compare Quantity
       const prevQty = Number(existing.qty || 0);
       const newQty = Number(data.qty !== undefined ? data.qty : existing.qty || 0);
       if (data.qty !== undefined && prevQty !== newQty) {
-        changes.push(`Total Quantity: ${prevQty} → ${newQty}`);
+        changes.push(`Total Quantity: ${prevQty} -> ${newQty}`);
       }
 
       // Compare Customer PO
       if (data.customerPoNo !== undefined && String(data.customerPoNo || '').trim() !== String(existing.customerPoNo || '').trim()) {
-        changes.push(`Customer PO: "${existing.customerPoNo || 'None'}" → "${data.customerPoNo || 'None'}"`);
+        changes.push(`Customer PO: "${existing.customerPoNo || 'None'}" -> "${data.customerPoNo || 'None'}"`);
       }
 
       // Compare PO Date
       if (data.customerPoDate !== undefined && String(data.customerPoDate || '').trim() !== String(existing.customerPoDate || '').trim()) {
-        changes.push(`PO Date: "${existing.customerPoDate || 'None'}" → "${data.customerPoDate || 'None'}"`);
+        changes.push(`PO Date: "${existing.customerPoDate || 'None'}" -> "${data.customerPoDate || 'None'}"`);
       }
 
       // Compare Delivery Address
@@ -5364,7 +5365,7 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
 
       // Compare Attention
       if (data.attention !== undefined && String(data.attention || '').trim() !== String(existing.attention || '').trim()) {
-        changes.push(`Attention: "${existing.attention || 'None'}" → "${data.attention || 'None'}"`);
+        changes.push(`Attention: "${existing.attention || 'None'}" -> "${data.attention || 'None'}"`);
       }
 
       // Compare Items
@@ -5453,6 +5454,8 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
         safeData[k] = v;
       }
     }
+
+    delete safeData.id;
 
     await db.query('UPDATE finished_goods_orders SET ? WHERE id = ? OR orderNo = ?', [safeData, id, id]);
     res.json({ success: true, id, soChangeInfo: data.soChangeInfo });

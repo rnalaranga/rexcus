@@ -453,27 +453,50 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
 
     let source: 'from_quote' | 'ready_made' | 'custom_job' = 'ready_made';
-    if (order.quoteId || order.quotationNo) {
+    if (order.orderSource) {
+      source = order.orderSource;
+    } else if (order.quoteId || order.quotationNo) {
       source = 'from_quote';
-    } else if (order.productId === 'CUSTOM-JOB' || order.productId === 'CUSTOM-ORDER' || (!order.productId && order.productName)) {
+    } else if (
+      order.productId === 'CUSTOM-JOB' || 
+      order.productId === 'CUSTOM-ORDER' || 
+      String(order.productId || '').startsWith('CUSTOM') || 
+      !order.productId ||
+      (Array.isArray(parsedItems) && parsedItems.length > 0 && !finishedProducts.some(p => p.id === order.productId))
+    ) {
       source = 'custom_job';
     }
 
-    if (source === 'custom_job' && parsedItems.length === 0) {
+    if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+      parsedItems = parsedItems.map((it: any, idx: number) => ({
+        ...it,
+        productId: it.productId || `CUSTOM-ITEM-${idx + 1}`,
+        productName: it.productName || it.description || order.productName || 'Order Item',
+        description: it.description || it.productName || '',
+        qty: Number(it.qty) || 1,
+        unitPrice: Number(it.unitPrice) || 0,
+        amount: Number((Number(it.qty || 1) * Number(it.unitPrice || 0)).toFixed(2)),
+        uom: it.uom || order.uom || 'Nos'
+      }));
+    } else if (source === 'custom_job') {
       parsedItems = [{
         productId: order.productId || 'CUSTOM-ITEM-1',
         productName: order.productName || 'Custom Machining Item',
         description: order.description || order.productName || '',
         qty: Number(order.qty) || 1,
         unitPrice: Number(order.unitPrice) || 0,
-        amount: (Number(order.qty) || 1) * (Number(order.unitPrice) || 0),
+        amount: Number((Number(order.qty || 1) * Number(order.unitPrice || 0)).toFixed(2)),
         uom: order.uom || 'Nos'
       }];
     }
 
-    const ordSubtotal = Number(order.subtotal) || (Number(order.totalPrice || 0) - Number(order.taxAmount || 0));
+    const calculatedItemSum = parsedItems.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
+    const ordSubtotal = (source === 'custom_job' || source === 'from_quote') && calculatedItemSum > 0
+      ? calculatedItemSum
+      : (Number(order.subtotal) || (Number(order.totalPrice || 0) - Number(order.taxAmount || 0)) || calculatedItemSum);
+
     const ordTaxAmount = Number(order.taxAmount) || 0;
-    const ordTotalPrice = Number(order.totalPrice) || (ordSubtotal + ordTaxAmount);
+    const ordTotalPrice = Number(order.totalPrice) || Number((ordSubtotal + ordTaxAmount).toFixed(2));
     const ordTaxRate = Number(order.taxRate) || 0;
     const ordTaxProfileId = order.taxProfileId || '';
 
@@ -482,7 +505,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       orderSource: source,
       quoteId: order.quoteId || '',
       quotationNo: order.quotationNo || '',
-      productId: order.productId || '',
+      productId: order.productId || (source === 'custom_job' ? 'CUSTOM-JOB' : ''),
       productName: order.productName || '',
       description: order.description || (parsedItems[0]?.description) || order.productName || '',
       productSku: order.productSku || '',
@@ -499,8 +522,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       customerPoAttachmentName: order.customerPoAttachment ? (order.customerPoNo ? `Customer_PO_${order.customerPoNo}` : 'Customer_PO_Document') : '',
       orderDate: order.orderDate ? String(order.orderDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
       targetDeliveryDate: order.targetDeliveryDate ? String(order.targetDeliveryDate).slice(0, 10) : '',
-      qty: String(order.qty || '1'),
-      unitPrice: String(order.unitPrice || '0'),
+      qty: String(order.qty || (parsedItems.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)) || '1'),
+      unitPrice: String(order.unitPrice || (parsedItems[0]?.unitPrice ?? '0')),
       subtotal: ordSubtotal,
       discount: 0,
       taxAmount: ordTaxAmount,
@@ -526,6 +549,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         };
       } else if (src === 'ready_made') {
         const firstProd = finishedProducts[0];
+        const unitP = firstProd?.unitPrice ? Number(firstProd.unitPrice) : (Number(prev.unitPrice) || 0);
+        const q = Number(prev.qty) || 1;
+        const sub = q * unitP;
+        const { taxAmount, totalPrice } = calculateOrderTaxes(sub, prev.taxProfileId, prev.taxRate);
         return {
           ...prev,
           orderSource: src,
@@ -534,8 +561,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           productId: firstProd?.id || '',
           productName: firstProd?.name || '',
           productSku: firstProd?.sku || '',
-          unitPrice: firstProd?.unitPrice ? String(firstProd.unitPrice) : prev.unitPrice,
-          items: []
+          unitPrice: String(unitP),
+          items: [],
+          subtotal: sub,
+          taxAmount,
+          totalPrice
         };
       } else {
         const defaultItems = prev.items && prev.items.length > 0 ? prev.items : [{
@@ -543,11 +573,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           productName: 'Custom Machining Item',
           description: prev.description || '',
           qty: 1,
-          unitPrice: 0,
-          amount: 0,
-          uom: 'Nos'
+          unitPrice: Number(prev.unitPrice) || 0,
+          amount: Number(prev.unitPrice) || 0,
+          uom: prev.uom || 'Nos'
         }];
-        const subtotal = defaultItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
+        const subtotal = Number(defaultItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
+        const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
         return {
           ...prev,
           orderSource: src,
@@ -559,8 +590,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           unitPrice: String(defaultItems[0]?.unitPrice || 0),
           uom: prev.uom || 'Nos',
           items: defaultItems,
-          subtotal: subtotal || prev.subtotal,
-          totalPrice: subtotal + (Number(prev.taxAmount) || 0)
+          subtotal,
+          taxAmount,
+          totalPrice
         };
       }
     });
@@ -810,31 +842,71 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const handleItemChangeInOrder = (idx: number, field: string, value: any) => {
     setFormData(prev => {
-      const newItems = [...(prev.items || [])];
-      const it = { ...newItems[idx], [field]: value };
+      const currentItems = (prev.items && prev.items.length > 0) ? [...prev.items] : [{
+        productId: 'CUSTOM-ITEM-1',
+        productName: 'Custom Machining Item',
+        description: '',
+        qty: 1,
+        unitPrice: 0,
+        amount: 0,
+        uom: 'Nos'
+      }];
+      const existing = currentItems[idx] || {
+        productId: `CUSTOM-ITEM-${idx + 1}`,
+        productName: 'Custom Machining Item',
+        description: '',
+        qty: 1,
+        unitPrice: 0,
+        amount: 0,
+        uom: 'Nos'
+      };
+      const it = { ...existing, [field]: value };
       const q = Math.max(0, Number(field === 'qty' ? value : it.qty) || 0);
       const up = Math.max(0, Number(field === 'unitPrice' ? value : it.unitPrice) || 0);
-      it.amount = q * up;
-      newItems[idx] = it;
+      it.amount = Number((q * up).toFixed(2));
 
-      const subtotal = newItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
+      // Auto-extract a neat single-line product name if user is writing description
+      if (field === 'description' && value && (!it.productName || it.productName === 'Custom Machining Item' || it.productName === 'Additional Item')) {
+        const firstLine = String(value).split('\n')[0].replace(/^[•\-\*\s]+/, '').trim();
+        if (firstLine) it.productName = firstLine.slice(0, 100);
+      }
+
+      currentItems[idx] = it;
+
+      const subtotal = Number(currentItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
       const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
+
+      const totalQty = currentItems.reduce((acc, x) => acc + (Number(x.qty) || 0), 0);
+      const resolvedTitle = (!prev.productName || prev.productName === 'Custom Machining Item') && currentItems[0]?.productName
+        ? currentItems[0].productName
+        : prev.productName;
 
       return {
         ...prev,
-        items: newItems,
+        productName: resolvedTitle,
+        items: currentItems,
         subtotal,
         taxAmount,
         totalPrice,
-        qty: String(newItems.reduce((acc, x) => acc + (Number(x.qty) || 1), 0))
+        qty: String(totalQty || 1),
+        unitPrice: currentItems.length === 1 ? String(currentItems[0].unitPrice || 0) : prev.unitPrice
       };
     });
   };
 
   const handleAddItemToOrder = () => {
     setFormData(prev => {
-      const newItems = [...(prev.items || []), {
-        productId: 'CUSTOM-ITEM',
+      const currentItems = (prev.items && prev.items.length > 0) ? [...prev.items] : [{
+        productId: 'CUSTOM-ITEM-1',
+        productName: 'Custom Machining Item',
+        description: '',
+        qty: 1,
+        unitPrice: 0,
+        amount: 0,
+        uom: 'Nos'
+      }];
+      const newItems = [...currentItems, {
+        productId: `CUSTOM-ITEM-${currentItems.length + 1}`,
         productName: 'Additional Item',
         description: '',
         qty: 1,
@@ -850,15 +922,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setFormData(prev => {
       if ((prev.items || []).length <= 1) return prev;
       const newItems = prev.items.filter((_: any, i: number) => i !== idx);
-      const subtotal = newItems.reduce((acc: number, x: any) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0);
+      const subtotal = Number(newItems.reduce((acc: number, x: any) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
       const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
+      const totalQty = newItems.reduce((acc: number, x: any) => acc + (Number(x.qty) || 0), 0);
       return {
         ...prev,
         items: newItems,
         subtotal,
         taxAmount,
         totalPrice,
-        qty: String(newItems.reduce((acc: number, x: any) => acc + (Number(x.qty) || 1), 0))
+        qty: String(totalQty || 1),
+        unitPrice: newItems.length === 1 ? String(newItems[0].unitPrice || 0) : prev.unitPrice
       };
     });
   };
@@ -906,36 +980,61 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     // Build items list
     let itemsList: any[] = [];
     if ((formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0) {
-      itemsList = formData.items;
+      itemsList = formData.items.map((it: any, idx: number) => {
+        const q = Math.max(0, Number(it.qty) || 1);
+        const up = Math.max(0, Number(it.unitPrice) || 0);
+        return {
+          ...it,
+          productId: it.productId || `CUSTOM-ITEM-${idx + 1}`,
+          productName: it.productName || it.description || resolvedProductName || 'Order Item',
+          description: it.description || it.productName || resolvedProductName,
+          qty: q,
+          unitPrice: up,
+          amount: Number((q * up).toFixed(2)),
+          uom: it.uom || 'Nos'
+        };
+      });
     } else if (formData.orderSource === 'ready_made') {
+      const q = Math.max(1, Number(formData.qty) || 1);
+      const up = Math.max(0, Number(formData.unitPrice) || 0);
       itemsList = [{
         productId: formData.productId,
         productName: formData.productName || resolvedProductName,
         productSku: formData.productSku,
         description: formData.productName || resolvedProductName,
-        qty: Number(formData.qty) || 1,
-        unitPrice: Number(formData.unitPrice) || 0,
-        amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
+        qty: q,
+        unitPrice: up,
+        amount: Number((q * up).toFixed(2)),
         uom: selectedProduct?.uom || 'Nos'
       }];
     } else {
+      const q = Math.max(1, Number(formData.qty) || 1);
+      const up = Math.max(0, Number(formData.unitPrice) || 0);
       itemsList = [{
         productId: 'CUSTOM-JOB',
         productName: formData.productName || resolvedProductName,
         productSku: formData.productSku,
         description: formData.description || formData.productName || resolvedProductName,
-        qty: Number(formData.qty) || 1,
-        unitPrice: Number(formData.unitPrice) || 0,
-        amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
+        qty: q,
+        unitPrice: up,
+        amount: Number((q * up).toFixed(2)),
         uom: formData.uom || 'Nos'
       }];
     }
 
-    const itemSum = itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
+    const itemSum = Number(itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0).toFixed(2));
 
-    const finalSubtotal = Number(formData.subtotal) || itemSum;
-    const finalTaxAmount = Number(formData.taxAmount) || 0;
-    const finalTotalPrice = Number(formData.totalPrice) || (finalSubtotal + finalTaxAmount) || itemSum;
+    const finalSubtotal = (formData.orderSource === 'custom_job' || formData.orderSource === 'from_quote')
+      ? (itemSum > 0 ? itemSum : (Number(formData.subtotal) || 0))
+      : (Number(formData.subtotal) || itemSum);
+
+    const { taxAmount: recomputedTax } = calculateOrderTaxes(finalSubtotal, formData.taxProfileId, formData.taxRate);
+
+    const finalTaxAmount = Number(formData.taxAmount) !== undefined && Number(formData.taxAmount) !== null && !isNaN(Number(formData.taxAmount))
+      ? Number(formData.taxAmount)
+      : recomputedTax;
+
+    const finalTotalPrice = Number((finalSubtotal + finalTaxAmount).toFixed(2));
 
     const stockStatus = formData.orderSource === 'ready_made'
       ? (hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock')
@@ -952,12 +1051,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     const primaryUnitPrice = itemsList.length === 1
       ? Number(itemsList[0].unitPrice)
-      : (Number(formData.unitPrice) || (itemsList.length > 0 ? Number(itemsList[0].unitPrice) : 0));
+      : (totalQty > 0 ? Number((finalSubtotal / totalQty).toFixed(2)) : (Number(formData.unitPrice) || 0));
 
     const payload = {
       ...formData,
       productName: resolvedProductName,
       orderNo: cleanOrderNo || formData.orderNo,
+      orderSource: formData.orderSource,
       items: itemsList,
       qty: totalQty,
       unitPrice: primaryUnitPrice,

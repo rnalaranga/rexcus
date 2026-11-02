@@ -345,7 +345,9 @@ export const createFinishedGoodsOrder = async (data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create sales order');
+  return json;
 };
 
 export const updateFinishedGoodsOrder = async (id: string, data: any) => {
@@ -354,7 +356,9 @@ export const updateFinishedGoodsOrder = async (id: string, data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to update sales order');
+  return json;
 };
 
 export const approveOrderAdvanceWaiver = async (id: string | number, approvedBy?: string, notes?: string) => {
