@@ -1768,7 +1768,7 @@ async function runDatabaseSync() {
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt2_sscl_absorbed_vat_sep', 'Option 2: SSCL Absorbed + VAT Separate', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt3_both_separate', 'Option 3: Both SSCL & VAT Separate (2 Lines)', 'SSCL', 2.50, 'VAT', 18.00, 1, 1, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
-    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, accountId, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'VAT', 18, NULL, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'SSCL', 0.00, 'VAT', 18.00, 0, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_rate=VALUES(tax1_rate), tax2_rate=VALUES(tax2_rate), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     `INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]')`,
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
@@ -5194,9 +5194,16 @@ app.post('/api/finished-goods-orders', async (req, res) => {
           );
 
           if (!paidProforma || paidProforma.length === 0) {
-            safeOrder.status = 'Pending Advance Approval';
+            safeOrder.status = 'Pending Approval';
           }
         }
+      }
+    }
+
+    // For all manual sales orders (custom_job or direct non-quote), enforce "Pending Approval"
+    if (safeOrder.orderSource === 'custom_job' || (!safeOrder.quoteId && !safeOrder.quotationNo)) {
+      if (safeOrder.status !== 'Approved' && safeOrder.status !== 'Confirmed') {
+        safeOrder.status = 'Pending Approval';
       }
     }
 
@@ -5215,12 +5222,12 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       }
     }
 
-    if (safeOrder.status === 'Pending Advance Approval') {
+    if (safeOrder.status === 'Pending Approval' || safeOrder.status === 'Pending Advance Approval') {
       try {
         await db.query(
           `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
-           VALUES (?, ?, ?, ?, ?, 'Advance Waiver Requested', ?, NOW(), ?, NOW())`,
-          ['Sales Order', String(insertedId), safeOrder.orderNo, safeOrder.customerName || 'Customer', Number(safeOrder.totalPrice || safeOrder.subtotal || 0), safeOrder.createdBy || 'Sales Executive', safeOrder.notes || 'Sales Order submitted without advance payment proforma']
+           VALUES (?, ?, ?, ?, ?, 'Sales Order Approval Requested', ?, NOW(), ?, NOW())`,
+          ['Sales Order', String(insertedId), safeOrder.orderNo, safeOrder.customerName || 'Customer', Number(safeOrder.totalPrice || safeOrder.subtotal || 0), safeOrder.createdBy || 'Sales Executive', safeOrder.notes || 'Sales Order submitted for Admin Approval']
         );
       } catch (logErr) {}
     }
@@ -7191,12 +7198,90 @@ app.post('/api/invoices', async (req, res) => {
   }
 });
 
+app.post('/api/invoices/:id/change-number', async (req, res) => {
+  try {
+    const rawId = decodeURIComponent(req.params.id || '').trim();
+    const newInvoiceNo = (req.body.newInvoiceNo || req.body.invoiceNo || req.body.docNo || '').trim().replace(/\s+/g, '');
+    if (!newInvoiceNo) {
+      return res.status(400).json({ error: 'New invoice number is required.' });
+    }
+
+    const [existingRows]: any = await db.query(
+      'SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? OR REPLACE(id, " ", "") = ? OR REPLACE(invoiceNo, " ", "") = ? LIMIT 1',
+      [rawId, rawId, rawId.replace(/\s+/g, ''), rawId.replace(/\s+/g, '')]
+    );
+    if (!existingRows || existingRows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found.' });
+    }
+
+    const currentInv = existingRows[0];
+    const oldId = currentInv.id;
+    const oldNo = currentInv.invoiceNo || oldId;
+
+    if (newInvoiceNo === oldId && newInvoiceNo === oldNo) {
+      return res.json({ success: true, id: oldId, invoiceNo: oldNo, message: 'No change needed.' });
+    }
+
+    // Check collision
+    const [collision]: any = await db.query(
+      'SELECT id FROM invoices WHERE (id = ? OR invoiceNo = ?) AND id != ? AND (invoiceNo IS NULL OR invoiceNo != ?) LIMIT 1',
+      [newInvoiceNo, newInvoiceNo, oldId, oldNo]
+    );
+    if (collision && collision.length > 0) {
+      return res.status(400).json({ error: `Invoice number "${newInvoiceNo}" is already in use by another invoice.` });
+    }
+
+    // Update invoice record
+    await db.query('UPDATE invoices SET id = ?, invoiceNo = ? WHERE id = ? OR invoiceNo = ?', [newInvoiceNo, newInvoiceNo, oldId, oldId]);
+
+    // Cascade update to linked orders, journal entries, and receipts
+    try {
+      await db.query(
+        'UPDATE finished_goods_orders SET invoiceNo = ?, invoiceId = ? WHERE invoiceId = ? OR invoiceNo = ? OR invoiceId = ? OR invoiceNo = ?',
+        [newInvoiceNo, newInvoiceNo, oldId, oldId, oldNo, oldNo]
+      );
+    } catch (e) { console.error('Error cascading invoice change to orders:', e); }
+
+    try {
+      await db.query(
+        'UPDATE journal_entries SET reference = ? WHERE reference = ? OR reference = ?',
+        [newInvoiceNo, oldId, oldNo]
+      );
+    } catch (e) { console.error('Error cascading invoice change to journal entries:', e); }
+
+    try {
+      await db.query(
+        'UPDATE payment_receipts SET reference = ? WHERE reference = ? OR reference = ?',
+        [newInvoiceNo, oldId, oldNo]
+      );
+    } catch (e) { console.error('Error cascading invoice change to payment receipts:', e); }
+
+    res.json({ success: true, oldId, id: newInvoiceNo, invoiceNo: newInvoiceNo });
+  } catch (error: any) {
+    console.error('Error changing invoice number:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
 app.put('/api/invoices/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = decodeURIComponent(req.params.id || '').trim();
     const data = { ...req.body };
     delete data.id;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+
+    // Fetch existing invoice to verify existence and check for invoice number changes
+    const [existingRows]: any = await db.query(
+      'SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? OR REPLACE(id, " ", "") = ? OR REPLACE(invoiceNo, " ", "") = ? LIMIT 1',
+      [rawId, rawId, rawId.replace(/\s+/g, ''), rawId.replace(/\s+/g, '')]
+    );
+    if (!existingRows || existingRows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found.' });
+    }
+
+    const currentInv = existingRows[0];
+    const oldId = currentInv.id;
+    const oldNo = currentInv.invoiceNo || oldId;
 
     const formatMySQLDateOnly = (val: any): string | null => {
       if (val === null || val === undefined || val === '') return null;
@@ -7233,8 +7318,48 @@ app.put('/api/invoices/:id', async (req, res) => {
       safeData.dueDate = formatMySQLDateOnly(safeData.dueDate);
     }
 
-    await db.query('UPDATE invoices SET ? WHERE id = ? OR invoiceNo = ?', [safeData, id, id]);
-    res.json({ success: true, id });
+    let targetInvoiceNo = (data.invoiceNo || data.newInvoiceNo || data.docNo || '').trim().replace(/\s+/g, '');
+    const numberChanged = Boolean(targetInvoiceNo && targetInvoiceNo !== oldId && targetInvoiceNo !== oldNo);
+
+    if (numberChanged) {
+      // Check collision
+      const [collision]: any = await db.query(
+        'SELECT id FROM invoices WHERE (id = ? OR invoiceNo = ?) AND id != ? AND (invoiceNo IS NULL OR invoiceNo != ?) LIMIT 1',
+        [targetInvoiceNo, targetInvoiceNo, oldId, oldNo]
+      );
+      if (collision && collision.length > 0) {
+        return res.status(400).json({ error: `Invoice number "${targetInvoiceNo}" is already in use by another invoice.` });
+      }
+      safeData.id = targetInvoiceNo;
+      safeData.invoiceNo = targetInvoiceNo;
+    }
+
+    await db.query('UPDATE invoices SET ? WHERE id = ? OR invoiceNo = ?', [safeData, oldId, oldId]);
+
+    if (numberChanged) {
+      try {
+        await db.query(
+          'UPDATE finished_goods_orders SET invoiceNo = ?, invoiceId = ? WHERE invoiceId = ? OR invoiceNo = ? OR invoiceId = ? OR invoiceNo = ?',
+          [targetInvoiceNo, targetInvoiceNo, oldId, oldId, oldNo, oldNo]
+        );
+      } catch (e) { console.error('Error cascading invoice change to orders:', e); }
+
+      try {
+        await db.query(
+          'UPDATE journal_entries SET reference = ? WHERE reference = ? OR reference = ?',
+          [targetInvoiceNo, oldId, oldNo]
+        );
+      } catch (e) { console.error('Error cascading invoice change to journal entries:', e); }
+
+      try {
+        await db.query(
+          'UPDATE payment_receipts SET reference = ? WHERE reference = ? OR reference = ?',
+          [targetInvoiceNo, oldId, oldNo]
+        );
+      } catch (e) { console.error('Error cascading invoice change to payment receipts:', e); }
+    }
+
+    res.json({ success: true, id: targetInvoiceNo || oldId, invoiceNo: targetInvoiceNo || oldNo });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -9269,9 +9394,9 @@ app.post('/api/production/work-orders', async (req, res) => {
           [req.body.orderNo || '', sourceQuoteId || '']
         );
         if (ordRows && ordRows.length > 0) {
-          if (ordRows[0].status === 'Pending Advance Approval') {
+          if (ordRows[0].status === 'Pending Advance Approval' || ordRows[0].status === 'Pending Approval') {
             return res.status(400).json({
-              error: `Sales Order #${req.body.orderNo || ordRows[0].orderNo} is currently "Pending Advance Approval". Production Work Order cannot be issued until Finance / Management approves the advance waiver or payment is recorded.`
+              error: `Sales Order #${req.body.orderNo || ordRows[0].orderNo} is currently "Pending Approval". Production Work Order cannot be issued until Finance / Management approves the order.`
             });
           }
           if (ordRows[0].status === 'Confirmed' && ordRows[0].notes && ordRows[0].notes.includes('Advance Waiver Approved')) {

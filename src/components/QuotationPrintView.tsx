@@ -85,13 +85,22 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
   
   const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 };
-    const isSsclHidden = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax1_show_separately === 0 && Number(data.selectedProfile.tax1_rate) > 0);
-  const isVatHidden = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax2_show_separately === 0 && Number(data.selectedProfile.tax2_rate) > 0);
-  const isSsclSeparate = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax1_show_separately === 1 && Number(data.selectedProfile.tax1_rate) > 0);
-  const isVatSeparate = Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax2_show_separately === 1 && Number(data.selectedProfile.tax2_rate) > 0);
+    const isVatOnly = Boolean(
+    data.selectedProfile?.id === 'tp_vat18' || 
+    data.selectedProfile?.name?.toLowerCase().includes('vat only') ||
+    (data.selectedProfile?.tax1_name && /vat/i.test(data.selectedProfile.tax1_name) && (!data.selectedProfile.tax2_name || Number(data.selectedProfile.tax2_rate || 0) === 0))
+  );
 
-  const t1Rate = Number(data.selectedProfile?.tax1_rate || 0) / 100;
-  const t2Rate = Number(data.selectedProfile?.tax2_rate || 0) / 100;
+  const isSsclHidden = !isVatOnly && Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax1_show_separately === 0 && Number(data.selectedProfile.tax1_rate) > 0 && !/vat/i.test(data.selectedProfile.tax1_name || ''));
+  const isVatHidden = !isVatOnly && Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax2_show_separately === 0 && Number(data.selectedProfile.tax2_rate) > 0);
+  const isSsclSeparate = !isVatOnly && Boolean(data.taxEnabled && data.selectedProfile && data.selectedProfile.tax1_show_separately === 1 && Number(data.selectedProfile.tax1_rate) > 0 && !/vat/i.test(data.selectedProfile.tax1_name || ''));
+  const isVatSeparate = Boolean(data.taxEnabled && data.selectedProfile && (isVatOnly || (data.selectedProfile.tax2_show_separately === 1 && Number(data.selectedProfile.tax2_rate) > 0) || (data.selectedProfile.tax1_show_separately === 1 && /vat/i.test(data.selectedProfile.tax1_name || ''))));
+
+  let t1Rate = !isVatOnly ? (Number(data.selectedProfile?.tax1_rate || 0) / 100) : 0;
+  let t2Rate = Number(data.selectedProfile?.tax2_rate || 0) / 100;
+  if (isVatOnly && t2Rate === 0) {
+    t2Rate = Number(data.selectedProfile?.tax1_rate || 18) / 100;
+  }
 
   const isProductQuote = Boolean(
     data.isProductQuotation || 
@@ -136,7 +145,10 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
       multiplier = 1;
     }
   } else {
-    if (isSsclHidden && isVatHidden) {
+    if (isVatOnly) {
+      // VAT Only Separate: SSCL is 0 (NOT added to unit prices or cost), multiplier is strictly 1
+      multiplier = 1;
+    } else if (isSsclHidden && isVatHidden) {
       // Option 1: Both SSCL & VAT absorbed into unit prices & total supply value
       multiplier = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
     } else if (isSsclHidden && !isVatHidden) {
@@ -149,11 +161,16 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   }
 
   const rawWithSSCL = Number(custTotals.withSSCL || custTotals.total || 0);
-  let displaySscl = Number(data.custSscl || 0);
+  let displaySscl = isVatOnly ? 0 : Number(data.custSscl || 0);
   let displayVat = Number(data.custVat || 0);
+  if (isVatOnly && displayVat === 0) {
+    displayVat = Number((Number(custTotals.total || custTotals.subtotal || 0) * t2Rate).toFixed(2));
+  }
   let displaySubtotal = Number(custTotals.subtotal || 0);
   let displayDiscount = Number(custTotals.discount || 0);
-  let displayGrandTotal = quotationType === 'job' ? Number(jobTotals.withSSCL || 0) : rawWithSSCL;
+  let displayGrandTotal = quotationType === 'job' 
+    ? Number(jobTotals.withSSCL || 0) 
+    : (isVatOnly ? (Number(custTotals.total || custTotals.subtotal || 0) + displayVat) : rawWithSSCL);
 
   if (isProductQuote && data.taxEnabled && data.selectedProfile && quotationType !== 'job') {
     displayGrandTotal = rawWithSSCL;
@@ -717,7 +734,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               )}
 
               {/* SSCL */}
-              {data.selectedProfile && isSsclSeparate && (quotationType === 'job' ? data.jobSscl > 0 : (isProductQuote ? displaySscl > 0 : data.custSscl > 0)) && (
+              {data.selectedProfile && isSsclSeparate && !isVatOnly && (quotationType === 'job' ? data.jobSscl > 0 : (isProductQuote ? displaySscl > 0 : data.custSscl > 0)) && (
                 <tr className="border-b border-black print-no-break h-6 text-[11px]">
                   <td colSpan={2} className="text-right pr-6">{data.selectedProfile.tax1_name || 'SSCL'}</td>
                   <td className="text-center border-l border-black">{Number(data.selectedProfile.tax1_rate).toFixed(2)} %</td>
@@ -728,12 +745,12 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               )}
 
               {/* VAT */}
-              {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : (isProductQuote ? displayVat > 0 : data.custVat > 0)) && (
+              {data.selectedProfile && isVatSeparate && (quotationType === 'job' ? data.jobVat > 0 : (isProductQuote ? displayVat > 0 : (data.custVat > 0 || displayVat > 0))) && (
                 <tr className="border-b border-black print-no-break h-6 text-[11px]">
-                  <td colSpan={2} className="text-right pr-6">{data.selectedProfile.tax2_name || 'VAT'}</td>
-                  <td className="text-center border-l border-black">{Number(data.selectedProfile.tax2_rate).toFixed(2)} %</td>
+                  <td colSpan={2} className="text-right pr-6">{(isVatOnly ? 'VAT' : (data.selectedProfile.tax2_name || data.selectedProfile.tax1_name || 'VAT'))}</td>
+                  <td className="text-center border-l border-black">{(t2Rate * 100).toFixed(2)} %</td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
-                    {Number(quotationType === 'job' ? data.jobVat : (isProductQuote ? displayVat : data.custVat)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {Number(quotationType === 'job' ? data.jobVat : (isProductQuote ? displayVat : (displayVat || data.custVat))).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </td>
                 </tr>
               )}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, Search, Plus, Edit3, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt } from 'lucide-react'
+import { FileText, Search, Plus, Edit3, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt, Hash, RefreshCw } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
@@ -12,7 +12,7 @@ import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { useInvoices, useLeads, useCustomers, useQuotations, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
-import { updateInvoice, deleteInvoice } from '@/lib/api'
+import { updateInvoice, deleteInvoice, changeInvoiceNumber } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -78,6 +78,69 @@ export const Invoices: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [paymentData, setPaymentData] = useState({ amount: '', method: 'Cash', accountId: '', reference: '' })
+
+  const [changeNoModalTarget, setChangeNoModalTarget] = useState<any | null>(null)
+  const [newInvoiceNoInput, setNewInvoiceNoInput] = useState('')
+  const [isRenumbering, setIsRenumbering] = useState(false)
+
+  const handleOpenChangeNoModal = (inv: any) => {
+    setChangeNoModalTarget(inv)
+    setNewInvoiceNoInput(inv.invoiceNo || inv.id || '')
+  }
+
+  const handleGenerateNextForModal = async () => {
+    try {
+      const invDate = changeNoModalTarget?.date || new Date().toISOString()
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${encodeURIComponent(invDate)}`)
+      if (res.ok) {
+        const d = await res.json()
+        if (d.invoiceNo) {
+          setNewInvoiceNoInput(d.invoiceNo)
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleSubmitChangeNumber = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!changeNoModalTarget) return
+    const cleanNo = newInvoiceNoInput.trim().replace(/\s+/g, '')
+    if (!cleanNo) {
+      setToast({ type: 'error', msg: 'Please enter a valid invoice number.' })
+      return
+    }
+    const currentId = changeNoModalTarget.id
+    if (cleanNo === currentId && cleanNo === (changeNoModalTarget.invoiceNo || currentId)) {
+      setChangeNoModalTarget(null)
+      return
+    }
+
+    setIsRenumbering(true)
+    try {
+      await changeInvoiceNumber(currentId, cleanNo)
+      setToast({ type: 'success', msg: `Invoice number updated to ${cleanNo}` })
+
+      if (viewInvoice && (viewInvoice.id === currentId || viewInvoice.invoiceNo === currentId)) {
+        setViewInvoice({
+          ...viewInvoice,
+          id: cleanNo,
+          invoiceNo: cleanNo
+        })
+      }
+
+      if (typeof refetch === 'function') {
+        refetch()
+      }
+
+      setChangeNoModalTarget(null)
+    } catch (err: any) {
+      setToast({ type: 'error', msg: err.message || 'Failed to change invoice number.' })
+    } finally {
+      setIsRenumbering(false)
+    }
+  }
   
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newInvoiceData, setNewInvoiceData] = useState({
@@ -526,7 +589,18 @@ export const Invoices: React.FC = () => {
           </div>
           <div>
             <div className="font-bold text-primary cursor-pointer hover:text-blue-500 flex items-center gap-1.5" onClick={() => setViewInvoice(item)}>
-              <span>{val}</span>
+              <span>{item.invoiceNo || val}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenChangeNoModal(item);
+                }}
+                className="text-muted hover:text-blue-500 p-0.5 rounded transition-colors"
+                title="Change Invoice Number"
+              >
+                <Edit3 size={11} />
+              </button>
               {(item.isProforma || item.invoiceType === 'proforma' || String(item.id || '').startsWith('PI-')) && (
                 <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-bold uppercase">
                   Proforma
@@ -799,9 +873,18 @@ export const Invoices: React.FC = () => {
     {
       key: 'actions', header: '',
       render: (_, item) => (
-        <div className="flex gap-2 justify-end">
+        <div className="flex gap-1.5 justify-end items-center">
           <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs font-medium" onClick={() => setViewInvoice(item)}>
             View
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-7 px-2 text-xs font-medium text-muted hover:text-blue-500" 
+            onClick={() => handleOpenChangeNoModal(item)}
+            title="Change Invoice Number"
+          >
+            <Hash size={13} />
           </Button>
           {isAdmin && (
             <button 
@@ -964,7 +1047,7 @@ export const Invoices: React.FC = () => {
 
       {/* Invoice View Modal */}
       {viewInvoice && (
-        <Modal isOpen={true} onClose={() => setViewInvoice(null)} title={`Invoice ${viewInvoice.id}`} size="2xl" className="rounded-2xl">
+        <Modal isOpen={true} onClose={() => setViewInvoice(null)} title={`Invoice ${viewInvoice.invoiceNo || viewInvoice.id}`} size="2xl" className="rounded-2xl">
           <div className="flex flex-col lg:flex-row h-full">
             {/* Left side: Invoice Preview */}
             <div className="flex-1 bg-[#525659] p-4 lg:p-8 max-h-[85vh] overflow-y-auto flex justify-center border-r border-theme-subtle">
@@ -973,7 +1056,7 @@ export const Invoices: React.FC = () => {
                 template="government"
                 isProforma={Boolean(viewInvoice.isProforma || viewInvoice.invoiceType === 'proforma' || String(viewInvoice.id || '').startsWith('PI-'))}
                 invoiceType={viewInvoice.invoiceType || (viewInvoice.isProforma ? 'proforma' : 'tax_invoice')}
-                docNo={viewInvoice.id}
+                docNo={viewInvoice.invoiceNo || viewInvoice.id}
                 date={viewInvoice.date}
                 dueDate={viewInvoice.dueDate}
                 deliveryDate={viewInvoice.deliveryDate || viewInvoice.date}
@@ -984,7 +1067,13 @@ export const Invoices: React.FC = () => {
                 quotationNo={viewInvoice.quotationNo || viewInvoice.quotationId || ''}
                 dispatchNo={viewInvoice.dispatchNo || ''}
                 orderNo={viewInvoice.orderNo || ''}
-                poNo={viewInvoice.poNo || ''}
+                poNo={viewInvoice.poNo || (() => {
+                  const linked = allOrders.find((o: any) => 
+                    (viewInvoice.orderNo && o.orderNo === viewInvoice.orderNo) ||
+                    (viewInvoice.orderId && (String(o.id) === String(viewInvoice.orderId) || String(o.orderNo) === String(viewInvoice.orderId)))
+                  );
+                  return linked?.customerPoNo || linked?.poNo || '';
+                })()}
                 customer={{
                   ...getCustomerInfo(viewInvoice),
                   address: getCustomerInfo(viewInvoice).address || viewInvoice.customerAddress || viewInvoice.deliveryAddress || ''
@@ -1160,6 +1249,16 @@ export const Invoices: React.FC = () => {
                     Edit Invoice
                   </Button>
                   <Button 
+                    variant="outline" 
+                    icon={Hash}
+                    className="h-9 text-xs border border-amber-500/30 text-amber-600 hover:bg-amber-500/10 font-bold"
+                    onClick={() => {
+                      handleOpenChangeNoModal(viewInvoice);
+                    }}
+                  >
+                    Change No.
+                  </Button>
+                  <Button 
                     variant="primary" 
                     icon={Mail} 
                     className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
@@ -1217,6 +1316,72 @@ export const Invoices: React.FC = () => {
           totalAmount={emailModalData.totalAmount}
           elementIdToPdf={emailModalData.elementIdToPdf}
         />
+      )}
+
+      {/* Change Invoice Number Modal */}
+      {changeNoModalTarget && (
+        <Modal
+          isOpen={true}
+          onClose={() => setChangeNoModalTarget(null)}
+          title="Change Invoice Number"
+        >
+          <form onSubmit={handleSubmitChangeNumber} className="p-4 space-y-4">
+            <p className="text-xs text-muted">
+              Update the invoice number. Linked sales orders, GL journal entries, and payment receipts will be automatically synchronized.
+            </p>
+
+            <div className="bg-surface2/60 border border-theme-subtle rounded-lg p-3 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted">Current Invoice Number:</span>
+                <span className="font-mono font-bold text-primary px-2 py-0.5 rounded bg-surface border border-theme-subtle">
+                  {changeNoModalTarget.invoiceNo || changeNoModalTarget.id}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-primary">New Invoice Number</label>
+                <button
+                  type="button"
+                  onClick={handleGenerateNextForModal}
+                  className="text-[10px] font-bold text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/20 transition-colors flex items-center gap-1"
+                >
+                  <RefreshCw size={10} /> Auto Sequence #
+                </button>
+              </div>
+              <input
+                type="text"
+                value={newInvoiceNoInput}
+                onChange={e => setNewInvoiceNoInput(e.target.value.replace(/\s+/g, ''))}
+                placeholder="e.g. 26OCT_REX_00001 or INV-1001"
+                className="w-full bg-surface border border-theme-subtle focus:border-blue-500 rounded-lg px-3 py-2 text-sm font-mono font-bold text-blue-500 outline-none"
+                autoFocus
+              />
+              <p className="text-[10px] text-muted">
+                Spaces are stripped automatically. Max 40 characters.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-theme-subtle">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setChangeNoModalTarget(null)}
+                disabled={isRenumbering}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={isRenumbering || !newInvoiceNoInput.trim()}
+              >
+                {isRenumbering ? 'Updating...' : 'Save New Number'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Delete Confirmation Modal */}

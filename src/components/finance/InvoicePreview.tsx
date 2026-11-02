@@ -99,6 +99,7 @@ export interface InvoicePreviewProps {
   dispatchNo?: string;
   orderNo?: string;
   poNo?: string;
+  customerPoNo?: string;
   customer?: any;
   customerVat?: string;
   items?: any[];
@@ -134,6 +135,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   dispatchNo, 
   orderNo, 
   poNo, 
+  customerPoNo,
   customer,
   customerAddress,
   customerPhone,
@@ -182,15 +184,11 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   );
 
   // Parse reference and additional info items into structured boxes
+  const cleanPoNo = (poNo || customerPoNo || '').toString().trim();
   const infoItems: { label: string; value: string }[] = [];
 
-  if (poNo) infoItems.push({ label: 'PO No.', value: String(poNo) });
   if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
   if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
-
-  // Dispatch No.
-  const effectiveDispatch = dispatchNo && String(dispatchNo).trim() ? String(dispatchNo).trim() : 'Direct Delivery';
-  infoItems.push({ label: 'Dispatch No.', value: effectiveDispatch });
 
   // Payment Due Date
   let displayDueDate = '';
@@ -505,16 +503,26 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       {/* ── 2. TOP SECTION TABLE GRID ── */}
       <div style={{ border: tableBorder, borderBottom: 'none' }}>
         
-        {/* ROW 1: Date of Invoice & Tax Invoice No. / Invoice No. */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: tableBorder }}>
+        {/* ROW 1: Date of Invoice & Tax Invoice No. / Invoice No. & Customer PO No. */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: cleanPoNo ? '1fr 1.2fr 1fr' : '1fr 1fr', 
+          borderBottom: tableBorder 
+        }}>
           <div style={{ padding: '6px 10px', borderRight: tableBorder }}>
             <span style={{ fontWeight: '700' }}>Date of Invoice:</span>{' '}
             <span>{invoiceDateFormatted}</span>
           </div>
-          <div style={{ padding: '6px 10px' }}>
+          <div style={{ padding: '6px 10px', borderRight: cleanPoNo ? tableBorder : 'none' }}>
             <span style={{ fontWeight: '700' }}>{invoiceDocLabel}</span>{' '}
             <span style={{ fontWeight: '700' }}>{docNo}</span>
           </div>
+          {cleanPoNo ? (
+            <div style={{ padding: '6px 10px', backgroundColor: '#f8fafc' }}>
+              <span style={{ fontWeight: '700' }}>Customer PO No.:</span>{' '}
+              <span style={{ fontWeight: '800', fontFamily: 'monospace', color: '#000000' }}>{cleanPoNo}</span>
+            </div>
+          ) : null}
         </div>
 
         {/* ROW 2: Supplier Details & Purchaser Details */}
@@ -548,6 +556,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                 <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Purchaser's TIN :</span>
                 <span style={{ flex: 1 }}>{customerVat || customer?.vat || customer?.tin || '-'}</span>
               </div>
+              {cleanPoNo ? (
+                <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'flex-start' }}>
+                  <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Customer PO No. :</span>
+                  <span style={{ fontWeight: '800', fontFamily: 'monospace', color: '#000000', flex: 1 }}>{cleanPoNo}</span>
+                </div>
+              ) : null}
               <div style={{ marginBottom: '3px', display: 'flex', alignItems: 'flex-start' }}>
                 <span style={{ fontWeight: '700', flexShrink: 0, marginRight: '4px' }}>Purchaser's Name :</span>
                 <span style={{ fontWeight: '700', flex: 1 }}>
@@ -591,40 +605,40 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         </div>
 
         {/* ROW 4: Additional Information if any */}
-        <div style={{ padding: '6px 10px', borderBottom: tableBorder }}>
-          <div style={{ fontWeight: '700', marginBottom: infoItems.length > 0 ? '6px' : '0' }}>
+        <div style={{ padding: '4px 10px', borderBottom: tableBorder }}>
+          <div style={{ fontWeight: '700', fontSize: '9px', marginBottom: infoItems.length > 0 ? '3px' : '0' }}>
             Additional Information if any:*
           </div>
           {infoItems.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {infoItems.map((item, idx) => (
                 <div 
                   key={idx} 
                   style={{ 
-                    flex: '1 1 calc(25% - 6px)',
-                    minWidth: '120px',
+                    flex: '1 1 calc(20% - 4px)',
+                    minWidth: '100px',
                     border: '1px solid #000000', 
-                    padding: '4px 8px', 
+                    padding: '2px 6px', 
                     background: '#ffffff',
                     borderRadius: '2px',
                     boxSizing: 'border-box'
                   }}
                 >
                   <div style={{ 
-                    fontSize: '8.5px', 
+                    fontSize: '8px', 
                     fontWeight: '700', 
                     textTransform: 'uppercase', 
                     color: '#444444',
-                    letterSpacing: '0.4px',
+                    letterSpacing: '0.3px',
                     lineHeight: 1.1 
                   }}>
                     {item.label}
                   </div>
                   <div style={{ 
                     fontWeight: '700', 
-                    fontSize: '11px', 
+                    fontSize: '10px', 
                     color: '#000000',
-                    marginTop: '2px',
+                    marginTop: '1px',
                     wordBreak: 'break-word',
                     lineHeight: 1.2
                   }}>

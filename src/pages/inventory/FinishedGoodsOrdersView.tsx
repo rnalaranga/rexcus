@@ -334,7 +334,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     taxRate: 0,
     taxProfileId: '',
     totalPrice: 0,
-    status: 'Confirmed',
+    status: 'Pending Approval',
     notes: '',
     items: [] as any[]
   }
@@ -1053,8 +1053,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       ? Number(itemsList[0].unitPrice)
       : (totalQty > 0 ? Number((finalSubtotal / totalQty).toFixed(2)) : (Number(formData.unitPrice) || 0));
 
+    const orderStatus = editingOrder
+      ? formData.status
+      : (formData.orderSource === 'custom_job' || (!formData.quoteId && !formData.quotationNo) ? 'Pending Approval' : (formData.status || 'Pending Approval'));
+
     const payload = {
       ...formData,
+      status: orderStatus,
       productName: resolvedProductName,
       orderNo: cleanOrderNo || formData.orderNo,
       orderSource: formData.orderSource,
@@ -1086,7 +1091,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }
       refetch()
       setShowOrderModal(false)
-      toast(editingOrder ? 'Sales order updated successfully!' : 'Sales order created successfully!', 'success')
+      toast(editingOrder ? 'Sales order updated successfully!' : (orderStatus === 'Pending Approval' ? 'Sales order submitted! Status set to Pending Approval.' : 'Sales order created successfully!'), 'success')
     } catch (err: any) {
       console.error(err)
       toast(err?.message || 'Failed to save sales order', 'error')
@@ -1198,8 +1203,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const openCreateWorkOrderPrompt = (order: any, rawItems: any[]) => {
     try {
-      if (order.status === 'Pending Advance Approval') {
-        toast(`Sales Order #${order.orderNo} is currently "Pending Advance Approval". Production Work Order cannot be issued until Finance / Management approves the advance waiver or payment is recorded.`, 'warning');
+      if (order.status === 'Pending Advance Approval' || order.status === 'Pending Approval') {
+        toast(`Sales Order #${order.orderNo} is currently "Pending Approval". Production Work Order cannot be issued until Finance / Management approves the order.`, 'warning');
         return;
       }
 
@@ -1309,8 +1314,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
   const handleCreateWorkOrder = async (order: any, orderItems: any[]) => {
     try {
-      if (order.status === 'Pending Advance Approval') {
-        toast(`Sales Order #${order.orderNo} is currently "Pending Advance Approval". Production Work Order cannot be issued until Finance / Management approves the advance waiver or payment is recorded.`, 'warning');
+      if (order.status === 'Pending Advance Approval' || order.status === 'Pending Approval') {
+        toast(`Sales Order #${order.orderNo} is currently "Pending Approval". Production Work Order cannot be issued until Finance / Management approves the order.`, 'warning');
         return;
       }
 
@@ -1984,8 +1989,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             className="px-3 py-1.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary rounded-none focus:outline-none focus:border-rex-500 cursor-pointer shadow-2xs"
           >
             <option value="all">All Orders ({orders.length})</option>
-            {orders.some(o => o.status === 'Pending Advance Approval') && (
-              <option value="Pending Advance Approval">Pending Advance Approval ({orders.filter(o => o.status === 'Pending Advance Approval').length})</option>
+            {orders.some(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval') && (
+              <option value="Pending Approval">Pending Approval ({orders.filter(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval').length})</option>
             )}
             <option value="Pending">Pending ({orders.filter(o => o.status === 'Pending').length})</option>
             <option value="Confirmed">Confirmed ({orders.filter(o => o.status === 'Confirmed').length})</option>
@@ -2424,7 +2429,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         variant={
                           order.status === 'Dispatched' ? 'success' :
                           order.status === 'In Production' ? 'warning' :
-                          order.status === 'Pending Advance Approval' ? 'warning' :
+                          (order.status === 'Pending Approval' || order.status === 'Pending Advance Approval') ? 'warning' :
                           order.status === 'Ready to Dispatch' ? 'info' : 'default'
                         }
                         size="sm"

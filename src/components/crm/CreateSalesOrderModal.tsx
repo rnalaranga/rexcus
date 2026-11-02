@@ -484,7 +484,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
     setSubmitting(true);
     try {
-      const orderStatus = (isAdvanceMissing && !adminOverrideWaiver) ? 'Pending Advance Approval' : 'Confirmed';
+      const orderStatus = (isAdvanceMissing && !adminOverrideWaiver) ? 'Pending Approval' : 'Confirmed';
 
       let finalCustomerPoNo = formData.customerPoNo.trim();
       if (poMode === 'pending' && (!finalCustomerPoNo || finalCustomerPoNo === 'PO PENDING')) {
@@ -556,7 +556,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         } catch (e) {}
       }
 
-      if (orderStatus === 'Pending Advance Approval') {
+      if (orderStatus === 'Pending Approval') {
         toast(`Sales Order ${formData.orderNo} submitted! Awaiting Admin Approval in Central Approval Hub.`, 'info');
       } else {
         toast(`Sales Order ${formData.orderNo} created successfully!`, 'success');

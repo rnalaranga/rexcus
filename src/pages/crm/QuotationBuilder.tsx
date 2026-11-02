@@ -939,17 +939,25 @@ export const QuotationBuilder: React.FC = () => {
   const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
   
   if (selectedProfile) {
-    const t1 = Number(selectedProfile.tax1_rate) / 100;
-    const t2 = Number(selectedProfile.tax2_rate) / 100;
+    const isVatOnly = selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only');
+    
+    let t1 = Number(selectedProfile.tax1_rate || 0) / 100;
+    let t2 = Number(selectedProfile.tax2_rate || 0) / 100;
+    
+    // When "VAT Only" is selected or tax1 is VAT, SSCL (t1) is 0 and VAT (t2) is 18%
+    if (isVatOnly || (selectedProfile.tax1_name && /vat/i.test(selectedProfile.tax1_name) && (!selectedProfile.tax2_name || Number(selectedProfile.tax2_rate || 0) === 0))) {
+      t2 = t2 > 0 ? t2 : (t1 > 0 ? t1 : 0.18);
+      t1 = 0;
+    }
     
     // Job Taxes
     jobSscl = jobTotalCost * t1;
-    jobVat = selectedProfile.tax2_compound ? (jobTotalCost + jobSscl) * t2 : jobTotalCost * t2;
+    jobVat = (selectedProfile.tax2_compound && t1 > 0) ? (jobTotalCost + jobSscl) * t2 : jobTotalCost * t2;
     jobTaxAmount = jobSscl + jobVat;
     
     // Cust Taxes
     custSscl = custTotal * t1;
-    custVat = selectedProfile.tax2_compound ? (custTotal + custSscl) * t2 : custTotal * t2;
+    custVat = (selectedProfile.tax2_compound && t1 > 0) ? (custTotal + custSscl) * t2 : custTotal * t2;
     custTaxAmount = custSscl + custVat;
   }
   
@@ -1114,9 +1122,14 @@ export const QuotationBuilder: React.FC = () => {
   // Calculate tax multiplier based on selected tax profile and taxEnabled status
   const getTaxMultiplier = useCallback(() => {
     if (!taxEnabled || !selectedProfile) return 1.0;
+    const isVatOnly = selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || (selectedProfile.tax1_name && /vat/i.test(selectedProfile.tax1_name) && (!selectedProfile.tax2_name || Number(selectedProfile.tax2_rate || 0) === 0));
+    if (isVatOnly) {
+      const vatRate = Number(selectedProfile.tax2_rate || selectedProfile.tax1_rate || 18) / 100;
+      return 1 + (vatRate > 0 ? vatRate : 0.18);
+    }
     const t1 = Number(selectedProfile.tax1_rate || 0) / 100;
     const t2 = Number(selectedProfile.tax2_rate || 0) / 100;
-    if (selectedProfile.tax2_compound) {
+    if (selectedProfile.tax2_compound && t1 > 0) {
       return (1 + t1) * (1 + t2);
     }
     return 1 + t1 + t2;
@@ -1203,11 +1216,7 @@ export const QuotationBuilder: React.FC = () => {
     const pct = Number(marginPctInput);
     const amt = Number(marginAmtInput);
     const fVal = Number(finalValInput);
-
-    if (validBomsForQuote.length === 0) {
-      showToast('error', 'No BOMs have cost > 0 to generate a quote.');
-      return;
-    }
+    const hasValidBoms = validBomsForQuote.length > 0;
 
     let targetSellingPrice = 0;
     let profitVal = 0;
@@ -1221,96 +1230,191 @@ export const QuotationBuilder: React.FC = () => {
       targetSellingPrice = mult > 0 ? Number((fVal / mult).toFixed(2)) : fVal;
       profitVal = targetSellingPrice - totalValidBomCost;
     } else if (lastEditedMargin === 'amount') {
-      if (isNaN(amt) || amt < 0) {
-        showToast('error', 'Please enter a valid fixed profit amount in Rs.!');
+      if (isNaN(amt) || amt <= 0) {
+        showToast('error', 'Please enter a valid price / profit amount in Rs.!');
         return;
       }
       profitVal = amt;
       targetSellingPrice = totalValidBomCost + profitVal;
     } else {
-      if (isNaN(pct) || pct < 0) {
-        showToast('error', 'Please enter a valid margin percentage!');
-        return;
+      if (hasValidBoms) {
+        if (isNaN(pct) || pct < 0) {
+          showToast('error', 'Please enter a valid margin percentage!');
+          return;
+        }
+        profitVal = totalValidBomCost * (pct / 100);
+        targetSellingPrice = totalValidBomCost + profitVal;
+      } else {
+        // Without BOM, cost is 0 so margin % cannot compute price from 0
+        if (fVal > 0) {
+          const mult = getTaxMultiplier();
+          targetSellingPrice = mult > 0 ? Number((fVal / mult).toFixed(2)) : fVal;
+          profitVal = targetSellingPrice;
+        } else if (amt > 0) {
+          profitVal = amt;
+          targetSellingPrice = amt;
+        } else {
+          showToast('error', 'No BOM costing entered. Please enter a Final Required Value (Rs.) or Fixed Price!');
+          setLastEditedMargin('finalValue');
+          return;
+        }
       }
-      profitVal = totalValidBomCost * (pct / 100);
-      targetSellingPrice = totalValidBomCost + profitVal;
     }
 
     setIsGeneratingQuote(true);
     try {
       let allocatedTotal = 0;
-      const count = validBomsForQuote.length;
 
-      const newCustItems = await Promise.all(validBomsForQuote.map(async (b, idx) => {
-        const autoMatTotal = b.autoMats.reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
-        const manualMatTotal = b.manualMats.reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
-        let machCost = 0;
-        if (b.procState) {
-          machCost = Object.values(b.procState).reduce((s: number, p: any) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
-        }
-        
-        const cost = autoMatTotal + manualMatTotal + machCost;
-        let itemUnitPrice = 0;
-
-        if (idx === count - 1) {
-          // Last item absorbs any rounding difference to ensure exact base sum
-          itemUnitPrice = Math.max(0, Number((targetSellingPrice - allocatedTotal).toFixed(2)));
-        } else {
-          itemUnitPrice = totalValidBomCost > 0
-            ? Number(((cost / totalValidBomCost) * targetSellingPrice).toFixed(2))
-            : Number((targetSellingPrice / count).toFixed(2));
-          allocatedTotal += itemUnitPrice;
-        }
-
-        // Clean customer-facing baseline description (strictly avoiding internal machining/materials)
-        let finalDesc = b.title.startsWith('BOM Part ') 
-            ? 'Custom Precision Component' 
-            : `Fabrication and Supply of ${b.title}`;
-            
-        if (b.description && !b.description.toLowerCase().includes('turning') && !b.description.toLowerCase().includes('milling') && !b.description.toLowerCase().includes('plate') && !b.description.toLowerCase().includes('rod')) {
-            finalDesc += `\n${b.description}`;
-        }
-
-        if (useAiPolish) {
-          try {
-            const dimensions = b.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
-
-            // Customer quotation description: strictly no internal operations or raw materials passed
-            const aiDesc = await generateQuotationDescription({
-              partTitle: b.title,
-              rawDescription: b.description || finalDesc,
-              dimensions,
-              customerName: customerName || lead?.company || lead?.name || '',
-              quantity: jobQty || 1
-            });
-            if (aiDesc) {
-              finalDesc = aiDesc;
-            }
-          } catch (e) {
-            console.warn('AI Polish fallback to standard desc:', e);
+      if (hasValidBoms) {
+        const count = validBomsForQuote.length;
+        const newCustItems = await Promise.all(validBomsForQuote.map(async (b, idx) => {
+          const autoMatTotal = b.autoMats.reduce((s: number, m: any) => s + Number(m.platePrice || 0) + Number(m.shaftPrice || 0), 0);
+          const manualMatTotal = b.manualMats.reduce((s: number, m: any) => s + Number(m.qty || 0) * Number(m.unitPrice || 0), 0);
+          let machCost = 0;
+          if (b.procState) {
+            machCost = Object.values(b.procState).reduce((s: number, p: any) => s + (Number(p.quoHr || 0) * Number(p.hrRate || p.rate || 0)) + (Number(p.setTime || 0) * Number(p.setTimeRate || 0)), 0);
           }
+          
+          const cost = autoMatTotal + manualMatTotal + machCost;
+          let itemUnitPrice = 0;
+
+          if (idx === count - 1) {
+            // Last item absorbs any rounding difference to ensure exact base sum
+            itemUnitPrice = Math.max(0, Number((targetSellingPrice - allocatedTotal).toFixed(2)));
+          } else {
+            itemUnitPrice = totalValidBomCost > 0
+              ? Number(((cost / totalValidBomCost) * targetSellingPrice).toFixed(2))
+              : Number((targetSellingPrice / count).toFixed(2));
+            allocatedTotal += itemUnitPrice;
+          }
+
+          // Clean customer-facing baseline description (strictly avoiding internal machining/materials)
+          let finalDesc = b.title.startsWith('BOM Part ') 
+              ? 'Custom Precision Component' 
+              : `Fabrication and Supply of ${b.title}`;
+              
+          if (b.description && !b.description.toLowerCase().includes('turning') && !b.description.toLowerCase().includes('milling') && !b.description.toLowerCase().includes('plate') && !b.description.toLowerCase().includes('rod')) {
+              finalDesc += `\n${b.description}`;
+          }
+
+          if (useAiPolish) {
+            try {
+              const dimensions = b.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
+
+              const aiDesc = await generateQuotationDescription({
+                partTitle: b.title,
+                rawDescription: b.description || finalDesc,
+                dimensions,
+                customerName: customerName || lead?.company || lead?.name || '',
+                quantity: jobQty || 1
+              });
+              if (aiDesc) {
+                finalDesc = aiDesc;
+              }
+            } catch (e) {
+              console.warn('AI Polish fallback to standard desc:', e);
+            }
+          }
+
+          return {
+            id: Date.now() + idx,
+            desc: finalDesc,
+            qty: 1,
+            unitPrice: itemUnitPrice,
+            note: ''
+          };
+        }));
+
+        if (lastEditedMargin === 'finalValue') {
+          setCustDiscount(0);
+          setCustDiscountAmount(0);
         }
 
-        return {
-          id: Date.now() + idx,
-          desc: finalDesc,
-          qty: 1,
-          unitPrice: itemUnitPrice,
-          note: ''
-        };
-      }));
+        setCustItems(newCustItems);
+        setShowMarginModal(false);
+        const effectivePct = totalValidBomCost > 0 ? ((profitVal / totalValidBomCost) * 100).toFixed(1) : '0';
+        const actualGrandTotal = targetSellingPrice * getTaxMultiplier();
+        showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling Rs. ${Math.round(actualGrandTotal).toLocaleString()} (Pre-tax: Rs. ${targetSellingPrice.toLocaleString()})${useAiPolish ? ' with AI descriptions' : ''}!`);
+      } else {
+        // --- AUTO-GENERATE WITHOUT BOM (Direct from Job Scope, BOM titles, or Subject) ---
+        let itemsSource: Array<{ title: string; description: string; rawDimensions: string }> = [];
 
-      // When generating with a target final value, clear discount so final value is exact
-      if (lastEditedMargin === 'finalValue') {
-        setCustDiscount(0);
-        setCustDiscountAmount(0);
+        if (boms.length > 0 && boms.some(b => b.title && b.title.trim().length > 0)) {
+          itemsSource = boms.filter(b => b.title && b.title.trim().length > 0).map(b => ({
+            title: b.title.trim(),
+            description: b.description || '',
+            rawDimensions: b.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ') || ''
+          }));
+        } else if (jobItems.length > 0 && jobItems.some(j => j.text && j.text.trim().length > 0)) {
+          itemsSource = jobItems.filter(j => j.text && j.text.trim().length > 0).map(j => ({
+            title: j.text.trim().split('\n')[0].replace(/^[•\-\*\s]+/, '').slice(0, 100),
+            description: j.text.trim(),
+            rawDimensions: ''
+          }));
+        } else {
+          itemsSource = [{
+            title: subject && subject.trim().length > 0 ? subject.trim() : 'Custom Precision Machining Job',
+            description: subject || 'Precision component fabrication & machining per client specification',
+            rawDimensions: ''
+          }];
+        }
+
+        const count = itemsSource.length;
+        const newCustItems = await Promise.all(itemsSource.map(async (srcItem, idx) => {
+          let itemUnitPrice = 0;
+          if (idx === count - 1) {
+            itemUnitPrice = Math.max(0, Number((targetSellingPrice - allocatedTotal).toFixed(2)));
+          } else {
+            itemUnitPrice = Number((targetSellingPrice / count).toFixed(2));
+            allocatedTotal += itemUnitPrice;
+          }
+
+          let finalDesc = srcItem.title.startsWith('BOM Part ') 
+            ? 'Custom Precision Component' 
+            : `Fabrication and Supply of ${srcItem.title}`;
+
+          if (srcItem.description && !srcItem.description.toLowerCase().includes('turning') && !srcItem.description.toLowerCase().includes('milling') && !srcItem.description.toLowerCase().includes('plate') && !srcItem.description.toLowerCase().includes('rod')) {
+            if (!finalDesc.includes(srcItem.description)) {
+              finalDesc += `\n${srcItem.description}`;
+            }
+          }
+
+          if (useAiPolish) {
+            try {
+              const aiDesc = await generateQuotationDescription({
+                partTitle: srcItem.title,
+                rawDescription: srcItem.description || finalDesc,
+                dimensions: srcItem.rawDimensions,
+                customerName: customerName || lead?.company || lead?.name || '',
+                quantity: jobQty || 1
+              });
+              if (aiDesc) {
+                finalDesc = aiDesc;
+              }
+            } catch (e) {
+              console.warn('AI Polish fallback to standard desc:', e);
+            }
+          }
+
+          return {
+            id: Date.now() + idx,
+            desc: finalDesc,
+            qty: 1,
+            unitPrice: itemUnitPrice,
+            note: ''
+          };
+        }));
+
+        if (lastEditedMargin === 'finalValue') {
+          setCustDiscount(0);
+          setCustDiscountAmount(0);
+        }
+
+        setCustItems(newCustItems);
+        setShowMarginModal(false);
+        const actualGrandTotal = targetSellingPrice * getTaxMultiplier();
+        showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling Rs. ${Math.round(actualGrandTotal).toLocaleString()} (Pre-tax: Rs. ${targetSellingPrice.toLocaleString()})${useAiPolish ? ' with AI descriptions' : ''}!`);
       }
-
-      setCustItems(newCustItems);
-      setShowMarginModal(false);
-      const effectivePct = totalValidBomCost > 0 ? ((profitVal / totalValidBomCost) * 100).toFixed(1) : '0';
-      const actualGrandTotal = targetSellingPrice * getTaxMultiplier();
-      showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling Rs. ${Math.round(actualGrandTotal).toLocaleString()} (Pre-tax: Rs. ${targetSellingPrice.toLocaleString()}, Profit: Rs. ${Math.round(profitVal).toLocaleString()} / ${effectivePct}%)${useAiPolish ? ' and AI descriptions' : ''}!`);
     } catch (err: any) {
       showToast('error', err.message || 'Failed generating quote');
     } finally {
@@ -1391,14 +1495,15 @@ export const QuotationBuilder: React.FC = () => {
   };
 
   const handleOpenMarginModal = () => {
-    if (jobItems.length === 0 || (!jobItems[0].text && jobItems.length === 1)) {
-      showToast('error', 'Please fill out Job Scope / Descriptions first!');
+    const hasJobItems = jobItems.some(j => j.text && j.text.trim().length > 0);
+    const hasBoms = boms.some(b => b.title && b.title.trim().length > 0);
+    const hasSubject = Boolean(subject && subject.trim().length > 0);
+
+    if (!hasJobItems && !hasBoms && !hasSubject) {
+      showToast('error', 'Please enter a Subject, BOM, or Job Scope / Descriptions first!');
       return;
     }
-    if ((totalMaterialCost + totalMachiningCost) === 0) {
-       showToast('error', 'Please complete the Job Costing (Material/Machining) first to generate a price!');
-       return;
-    }
+
     const initialPct = Number(marginPctInput) || 35;
     if (totalValidBomCost > 0) {
       const profit = Math.round(totalValidBomCost * (initialPct / 100));
@@ -1406,6 +1511,17 @@ export const QuotationBuilder: React.FC = () => {
       const baseSelling = totalValidBomCost + profit;
       const mult = getTaxMultiplier();
       setFinalValInput(Math.round(baseSelling * mult).toString());
+    } else {
+      // Without BOM costing: default to Final Value mode or calculate from existing items if present
+      if (!finalValInput && !marginAmtInput) {
+        setLastEditedMargin('finalValue');
+        const existingSum = custItems.reduce((acc, it) => acc + (Number(it.qty || 1) * Number(it.unitPrice || 0)), 0);
+        if (existingSum > 0) {
+          const mult = getTaxMultiplier();
+          setFinalValInput(Math.round(existingSum * mult).toString());
+          setMarginAmtInput(Math.round(existingSum).toString());
+        }
+      }
     }
     setShowMarginModal(true);
   };
@@ -2968,7 +3084,7 @@ export const QuotationBuilder: React.FC = () => {
                         {formatCurrency(
                           taxEnabled && selectedProfile?.tax1_show_separately === 0 && selectedProfile?.tax2_show_separately === 0
                             ? custWithSSCL
-                            : taxEnabled && selectedProfile?.tax1_show_separately === 0
+                            : taxEnabled && selectedProfile?.tax1_show_separately === 0 && Number(selectedProfile.tax1_rate || 0) > 0 && !(selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || /vat/i.test(selectedProfile.tax1_name || ''))
                               ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100))
                               : custSubtotal
                         )}
@@ -2996,7 +3112,11 @@ export const QuotationBuilder: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">-{formatCurrency(taxEnabled && selectedProfile?.tax1_show_separately === 0 ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100) : custDiscountAmt)}</span>
+                      <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">-{formatCurrency(
+                        taxEnabled && selectedProfile?.tax1_show_separately === 0 && Number(selectedProfile.tax1_rate || 0) > 0 && !(selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || /vat/i.test(selectedProfile.tax1_name || ''))
+                          ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100)
+                          : custDiscountAmt
+                      )}</span>
                     </div>
 
                   {custDiscountType === 'percent' ? (
@@ -3133,7 +3253,7 @@ export const QuotationBuilder: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
-                          className={`col-span-2 px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                             selectedProfileId === 'tp_opt3_both_separate'
                               ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                               : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
@@ -3141,6 +3261,18 @@ export const QuotationBuilder: React.FC = () => {
                           title="Option 3: Both SSCL & VAT Separate (2 Lines)"
                         >
                           Opt 3: Both 2 Lines
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfileId('tp_vat18')}
+                          className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            selectedProfileId === 'tp_vat18' || selectedProfile?.name?.toLowerCase().includes('vat only')
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                          title="VAT Only (18% Separate) - No SSCL"
+                        >
+                          VAT Only (18% Sep)
                         </button>
                       </div>
                       <select
@@ -3382,6 +3514,11 @@ export const QuotationBuilder: React.FC = () => {
         <div className="p-5 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
           <p className="text-xs text-secondary leading-relaxed bg-purple-500/10 text-purple-600 dark:text-purple-400 p-3 rounded-xl border border-purple-500/20 font-medium">
             Calculate target selling prices using either <strong>Profit Margin (%) / Fixed Profit</strong> OR enter a <strong>Final Required Quotation Value</strong> (inclusive budget). When a final value is entered, applicable taxes (VAT 18% / SSCL) will be automatically separated out from inside the total.
+            {totalValidBomCost === 0 && (
+              <span className="block mt-1.5 pt-1.5 border-t border-purple-500/20 text-indigo-700 dark:text-indigo-300 font-semibold">
+                ✨ BOM costing නොමැතිව direct quotation items auto-generate කිරීම සඳහා පහතින් ඔබේ Final Required Value එක හෝ Price එක ඇතුළත් කර "Generate Quote" ඔබන්න.
+              </span>
+            )}
           </p>
 
           {/* Pricing Controls: Margin % / Fixed Rs. Profit / Final Required Value */}
@@ -3601,7 +3738,10 @@ export const QuotationBuilder: React.FC = () => {
                 <div className="flex justify-between items-center text-muted">
                   <span>Base BOM Manufacturing Cost:</span>
                   <span className="font-mono font-bold text-primary">
-                    Rs. {previewCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {previewCost > 0 
+                      ? `Rs. ${previewCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : 'Rs. 0.00 (No BOM Costing)'
+                    }
                   </span>
                 </div>
 
@@ -3609,7 +3749,9 @@ export const QuotationBuilder: React.FC = () => {
                   <span>Calculated Profit Margin:</span>
                   <span className={`font-mono font-bold ${currentProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
                     {currentProfit >= 0 ? '+' : ''}Rs. {Math.round(currentProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    <span className="text-[11px] ml-1.5 font-semibold text-muted font-sans">({effectivePct.toFixed(1)}%)</span>
+                    <span className="text-[11px] ml-1.5 font-semibold text-muted font-sans">
+                      {previewCost > 0 ? `(${effectivePct.toFixed(1)}%)` : '(Direct Price)'}
+                    </span>
                   </span>
                 </div>
 

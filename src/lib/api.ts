@@ -514,12 +514,25 @@ export const createInvoice = async (data: any) => {
 };
 
 export const updateInvoice = async (id: string, data: any) => {
-  const res = await fetch(`${API_URL}/invoices/${id}`, {
+  const encId = encodeURIComponent(id);
+  const res = await fetch(`${API_URL}/invoices/${encId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
   return res.json();
+};
+
+export const changeInvoiceNumber = async (oldId: string, newInvoiceNo: string) => {
+  const encId = encodeURIComponent(oldId);
+  const res = await fetch(`${API_URL}/invoices/${encId}/change-number`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newInvoiceNo })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to change invoice number');
+  return data;
 };
 
 export const deleteInvoice = async (id: string) => {

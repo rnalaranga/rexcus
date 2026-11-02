@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
-  CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt, FileDown
+  CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt, FileDown,
+  RefreshCw
 } from 'lucide-react';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
@@ -50,6 +51,8 @@ export const InvoiceBuilder: React.FC = () => {
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
   const [discountAmount, setDiscountAmount] = useState<number | string>(0);
   const [isEditing, setIsEditing] = useState(false);
+  const [originalInvoiceId, setOriginalInvoiceId] = useState<string | null>(null);
+  const [isCustomInvoiceNo, setIsCustomInvoiceNo] = useState(false);
 
   useEffect(() => {
     if (taxProfiles && taxProfiles.length > 0) {
@@ -104,11 +107,13 @@ export const InvoiceBuilder: React.FC = () => {
         if (paramEditInvoiceId) {
           setIsEditing(true);
           try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/${paramEditInvoiceId}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/${encodeURIComponent(paramEditInvoiceId)}`);
             if (res.ok) {
               const inv = await res.json();
               if (inv && !inv.error) {
+                setOriginalInvoiceId(inv.id || paramEditInvoiceId);
                 setDocNo(inv.invoiceNo || inv.id);
+                setIsCustomInvoiceNo(true);
                 if (inv.customerId) setCustomerId(inv.customerId);
                 if (inv.attention) setAttention(inv.attention);
                 if (inv.date) setDate(inv.date.slice(0, 10));
@@ -208,6 +213,8 @@ export const InvoiceBuilder: React.FC = () => {
             if (ord.orderNo) setOrderNo(ord.orderNo);
             if (ord.quotationNo) setQuotationNo(ord.quotationNo);
             if (ord.attention) setAttention(ord.attention);
+            const rawPo = ord.customerPoNo || ord.poNo || ord.customerPo || ord.clientPo || '';
+            if (rawPo) setPoNo(rawPo);
             const dpNo = ord.gatePassNo || ord.gatePassId || ord.dispatchNo || '';
             if (dpNo) {
               setDispatchNo(dpNo);
@@ -342,6 +349,8 @@ export const InvoiceBuilder: React.FC = () => {
 
             const qNo = q.quotationNo || q.docNo || parsed.quotationNo || q.quoNo || '';
             if (qNo) setQuotationNo(qNo);
+            const rawQuotePo = q.customerPoNo || parsed.customerPoNo || q.poNo || parsed.poNo || '';
+            if (rawQuotePo) setPoNo(rawQuotePo);
             if (parsed.attention || q.attention) setAttention(parsed.attention || q.attention);
             if (parsed.custTerms || parsed.paymentTerms || parsed.terms) setNotes(parsed.custTerms || parsed.paymentTerms || parsed.terms);
             if (parsed.selectedProfileId || parsed.taxProfileId) setTaxProfileId(parsed.selectedProfileId || parsed.taxProfileId);
@@ -687,11 +696,12 @@ export const InvoiceBuilder: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  // Fetch next invoice number whenever date changes to match IRD YYMMM format
+  // Fetch next invoice number whenever date changes to match IRD YYMMM format (only for new invoices if user hasn't typed a custom number)
   useEffect(() => {
+    if (isEditing || isCustomInvoiceNo) return;
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${date}`)
       .then(r => r.json())
-      .then(d => { if (d.invoiceNo) setDocNo(d.invoiceNo); })
+      .then(d => { if (d.invoiceNo && !isCustomInvoiceNo && !isEditing) setDocNo(d.invoiceNo); })
       .catch(() => {
         const dObj = new Date(date);
         const validD = isNaN(dObj.getTime()) ? new Date() : dObj;
@@ -700,7 +710,23 @@ export const InvoiceBuilder: React.FC = () => {
         const mmm = months[validD.getMonth()];
         setDocNo(`${yy}${mmm}_REX_${Date.now().toString().slice(-5)}`);
       });
-  }, [date]);
+  }, [date, isEditing, isCustomInvoiceNo]);
+
+  const handleGenerateNextNumber = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${date}`);
+      if (res.ok) {
+        const d = await res.json();
+        if (d.invoiceNo) {
+          setDocNo(d.invoiceNo);
+          setIsCustomInvoiceNo(false);
+          toast(`Next sequence invoice number generated: ${d.invoiceNo}`, 'info');
+        }
+      }
+    } catch (e) {
+      toast('Failed to fetch next sequence number', 'error');
+    }
+  };
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -922,11 +948,12 @@ export const InvoiceBuilder: React.FC = () => {
 
       let res: any;
       if (isEditing) {
-        res = await updateInvoice(cleanDocNo, invoicePayload);
+        const targetId = originalInvoiceId || paramEditInvoiceId || cleanDocNo;
+        res = await updateInvoice(targetId, invoicePayload);
       } else {
         res = await createInvoice(invoicePayload);
       }
-      if ((res as any).error) throw new Error((res as any).error);
+      if ((res as any)?.error) throw new Error((res as any).error);
 
       // If created from a sales order, link invoice details back to the order
       if (paramOrderId) {
@@ -1202,22 +1229,39 @@ export const InvoiceBuilder: React.FC = () => {
                 <Calendar size={16} className="text-blue-500" /> Details & References
               </h2>
               <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-                <div className="bg-surface2/50 border border-theme-subtle rounded-lg p-2.5 space-y-1">
+                <div className="bg-surface2/50 border border-theme-subtle rounded-lg p-2.5 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="block text-[10px] font-bold text-muted uppercase">{isTaxShownSeparately ? 'Tax Invoice No.' : 'Invoice No.'}</label>
-                    <span className="text-[9px] font-mono font-semibold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                      YYMMM_QQQQ_XXXXX
-                    </span>
+                    <label className="block text-[10px] font-bold text-muted uppercase">
+                      {isTaxShownSeparately ? 'Tax Invoice No.' : 'Invoice No.'}
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {isCustomInvoiceNo && (
+                        <span className="text-[9px] font-mono font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                          Custom
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleGenerateNextNumber}
+                        className="text-[9px] font-bold text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/20 transition-colors flex items-center gap-1"
+                        title="Generate next sequential number for current date"
+                      >
+                        <RefreshCw size={10} /> Auto Seq #
+                      </button>
+                    </div>
                   </div>
                   <input
                     type="text"
                     value={docNo}
-                    onChange={e => setDocNo(e.target.value.replace(/\s+/g, ''))}
-                    placeholder="26OCT_REX_00001"
+                    onChange={e => {
+                      setDocNo(e.target.value.replace(/\s+/g, ''));
+                      setIsCustomInvoiceNo(true);
+                    }}
+                    placeholder="26OCT_REX_00001 or INV-1001"
                     className={`${docInputClass} font-mono font-bold text-blue-500 tracking-wide`}
                   />
                   <p className="text-[9px] text-muted leading-tight">
-                    Complies with IRD Sri Lanka standards (No spaces, max 40 chars).
+                    Custom or auto number. Complies with IRD Sri Lanka standards (No spaces, max 40 chars).
                   </p>
                 </div>
 
@@ -1598,13 +1642,24 @@ export const InvoiceBuilder: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setTaxProfileId('tp_opt3_both_separate')}
-                          className={`col-span-2 p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                             taxProfileId === 'tp_opt3_both_separate'
                               ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                               : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
                           }`}
                         >
-                          Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines (SSCL & VAT Separate)</span>
+                          Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines (SSCL & VAT)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_vat18')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            taxProfileId === 'tp_vat18'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          VAT Only<br/><span className="text-[9px] font-normal opacity-80">18% Separate (No SSCL)</span>
                         </button>
                       </div>
                       <select value={taxProfileId} onChange={e => setTaxProfileId(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs outline-none focus:border-blue-500/50">

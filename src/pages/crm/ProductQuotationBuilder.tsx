@@ -1099,10 +1099,15 @@ export const ProductQuotationBuilder: React.FC = () => {
   const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
 
   if (selectedProfile && taxEnabled) {
-    const t1 = Number(selectedProfile.tax1_rate) / 100;
-    const t2 = Number(selectedProfile.tax2_rate) / 100;
-    const isSsclSep = selectedProfile.tax1_show_separately === 1;
-    const isVatSep = selectedProfile.tax2_show_separately === 1;
+    const isVatOnly = selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || (selectedProfile.tax1_name && /vat/i.test(selectedProfile.tax1_name) && (!selectedProfile.tax2_name || Number(selectedProfile.tax2_rate || 0) === 0));
+
+    let t1 = isVatOnly ? 0 : Number(selectedProfile.tax1_rate) / 100;
+    let t2 = Number(selectedProfile.tax2_rate) / 100;
+    if (isVatOnly && t2 === 0) {
+      t2 = Number(selectedProfile.tax1_rate || 18) / 100;
+    }
+    const isSsclSep = !isVatOnly && selectedProfile.tax1_show_separately === 1;
+    const isVatSep = isVatOnly || selectedProfile.tax2_show_separately === 1 || (selectedProfile.tax1_show_separately === 1 && /vat/i.test(selectedProfile.tax1_name || ''));
 
     if (isSsclSep && isVatSep) {
       unitPriceDivisor = selectedProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
@@ -1127,10 +1132,14 @@ export const ProductQuotationBuilder: React.FC = () => {
   let custSscl = 0;
   let custVat = 0;
   if (selectedProfile && taxEnabled) {
-    const t1 = Number(selectedProfile.tax1_rate) / 100;
-    const t2 = Number(selectedProfile.tax2_rate) / 100;
-    const isSsclSep = selectedProfile.tax1_show_separately === 1;
-    const isVatSep = selectedProfile.tax2_show_separately === 1;
+    const isVatOnly = selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || (selectedProfile.tax1_name && /vat/i.test(selectedProfile.tax1_name) && (!selectedProfile.tax2_name || Number(selectedProfile.tax2_rate || 0) === 0));
+    let t1 = isVatOnly ? 0 : Number(selectedProfile.tax1_rate) / 100;
+    let t2 = Number(selectedProfile.tax2_rate) / 100;
+    if (isVatOnly && t2 === 0) {
+      t2 = Number(selectedProfile.tax1_rate || 18) / 100;
+    }
+    const isSsclSep = !isVatOnly && selectedProfile.tax1_show_separately === 1;
+    const isVatSep = isVatOnly || selectedProfile.tax2_show_separately === 1 || (selectedProfile.tax1_show_separately === 1 && /vat/i.test(selectedProfile.tax1_name || ''));
 
     if (isSsclSep && isVatSep) {
       custSscl = custBaseSupplyValue * t1;
@@ -2735,7 +2744,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
-                        className={`col-span-2 px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                           selectedProfileId === 'tp_opt3_both_separate'
                             ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                             : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
@@ -2743,6 +2752,18 @@ export const ProductQuotationBuilder: React.FC = () => {
                         title="Option 3: Both SSCL & VAT Separate (2 Lines)"
                       >
                         Opt 3: Both 2 Lines
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileId('tp_vat18')}
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          selectedProfileId === 'tp_vat18' || selectedProfile?.name?.toLowerCase().includes('vat only')
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                        }`}
+                        title="VAT Only (18% Separate) - No SSCL"
+                      >
+                        VAT Only (18% Sep)
                       </button>
                     </div>
                     <select

@@ -188,6 +188,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               additionalInfo={(invoice.additionalInfo && !String(invoice.additionalInfo).trim().startsWith('{')) ? invoice.additionalInfo : ''}
               quotationNo={invoice.quotationNo || ''}
               orderNo={invoice.orderNo || ''}
+              poNo={invoice.poNo || invoice.customerPoNo || ''}
               customer={customerData}
               customerVat={customerData.vat || invoice.customerVat || ''}
               items={items}

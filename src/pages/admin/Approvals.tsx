@@ -719,7 +719,7 @@ export default function Approvals() {
                             </span>
                           )}
                           <span className="text-xs font-semibold px-2.5 py-0.5 rounded-none border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
-                            Pending Advance Approval
+                            {ord.status || 'Pending Approval'}
                           </span>
                           <span className="text-xs text-muted flex items-center gap-1 font-mono">
                             <Clock size={11} /> {formatDate(ord.orderDate || ord.createdAt)}
