@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Truck, PackageCheck, FileSignature, MapPin, 
   ShieldCheck, Printer, FileText, Calendar, Building2, UserCheck, 
-  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2, X, Plus
+  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2, X, Plus, Scissors
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -103,6 +103,9 @@ export const GRNBuilder: React.FC = () => {
   const [addUnit, setAddUnit] = useState<string>('Nos');
   const [addUnitCost, setAddUnitCost] = useState<number>(0);
   const [addCondition, setAddCondition] = useState<string>('Good');
+  const [isDirectCutPiece, setIsDirectCutPiece] = useState<boolean>(false);
+  const [directCutLength, setDirectCutLength] = useState<number>(200);
+  const [directStdLength, setDirectStdLength] = useState<number>(6000);
 
   // Helper to get supplier name
   const supplierName = useMemo(() => {
@@ -284,11 +287,17 @@ export const GRNBuilder: React.FC = () => {
 
         const poPrice = Number(i.unitPrice !== undefined ? i.unitPrice : (i.unitCost || 0));
 
+        const descStr = String(i.desc || i.name || i.description || `Item #${idx + 1}`);
+        const cutMatch = descStr.match(/\[Cut:\s*(\d+(?:\.\d+)?)\s*mm\s*×\s*(\d+)\s*pcs\]/i);
+        const isCut = Boolean(i.isCutPiece || (i.cutLength && Number(i.cutLength) > 0) || cutMatch);
+        const cutLen = Number(i.cutLength || (cutMatch ? cutMatch[1] : 0));
+        const pcs = Number(i.pieces || (cutMatch ? cutMatch[2] : 1));
+
         consolidatedItems.push({
           ...i,
           id: (i.id || '') + '_' + pid + '_' + idx,
           inventoryId: i.inventoryId || i.id || '',
-          desc: i.desc || i.name || i.description || `Item #${idx + 1}`,
+          desc: descStr,
           poId: pid,
           qty: ordered,
           prevReceived: prev,
@@ -297,7 +306,13 @@ export const GRNBuilder: React.FC = () => {
           condition: 'Good',
           unit: i.unit || 'Nos',
           poUnitPrice: poPrice,
-          unitCost: Number(i.unitCost !== undefined ? i.unitCost : poPrice)
+          unitCost: Number(i.unitCost !== undefined ? i.unitCost : poPrice),
+          isCutPiece: isCut,
+          cutLength: cutLen,
+          pieces: pcs,
+          standardLength: Number(i.standardLength || 6000),
+          cutUnit: i.cutUnit || 'mm',
+          logToRemnants: isCut && cutLen > 0
         });
       }
     }
@@ -334,6 +349,9 @@ export const GRNBuilder: React.FC = () => {
     setAddUnit('Nos');
     setAddUnitCost(0);
     setAddCondition('Good');
+    setIsDirectCutPiece(false);
+    setDirectCutLength(200);
+    setDirectStdLength(6000);
     setIsAddItemModalOpen(true);
   };
 
@@ -359,16 +377,27 @@ export const GRNBuilder: React.FC = () => {
       return;
     }
 
+    const cutLen = isDirectCutPiece ? Number(directCutLength) || 200 : 0;
+    const finalDesc = (isDirectCutPiece && cutLen > 0) 
+      ? `${desc.replace(/\s*\[Cut:.*?\]/i, '').trim()} [Cut: ${cutLen} mm × ${addQty} pcs]`
+      : desc;
+
     const newItem = {
       id: selectedInvId || `DIRECT-${Date.now().toString().slice(-4)}-${items.length + 1}`,
       inventoryId: selectedInvId || '',
-      desc: desc,
+      desc: finalDesc,
       poId: '',
       qty: Number(addQty),
       qtyReceived: Number(addQty),
       unit: addUnit || 'Nos',
       unitCost: Number(addUnitCost || 0),
-      condition: addCondition || 'Good'
+      condition: addCondition || 'Good',
+      isCutPiece: isDirectCutPiece && cutLen > 0,
+      cutLength: cutLen,
+      pieces: Number(addQty),
+      standardLength: Number(directStdLength) || 6000,
+      cutUnit: 'mm',
+      logToRemnants: isDirectCutPiece && cutLen > 0
     };
 
     setItems(prev => [...prev, newItem]);
@@ -1044,6 +1073,28 @@ export const GRNBuilder: React.FC = () => {
                             <p className="text-[10px] text-muted font-mono mt-0.5">
                               ID: {item.inventoryId || item.id || `ITEM-${idx + 1}`} {item.unit ? `• Unit: ${item.unit}` : ''}
                             </p>
+                            {item.isCutPiece && item.cutLength > 0 && (
+                              <div className="mt-1 flex flex-col gap-1">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 w-fit">
+                                  <Scissors size={10} /> Cut: {item.cutLength} mm ({item.pieces || 1} pcs)
+                                </span>
+                                {!isViewMode && (
+                                  <label className="inline-flex items-center gap-1.5 text-[10px] text-secondary cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.logToRemnants !== false}
+                                      onChange={e => {
+                                        const newItems = [...items];
+                                        newItems[idx].logToRemnants = e.target.checked;
+                                        setItems(newItems);
+                                      }}
+                                      className="rounded text-primary focus:ring-primary h-3 w-3"
+                                    />
+                                    <span>Log to Remnant Rack ({item.cutLength} mm)</span>
+                                  </label>
+                                )}
+                              </div>
+                            )}
                           </td>
 
                           <td className="p-3 text-right">
@@ -1168,6 +1219,28 @@ export const GRNBuilder: React.FC = () => {
                               <p className="text-[10px] text-muted font-mono mt-0.5">
                                 ID: {item.inventoryId || item.id || `ITEM-${idx + 1}`} {item.unit ? `• Unit: ${item.unit}` : ''}
                               </p>
+                              {item.isCutPiece && item.cutLength > 0 && (
+                                <div className="mt-1 flex flex-col gap-1">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 w-fit">
+                                    <Scissors size={10} /> Cut: {item.cutLength} mm ({item.pieces || 1} pcs)
+                                  </span>
+                                  {!isViewMode && (
+                                    <label className="inline-flex items-center gap-1.5 text-[10px] text-secondary cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.logToRemnants !== false}
+                                        onChange={e => {
+                                          const newItems = [...items];
+                                          newItems[idx].logToRemnants = e.target.checked;
+                                          setItems(newItems);
+                                        }}
+                                        className="rounded text-primary focus:ring-primary h-3 w-3"
+                                      />
+                                      <span>Log to Remnant Rack ({item.cutLength} mm)</span>
+                                    </label>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             
                             <td className="p-3 text-center font-medium text-xs text-muted font-mono">
@@ -1599,6 +1672,53 @@ export const GRNBuilder: React.FC = () => {
                 <option value="Partial Pass">Partial Pass</option>
               </select>
             </div>
+          </div>
+
+          <div className="pt-2 border-t border-theme-subtle">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-secondary">
+              <input
+                type="checkbox"
+                checked={isDirectCutPiece}
+                onChange={e => setIsDirectCutPiece(e.target.checked)}
+                className="rounded text-primary h-3.5 w-3.5"
+              />
+              <span className="flex items-center gap-1 text-primary">
+                <Scissors size={12} className="text-amber-500" /> Cut Piece / Dimension (mm)
+              </span>
+            </label>
+
+            {isDirectCutPiece && (
+              <div className="mt-2.5 bg-surface/50 border border-theme-subtle p-3 rounded-lg space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Cut Length (mm) *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={directCutLength}
+                      onChange={e => setDirectCutLength(Math.max(1, Number(e.target.value)))}
+                      placeholder="e.g. 200"
+                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-mono font-bold focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Standard Bar (mm)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={directStdLength}
+                      onChange={e => setDirectStdLength(Math.max(1, Number(e.target.value)))}
+                      placeholder="Default: 6000"
+                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-mono focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center justify-between pt-1">
+                  <span>Total cut: {directCutLength * addQty} mm ({(directCutLength * addQty / 1000).toFixed(3)} M)</span>
+                  <span>Fraction: {((directCutLength * addQty) / directStdLength).toFixed(4)} of Bar</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">

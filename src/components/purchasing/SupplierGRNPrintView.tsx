@@ -278,6 +278,11 @@ export const SupplierGRNPrintView: React.FC<SupplierGRNPrintViewProps> = ({ grn,
                 </td>
                 <td className="py-1.5 px-2 border-r border-black">
                   <div className="font-bold text-black">{it.desc || it.name || it.description || 'Inventory Item'}</div>
+                  {it.cutLength && Number(it.cutLength) > 0 && (
+                    <div className="text-[9.5px] font-mono text-amber-900 font-bold mt-0.5 inline-block bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
+                      ✂ CUT PIECE: {it.cutLength} mm ({it.pieces || 1} pcs) · Standard Bar: {it.standardLength || 6000} mm
+                    </div>
+                  )}
                   {it.notes && (
                     <div className="text-[10px] text-neutral-600 mt-0.5 italic">{it.notes}</div>
                   )}

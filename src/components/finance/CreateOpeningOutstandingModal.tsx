@@ -6,6 +6,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useCustomers } from '@/hooks/useData';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { createInvoice } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
@@ -39,7 +40,6 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
   }, []);
 
   const [customerId, setCustomerId] = useState(initialCustomerId || '');
-  const [customerSearch, setCustomerSearch] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [date, setDate] = useState(defaultDate);
   const [dueDate, setDueDate] = useState(defaultDueDate);
@@ -57,16 +57,6 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
   const selectedCustomer = useMemo(() => {
     return customers.find((c: any) => c.id === customerId) || null;
   }, [customers, customerId]);
-
-  const filteredCustomers = useMemo(() => {
-    if (!customerSearch.trim()) return customers.slice(0, 50);
-    const q = customerSearch.toLowerCase();
-    return customers.filter((c: any) => 
-      (c.name && c.name.toLowerCase().includes(q)) ||
-      (c.company && c.company.toLowerCase().includes(q)) ||
-      (c.phone && c.phone.includes(q))
-    ).slice(0, 50);
-  }, [customers, customerSearch]);
 
   if (!isOpen) return null;
 
@@ -142,7 +132,7 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 overflow-y-auto">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-3 overflow-y-auto animate-fade-in">
       <div className="w-full max-w-xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2/60">
@@ -178,24 +168,32 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
             </div>
           </div>
 
-          {/* 1. Customer Selection */}
+          {/* 1. Customer Selection (Search as you type & Auto-fill) */}
           <div>
             <label className="block text-xs font-semibold text-secondary mb-1">
               Select Customer <span className="text-red-500">*</span>
             </label>
-            <select
+            <CustomerAutocomplete
               value={customerId}
-              onChange={e => setCustomerId(e.target.value)}
+              onChange={(cId) => setCustomerId(cId)}
+              customers={customers}
+              placeholder="Type to search customer (name, company, phone, email)..."
               required
-              className="w-full input-base text-xs font-medium cursor-pointer"
-            >
-              <option value="">-- Choose Customer --</option>
-              {customers.map((c: any) => (
-                <option key={c.id} value={c.id}>
-                  {c.company || c.name} {c.phone ? `(${c.phone})` : ''}
-                </option>
-              ))}
-            </select>
+              className="w-full text-xs"
+            />
+            {selectedCustomer && (
+              <div className="mt-2 p-2.5 bg-surface2/60 border border-theme-subtle text-[11px] flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-primary">{selectedCustomer.company || selectedCustomer.name}</span>
+                  {selectedCustomer.phone && <span className="text-muted ml-2 font-mono">({selectedCustomer.phone})</span>}
+                </div>
+                {selectedCustomer.address && (
+                  <span className="text-muted text-[10px] truncate max-w-[220px]" title={selectedCustomer.address}>
+                    {selectedCustomer.address}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 2. Old Invoice No & Amount */}

@@ -2151,67 +2151,59 @@ app.put('/api/users/:id', async (req, res) => {
     // 4.1 Update users table
     await conn.query(
       'UPDATE users SET name = COALESCE(?, name), username = ?, role = COALESCE(?, role), prefix = ? WHERE id = ?',
-      [name !== undefined && name !== null ? String(name).trim() : null, cleanUsername, role || null, prefix !== undefined && prefix !== null ? String(prefix).trim().toUpperCase() : null, userId]
+      [
+        name !== undefined && name !== null && String(name).trim() !== '' ? String(name).trim() : null,
+        cleanUsername,
+        role || null,
+        prefix !== undefined && prefix !== null ? String(prefix).trim().toUpperCase() : currentUser.prefix,
+        userId
+      ]
     );
 
     // 4.2 If username has changed, cascade update to maintain absolute integrity of all past entries
     if (cleanUsername !== oldUsername) {
-      // quotations: createdBy column and createdByUsername in JSON data
-      await conn.query('UPDATE quotations SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
-      try {
-        await conn.query(
-          "UPDATE quotations SET data = JSON_SET(data, '$.createdByUsername', ?) WHERE JSON_UNQUOTE(JSON_EXTRACT(data, '$.createdByUsername')) = ?",
-          [cleanUsername, oldUsername]
-        );
-      } catch (err) {
-        // Safe fallback if JSON function or data format varies
-      }
+      const safeCascade = async (label: string, sql: string, params: any[]) => {
+        try {
+          await conn.query(sql, params);
+        } catch (err: any) {
+          // Gracefully skip if table or column doesn't exist on remote deployment
+          console.warn(`[Safe Cascade Notice - ${label}]:`, err.message);
+        }
+      };
 
-      // journal_entries
-      await conn.query('UPDATE journal_entries SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+      // Primary core tables
+      await safeCascade('quotations createdBy', 'UPDATE quotations SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('quotations json data', "UPDATE quotations SET data = JSON_SET(data, '$.createdByUsername', ?) WHERE JSON_UNQUOTE(JSON_EXTRACT(data, '$.createdByUsername')) = ?", [cleanUsername, oldUsername]);
+      await safeCascade('journal_entries createdBy', 'UPDATE journal_entries SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('purchase_orders createdBy', 'UPDATE purchase_orders SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('stock_ledger user', 'UPDATE stock_ledger SET user = ? WHERE user = ?', [cleanUsername, oldUsername]);
+      await safeCascade('approval_logs actionBy', 'UPDATE approval_logs SET actionBy = ? WHERE actionBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('finished_goods_orders lastEditedBy', 'UPDATE finished_goods_orders SET lastEditedBy = ? WHERE lastEditedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('gate_passes issuedBy', 'UPDATE gate_passes SET issuedBy = ? WHERE issuedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('grns receivedBy', 'UPDATE grns SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('customer_grns receivedBy', 'UPDATE customer_grns SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('payment_receipts receivedBy', 'UPDATE payment_receipts SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('material_requests requestedBy', 'UPDATE material_requests SET requestedBy = ? WHERE requestedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('user_quotation_sequences user_id', 'UPDATE user_quotation_sequences SET user_id = ? WHERE user_id = ?', [cleanUsername, oldUsername]);
 
-      // purchase_orders
-      await conn.query('UPDATE purchase_orders SET createdBy = ? WHERE createdBy = ?', [cleanUsername, oldUsername]);
-
-      // stock_ledger
-      await conn.query('UPDATE stock_ledger SET user = ? WHERE user = ?', [cleanUsername, oldUsername]);
-
-      // approval_logs
-      await conn.query('UPDATE approval_logs SET actionBy = ? WHERE actionBy = ?', [cleanUsername, oldUsername]);
-
-      // finished_goods_orders
-      await conn.query('UPDATE finished_goods_orders SET lastEditedBy = ? WHERE lastEditedBy = ?', [cleanUsername, oldUsername]);
-
-      // gate_passes
-      await conn.query('UPDATE gate_passes SET issuedBy = ? WHERE issuedBy = ?', [cleanUsername, oldUsername]);
-
-      // grns & customer_grns
-      await conn.query('UPDATE grns SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE customer_grns SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
-
-      // payment_receipts
-      await conn.query('UPDATE payment_receipts SET receivedBy = ? WHERE receivedBy = ?', [cleanUsername, oldUsername]);
-
-      // material_requests
-      await conn.query('UPDATE material_requests SET requestedBy = ? WHERE requestedBy = ?', [cleanUsername, oldUsername]);
-
-      // Quality & Maintenance registers
-      await conn.query('UPDATE ncr_records SET detectedBy = ? WHERE detectedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE ncr_records SET approvedBy = ? WHERE approvedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE ncr_records SET closedBy = ? WHERE closedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE qc_inspections SET inspectedBy = ? WHERE inspectedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE rework_logs SET resolvedBy = ? WHERE resolvedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE engineering_change_orders SET requestedBy = ? WHERE requestedBy = ?', [cleanUsername, oldUsername]);
-      await conn.query('UPDATE engineering_change_orders SET approvedBy = ? WHERE approvedBy = ?', [cleanUsername, oldUsername]);
-
-      // user_quotation_sequences
-      await conn.query('UPDATE user_quotation_sequences SET user_id = ? WHERE user_id = ?', [cleanUsername, oldUsername]);
+      // Extended QA & engineering tables (safe if tables/columns exist)
+      await safeCascade('ncr_records detectedBy', 'UPDATE ncr_records SET detectedBy = ? WHERE detectedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('ncr_records approvedBy', 'UPDATE ncr_records SET approvedBy = ? WHERE approvedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('ncr_records closedBy', 'UPDATE ncr_records SET closedBy = ? WHERE closedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('qc_inspections inspectedBy', 'UPDATE qc_inspections SET inspectedBy = ? WHERE inspectedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('rework_logs resolvedBy', 'UPDATE rework_logs SET resolvedBy = ? WHERE resolvedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('engineering_change_orders requestedBy', 'UPDATE engineering_change_orders SET requestedBy = ? WHERE requestedBy = ?', [cleanUsername, oldUsername]);
+      await safeCascade('engineering_change_orders approvedBy', 'UPDATE engineering_change_orders SET approvedBy = ? WHERE approvedBy = ?', [cleanUsername, oldUsername]);
     }
 
     // 4.3 If full name changed, update createdByName in quotations for consistency
-    const cleanName = name !== undefined && name !== null ? String(name).trim() : null;
+    const cleanName = name !== undefined && name !== null && String(name).trim() !== '' ? String(name).trim() : null;
     if (cleanName && cleanName !== oldName) {
-      await conn.query('UPDATE quotations SET createdByName = ? WHERE createdBy = ? OR createdBy = ?', [cleanName, cleanUsername, userId]);
+      try {
+        await conn.query('UPDATE quotations SET createdByName = ? WHERE createdBy = ? OR createdBy = ?', [cleanName, cleanUsername, userId]);
+      } catch (err: any) {
+        console.warn('[Safe Cascade Notice - quotations createdByName]:', err.message);
+      }
     }
 
     await conn.commit();
@@ -2228,7 +2220,9 @@ app.put('/api/users/:id', async (req, res) => {
       }
     });
   } catch (error: any) {
-    await conn.rollback();
+    try {
+      await conn.rollback();
+    } catch (rbErr) {}
     console.error('Error in PUT /api/users/:id:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   } finally {
@@ -6241,6 +6235,44 @@ app.post('/api/purchasing/grns', async (req, res) => {
               notes: `GRN Received (PO: ${itemPoRef}, Rate: LKR ${itemUnitCost})${item.condition ? ` - Condition: ${item.condition}` : ''}`
             };
             await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+
+            // Auto-log cut pieces into stock_remnants rack (ISO Raw Material Cut Tracking)
+            const itemDesc = item.desc || item.name || '';
+            const cutMatch = itemDesc.match(/\[Cut:\s*(\d+(?:\.\d+)?)\s*mm\s*×\s*(\d+)\s*pcs\]/i);
+            const isCut = Boolean(item.isCutPiece || (item.cutLength && Number(item.cutLength) > 0) || cutMatch);
+            const cutLen = Number(item.cutLength || (cutMatch ? cutMatch[1] : 0));
+            const cutPcs = Number(item.pieces || (cutMatch ? cutMatch[2] : (qtyRecv > 0 && qtyRecv <= 100 ? Math.round(qtyRecv) : 1)));
+
+            if (isCut && cutLen > 0 && item.logToRemnants !== false) {
+              try {
+                for (let p = 0; p < cutPcs; p++) {
+                  const remId = `REM-${String(data.id).replace(/[^A-Za-z0-9_-]/g, '')}-${Date.now().toString().slice(-4)}-${p + 1}`;
+                  await db.query(
+                    `INSERT INTO stock_remnants 
+                     (id, inventoryId, materialName, sku, profileType, dimension, standardLength, length, unit, location, sourceBarId, jobRef, status, notes, createdAt, updatedAt)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW(), NOW())
+                     ON DUPLICATE KEY UPDATE length = VALUES(length), updatedAt = NOW()`,
+                    [
+                      remId,
+                      invId || null,
+                      itemDesc || 'Raw Material Cut',
+                      item.sku || null,
+                      item.profileType || 'bar',
+                      `${cutLen} mm`,
+                      Number(item.standardLength || 6000),
+                      cutLen,
+                      item.cutUnit || 'mm',
+                      data.storageLocation || 'Offcut Rack A',
+                      data.id,
+                      `GRN: ${data.id} (PO: ${itemPoRef})`,
+                      `Received via GRN ${data.id} as cut piece (${cutLen} mm)`
+                    ]
+                  );
+                }
+              } catch (remErr) {
+                console.error('Error logging to stock_remnants from GRN:', remErr);
+              }
+            }
           }
         } catch (e) {
           console.error('Error updating inventory stock from GRN:', e);

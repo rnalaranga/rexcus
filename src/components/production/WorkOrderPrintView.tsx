@@ -20,7 +20,18 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const settings = propSettings || contextSettings;
 
   const { data: allQuotations = [] } = useQuotations();
-  const { data: allOrders = [] } = useFinishedGoodsOrders();
+  const { data: allFinishedOrders = [] } = useFinishedGoodsOrders();
+  const allOrders = allFinishedOrders as any[];
+
+  const [customerGrns, setCustomerGrns] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    import('@/lib/api').then(({ fetchAllCustomerGRNs }) => {
+      fetchAllCustomerGRNs().then(grns => {
+        if (Array.isArray(grns)) setCustomerGrns(grns);
+      }).catch(() => {});
+    });
+  }, []);
 
   if (!workOrder) return null;
 
@@ -71,7 +82,6 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
 
   // Header meta values
   const quotationNo = workOrder.quotationNo || linkedOrder?.quotationNo || linkedQuote?.quotationNo || quoteRef || '-';
-  const grnNo = workOrder.grnNo || linkedOrder?.customerGrnNo || quoteData?.grnNo || linkedQuote?.grnNo || '-';
   const bomNo = workOrder.bomNo || quoteData?.bomNo || '-';
   const preparedBy = workOrder.preparedBy || linkedQuote?.createdByName || linkedQuote?.createdBy || 'Rex Team';
   const projectNo = workOrder.projectNo || quoteData?.projectNo || '-';
@@ -79,6 +89,34 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const deliveredDate = workOrder.deliveredDate || workOrder.deadline || linkedOrder?.deliveryDate || quoteData?.custDelivery || '-';
   const jobType = workOrder.jobType || workOrder.type || linkedOrder?.productName || quoteData?.subject || linkedQuote?.title || '-';
   const notes = workOrder.notes || workOrder.description || '';
+
+  // Find linked customer sample GRN number if available
+  const sampleGrnNo = React.useMemo(() => {
+    if (workOrder.sampleGrnNo && workOrder.sampleGrnNo !== '-') return String(workOrder.sampleGrnNo).trim();
+    if (workOrder.customerGrnNo && workOrder.customerGrnNo !== '-') return String(workOrder.customerGrnNo).trim();
+    if (workOrder.grnNo && workOrder.grnNo !== '-') return String(workOrder.grnNo).trim();
+    if (linkedOrder?.customerGrnNo && linkedOrder.customerGrnNo !== '-') return String(linkedOrder.customerGrnNo).trim();
+    if (linkedOrder?.sampleGrnNo && linkedOrder.sampleGrnNo !== '-') return String(linkedOrder.sampleGrnNo).trim();
+    if (quoteData?.sampleGrnNo && quoteData.sampleGrnNo !== '-') return String(quoteData.sampleGrnNo).trim();
+    if (quoteData?.customerGrnNo && quoteData.customerGrnNo !== '-') return String(quoteData.customerGrnNo).trim();
+    if (quoteData?.grnNo && quoteData.grnNo !== '-') return String(quoteData.grnNo).trim();
+    if (linkedQuote?.sampleGrnNo && linkedQuote.sampleGrnNo !== '-') return String(linkedQuote.sampleGrnNo).trim();
+    if (linkedQuote?.customerGrnNo && linkedQuote.customerGrnNo !== '-') return String(linkedQuote.customerGrnNo).trim();
+    if (linkedQuote?.grnNo && linkedQuote.grnNo !== '-') return String(linkedQuote.grnNo).trim();
+
+    const qId = String(linkedQuote?.id || quoteRef || '').trim().toLowerCase();
+    const soRef = String(workOrder.orderNo || linkedOrder?.orderNo || '').trim().toLowerCase();
+    if (customerGrns && customerGrns.length > 0) {
+      const match = customerGrns.find((g: any) => {
+        const gQuote = String(g.quoteId || g.quotationNo || '').trim().toLowerCase();
+        const gSo = String(g.salesOrderNo || g.soId || g.orderNo || '').trim().toLowerCase();
+        return (qId && gQuote && gQuote === qId) || (soRef && gSo && gSo === soRef);
+      });
+      if (match?.grnNo || match?.id) return String(match.grnNo || match.id).trim();
+    }
+
+    return '';
+  }, [workOrder, linkedOrder, quoteData, linkedQuote, quoteRef, customerGrns]);
 
   const rawDate = workOrder.createdAt || workOrder.orderDate || linkedOrder?.createdAt || new Date();
   const orderDate = formatDate(rawDate);
@@ -400,12 +438,14 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                     <span className="font-mono font-black text-black">{deliveredDate}</span>
                   </td>
                 </tr>
-                {grnNo && grnNo !== '-' && (
-                  <tr>
-                    <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Sample GRN No.</td>
+                {sampleGrnNo && sampleGrnNo !== '-' && (
+                  <tr className="bg-amber-50/70">
+                    <td className="font-bold py-0.5 text-amber-950 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Sample GRN No.</td>
                     <td className="py-0.5">
-                      <span className="font-bold mr-1">:</span>
-                      <span className="font-mono">{grnNo}</span>
+                      <span className="font-bold mr-1 text-amber-950">:</span>
+                      <span className="font-mono font-bold text-amber-950 px-1 py-0.2 rounded bg-amber-100 border border-amber-300">
+                        {sampleGrnNo}
+                      </span>
                     </td>
                   </tr>
                 )}
@@ -515,145 +555,159 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
           </div>
         )}
 
-        {/* ── 6. MATERIAL SOURCING & WORKSHOP INSTRUCTIONS ── */}
-        <div className="border-b border-black grid grid-cols-2 text-[11px] leading-tight">
-          {/* Material Verification */}
-          <div className="p-2.5 border-r border-black">
-            <div className="font-bold uppercase tracking-wider text-[10px] text-neutral-600 mb-1.5">
-              Material Sourcing &amp; Traceability:
-            </div>
-            <div className="space-y-1 text-[11px]">
-              <label className="flex items-center gap-2 cursor-default">
-                <span className="inline-block w-3.5 h-3.5 border border-black bg-white"></span>
-                <span>BOM Material Issued from Warehouse Stock</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-default">
-                <span className="inline-block w-3.5 h-3.5 border border-black bg-white"></span>
-                <span>Customer Supplied Sample / Free-Issue Material</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-default">
-                <span className="inline-block w-3.5 h-3.5 border border-black bg-white"></span>
-                <span>Direct Special Purchase / Commercial Sourcing</span>
-              </label>
-            </div>
-            <div className="mt-2 pt-2 border-t border-neutral-300 text-[10px] text-neutral-700">
-              <div><span className="font-bold">Raw Material Spec / Heat #:</span> ............................................</div>
-            </div>
-          </div>
-
-          {/* Workshop Technical Notes */}
-          <div className="p-2.5 bg-gray-50/50 flex flex-col justify-between">
-            <div>
-              <div className="font-bold uppercase tracking-wider text-[10px] text-neutral-600 mb-1">
-                Workshop Instructions &amp; Engineering Notes:
+        {/* ── 6. AUTHORIZATIONS, MATERIALS & COMPLETION HANDOVER ── */}
+        <div className="border-b border-black text-[11px]">
+          {/* ROW 1: CRM Manager, Senior Design Engineer, Workshop Engineer */}
+          <div className="grid grid-cols-3 border-b border-neutral-300">
+            {/* 1. CRM Manager */}
+            <div className="p-3 border-r border-neutral-300 flex flex-col justify-between min-h-[92px]">
+              <div className="font-bold uppercase text-[11px] text-black">
+                CRM Manager
               </div>
-              <p className="text-neutral-800 m-0 whitespace-pre-line leading-relaxed text-[11px]">
-                {notes || 'Execute machining strictly in accordance with approved CAD drawings, tolerances, and surface finish requirements. Verify dimensions at each critical setup.'}
-              </p>
-            </div>
-            <div className="mt-2 pt-1 border-t border-neutral-300 text-[10px] text-neutral-600">
-              Critical Surface Finish: Ra ≤ 1.6µm | Tolerances: ISO 2768-m (unless specified)
-            </div>
-          </div>
-        </div>
-
-        {/* ── 7. PROFESSIONAL AUTHORIZED SIGNATURE BLOCKS ── */}
-        <div className="p-3 border-b border-black">
-          {/* STAGE 1: Pre-Production Engineering & Release Authorization */}
-          <div className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider mb-2">
-            1. Engineering &amp; Pre-Production Release Approval:
-          </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            {/* Box 1: Prepared By / CRM Coordinator */}
-            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
-              <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-800">
-                  Prepared By / Job Coordinator
+              <div className="pt-2">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
                 </div>
-                <div className="text-[9px] text-neutral-500">Commercial &amp; Specs Verified</div>
-              </div>
-              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
-                <div className="font-bold text-[11px] text-black truncate">{preparedBy}</div>
-                <div className="text-[9px] text-neutral-500">Date: {orderDate}</div>
+                <div className="text-[10px] text-neutral-800 flex items-end mt-2.5">
+                  <span className="font-semibold mr-1.5 shrink-0">Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
               </div>
             </div>
 
-            {/* Box 2: Senior Design Engineer */}
-            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
-              <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-800">
-                  Senior Design / CAM Engineer
-                </div>
-                <div className="text-[9px] text-neutral-500">Drawing &amp; Toolpath Approved</div>
+            {/* 2. Senior Design Engineer */}
+            <div className="p-3 border-r border-neutral-300 flex flex-col justify-between min-h-[92px]">
+              <div className="font-bold uppercase text-[11px] text-black">
+                Senior Design Engineer
               </div>
-              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
-                <div className="font-bold text-[11px] text-black">Design Engineer Signature</div>
-                <div className="text-[9px] text-neutral-500">Date: .......................................</div>
+              <div className="pt-2">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+                <div className="text-[10px] text-neutral-800 flex items-end mt-2.5">
+                  <span className="font-semibold mr-1.5 shrink-0">Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
               </div>
             </div>
 
-            {/* Box 3: Production Manager */}
-            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
-              <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-800">
-                  Production / Works Manager
-                </div>
-                <div className="text-[9px] text-neutral-500">Authorized for Active Machining</div>
+            {/* 3. Workshop Engineer */}
+            <div className="p-3 flex flex-col justify-between min-h-[92px]">
+              <div className="font-bold uppercase text-[11px] text-black">
+                Workshop Engineer
               </div>
-              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
-                <div className="font-bold text-[11px] text-black">Authorized Signature &amp; Stamp</div>
-                <div className="text-[9px] text-neutral-500">Date: .......................................</div>
+              <div className="pt-2">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+                <div className="text-[10px] text-neutral-800 flex items-end mt-2.5">
+                  <span className="font-semibold mr-1.5 shrink-0">Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* STAGE 2: Post-Production Floor Completion & Quality Handover */}
-          <div className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider mb-2">
-            2. Machining Completion, Quality Inspection &amp; Stores Handover:
+          {/* ROW 2: Materials (BOM Attached / Materials from Customer) & Cost Calculated */}
+          <div className="grid grid-cols-2 border-b border-neutral-300">
+            {/* Left: Materials */}
+            <div className="p-3 border-r border-neutral-300 flex flex-col justify-between min-h-[78px]">
+              <div className="font-bold uppercase text-[11px] text-black mb-1">
+                Materials
+              </div>
+              <div className="flex items-center gap-6 text-[11px] py-1">
+                <label className="flex items-center gap-2 cursor-default select-none">
+                  <span className="inline-block w-4 h-4 border border-black bg-white shrink-0"></span>
+                  <span className="font-medium text-black">BOM Attached</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-default select-none">
+                  <span className="inline-block w-4 h-4 border border-black bg-white shrink-0"></span>
+                  <span className="font-medium text-black">Materials from Customer</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Right: Cost Calculated */}
+            <div className="p-3 flex flex-col justify-between min-h-[78px]">
+              <div className="font-bold uppercase text-[11px] text-black mb-1">
+                Cost Calculated
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            {/* Box 4: Workshop Engineer / Lead Machinist */}
-            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+
+          {/* ROW 3: Received Finished Goods (Engineer), Quality Inspection (QC), Received Finished Goods (Store Keeper) */}
+          <div className="grid grid-cols-3">
+            {/* 1. Received Finished Goods - Engineer */}
+            <div className="p-3 border-r border-neutral-300 flex flex-col justify-between min-h-[96px]">
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-800">
-                  Lead Machinist / Floor In-Charge
+                <div className="font-bold uppercase text-[11px] text-black leading-tight">
+                  Received Finished Goods
                 </div>
-                <div className="text-[9px] text-neutral-500">Machining Completed on Floor</div>
+                <div className="text-[10px] text-neutral-600 font-medium">Engineer Acceptance</div>
               </div>
-              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
-                <div className="font-bold text-[11px] text-black">Finished Date: ........................</div>
-                <div className="text-[9px] text-neutral-500">Machine Operator Signature</div>
+              <div className="pt-2">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+                <div className="text-[10px] text-neutral-800 flex items-end mt-2.5">
+                  <span className="font-semibold mr-1.5 shrink-0">Finished Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
               </div>
             </div>
 
-            {/* Box 5: Quality Assurance & QC Inspection */}
-            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+            {/* 2. Quality Inspection - QC */}
+            <div className="p-3 border-r border-neutral-300 flex flex-col justify-between min-h-[96px]">
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-800 flex items-center justify-between">
-                  <span>QC &amp; Metrology Inspection</span>
-                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 border border-black rounded">ISO 9001</span>
+                <div className="font-bold uppercase text-[11px] text-black leading-tight flex items-center justify-between">
+                  <span>Quality Inspection</span>
+                  <span className="text-[9px] font-bold text-neutral-600 font-mono">[ ] Pass</span>
                 </div>
-                <div className="text-[9px] text-neutral-600 font-bold mt-0.5">
-                  [ &nbsp; ] PASS &nbsp; [ &nbsp; ] REWORK &nbsp; [ &nbsp; ] REJECT
-                </div>
+                <div className="text-[10px] text-neutral-600 font-medium">QC Inspector</div>
               </div>
-              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
-                <div className="font-bold text-[11px] text-black">QC Inspector Signature &amp; Stamp</div>
-                <div className="text-[9px] text-neutral-500">Inspection Date: ....................</div>
+              <div className="pt-2">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">QC Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+                <div className="text-[10px] text-neutral-800 flex items-end mt-2.5">
+                  <span className="font-semibold mr-1.5 shrink-0">Checked Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
               </div>
             </div>
 
-            {/* Box 6: Store Keeper / Logistics Handover */}
-            <div className="border border-black p-2 flex flex-col justify-between h-24 bg-white">
+            {/* 3. Received Finished Goods - Store Keeper */}
+            <div className="p-3 flex flex-col justify-between min-h-[96px]">
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-800">
-                  Finished Goods Store Keeper
+                <div className="font-bold uppercase text-[11px] text-black leading-tight">
+                  Received Finished Goods
                 </div>
-                <div className="text-[9px] text-neutral-500">Accepted into Warehouse Bay</div>
+                <div className="text-[10px] text-neutral-600 font-medium">Store Keeper</div>
               </div>
-              <div className="border-t border-dashed border-neutral-400 pt-1 text-center">
-                <div className="font-bold text-[11px] text-black">Qty Accepted: ............. Nos</div>
-                <div className="text-[9px] text-neutral-500">Store Officer Signature &amp; Date</div>
+              <div className="pt-2">
+                <div className="text-[10px] text-neutral-800 flex items-end">
+                  <span className="font-semibold mr-1.5 shrink-0">Signature:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
+                <div className="text-[10px] text-neutral-800 flex items-end mt-2.5">
+                  <span className="font-semibold mr-1.5 shrink-0">Date:</span>
+                  <span className="flex-1 border-b border-dotted border-black"></span>
+                </div>
               </div>
             </div>
           </div>

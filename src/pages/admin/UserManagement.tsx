@@ -365,7 +365,7 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || data.details || 'Failed to update user');
       showToast('success', 'User details and username updated safely');
       setShowEditUser(null);
       fetchUsers();

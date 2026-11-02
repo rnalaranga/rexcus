@@ -343,6 +343,11 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                   <div className="font-bold text-black leading-tight">
                     {item.desc || item.name || item.inventoryId || 'Item'}
                   </div>
+                  {item.cutLength && (
+                    <div className="text-[10px] font-mono text-amber-900 font-bold mt-0.5 inline-block bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
+                      ✂ CUT SPEC: {item.cutLength} mm ({item.pieces || 1} pcs) · Standard Bar: {item.standardLength || 6000} mm
+                    </div>
+                  )}
                   {item.notes && (
                     <div className="text-[10px] text-neutral-600 italic mt-0.5">
                       {item.notes}

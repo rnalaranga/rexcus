@@ -3,11 +3,12 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, Printer, Building2, 
   Calendar, Truck, FileText, Calculator, CreditCard, ShieldCheck, 
-  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag, Briefcase
+  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag, Briefcase, Scissors
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 import { useSuppliers, useInventory } from '@/hooks/useData';
 import { useTaxProfiles } from '@/hooks/useFinance';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -41,6 +42,11 @@ interface POItem {
   requestedQty?: number;
   balanceToOrder?: number;
   workOrderNos?: string[];
+  isCutPiece?: boolean;
+  cutLength?: number;
+  pieces?: number;
+  standardLength?: number;
+  cutUnit?: string;
 }
 
 export const POBuilder: React.FC = () => {
@@ -386,6 +392,84 @@ export const POBuilder: React.FC = () => {
   };
 
   const removeItem = (itemId: string) => setItems(items.filter(i => i.id !== itemId));
+
+  const [activeCutModalItem, setActiveCutModalItem] = useState<POItem | null>(null);
+  const [cutForm, setCutForm] = useState({
+    cutLength: 200,
+    pieces: 1,
+    standardLength: 6000,
+    qtyMode: 'pieces' as 'pieces' | 'meters' | 'mm'
+  });
+
+  const openCutModal = (item: POItem) => {
+    setActiveCutModalItem(item);
+    setCutForm({
+      cutLength: Number(item.cutLength) || 200,
+      pieces: Number(item.pieces) || (item.qty > 0 && item.qty <= 1000 ? Math.round(item.qty) : 1),
+      standardLength: Number(item.standardLength) || 6000,
+      qtyMode: (item.unit?.toLowerCase() === 'm' || item.unit?.toLowerCase() === 'meter' || item.unit?.toLowerCase() === 'meters') ? 'meters' : 'pieces'
+    });
+  };
+
+  const applyCutSpecs = () => {
+    if (!activeCutModalItem) return;
+    const cutLen = Number(cutForm.cutLength) || 200;
+    const pcs = Number(cutForm.pieces) || 1;
+    const stdLen = Number(cutForm.standardLength) || 6000;
+
+    // Clean existing [Cut: ...] from desc if present
+    const cleanDesc = activeCutModalItem.desc.replace(/\s*\[Cut:.*?\]/i, '').trim();
+    const newDesc = `${cleanDesc} [Cut: ${cutLen} mm × ${pcs} pcs]`;
+
+    let calculatedQty = activeCutModalItem.qty;
+    if (cutForm.qtyMode === 'meters') {
+      calculatedQty = Number(((cutLen * pcs) / 1000).toFixed(3));
+    } else if (cutForm.qtyMode === 'mm') {
+      calculatedQty = cutLen * pcs;
+    } else {
+      calculatedQty = pcs;
+    }
+
+    setItems(items.map(it => {
+      if (it.id === activeCutModalItem.id) {
+        const updated = {
+          ...it,
+          desc: newDesc,
+          qty: calculatedQty,
+          isCutPiece: true,
+          cutLength: cutLen,
+          pieces: pcs,
+          standardLength: stdLen,
+          cutUnit: 'mm'
+        };
+        const base = (Number(updated.qty) || 0) * (Number(updated.unitPrice) || 0);
+        const afterDiscount = Math.max(0, base - (Number(updated.discount) || 0));
+        const taxAmount = afterDiscount * ((Number(updated.taxRate) || 0) / 100);
+        updated.total = afterDiscount + taxAmount;
+        return updated;
+      }
+      return it;
+    }));
+
+    setActiveCutModalItem(null);
+  };
+
+  const removeCutSpecs = (itemId: string) => {
+    setItems(items.map(it => {
+      if (it.id === itemId) {
+        const cleanDesc = it.desc.replace(/\s*\[Cut:.*?\]/i, '').trim();
+        return {
+          ...it,
+          desc: cleanDesc,
+          isCutPiece: false,
+          cutLength: undefined,
+          pieces: undefined,
+          standardLength: undefined
+        };
+      }
+      return it;
+    }));
+  };
 
   const subtotal = items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitPrice) || 0)), 0);
   const totalDiscount = items.reduce((sum, item) => sum + (Number(item.discount) || 0), 0);
@@ -841,6 +925,36 @@ export const POBuilder: React.FC = () => {
                                 <Briefcase size={9} /> Job: {item.workOrderNos.join(', ')}
                               </span>
                             )}
+                            {item.isCutPiece || (item.cutLength && Number(item.cutLength) > 0) ? (
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                  <Scissors size={10} /> Cut: {item.cutLength} mm × {item.pieces || 1} pcs
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openCutModal(item)}
+                                  className="text-[10px] text-rex-600 dark:text-rex-400 hover:underline font-semibold"
+                                >
+                                  Edit Cut
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeCutSpecs(item.id)}
+                                  className="text-[10px] text-red-500 hover:underline ml-1"
+                                  title="Remove Cut Spec"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openCutModal(item)}
+                                className="inline-flex items-center gap-1 text-[10px] text-muted hover:text-amber-500 transition-colors w-fit font-medium mt-0.5"
+                              >
+                                <Scissors size={10} /> + Cut Piece / Dimension (mm)
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="p-2 text-right align-top">
@@ -1119,6 +1233,103 @@ export const POBuilder: React.FC = () => {
       onClose={() => setShowQuickItemModal(false)}
       onSuccess={handleItemCreated}
     />
+
+    {/* Cut Piece Specification Modal */}
+    {activeCutModalItem && (
+      <Modal 
+        isOpen 
+        title={`Cut Piece Specs — ${activeCutModalItem.desc.replace(/\s*\[Cut:.*?\]/i, '').trim() || 'Raw Material'}`} 
+        onClose={() => setActiveCutModalItem(null)}
+      >
+        <div className="p-6 space-y-4">
+          <p className="text-xs text-muted leading-relaxed">
+            Specify cut piece dimensions for bars, shafts, pipes, or plates. The system will format the supplier PO note and calculate material dimensions.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Cut Length (mm) *</label>
+              <input
+                type="number"
+                min="1"
+                value={cutForm.cutLength}
+                onChange={e => setCutForm({ ...cutForm, cutLength: Math.max(1, Number(e.target.value)) })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                placeholder="e.g. 200"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Number of Pieces (Cuts) *</label>
+              <input
+                type="number"
+                min="1"
+                value={cutForm.pieces}
+                onChange={e => setCutForm({ ...cutForm, pieces: Math.max(1, Number(e.target.value)) })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                placeholder="e.g. 1"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Standard Bar Length (mm)</label>
+              <input
+                type="number"
+                min="1"
+                value={cutForm.standardLength}
+                onChange={e => setCutForm({ ...cutForm, standardLength: Math.max(1, Number(e.target.value)) })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                placeholder="Default: 6000"
+              />
+              <span className="text-[10px] text-muted">Standard supplier bar is usually 6,000 mm (6 Meters).</span>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">PO Order Qty Column</label>
+              <select
+                value={cutForm.qtyMode}
+                onChange={e => setCutForm({ ...cutForm, qtyMode: e.target.value as any })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary text-sm focus:border-rex-500 outline-none rounded-lg font-medium"
+              >
+                <option value="pieces">Pieces / Nos ({cutForm.pieces} pcs)</option>
+                <option value="meters">Meters ({((cutForm.cutLength * cutForm.pieces) / 1000).toFixed(3)} M)</option>
+                <option value="mm">Millimeters ({cutForm.cutLength * cutForm.pieces} mm)</option>
+              </select>
+              <span className="text-[10px] text-muted">Sets how Qty column is represented in the line item.</span>
+            </div>
+          </div>
+
+          {/* Live Calculation Summary */}
+          <div className="bg-surface/60 border border-theme-subtle p-3.5 rounded-lg text-xs space-y-2 font-medium">
+            <div className="flex justify-between items-center">
+              <span className="text-muted">Total Cut Material:</span>
+              <span className="font-mono font-bold text-primary">
+                {cutForm.cutLength * cutForm.pieces} mm ({(cutForm.cutLength * cutForm.pieces / 1000).toFixed(3)} Meters)
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-muted">Standard Bar Fraction:</span>
+              <span className="font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                {((cutForm.cutLength * cutForm.pieces) / cutForm.standardLength).toFixed(4)} of {cutForm.standardLength} mm Full Bar
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-theme-subtle/50">
+              <span className="text-muted">PO Description Note:</span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                [Cut: {cutForm.cutLength} mm × {cutForm.pieces} pcs]
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="ghost" onClick={() => setActiveCutModalItem(null)}>Cancel</Button>
+            <Button variant="primary" onClick={applyCutSpecs}>
+              Apply Cut Specs
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    )}
   </div>
   );
 };
