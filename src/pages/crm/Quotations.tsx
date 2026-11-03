@@ -1351,17 +1351,29 @@ export const Quotations: React.FC = () => {
                   </span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleCreateSalesOrder(group, latestMain);
-                    setOpenActionId(null);
-                  }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
-                >
-                  <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
-                  <span>Create Sales Order</span>
-                </button>
+                {(() => {
+                  const quoteOrders = allOrders.filter((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCreateSalesOrder(group, latestMain);
+                        setOpenActionId(null);
+                      }}
+                      className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center justify-between transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <ShoppingBag size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                        <span>{quoteOrders.length > 0 ? '+ Another Sales Order' : 'Create Sales Order'}</span>
+                      </div>
+                      {quoteOrders.length > 0 && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-sm font-bold">
+                          {quoteOrders.length}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })()}
 
                 <button
                   type="button"
@@ -1523,54 +1535,87 @@ export const Quotations: React.FC = () => {
               <span>Print Quotation (PDF)</span>
             </button>
 
-            {/* Print Sales Order */}
-            <button
-              type="button"
-              onClick={() => {
-                setOpenActionId(null);
-                const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
-                if (linkedOrder) {
-                  setPrintSalesOrder(linkedOrder);
-                } else {
-                  const cust = customers.find(c => c.id === group.leadId || c.company === group.clientCompany || c.name === group.clientName) || leads.find(l => l.id === group.leadId);
-                  const previewSO = {
-                    id: `SO-${group.quoNo}`,
-                    orderNo: `SO-${group.quoNo}`,
-                    quotationNo: group.quoNo,
-                    quoteId: latestMain?.id,
-                    customerId: cust?.id || group.leadId,
-                    customerName: group.clientName || group.clientCompany || 'Valued Customer',
-                    customerAddress: group.clientAddress || cust?.address || '',
-                    customerPhone: group.clientPhone || cust?.phone || '',
-                    customerEmail: group.clientEmail || cust?.email || '',
-                    orderDate: latestMain?.date || latestMain?.createdAt || new Date().toISOString(),
-                    targetDeliveryDate: parsed.deliveryPeriod || parsed.validityPeriod || null,
-                    paymentTerms: parsed.paymentTerms || cust?.paymentTerms || 'Standard Terms',
-                    subtotal: Number(latestMain?.totalAmount || parsed.subtotal || parsed.total || 0),
-                    totalPrice: Number(latestMain?.totalAmount || parsed.total || 0),
-                    status: 'Confirmed (From Quotation)',
-                    items: (parsed.custItems && parsed.custItems.length > 0) ? parsed.custItems.map((it: any) => ({
-                      description: it.desc || it.description || it.name,
-                      qty: Number(it.qty) || 1,
-                      unitPrice: Number(it.unitPrice) || 0,
-                      amount: Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0)),
-                      uom: it.unit || it.uom || 'Nos'
-                    })) : [{
-                      description: parsed.subject || `Quotation ${group.quoNo} Items`,
-                      qty: 1,
-                      unitPrice: Number(latestMain?.totalAmount || parsed.total || 0),
-                      amount: Number(latestMain?.totalAmount || parsed.total || 0),
-                      uom: 'Nos'
-                    }]
-                  };
-                  setPrintSalesOrder(previewSO);
-                }
-              }}
-              className="w-full px-3.5 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
-            >
-              <ShoppingBag size={13} className="shrink-0 text-blue-500" />
-              <span>Print Sales Order</span>
-            </button>
+            {/* Print Sales Order(s) */}
+            {(() => {
+              const quoteOrders = allOrders.filter((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+              if (quoteOrders.length > 1) {
+                return (
+                  <div className="py-1">
+                    <div className="px-3.5 py-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider font-mono flex items-center gap-1">
+                      <ShoppingBag size={11} /> Print Sales Orders ({quoteOrders.length})
+                    </div>
+                    {quoteOrders.map((ord: any) => (
+                      <button
+                        key={ord.id}
+                        type="button"
+                        onClick={() => {
+                          setOpenActionId(null);
+                          setPrintSalesOrder(ord);
+                        }}
+                        className="w-full px-5 py-1 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-between transition-colors text-left cursor-pointer"
+                      >
+                        <span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                          {ord.orderNo || ord.id}
+                        </span>
+                        <span className="text-[10px] text-muted font-mono">
+                          {ord.qty ? `${ord.qty} pcs` : ''}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionId(null);
+                    const linkedOrder = quoteOrders[0];
+                    if (linkedOrder) {
+                      setPrintSalesOrder(linkedOrder);
+                    } else {
+                      const cust = customers.find(c => c.id === group.leadId || c.company === group.clientCompany || c.name === group.clientName) || leads.find(l => l.id === group.leadId);
+                      const previewSO = {
+                        id: `SO-${group.quoNo}`,
+                        orderNo: `SO-${group.quoNo}`,
+                        quotationNo: group.quoNo,
+                        quoteId: latestMain?.id,
+                        customerId: cust?.id || group.leadId,
+                        customerName: group.clientName || group.clientCompany || 'Valued Customer',
+                        customerAddress: group.clientAddress || cust?.address || '',
+                        customerPhone: group.clientPhone || cust?.phone || '',
+                        customerEmail: group.clientEmail || cust?.email || '',
+                        orderDate: latestMain?.date || latestMain?.createdAt || new Date().toISOString(),
+                        targetDeliveryDate: parsed.deliveryPeriod || parsed.validityPeriod || null,
+                        paymentTerms: parsed.paymentTerms || cust?.paymentTerms || 'Standard Terms',
+                        subtotal: Number(latestMain?.totalAmount || parsed.subtotal || parsed.total || 0),
+                        totalPrice: Number(latestMain?.totalAmount || parsed.total || 0),
+                        status: 'Confirmed (From Quotation)',
+                        items: (parsed.custItems && parsed.custItems.length > 0) ? parsed.custItems.map((it: any) => ({
+                          description: it.desc || it.description || it.name,
+                          qty: Number(it.qty) || 1,
+                          unitPrice: Number(it.unitPrice) || 0,
+                          amount: Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0)),
+                          uom: it.unit || it.uom || 'Nos'
+                        })) : [{
+                          description: parsed.subject || `Quotation ${group.quoNo} Items`,
+                          qty: 1,
+                          unitPrice: Number(latestMain?.totalAmount || parsed.total || 0),
+                          amount: Number(latestMain?.totalAmount || parsed.total || 0),
+                          uom: 'Nos'
+                        }]
+                      };
+                      setPrintSalesOrder(previewSO);
+                    }
+                  }}
+                  className="w-full px-3.5 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <ShoppingBag size={13} className="shrink-0 text-blue-500" />
+                  <span>Print Sales Order</span>
+                </button>
+              );
+            })()}
 
             {/* Print Work Order (Traveler) */}
             <button
@@ -2642,19 +2687,19 @@ export const Quotations: React.FC = () => {
                             title={`Quotation #${group.quoNo}`}
                             traces={(() => {
                               const traces: TraceNode[] = [];
-                              const linkedOrder = allOrders.find((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
+                              const quoteOrders = allOrders.filter((o: any) => (o.quoteId && String(o.quoteId) === String(latestMain?.id)) || (o.quotationNo && o.quotationNo === group.quoNo));
                               const linkedInvoice = allInvoices.find((inv: any) => (inv.quotationId && String(inv.quotationId) === String(latestMain?.id)) || (inv.quotationNo && inv.quotationNo === group.quoNo));
 
-                              if (linkedOrder) {
+                              quoteOrders.forEach((so: any) => {
                                 traces.push({
                                   type: 'order',
-                                  title: 'Sales Order',
-                                  reference: linkedOrder.orderNo,
-                                  subtitle: `Customer Order • ${linkedOrder.customerName || ''}`,
-                                  statusBadge: { label: linkedOrder.status || 'Active Order', variant: 'info' },
-                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder.orderNo)}`
+                                  title: quoteOrders.length > 1 ? `Sales Order (${so.orderNo})` : 'Sales Order',
+                                  reference: so.orderNo,
+                                  subtitle: `Customer Order • ${so.customerName || ''}`,
+                                  statusBadge: { label: so.status || 'Active Order', variant: 'info' },
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(so.orderNo)}`
                                 });
-                              }
+                              });
 
                               if (existingWO) {
                                 traces.push({
@@ -2681,7 +2726,8 @@ export const Quotations: React.FC = () => {
                                 });
                               }
 
-                              const customerPoNum = (latestMain as any)?.customerPoNumber || (group as any)?.customerPoNumber || linkedOrder?.customerPoNumber;
+                              const primaryOrder = quoteOrders[0];
+                              const customerPoNum = (latestMain as any)?.customerPoNumber || (group as any)?.customerPoNumber || primaryOrder?.customerPoNumber || primaryOrder?.customerPoNo;
                               if (customerPoNum) {
                                 traces.push({
                                   type: 'po',
@@ -2689,7 +2735,7 @@ export const Quotations: React.FC = () => {
                                   reference: customerPoNum,
                                   subtitle: 'Client Purchase Order',
                                   statusBadge: { label: 'PO Received', variant: 'success' },
-                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder?.orderNo || customerPoNum)}`
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(primaryOrder?.orderNo || customerPoNum)}`
                                 });
                               }
 

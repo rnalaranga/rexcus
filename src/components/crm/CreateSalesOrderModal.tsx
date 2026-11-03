@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { createFinishedGoodsOrder, fetchNextDocumentNumber } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useCustomers, useLeads, useInvoices } from '@/hooks/useData';
+import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface CreateSalesOrderModalProps {
@@ -37,6 +37,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const { data: customers = [] } = useCustomers();
   const { data: leads = [] } = useLeads();
   const { data: allInvoices = [] } = useInvoices();
+  const { data: allOrders = [] } = useFinishedGoodsOrders();
 
   const [submitting, setSubmitting] = useState(false);
   const [poMode, setPoMode] = useState<'received' | 'pending' | 'without_po'>('received');
@@ -296,6 +297,19 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       setPoMode('received');
     }
   }, [isOpen, quotationData, customers, leads]);
+
+  // All existing sales orders linked to this quotation
+  const existingQuoteOrders = useMemo(() => {
+    if (!quotationData) return [];
+    const qId = String(quotationData.quotation?.id || '');
+    const qNo = String(quotationData.group?.quoNo || quotationData.quotation?.quotationNo || quotationData.quotation?.docNo || '').trim().toLowerCase();
+    return (allOrders || []).filter((o: any) => {
+      const matchId = qId && String(o.quoteId) === qId;
+      const oQNo = String(o.quotationNo || '').trim().toLowerCase();
+      const matchNo = qNo && oQNo && oQNo === qNo;
+      return matchId || matchNo;
+    });
+  }, [quotationData, allOrders]);
 
   if (!isOpen || !quotationData) return null;
 
