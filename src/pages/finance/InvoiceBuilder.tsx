@@ -79,6 +79,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [dispatchNo, setDispatchNo] = useState('');
   const [orderNo, setOrderNo] = useState('');
   const [poNo, setPoNo] = useState('');
+  const [sourceOrder, setSourceOrder] = useState<any>(null);
   const [customerVat, setCustomerVat] = useState('');
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [bankDetailId, setBankDetailId] = useState<string>('');
@@ -210,6 +211,7 @@ export const InvoiceBuilder: React.FC = () => {
             }
 
             if (ord.paidAmount) setLoadedOrderPaidAmount(Number(ord.paidAmount) || 0);
+            setSourceOrder(ord);
             if (ord.orderNo) setOrderNo(ord.orderNo);
             if (ord.quotationNo) setQuotationNo(ord.quotationNo);
             if (ord.attention) setAttention(ord.attention);
@@ -870,6 +872,13 @@ export const InvoiceBuilder: React.FC = () => {
   const customerOutstanding = Number(selectedCustomer?.outstandingBalance ?? 0);
   const creditWarning = selectedCustomer && Number(selectedCustomer.creditLimit) > 0 && ((customerOutstanding + total) > Number(selectedCustomer.creditLimit));
 
+  const isProforma = Boolean(String(docNo || '').startsWith('PI-'));
+  const isSourceOrderPoPending = Boolean(
+    String(poNo || '').trim().toUpperCase() === 'PO PENDING' ||
+    String(poNo || '').trim().toUpperCase() === 'PENDING' ||
+    (sourceOrder && (/\[PO Pending\]/i.test(sourceOrder.notes || '') || String(sourceOrder.customerPoNo || '').trim().toUpperCase() === 'PO PENDING'))
+  );
+
   const handleSave = async () => {
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
@@ -1064,6 +1073,13 @@ export const InvoiceBuilder: React.FC = () => {
       {!showPreview && (
         <div style={{ position: 'fixed', left: '-99999px', top: 0, width: '210mm', opacity: 0, pointerEvents: 'none' }}>
           <InvoicePreview {...previewProps} />
+        </div>
+      )}
+
+      {!isProforma && isSourceOrderPoPending && (
+        <div className="mx-6 mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-500 flex items-center gap-2 text-xs font-medium">
+          <AlertCircle size={16} className="shrink-0" />
+          <span><strong>Customer PO Pending:</strong> An official Customer PO must be attached before issuing a final Tax Invoice. (Proforma Invoices are permitted).</span>
         </div>
       )}
 

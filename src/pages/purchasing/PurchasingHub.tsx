@@ -793,8 +793,8 @@ export const PurchasingHub: React.FC = () => {
             </div>
           )
         },
-        { key: 'contact', header: 'Contact', width: '160px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
-        { key: 'status', header: 'Receipt Status', width: '110px', render: v => <Badge value={String(v)} size="sm" /> },
+        { key: 'contact', header: 'Contact', width: '160px', sortable: true, render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
+        { key: 'status', header: 'Receipt Status', width: '110px', sortable: true, render: v => <Badge value={String(v)} size="sm" /> },
         { 
           key: 'billingStatus', header: 'Invoicing', width: '130px', 
           render: (_, row) => {
@@ -959,9 +959,9 @@ export const PurchasingHub: React.FC = () => {
             </div>
           )
         },
-        { key: 'requestedBy', header: 'Requester', width: '150px', render: v => <span className="text-xs text-secondary">{String(v)}</span> },
-        { key: 'status', header: 'Status', width: '120px', render: v => <Badge value={String(v)} size="sm" /> },
-        { key: 'priority', header: 'Priority', width: '90px', render: v => <span className={`text-xs font-semibold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
+        { key: 'requestedBy', header: 'Requester', width: '150px', sortable: true, render: v => <span className="text-xs text-secondary">{String(v)}</span> },
+        { key: 'status', header: 'Status', width: '120px', sortable: true, render: v => <Badge value={String(v)} size="sm" /> },
+        { key: 'priority', header: 'Priority', width: '90px', sortable: true, render: v => <span className={`text-xs font-semibold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
         { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         {
           key: 'traceability', header: 'Traceability', align: 'center',

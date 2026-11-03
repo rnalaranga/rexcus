@@ -7045,6 +7045,28 @@ app.post('/api/invoices', async (req, res) => {
       return null;
     };
 
+    // Validate PO Pending: Final commercial tax invoices cannot be created while Customer PO is pending!
+    const isProforma = Boolean(data.isProforma || data.status === 'proforma' || String(data.invoiceNo || '').startsWith('PI-'));
+    if (!isProforma) {
+      const buyerPo = String(data.poNo || data.buyerPoNumber || data.customerPoNo || '').trim().toUpperCase();
+      if (buyerPo === 'PO PENDING' || buyerPo === 'PENDING') {
+        return res.status(400).json({ error: 'Cannot issue final commercial invoice: Customer PO is pending. Please attach customer PO first.' });
+      }
+      if (data.orderId || data.orderNo) {
+        const [ordRows]: any = await db.query(
+          'SELECT customerPoNo, notes FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1',
+          [data.orderId || '', data.orderNo || '']
+        );
+        if (ordRows && ordRows.length > 0) {
+          const ord = ordRows[0];
+          const ordPo = String(ord.customerPoNo || '').trim().toUpperCase();
+          if (ordPo === 'PO PENDING' || ordPo === 'PENDING' || (ord.notes && ord.notes.includes('[PO Pending]') && (!ord.customerPoNo || ordPo === 'PO PENDING'))) {
+            return res.status(400).json({ error: 'Cannot issue final commercial invoice: Customer PO is pending for this order. Please attach customer PO first.' });
+          }
+        }
+      }
+    }
+
     // Strip unknown columns dynamically to prevent ER_BAD_FIELD_ERROR 500s
     const [invCols]: any = await db.query('SHOW COLUMNS FROM invoices');
     const validCols = new Set(invCols.map((col: any) => col.Field));
@@ -9225,6 +9247,33 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
     const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
     if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
     const wo = wos[0];
+
+    // Validate Customer PO: If PO is pending, dispatch gate pass cannot be issued!
+    const woNotes = String(wo.notes || '');
+    let isWoPoPending = /\[PO Pending\]/i.test(woNotes) || String(wo.customerPoNo || '').trim().toUpperCase() === 'PO PENDING';
+    if (!isWoPoPending && wo.quoteId) {
+      try {
+        const [quotes]: any = await db.query('SELECT customerPoNo, notes FROM quotations WHERE id = ? LIMIT 1', [wo.quoteId]);
+        if (quotes && quotes.length > 0) {
+          const qPo = String(quotes[0].customerPoNo || '').trim().toUpperCase();
+          if (qPo === 'PO PENDING' || (quotes[0].notes && quotes[0].notes.includes('[PO Pending]') && !quotes[0].customerPoNo)) {
+            isWoPoPending = true;
+          }
+        }
+      } catch (e) {}
+      try {
+        const [sos]: any = await db.query('SELECT customerPoNo, notes FROM finished_goods_orders WHERE quoteId = ? OR id = ? OR orderNo = ? LIMIT 1', [wo.quoteId, wo.quoteId, wo.orderNo || '']);
+        if (sos && sos.length > 0) {
+          const soPo = String(sos[0].customerPoNo || '').trim().toUpperCase();
+          if (soPo === 'PO PENDING' || (sos[0].notes && sos[0].notes.includes('[PO Pending]') && !sos[0].customerPoNo)) {
+            isWoPoPending = true;
+          }
+        }
+      } catch (e) {}
+    }
+    if (isWoPoPending) {
+      return res.status(400).json({ error: 'Cannot dispatch goods: Customer Purchase Order (PO) is pending for this order. Please attach customer PO first.' });
+    }
 
     const [ops]: any = await db.query('SELECT * FROM work_order_operations WHERE workOrderId = ? ORDER BY stepNumber ASC', [id]);
     const [qcs]: any = await db.query('SELECT * FROM qc_inspections WHERE workOrderId = ? ORDER BY id DESC', [id]);

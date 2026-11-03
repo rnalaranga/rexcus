@@ -40,11 +40,19 @@ export const WorkOrderPartialDispatchModal: React.FC<WorkOrderPartialDispatchMod
   const calculatedNewCumulative = previouslyDispatched + Number(dispatchQty || 0)
   const calculatedNewRemaining = Math.max(0, totalJobQty - calculatedNewCumulative)
   const isFinalDispatch = calculatedNewRemaining === 0
+  const isPoPending = Boolean(
+    String(workOrder?.customerPoNo || '').trim().toUpperCase() === 'PO PENDING' ||
+    /\[PO Pending\]/i.test(workOrder?.notes || '')
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMsg(null)
 
+    if (isPoPending) {
+      setErrorMsg('Customer Purchase Order (PO) is Pending for this order. Goods cannot be dispatched until an official Customer PO is recorded.');
+      return;
+    }
     const qty = Number(dispatchQty)
     if (isNaN(qty) || qty <= 0) {
       setErrorMsg('Please enter a valid dispatch quantity greater than 0.')

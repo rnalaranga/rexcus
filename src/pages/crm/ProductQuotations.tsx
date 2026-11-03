@@ -34,6 +34,7 @@ import { printElement } from '@/lib/printElement'
 import { exportPdf } from '@/lib/exportPdf'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
+import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
 import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { GatePassPrintModal } from '@/components/GatePassPrintModal'
@@ -82,6 +83,30 @@ export const ProductQuotations: React.FC = () => {
   const [customerFilter, setCustomerFilter] = useState('all')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+
+  // Excel-like Column Sorting
+  const [pqSortField, setPqSortField] = useState<string>('date');
+  const [pqSortDir, setPqSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleTogglePqSort = (field: string) => {
+    if (pqSortField === field) {
+      setPqSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPqSortField(field);
+      setPqSortDir('asc');
+    }
+  };
+
+  const renderPqSortIndicator = (field: string) => {
+    if (pqSortField !== field) {
+      return <span className="text-muted/40 font-mono ml-1 text-[10px]">↕</span>;
+    }
+    return (
+      <span className="text-rex-600 dark:text-rex-400 font-bold font-mono ml-1 text-[11px]">
+        {pqSortDir === 'asc' ? '▲' : '▼'}
+      </span>
+    );
+  };
   const [previewData, setPreviewData] = useState<{ quotation: any, lead: any } | null>(null)
   const [emailModalData, setEmailModalData] = useState<any>(null)
   const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
@@ -98,6 +123,7 @@ export const ProductQuotations: React.FC = () => {
   const [expandedRevisions, setExpandedRevisions] = useState<Record<string, boolean>>({})
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
+  const [viewPoData, setViewPoData] = useState<any | null>(null);
   const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
   const [printSalesOrder, setPrintSalesOrder] = useState<any | null>(null)
   const [printWorkOrder, setPrintWorkOrder] = useState<any | null>(null)
@@ -451,6 +477,47 @@ export const ProductQuotations: React.FC = () => {
       return true;
     });
   }, [groupedQuotes, search, statusFilter, customerFilter, startDate, endDate]);
+
+  
+  // Sorted Groups for Table View
+  const sortedGroups = useMemo(() => {
+    return [...filteredGroups].sort((a: any, b: any) => {
+      const aLatest = a.versions?.[0];
+      const bLatest = b.versions?.[0];
+
+      if (pqSortField === 'quoNo') {
+        const aVal = a.quoNo || '';
+        const bVal = b.quoNo || '';
+        return pqSortDir === 'asc'
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      } else if (pqSortField === 'customer') {
+        const aVal = a.clientCompany || a.clientName || '';
+        const bVal = b.clientCompany || b.clientName || '';
+        return pqSortDir === 'asc'
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      } else if (pqSortField === 'items') {
+        const aCount = aLatest?.parsed?.custItems?.length || 0;
+        const bCount = bLatest?.parsed?.custItems?.length || 0;
+        return pqSortDir === 'asc' ? aCount - bCount : bCount - aCount;
+      } else if (pqSortField === 'date') {
+        const tA = new Date(a.latestDate || aLatest?.date || 0).getTime();
+        const tB = new Date(b.latestDate || bLatest?.date || 0).getTime();
+        return pqSortDir === 'asc' ? tA - tB : tB - tA;
+      } else if (pqSortField === 'value') {
+        const vA = Number(aLatest?.parsed?.grandTotal || aLatest?.total || 0);
+        const vB = Number(bLatest?.parsed?.grandTotal || bLatest?.total || 0);
+        return pqSortDir === 'asc' ? vA - vB : vB - vA;
+      } else if (pqSortField === 'status') {
+        const aVal = aLatest?.status || '';
+        const bVal = bLatest?.status || '';
+        return pqSortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+
+      return 0;
+    });
+  }, [filteredGroups, pqSortField, pqSortDir]);
 
   // Status Change
   const handleStatusChange = async (id: string, newStatus: string, currentStatus?: string) => {
@@ -1417,19 +1484,67 @@ export const ProductQuotations: React.FC = () => {
         <div className="border border-theme-subtle bg-surface shadow-xs overflow-hidden">
           <div className="overflow-x-auto min-h-[380px] pb-28 custom-scrollbar">
             <table className="w-full text-left min-w-[950px]">
-              <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
+              <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider select-none">
                 <tr>
-                  <th className="px-3.5 py-3">Quote # & Ver</th>
-                  <th className="px-3.5 py-3">Customer / Client</th>
-                  <th className="px-3.5 py-3">Catalog Items</th>
-                  <th className="px-3.5 py-3">Date</th>
-                  <th className="px-3.5 py-3 text-right">Quoted Value</th>
-                  <th className="px-3 py-3 text-center">Status</th>
+                  <th 
+                    onClick={() => handleTogglePqSort('quoNo')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Quote # & Ver</span>
+                      {renderPqSortIndicator('quoNo')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleTogglePqSort('customer')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Customer / Client</span>
+                      {renderPqSortIndicator('customer')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleTogglePqSort('items')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Catalog Items</span>
+                      {renderPqSortIndicator('items')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleTogglePqSort('date')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Date</span>
+                      {renderPqSortIndicator('date')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleTogglePqSort('value')}
+                    className="px-3.5 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center justify-end">
+                      <span>Quoted Value</span>
+                      {renderPqSortIndicator('value')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleTogglePqSort('status')}
+                    className="px-3 py-3 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center justify-center">
+                      <span>Status</span>
+                      {renderPqSortIndicator('status')}
+                    </div>
+                  </th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
-                {filteredGroups.map((group: any, idx: number) => {
+                {sortedGroups.map((group: any, idx: number) => {
                   const latest = group.versions[0];
                   const parsed = latest?.parsed || {};
                   const status = latest?.status || 'Draft';
@@ -2469,6 +2584,20 @@ export const ProductQuotations: React.FC = () => {
           }
         }}
       />
+      {/* ── VIEW CUSTOMER PO MODAL ── */}
+      {viewPoData && (
+        <ViewCustomerPoModal
+          isOpen={Boolean(viewPoData)}
+          onClose={() => setViewPoData(null)}
+          quotationData={viewPoData}
+          onEditPo={() => {
+            const data = viewPoData;
+            setViewPoData(null);
+            setRecordPoModalData({ group: data.group, quotation: data.quotation, type: 'product' });
+          }}
+        />
+      )}
+
       {/* ── CREATE ADVANCE PROFORMA INVOICE MODAL ── */}
       {advanceProformaModalOrder && (
         <CreateAdvanceProformaModal

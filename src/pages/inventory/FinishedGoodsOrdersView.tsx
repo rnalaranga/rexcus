@@ -35,6 +35,9 @@ import { printElement } from '@/lib/printElement'
 import { exportPdf } from '@/lib/exportPdf'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
+import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
+import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
+import { openDataUriOrUrl, downloadDataUriOrUrl } from '@/lib/utils'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -52,6 +55,15 @@ interface FinishedGoodsOrdersViewProps {
   onRefreshProducts?: () => void
   onOpenProductBOM?: (product: any) => void
 }
+
+const isOrderPoPending = (order: any): boolean => {
+  if (!order) return false;
+  const po = String(order.customerPoNo || '').trim().toUpperCase();
+  if (po === 'PO PENDING' || po === 'PENDING') return true;
+  const notes = String(order.notes || '');
+  if (/(\[PO Pending\])/i.test(notes) && (!order.customerPoNo || po === 'PO PENDING')) return true;
+  return false;
+};
 
 export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = ({
   onRefreshProducts,
@@ -82,6 +94,30 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: rawQuotations = [] } = useQuotations()
   const { data: allInvoices = [], refetch: refetchInvoices } = useInvoices()
   const { data: taxProfiles = [] } = useTaxProfiles()
+
+    // Sales Orders Table Sorting
+  const [orderSortField, setOrderSortField] = useState<string>('orderDate');
+  const [orderSortDir, setOrderSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleToggleOrderSort = (field: string) => {
+    if (orderSortField === field) {
+      setOrderSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setOrderSortField(field);
+      setOrderSortDir('asc');
+    }
+  };
+
+  const renderOrderSortIndicator = (field: string) => {
+    if (orderSortField !== field) {
+      return <span className="text-muted/40 font-mono ml-1 text-[10px]">↕</span>;
+    }
+    return (
+      <span className="text-rex-600 dark:text-rex-400 font-bold font-mono ml-1 text-[11px]">
+        {orderSortDir === 'asc' ? '▲' : '▼'}
+      </span>
+    );
+  };
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
@@ -170,6 +206,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [proformaModalOrder, setProformaModalOrder] = useState<any | null>(null)
   const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
   const [viewingPoAttachment, setViewingPoAttachment] = useState<{ url: string; orderNo: string; poNo?: string } | null>(null)
+  const [recordPoOrder, setRecordPoOrder] = useState<any | null>(null)
+  const [viewPoOrder, setViewPoOrder] = useState<any | null>(null)
 
   const handleOpenPrintProforma = (proforma: any, order?: any) => {
     if (!proforma) return
@@ -1441,6 +1479,45 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     })
   }, [orders, search, statusFilter])
 
+  
+  // Sorted Orders for Excel-like Column Sorting
+  const sortedOrders = useMemo(() => {
+    return [...filteredOrders].sort((a: any, b: any) => {
+      let aVal = a[orderSortField];
+      let bVal = b[orderSortField];
+
+      if (orderSortField === 'orderNo') {
+        aVal = a.orderNo || a.id || '';
+        bVal = b.orderNo || b.id || '';
+      } else if (orderSortField === 'customer') {
+        aVal = a.customerName || '';
+        bVal = b.customerName || '';
+      } else if (orderSortField === 'product') {
+        aVal = a.productName || '';
+        bVal = b.productName || '';
+      } else if (orderSortField === 'qty') {
+        const qA = Number(a.qty || 0);
+        const qB = Number(b.qty || 0);
+        return orderSortDir === 'asc' ? qA - qB : qB - qA;
+      } else if (orderSortField === 'value') {
+        const vA = Number(a.totalPrice || 0);
+        const vB = Number(b.totalPrice || 0);
+        return orderSortDir === 'asc' ? vA - vB : vB - vA;
+      } else if (orderSortField === 'status') {
+        aVal = a.status || '';
+        bVal = b.status || '';
+      } else if (orderSortField === 'orderDate') {
+        const tA = new Date(a.orderDate || a.createdAt || 0).getTime();
+        const tB = new Date(b.orderDate || b.createdAt || 0).getTime();
+        return orderSortDir === 'asc' ? tA - tB : tB - tA;
+      }
+
+      return orderSortDir === 'asc'
+        ? String(aVal || '').localeCompare(String(bVal || ''), undefined, { numeric: true })
+        : String(bVal || '').localeCompare(String(aVal || ''), undefined, { numeric: true });
+    });
+  }, [filteredOrders, orderSortField, orderSortDir]);
+
   // Summary Metrics
   const metrics = useMemo(() => {
     const total = orders.length
@@ -1851,6 +1928,32 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               );
             })()}
 
+            {/* Record / Attach Customer PO */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                setRecordPoOrder(order)
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-blue-600 dark:text-blue-400 font-medium"
+            >
+              <Paperclip size={13} /> {order.customerPoNo && order.customerPoNo !== 'WITHOUT PO' && !isOrderPoPending(order) ? 'Update Customer PO / Document' : 'Record / Attach Customer PO'}
+            </button>
+
+            {/* View PO Details if present */}
+            {order.customerPoNo && order.customerPoNo !== 'WITHOUT PO' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  setViewPoOrder(order)
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-emerald-600 dark:text-emerald-400 font-medium"
+              >
+                <Eye size={13} /> View Customer PO Details
+              </button>
+            )}
+
             {/* View PO Attachment if present */}
             {order.customerPoAttachment && (
               <button
@@ -2124,20 +2227,68 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         ) : (
         <div className="overflow-x-auto min-h-[380px] pb-28 custom-scrollbar">
           <table className="w-full text-left min-w-[980px]">
-            <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
+            <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider select-none">
               <tr>
-                <th className="px-3.5 py-3">Order # & Date</th>
-                <th className="px-3.5 py-3">Customer</th>
-                <th className="px-3.5 py-3">Product Ordered</th>
-                <th className="px-3 py-3 text-center">Qty & Stock</th>
-                <th className="px-3.5 py-3 text-right">Value & Advance</th>
+                <th 
+                  onClick={() => handleToggleOrderSort('orderNo')}
+                  className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                >
+                  <div className="flex items-center">
+                    <span>Order # & Date</span>
+                    {renderOrderSortIndicator('orderNo')}
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleToggleOrderSort('customer')}
+                  className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                >
+                  <div className="flex items-center">
+                    <span>Customer</span>
+                    {renderOrderSortIndicator('customer')}
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleToggleOrderSort('product')}
+                  className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                >
+                  <div className="flex items-center">
+                    <span>Product Ordered</span>
+                    {renderOrderSortIndicator('product')}
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleToggleOrderSort('qty')}
+                  className="px-3 py-3 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                >
+                  <div className="flex items-center justify-center">
+                    <span>Qty & Stock</span>
+                    {renderOrderSortIndicator('qty')}
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleToggleOrderSort('value')}
+                  className="px-3.5 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                >
+                  <div className="flex items-center justify-end">
+                    <span>Value & Advance</span>
+                    {renderOrderSortIndicator('value')}
+                  </div>
+                </th>
                 <th className="px-3 py-3 text-center">Traceability</th>
-                <th className="px-3 py-3 text-center">Status</th>
+                <th 
+                  onClick={() => handleToggleOrderSort('status')}
+                  className="px-3 py-3 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                >
+                  <div className="flex items-center justify-center">
+                    <span>Status</span>
+                    {renderOrderSortIndicator('status')}
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-theme-subtle/30 text-xs">
-              {filteredOrders.map((order, idx) => {
+              {sortedOrders.map((order, idx) => {
                 const prod = finishedProducts.find(p => p.id === order.productId)
                 const inStockNow = Number(prod?.quantity || 0)
                 const isShort = inStockNow < Number(order.qty) && !order.isDispatched
@@ -2191,30 +2342,77 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
                           {order.orderNo}
                         </span>
-                        {order.customerPoNo && (
-                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className="text-[10px] font-mono font-bold px-1 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" title={`Customer PO: ${order.customerPoNo}`}>
-                              PO: {order.customerPoNo}
-                            </span>
-                            {order.customerPoAttachment && (
+                        {(() => {
+                          const isPoPending = isOrderPoPending(order);
+                          const hasPo = order.customerPoNo && !isPoPending && order.customerPoNo !== 'WITHOUT PO';
+                          const isWithoutPo = order.customerPoNo === 'WITHOUT PO';
+
+                          if (isPoPending) {
+                            return (
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1" title="Customer PO is Pending - Dispatch & Final Invoice Blocked">
+                                  <Clock size={10} /> PO Pending
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRecordPoOrder(order);
+                                  }}
+                                  className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-bold"
+                                  title="Record and attach customer PO"
+                                >
+                                  + Attach PO
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          if (hasPo) {
+                            return (
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="text-[10px] font-mono font-bold px-1 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" title={`Customer PO: ${order.customerPoNo}`}>
+                                  PO: {order.customerPoNo}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewPoOrder(order);
+                                  }}
+                                  className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
+                                  title="View Customer PO Document & Details"
+                                >
+                                  <Paperclip size={10} /> View PO
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          if (isWithoutPo) {
+                            return (
+                              <span className="text-[10px] font-mono font-semibold px-1 py-0.2 bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30 mt-0.5">
+                                Without PO
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div className="mt-0.5">
                               <button
                                 type="button"
                                 onClick={(e) => {
-                                  e.stopPropagation()
-                                  setViewingPoAttachment({
-                                    url: order.customerPoAttachment,
-                                    orderNo: order.orderNo,
-                                    poNo: order.customerPoNo
-                                  })
+                                  e.stopPropagation();
+                                  setRecordPoOrder(order);
                                 }}
-                                className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
-                                title="View Customer PO Document"
+                                className="text-[10px] text-muted hover:text-blue-600 hover:underline flex items-center gap-0.5"
+                                title="Attach Customer Purchase Order"
                               >
-                                <Paperclip size={10} /> View PO
+                                + Add PO
                               </button>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })()}
                         <div className="text-[11px] text-muted flex items-center gap-1 font-mono mt-0.5">
                           <Calendar size={10} className="shrink-0" />
                           <span>{formatDate(order.orderDate)}</span>
@@ -3659,6 +3857,33 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* RECORD CUSTOMER PO MODAL */}
+      {recordPoOrder && (
+        <RecordCustomerPoModal
+          isOpen={Boolean(recordPoOrder)}
+          onClose={() => setRecordPoOrder(null)}
+          orderData={recordPoOrder}
+          onSuccess={async () => {
+            setRecordPoOrder(null);
+            refetch();
+          }}
+        />
+      )}
+
+      {/* VIEW CUSTOMER PO MODAL */}
+      {viewPoOrder && (
+        <ViewCustomerPoModal
+          isOpen={Boolean(viewPoOrder)}
+          onClose={() => setViewPoOrder(null)}
+          orderData={viewPoOrder}
+          onEditPo={() => {
+            const ord = viewPoOrder;
+            setViewPoOrder(null);
+            setRecordPoOrder(ord);
+          }}
+        />
       )}
 
       {/* CUSTOMER PO ATTACHMENT VIEWER MODAL */}

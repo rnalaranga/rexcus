@@ -15,6 +15,7 @@ import { ProductQuotationBuilder } from '@/pages/crm/ProductQuotationBuilder'
 import { Followups } from '@/pages/crm/Followups'
 import { Inventory } from '@/pages/inventory/Inventory'
 import { MaterialIssueHub } from '@/pages/inventory/MaterialIssueHub'
+import { GatePassesHub } from '@/pages/inventory/GatePassesHub'
 import { PurchasingHub } from '@/pages/purchasing/PurchasingHub'
 import { POBuilder } from '@/pages/purchasing/POBuilder'
 import { GRNBuilder } from '@/pages/purchasing/GRNBuilder'
@@ -110,6 +111,9 @@ function AppRoutes() {
 
           {/* Inventory & Purchasing */}
           <Route path="/inventory" element={<Inventory />} />
+          <Route path="/inventory/gate-passes" element={<GatePassesHub />} />
+          <Route path="/gate-passes" element={<Navigate to="/inventory/gate-passes" replace />} />
+          <Route path="/inventory/sales-orders" element={<Navigate to="/crm/sales-orders" replace />} />
           <Route path="/inventory/material-issue" element={<MaterialIssueHub />} />
           <Route path="/material-issue" element={<Navigate to="/inventory/material-issue" replace />} />
           <Route path="/inventory/suppliers" element={<Suppliers />} />

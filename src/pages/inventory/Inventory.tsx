@@ -1475,6 +1475,24 @@ export const Inventory: React.FC = () => {
               </Button>
               <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
               <Button variant="ghost" icon={Scissors} onClick={() => setActiveTab('linear_remnants')}>Cut Studio</Button>
+              <Button 
+                variant="ghost" 
+                icon={ShoppingCart} 
+                onClick={() => navigate('/crm/sales-orders')}
+                className="text-xs text-secondary hover:text-primary border border-theme-subtle"
+                title="View Sales Orders dispatched or pending"
+              >
+                Sales Orders
+              </Button>
+              <Button 
+                variant="ghost" 
+                icon={Truck} 
+                onClick={() => navigate('/inventory/gate-passes')}
+                className="text-xs text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10 font-medium"
+                title="View and issue Gate Passes / Dispatch Notes"
+              >
+                Gate Passes
+              </Button>
               <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
               <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>
                 {activeTab === 'service' ? 'Add Service' : 'Add Raw Material'}

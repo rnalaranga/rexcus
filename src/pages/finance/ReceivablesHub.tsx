@@ -18,6 +18,9 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice, deletePaymentReceipt } from '@/lib/api';
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
+import { useQuotations, useFinishedGoodsOrders } from '@/hooks/useData';
+import { fetchGatePasses } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
@@ -41,6 +44,240 @@ export const ReceivablesHub: React.FC = () => {
   const { data: allInvoices = [], loading: loadingInvoices, refetch: refetchInvoices } = useInvoices();
   const { data: customers = [] } = useCustomers();
   const { data: accounts = [] } = useAccounts();
+  const { data: quotations = [] } = useQuotations();
+  const { data: salesOrders = [] } = useFinishedGoodsOrders();
+  const [gatePasses, setGatePasses] = useState<any[]>([]);
+
+  // Sorting States for Receivables tables
+  const [invSortField, setInvSortField] = useState<string>('date');
+  const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const [profSortField, setProfSortField] = useState<string>('date');
+  const [profSortDir, setProfSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const [recSortField, setRecSortField] = useState<string>('date');
+  const [recSortDir, setRecSortDir] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    fetchGatePasses()
+      .then(res => setGatePasses(Array.isArray(res) ? res : []))
+      .catch(() => setGatePasses([]));
+  }, []);
+
+  const handleToggleSort = (
+    field: string, 
+    currentField: string, 
+    setField: (f: string) => void, 
+    currentDir: 'asc' | 'desc', 
+    setDir: React.Dispatch<React.SetStateAction<'asc' | 'desc'>>
+  ) => {
+    if (field === currentField) {
+      setDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setField(field);
+      setDir('asc');
+    }
+  };
+
+  const renderSortIndicator = (field: string, currentField: string, currentDir: 'asc' | 'desc') => {
+    if (field !== currentField) {
+      return <span className="text-muted/40 font-mono ml-1 text-[10px]">↕</span>;
+    }
+    return (
+      <span className="text-rex-600 dark:text-rex-400 font-bold font-mono ml-1 text-[11px]">
+        {currentDir === 'asc' ? '▲' : '▼'}
+      </span>
+    );
+  };
+
+  const buildInvoiceTraceNodes = (inv: any): TraceNode[] => {
+    const nodes: TraceNode[] = [];
+    const invNo = inv.invoiceNo || inv.id;
+    const ordNo = inv.orderNo;
+    const matchedSO = salesOrders.find((so: any) => 
+      (ordNo && (so.orderNo === ordNo || so.id === ordNo)) ||
+      (so.invoiceNo && so.invoiceNo === invNo)
+    );
+    const quoteNo = inv.quotationNo || matchedSO?.quotationNo;
+    const matchedQuote = quotations.find((q: any) => 
+      (quoteNo && (q.quotationNo === quoteNo || q.id === quoteNo))
+    );
+    const matchedGP = gatePasses.filter((gp: any) => 
+      (ordNo && (gp.orderNo === ordNo || (gp.orderRef && gp.orderRef.includes(ordNo)))) ||
+      (gp.invoiceNo && gp.invoiceNo === invNo)
+    );
+    const matchedReceipts = paymentReceipts.filter((r: any) =>
+      (r.invoiceNo && r.invoiceNo === invNo) ||
+      (ordNo && (r.orderNo === ordNo || r.orderRef === ordNo))
+    );
+
+    if (quoteNo || matchedQuote) {
+      nodes.push({
+        type: 'quotation',
+        title: 'Quotation',
+        reference: quoteNo || matchedQuote?.quotationNo || 'QUO',
+        subtitle: matchedQuote?.date || '',
+        statusBadge: { label: matchedQuote?.status || 'Approved', variant: 'success' },
+        navigateUrl: `/crm/quotations?search=${encodeURIComponent(quoteNo || matchedQuote?.quotationNo)}`
+      });
+    }
+
+    if (ordNo || matchedSO) {
+      nodes.push({
+        type: 'order',
+        title: 'Sales Order',
+        reference: ordNo || matchedSO?.orderNo || 'SO',
+        subtitle: matchedSO?.orderDate || '',
+        statusBadge: { label: matchedSO?.status || 'Confirmed', variant: 'info' },
+        navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(ordNo || matchedSO?.orderNo)}`
+      });
+    }
+
+    matchedGP.forEach((gp: any) => {
+      nodes.push({
+        type: 'gate_pass',
+        title: 'Gate Pass / Dispatch',
+        reference: gp.passNo || gp.id,
+        subtitle: gp.date || '',
+        statusBadge: { label: gp.status || 'Issued', variant: 'warning' },
+        navigateUrl: `/inventory/gate-passes?search=${encodeURIComponent(gp.passNo || gp.id)}`
+      });
+    });
+
+    nodes.push({
+      type: 'invoice',
+      title: 'Tax Invoice',
+      reference: invNo,
+      subtitle: inv.date || '',
+      statusBadge: { 
+        label: (Number(inv.paidAmount || 0) >= Number(inv.total || inv.amount || 0)) ? 'Paid' : (Number(inv.paidAmount || 0) > 0 ? 'Partially Paid' : 'Issued'), 
+        variant: (Number(inv.paidAmount || 0) >= Number(inv.total || inv.amount || 0)) ? 'success' : 'warning'
+      },
+      navigateUrl: `/finance/invoices?search=${encodeURIComponent(invNo)}`
+    });
+
+    matchedReceipts.forEach((r: any) => {
+      nodes.push({
+        type: 'receipt',
+        title: 'Payment Receipt',
+        reference: r.receiptNo || r.id,
+        subtitle: r.date || '',
+        statusBadge: { label: 'Collected', variant: 'success' }
+      });
+    });
+
+    return nodes;
+  };
+
+  const buildProformaTraceNodes = (pi: any): TraceNode[] => {
+    const nodes: TraceNode[] = [];
+    const piNo = pi.invoiceNo || pi.id;
+    const ordNo = pi.orderNo;
+    const matchedSO = salesOrders.find((so: any) => 
+      (ordNo && (so.orderNo === ordNo || so.id === ordNo))
+    );
+    const quoteNo = pi.quotationNo || matchedSO?.quotationNo;
+    const matchedQuote = quotations.find((q: any) => 
+      (quoteNo && (q.quotationNo === quoteNo || q.id === quoteNo))
+    );
+    const matchedReceipts = paymentReceipts.filter((r: any) =>
+      (r.invoiceNo && r.invoiceNo === piNo) ||
+      (ordNo && (r.orderNo === ordNo || r.orderRef === ordNo))
+    );
+
+    if (quoteNo || matchedQuote) {
+      nodes.push({
+        type: 'quotation',
+        title: 'Quotation',
+        reference: quoteNo || matchedQuote?.quotationNo || 'QUO',
+        subtitle: matchedQuote?.date || '',
+        statusBadge: { label: matchedQuote?.status || 'Approved', variant: 'success' },
+        navigateUrl: `/crm/quotations?search=${encodeURIComponent(quoteNo || matchedQuote?.quotationNo)}`
+      });
+    }
+
+    if (ordNo || matchedSO) {
+      nodes.push({
+        type: 'order',
+        title: 'Sales Order',
+        reference: ordNo || matchedSO?.orderNo || 'SO',
+        subtitle: matchedSO?.orderDate || '',
+        statusBadge: { label: matchedSO?.status || 'Confirmed', variant: 'info' },
+        navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(ordNo || matchedSO?.orderNo)}`
+      });
+    }
+
+    nodes.push({
+      type: 'proforma',
+      title: 'Advance Proforma',
+      reference: piNo,
+      subtitle: pi.date || '',
+      statusBadge: { 
+        label: (Number(pi.paidAmount || 0) >= Number(pi.total || pi.amount || 0)) ? 'Paid' : 'Pending Advance', 
+        variant: (Number(pi.paidAmount || 0) >= Number(pi.total || pi.amount || 0)) ? 'success' : 'warning'
+      }
+    });
+
+    matchedReceipts.forEach((r: any) => {
+      nodes.push({
+        type: 'receipt',
+        title: 'Advance Receipt',
+        reference: r.receiptNo || r.id,
+        subtitle: r.date || '',
+        statusBadge: { label: 'Collected', variant: 'success' }
+      });
+    });
+
+    return nodes;
+  };
+
+  const buildReceiptTraceNodes = (rec: any): TraceNode[] => {
+    const nodes: TraceNode[] = [];
+    const recNo = rec.receiptNo || rec.id;
+    const ordNo = rec.orderNo || rec.orderRef;
+    const quoteNo = rec.quotationNo || rec.quoteNo;
+    const invNo = rec.invoiceNo;
+
+    if (quoteNo) {
+      nodes.push({
+        type: 'quotation',
+        title: 'Quotation',
+        reference: quoteNo,
+        statusBadge: { label: 'Approved', variant: 'success' },
+        navigateUrl: `/crm/quotations?search=${encodeURIComponent(quoteNo)}`
+      });
+    }
+
+    if (ordNo) {
+      nodes.push({
+        type: 'order',
+        title: 'Sales Order',
+        reference: ordNo,
+        statusBadge: { label: 'Confirmed', variant: 'info' },
+        navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(ordNo)}`
+      });
+    }
+
+    if (invNo) {
+      nodes.push({
+        type: 'invoice',
+        title: 'Invoice / Proforma',
+        reference: invNo,
+        statusBadge: { label: 'Linked', variant: 'info' },
+        navigateUrl: `/finance/invoices?search=${encodeURIComponent(invNo)}`
+      });
+    }
+
+    nodes.push({
+      type: 'receipt',
+      title: 'Payment Receipt',
+      reference: recNo,
+      subtitle: rec.date || '',
+      statusBadge: { label: 'Collected', variant: 'success' }
+    });
+
+    return nodes;
+  };
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('aging');
   const [search, setSearch] = useState('');
@@ -199,6 +436,104 @@ export const ReceivablesHub: React.FC = () => {
       return !q || recNo.includes(q) || cust.includes(q) || ord.includes(q) || quo.includes(q) || inv.includes(q);
     });
   }, [paymentReceipts, search]);
+
+  
+  // Sorted Invoices
+  const sortedInvoices = useMemo(() => {
+    return [...filteredInvoices].sort((a: any, b: any) => {
+      let aVal = a[invSortField];
+      let bVal = b[invSortField];
+      if (invSortField === 'invoiceNo') {
+        aVal = a.invoiceNo || a.id || '';
+        bVal = b.invoiceNo || b.id || '';
+      } else if (invSortField === 'customer') {
+        aVal = a.customerName || a.customerId || '';
+        bVal = b.customerName || b.customerId || '';
+      } else if (invSortField === 'total') {
+        return invSortDir === 'asc' 
+          ? (Number(a.total || a.amount || 0) - Number(b.total || b.amount || 0))
+          : (Number(b.total || b.amount || 0) - Number(a.total || a.amount || 0));
+      } else if (invSortField === 'paid') {
+        return invSortDir === 'asc' 
+          ? (Number(a.paidAmount || 0) - Number(b.paidAmount || 0))
+          : (Number(b.paidAmount || 0) - Number(a.paidAmount || 0));
+      } else if (invSortField === 'due') {
+        const dueA = Math.max(0, Number(a.total || a.amount || 0) - Number(a.paidAmount || 0));
+        const dueB = Math.max(0, Number(b.total || b.amount || 0) - Number(b.paidAmount || 0));
+        return invSortDir === 'asc' ? dueA - dueB : dueB - dueA;
+      } else if (invSortField === 'date' || invSortField === 'dueDate') {
+        const at = new Date(a[invSortField] || 0).getTime();
+        const bt = new Date(b[invSortField] || 0).getTime();
+        return invSortDir === 'asc' ? at - bt : bt - at;
+      }
+      return invSortDir === 'asc'
+        ? String(aVal || '').localeCompare(String(bVal || ''), undefined, { numeric: true })
+        : String(bVal || '').localeCompare(String(aVal || ''), undefined, { numeric: true });
+    });
+  }, [filteredInvoices, invSortField, invSortDir]);
+
+  // Sorted Proformas
+  const sortedProformas = useMemo(() => {
+    return [...filteredProformas].sort((a: any, b: any) => {
+      let aVal = a[profSortField];
+      let bVal = b[profSortField];
+      if (profSortField === 'invoiceNo') {
+        aVal = a.invoiceNo || a.id || '';
+        bVal = b.invoiceNo || b.id || '';
+      } else if (profSortField === 'customer') {
+        aVal = a.customerName || a.customerCompany || a.customerId || '';
+        bVal = b.customerName || b.customerCompany || b.customerId || '';
+      } else if (profSortField === 'orderNo') {
+        aVal = a.orderNo || '';
+        bVal = b.orderNo || '';
+      } else if (profSortField === 'total') {
+        return profSortDir === 'asc' 
+          ? (Number(a.total || a.amount || 0) - Number(b.total || b.amount || 0))
+          : (Number(b.total || b.amount || 0) - Number(a.total || a.amount || 0));
+      } else if (profSortField === 'paid') {
+        return profSortDir === 'asc' 
+          ? (Number(a.paidAmount || 0) - Number(b.paidAmount || 0))
+          : (Number(b.paidAmount || 0) - Number(a.paidAmount || 0));
+      } else if (profSortField === 'due') {
+        const dueA = Math.max(0, Number(a.total || a.amount || 0) - Number(a.paidAmount || 0));
+        const dueB = Math.max(0, Number(b.total || b.amount || 0) - Number(b.paidAmount || 0));
+        return profSortDir === 'asc' ? dueA - dueB : dueB - dueA;
+      } else if (profSortField === 'date' || profSortField === 'dueDate') {
+        const at = new Date(a[profSortField] || 0).getTime();
+        const bt = new Date(b[profSortField] || 0).getTime();
+        return profSortDir === 'asc' ? at - bt : bt - at;
+      }
+      return profSortDir === 'asc'
+        ? String(aVal || '').localeCompare(String(bVal || ''), undefined, { numeric: true })
+        : String(bVal || '').localeCompare(String(aVal || ''), undefined, { numeric: true });
+    });
+  }, [filteredProformas, profSortField, profSortDir]);
+
+  // Sorted Receipts
+  const sortedReceipts = useMemo(() => {
+    return [...filteredReceipts].sort((a: any, b: any) => {
+      let aVal = a[recSortField];
+      let bVal = b[recSortField];
+      if (recSortField === 'receiptNo') {
+        aVal = a.receiptNo || a.id || '';
+        bVal = b.receiptNo || b.id || '';
+      } else if (recSortField === 'customer') {
+        aVal = a.customerName || a.customerCompany || '';
+        bVal = b.customerName || b.customerCompany || '';
+      } else if (recSortField === 'amount') {
+        return recSortDir === 'asc' 
+          ? (Number(a.amount || 0) - Number(b.amount || 0))
+          : (Number(b.amount || 0) - Number(a.amount || 0));
+      } else if (recSortField === 'date') {
+        const at = new Date(a.date || 0).getTime();
+        const bt = new Date(b.date || 0).getTime();
+        return recSortDir === 'asc' ? at - bt : bt - at;
+      }
+      return recSortDir === 'asc'
+        ? String(aVal || '').localeCompare(String(bVal || ''), undefined, { numeric: true })
+        : String(bVal || '').localeCompare(String(aVal || ''), undefined, { numeric: true });
+    });
+  }, [filteredReceipts, recSortField, recSortDir]);
 
   // Enriched Proforma Preview Handler
   const handleOpenPrintProforma = (proforma: any) => {
@@ -365,10 +700,10 @@ export const ReceivablesHub: React.FC = () => {
         </div>
       )
     },
-    { key: 'bucket30', header: '0-30 Days', align: 'right', render: v => <span className="text-xs text-muted font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
-    { key: 'bucket60', header: '31-60 Days', align: 'right', render: v => <span className="text-xs text-muted font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
-    { key: 'bucket90', header: '61-90 Days', align: 'right', render: v => <span className="text-xs text-amber-500 font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
-    { key: 'bucket90plus', header: '90+ Days (Overdue)', align: 'right', render: v => <span className="text-xs text-red-500 font-bold font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
+    { key: 'bucket30', header: '0-30 Days', align: 'right', sortable: true, render: v => <span className="text-xs text-muted font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
+    { key: 'bucket60', header: '31-60 Days', align: 'right', sortable: true, render: v => <span className="text-xs text-muted font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
+    { key: 'bucket90', header: '61-90 Days', align: 'right', sortable: true, render: v => <span className="text-xs text-amber-500 font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
+    { key: 'bucket90plus', header: '90+ Days (Overdue)', align: 'right', sortable: true, render: v => <span className="text-xs text-red-500 font-bold font-mono">{Number(v) > 0 ? formatCurrency(Number(v)) : '-'}</span> },
     { key: 'balance', header: 'Total Outstanding', align: 'right', sortable: true, render: v => <span className="text-sm font-black text-emerald-600 font-mono">{formatCurrency(Number(v))}</span> },
     {
       key: 'actions', header: '', align: 'right',
@@ -619,19 +954,76 @@ export const ReceivablesHub: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-theme-subtle bg-surface2/50 text-[10.5px] uppercase tracking-wider text-muted font-bold">
-                    <th className="px-4 py-3">Invoice No</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Due Date</th>
-                    <th className="px-4 py-3 text-right">Total Amount</th>
-                    <th className="px-4 py-3 text-right">Paid to Date</th>
-                    <th className="px-4 py-3 text-right">Balance Due</th>
+                    <th 
+                      onClick={() => handleToggleSort('invoiceNo', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Invoice No</span>
+                        {renderSortIndicator('invoiceNo', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('customer', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Customer</span>
+                        {renderSortIndicator('customer', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('date', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Date</span>
+                        {renderSortIndicator('date', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('dueDate', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Due Date</span>
+                        {renderSortIndicator('dueDate', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('total', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Total Amount</span>
+                        {renderSortIndicator('total', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('paid', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Paid to Date</span>
+                        {renderSortIndicator('paid', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('due', invSortField, setInvSortField, invSortDir, setInvSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Balance Due</span>
+                        {renderSortIndicator('due', invSortField, invSortDir)}
+                      </div>
+                    </th>
+                    <th className="px-3 py-3 text-center">Traceability</th>
                     <th className="px-4 py-3 text-center">Status</th>
                     <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {filteredInvoices.map((inv: any) => {
+                  {sortedInvoices.map((inv: any) => {
                     const tot = Number(inv.total || inv.amount || 0);
                     const paid = Number(inv.paidAmount || 0);
                     const due = Math.max(0, tot - paid);
@@ -665,6 +1057,12 @@ export const ReceivablesHub: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-black text-rose-600 dark:text-rose-400">
                           {formatCurrency(due)}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <TraceabilityDropdown
+                            title={`Traceability for ${inv.invoiceNo || inv.id}`}
+                            traces={buildInvoiceTraceNodes(inv)}
+                          />
                         </td>
                         <td className="px-4 py-3 text-center">
                           <Badge variant={paid > 0 ? 'warning' : 'default'} size="sm">

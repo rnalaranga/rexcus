@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -45,6 +45,8 @@ const navGroups: NavGroup[] = [
     title: 'Inventory', icon: Package, active: true,
     items: [
       { label: 'Stock',          path: '/inventory',                icon: Package,      permission: 'inventory.items.view' },
+      { label: 'Sales Orders',   path: '/crm/sales-orders',         icon: ShoppingBag,  permission: 'inventory.items.view' },
+      { label: 'Gate Passes',    path: '/inventory/gate-passes',    icon: Truck,        permission: 'inventory.items.view' },
       { label: 'Material Issue', path: '/inventory/material-issue', icon: PackageCheck, permission: 'inventory.items.view' },
       { label: 'Suppliers',      path: '/inventory/suppliers',      icon: Building2,    permission: 'purchasing.suppliers.view' },
       { label: 'Purchasing',     path: '/purchasing',               icon: ShoppingCart, permission: 'purchasing.po.manage' },

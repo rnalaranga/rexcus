@@ -56,7 +56,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
   return (
     <div
       id="po-print-section"
-      className="bg-white text-black font-sans mx-auto text-xs"
+      className="bg-white text-black font-sans mx-auto text-[10.5px] leading-tight"
       style={{
         width: '100%',
         maxWidth: '794px',
@@ -118,11 +118,11 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
       `}</style>
 
       {/* ── 1. HEADER (Signature Rex Industries standard format) ── */}
-      <div className="flex py-2 px-3 border-b border-black items-center">
+      <div className="flex py-1.5 px-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
         <div className="w-[32%] flex justify-center items-center">
           {logoUrl
-            ? <img src={logoUrl} alt="Logo" className="max-h-[88px] w-auto max-w-full object-contain" />
+            ? <img src={logoUrl} alt="Logo" className="max-h-16 w-auto max-w-full object-contain" />
             : <div className="text-5xl font-extrabold text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
         </div>
 
@@ -134,7 +134,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
           >
             {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
           </h1>
-          <table className="text-[11px] leading-tight w-full" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+          <table className="text-[10px] leading-tight w-full" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             <tbody>
               <tr>
                 <td className="font-medium text-neutral-700 w-14 align-top whitespace-nowrap" style={{ width: '56px', whiteSpace: 'nowrap' }}>Office</td>
@@ -197,14 +197,14 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
       </div>
 
       {/* ── 2. DOCUMENT TITLE BAR ── */}
-      <div className="text-center font-bold text-[14px] py-1 border-b border-black tracking-widest uppercase bg-gray-50/70">
+      <div className="text-center font-bold text-[13px] py-0.5 border-b border-black tracking-widest uppercase bg-gray-50/70">
         PURCHASE ORDER
       </div>
 
       {/* ── 3. VENDOR & ORDER METADATA GRID (Matches Quotation TO & Details table) ── */}
       <div className="flex border-b border-black text-[11px]">
         {/* TO / VENDOR (Left 55%) */}
-        <div className="w-[55%] p-2.5 border-r border-black flex flex-col justify-between">
+        <div className="w-[55%] p-2 border-r border-black flex flex-col justify-between">
           <div>
             <div className="font-bold italic mb-0.5 text-[10px] text-gray-700">VENDOR / SUPPLIER</div>
             <div className="font-bold text-[12px] uppercase leading-tight text-black">
@@ -245,8 +245,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
           <table className="w-full h-full text-[11px]">
             <tbody>
               <tr className="border-b border-black">
-                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>PO DATE</td>
-                <td className="p-1.5 font-mono">
+                <td className="p-1 px-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>PO DATE</td>
+                <td className="p-1 px-1.5 font-mono">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1">{poDateFormatted}</span>
@@ -254,8 +254,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr className="border-b border-black">
-                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>PO NO</td>
-                <td className="p-1.5 font-bold font-mono text-black text-[12px]">
+                <td className="p-1 px-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>PO NO</td>
+                <td className="p-1 px-1.5 font-bold font-mono text-black text-[11px]">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1">{po.id}</span>
@@ -263,8 +263,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr className="border-b border-black">
-                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>DELIVERY DATE</td>
-                <td className="p-1.5 font-mono">
+                <td className="p-1 px-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>DELIVERY DATE</td>
+                <td className="p-1 px-1.5 font-mono">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1 font-semibold">{expectedDateFormatted}</span>
@@ -272,8 +272,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr className="border-b border-black">
-                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>REF MR NO</td>
-                <td className="p-1.5 font-mono">
+                <td className="p-1 px-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>REF MR NO</td>
+                <td className="p-1 px-1.5 font-mono">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1 text-blue-700 font-semibold">{mrIds.length > 0 ? mrIds.join(', ') : 'N/A'}</span>
@@ -281,8 +281,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr className="border-b border-black">
-                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>PAYMENT TERMS</td>
-                <td className="p-1.5">
+                <td className="p-1 px-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>PAYMENT TERMS</td>
+                <td className="p-1 px-1.5">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1">{po.paymentTerms || '30 Days Credit'}</span>
@@ -290,8 +290,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </td>
               </tr>
               <tr>
-                <td className="p-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>DELIVERY DEST.</td>
-                <td className="p-1.5">
+                <td className="p-1 px-1.5 border-r border-black font-bold bg-gray-50/50" style={{ width: '115px', whiteSpace: 'nowrap' }}>DELIVERY DEST.</td>
+                <td className="p-1 px-1.5">
                   <div className="flex items-start">
                     <span className="font-bold mr-1 shrink-0">:</span>
                     <span className="flex-1 text-[10px]">Rex Factory, Kattuwa</span>
@@ -315,14 +315,14 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
         </colgroup>
         <thead>
           <tr className="font-bold border-b border-black text-center bg-gray-50 text-[10.5px]">
-            <th className="p-1.5 border-r border-black font-bold text-center">NO</th>
-            <th className="p-1.5 border-r border-black font-bold text-center">DESCRIPTION</th>
-            {mrIds.length > 1 && <th className="p-1.5 border-r border-black font-bold text-center">MR REF</th>}
-            <th className="p-1.5 border-r border-black font-bold text-center">QTY</th>
+            <th className="p-1 px-1.5 border-r border-black font-bold text-center">NO</th>
+            <th className="p-1 px-1.5 border-r border-black font-bold text-center">DESCRIPTION</th>
+            {mrIds.length > 1 && <th className="p-1 px-1.5 border-r border-black font-bold text-center">MR REF</th>}
+            <th className="p-1 px-1.5 border-r border-black font-bold text-center">QTY</th>
             <th className="p-1.5 border-r border-black font-bold text-center leading-tight">
               UNIT PRICE<br />(LKR)
             </th>
-            <th className="p-1.5 font-bold text-center leading-tight">
+            <th className="p-1 px-1.5 font-bold text-center leading-tight">
               AMOUNT<br />(LKR)
             </th>
           </tr>
@@ -336,10 +336,10 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
 
             return (
               <tr key={idx} className="border-b border-black/20">
-                <td className="p-1.5 border-r border-black text-center align-top font-mono text-neutral-600">
+                <td className="p-1 px-1.5 border-r border-black text-center align-top font-mono text-neutral-600">
                   {idx + 1}
                 </td>
-                <td className="p-1.5 border-r border-black align-top">
+                <td className="p-1 px-1.5 border-r border-black align-top">
                   <div className="font-bold text-black leading-tight">
                     {item.desc || item.name || item.inventoryId || 'Item'}
                   </div>
@@ -369,13 +369,13 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                     {item.mrId || '-'}
                   </td>
                 )}
-                <td className="p-1.5 border-r border-black text-center align-top font-mono font-semibold text-black">
+                <td className="p-1 px-1.5 border-r border-black text-center align-top font-mono font-semibold text-black">
                   {qty.toLocaleString('en-US')} {item.unit || item.uom || ''}
                 </td>
-                <td className="p-1.5 border-r border-black text-right align-top font-mono text-neutral-800">
+                <td className="p-1 px-1.5 border-r border-black text-right align-top font-mono text-neutral-800">
                   {unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td className="p-1.5 text-right align-top font-mono font-bold text-black">
+                <td className="p-1 px-1.5 text-right align-top font-mono font-bold text-black">
                   {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -393,7 +393,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
         {/* ── 5. SUMMARY / TOTALS ── */}
         <tfoot>
           {/* Sub Total */}
-          <tr className="border-t border-b border-black h-6 text-[11px] bg-gray-50/30">
+          <tr className="border-t border-b border-black h-5 text-[10px] bg-gray-50/30">
             <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right font-bold pr-4">
               Sub Total
             </td>
@@ -407,7 +407,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
 
           {/* Discount if present */}
           {totalDiscount > 0 && (
-            <tr className="border-b border-black h-6 text-[11px] text-red-600">
+            <tr className="border-b border-black h-5 text-[10px] text-red-600">
               <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right font-semibold pr-4">
                 Total Order Discount
               </td>
@@ -424,7 +424,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
           {taxBreakdown ? (
             <>
               {Number(taxBreakdown.tax1Amount || 0) > 0 && (
-                <tr className="border-b border-black h-6 text-[11px]">
+                <tr className="border-b border-black h-5 text-[10px]">
                   <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right pr-4 text-neutral-700">
                     {taxBreakdown.tax1Name || 'SSCL'} ({Number(taxBreakdown.tax1Rate || 0)}%)
                   </td>
@@ -437,7 +437,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 </tr>
               )}
               {Number(taxBreakdown.tax2Amount || 0) > 0 && (
-                <tr className="border-b border-black h-6 text-[11px]">
+                <tr className="border-b border-black h-5 text-[10px]">
                   <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right pr-4 text-neutral-700">
                     {taxBreakdown.tax2Name || 'VAT'} ({Number(taxBreakdown.tax2Rate || 0)}%)
                   </td>
@@ -452,7 +452,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
             </>
           ) : (
             tax > 0 && (
-              <tr className="border-b border-black h-6 text-[11px]">
+              <tr className="border-b border-black h-5 text-[10px]">
                 <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right pr-4 text-neutral-700">
                   VAT / Total Tax
                 </td>
@@ -468,7 +468,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
 
           {/* Shipping Cost if present */}
           {shippingCost > 0 && (
-            <tr className="border-b border-black h-6 text-[11px]">
+            <tr className="border-b border-black h-5 text-[10px]">
               <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right pr-4 text-neutral-700">
                 Shipping & Handling Cost
               </td>
@@ -482,7 +482,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
           )}
 
           {/* Grand Total */}
-          <tr className="border-b-2 border-black h-8 text-[12px] font-black bg-gray-100/70">
+          <tr className="border-b-2 border-black h-6 text-[11px] font-black bg-gray-100/70">
             <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right pr-4 uppercase tracking-wider">
               Total Order Value
             </td>
@@ -497,7 +497,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
       </table>
 
       {/* ── 6. NOTES & TERMS SECTION ── */}
-      <div className="p-2 border-b border-black space-y-1 text-[9.5px] print-no-break" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+      <div className="p-2 border-b border-black space-y-1 text-[9.5px] print-no-break" style={{ pageBreakInside: 'avoid', breakInside: 'avoid', breakBefore: 'auto' }}>
         {po.notes && (
           <div className="p-2 bg-gray-50 border border-black/30 rounded-none">
             <span className="font-bold underline uppercase text-neutral-800">Special Instructions / Notes:</span>
@@ -523,25 +523,25 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
 
       {/* ── 7. AUTHORIZED SIGNATURES (Rex Standard 3-box approval) ── */}
       <div className="grid grid-cols-3 border-collapse text-center text-[10px] print-no-break" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-        <div className="p-3 border-r border-black flex flex-col justify-between min-h-[75px]">
+        <div className="p-2 border-r border-black flex flex-col justify-between min-h-[55px]">
           <div className="text-left font-bold text-neutral-500 uppercase">PREPARED BY</div>
-          <div className="mt-8 border-t border-black pt-1">
+          <div className="mt-4 border-t border-black pt-0.5">
             <div className="font-bold text-black text-[11px]">{po.createdBy || 'Purchasing Officer'}</div>
             <div className="text-neutral-500 text-[9.5px]">Procurement Dept</div>
           </div>
         </div>
 
-        <div className="p-3 border-r border-black flex flex-col justify-between min-h-[75px]">
+        <div className="p-2 border-r border-black flex flex-col justify-between min-h-[55px]">
           <div className="text-left font-bold text-neutral-500 uppercase">CHECKED & VERIFIED</div>
-          <div className="mt-8 border-t border-black pt-1">
+          <div className="mt-4 border-t border-black pt-0.5">
             <div className="font-bold text-black text-[11px]">Stores & Accounts Head</div>
             <div className="text-neutral-500 text-[9.5px]">Inventory & Finance</div>
           </div>
         </div>
 
-        <div className="p-3 flex flex-col justify-between min-h-[75px]">
+        <div className="p-2 flex flex-col justify-between min-h-[55px]">
           <div className="text-left font-bold text-neutral-500 uppercase">AUTHORIZED BY</div>
-          <div className="mt-8 border-t border-black pt-1">
+          <div className="mt-4 border-t border-black pt-0.5">
             <div className="font-bold text-black text-[11px]">Managing Director</div>
             <div className="text-neutral-500 text-[9.5px]">Rex Industries (Pvt) Ltd</div>
           </div>

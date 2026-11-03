@@ -114,6 +114,30 @@ export const Quotations: React.FC = () => {
   const canViewAll = can('quotations.view_all') || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'sales_head' || user?.role === 'crm_manager' || (user?.permissions?.includes('*') ?? false);
   const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all');
 
+  // Excel-like Column Sorting
+  const [qSortField, setQSortField] = useState<string>('date');
+  const [qSortDir, setQSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleToggleQSort = (field: string) => {
+    if (qSortField === field) {
+      setQSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setQSortField(field);
+      setQSortDir('asc');
+    }
+  };
+
+  const renderQSortIndicator = (field: string) => {
+    if (qSortField !== field) {
+      return <span className="text-muted/40 font-mono ml-1 text-[10px]">↕</span>;
+    }
+    return (
+      <span className="text-rex-600 dark:text-rex-400 font-bold font-mono ml-1 text-[11px]">
+        {qSortDir === 'asc' ? '▲' : '▼'}
+      </span>
+    );
+  };
+
   const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
 
   const loadWorkOrders = useCallback(async () => {
@@ -1016,6 +1040,46 @@ export const Quotations: React.FC = () => {
 
     return searchMatch && dateMatch;
   });
+
+  // Sorted Quotations for Table View
+  const sortedQuotations = useMemo(() => {
+    return [...filtered].sort((a: any, b: any) => {
+      const aMain = a.main?.[0] || a.customer?.[0] || a.job?.[0];
+      const bMain = b.main?.[0] || b.customer?.[0] || b.job?.[0];
+
+      if (qSortField === 'quoNo') {
+        const aVal = a.quoNo || '';
+        const bVal = b.quoNo || '';
+        return qSortDir === 'asc'
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      } else if (qSortField === 'customer') {
+        const aVal = a.leadCompany || a.leadName || '';
+        const bVal = b.leadCompany || b.leadName || '';
+        return qSortDir === 'asc'
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      } else if (qSortField === 'items') {
+        const aItems = aMain?.items?.length || aMain?.jobItems?.length || 0;
+        const bItems = bMain?.items?.length || bMain?.jobItems?.length || 0;
+        return qSortDir === 'asc' ? aItems - bItems : bItems - aItems;
+      } else if (qSortField === 'date') {
+        const tA = new Date(a.date || aMain?.date || 0).getTime();
+        const tB = new Date(b.date || bMain?.date || 0).getTime();
+        return qSortDir === 'asc' ? tA - tB : tB - tA;
+      } else if (qSortField === 'value') {
+        const vA = Number(aMain?.totalAmount || 0);
+        const vB = Number(bMain?.totalAmount || 0);
+        return qSortDir === 'asc' ? vA - vB : vB - vA;
+      } else if (qSortField === 'status') {
+        const aVal = aMain?.status || '';
+        const bVal = bMain?.status || '';
+        return qSortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+
+      return 0;
+    });
+  }, [filtered, qSortField, qSortDir]);
 
   const renderActionsDropdown = (
     group: any,
@@ -2101,7 +2165,7 @@ export const Quotations: React.FC = () => {
         <div className="border border-theme-subtle bg-surface shadow-xs overflow-hidden">
           <div className="overflow-x-auto min-h-[380px] pb-28 custom-scrollbar">
             <table className="w-full text-left min-w-[1000px]">
-              <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider">
+              <thead className="bg-surface2/60 border-b border-theme-subtle text-xs font-semibold text-muted uppercase tracking-wider select-none">
                 <tr>
                   <th className="w-9 px-3 py-3 text-center">
                     <input
@@ -2115,18 +2179,66 @@ export const Quotations: React.FC = () => {
                       title="Select all"
                     />
                   </th>
-                  <th className="px-3.5 py-3">Quote # & Ver</th>
-                  <th className="px-3.5 py-3">Customer / Company</th>
-                  <th className="px-3.5 py-3">Scope & Items</th>
-                  <th className="px-3.5 py-3">Date</th>
-                  <th className="px-3.5 py-3 text-right">Quoted Value</th>
-                  <th className="px-3 py-3 text-center">Status</th>
+                  <th 
+                    onClick={() => handleToggleQSort('quoNo')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Quote # & Ver</span>
+                      {renderQSortIndicator('quoNo')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleToggleQSort('customer')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Customer / Company</span>
+                      {renderQSortIndicator('customer')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleToggleQSort('items')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Scope & Items</span>
+                      {renderQSortIndicator('items')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleToggleQSort('date')}
+                    className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center">
+                      <span>Date</span>
+                      {renderQSortIndicator('date')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleToggleQSort('value')}
+                    className="px-3.5 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center justify-end">
+                      <span>Quoted Value</span>
+                      {renderQSortIndicator('value')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleToggleQSort('status')}
+                    className="px-3 py-3 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center justify-center">
+                      <span>Status</span>
+                      {renderQSortIndicator('status')}
+                    </div>
+                  </th>
                   <th className="px-3 py-3 text-center">Traceability</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
-                {filtered.map((group, idx) => {
+                {sortedQuotations.map((group, idx) => {
                   const latestMain = group.main[0];
                   const latestJob = group.job[0];
                   const latestCust = group.customer[0];
