@@ -9153,6 +9153,31 @@ app.get('/api/production/work-orders', async (req, res) => {
       });
     } catch(e) {}
 
+    // Also resolve from quotations and finished_goods_orders for work orders without direct customer name
+    let quoteCustomerMap: Record<string, string> = {};
+    try {
+      const [qList]: any = await db.query(`
+        SELECT q.id, q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany
+        FROM quotations q
+        LEFT JOIN leads l ON q.leadId = l.id
+        LEFT JOIN customers c ON q.leadId = c.id
+      `);
+      qList.forEach((q: any) => {
+        let qd: any = {};
+        try { qd = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {}); } catch(err) {}
+        const cName = q.leadCompany || q.custCompany || q.leadName || q.custName || qd.customerCompany || qd.customerName || '';
+        if (cName) quoteCustomerMap[q.id] = cName;
+      });
+    } catch(e) {}
+
+    let soCustomerMap: Record<string, string> = {};
+    try {
+      const [soList]: any = await db.query('SELECT orderNo, customerName FROM finished_goods_orders WHERE customerName IS NOT NULL AND customerName != ""');
+      soList.forEach((so: any) => {
+        if (so.orderNo && so.customerName) soCustomerMap[so.orderNo] = so.customerName;
+      });
+    } catch(e) {}
+
     const enriched = wos.map((wo: any) => {
       // 1. Matched operations
       const woOps = ops.filter((o: any) => o.workOrderId === wo.id).map((o: any) => {
@@ -9236,9 +9261,11 @@ app.get('/api/production/work-orders', async (req, res) => {
       const completedSteps = woOps.filter((o: any) => o.status === 'Completed').length;
       const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
 
+      const resolvedCust = wo.customer || customerMap[wo.customerId] || (wo.quoteId && quoteCustomerMap[wo.quoteId]) || (wo.orderNo && soCustomerMap[wo.orderNo]) || null;
       return {
         ...wo,
-        customerName: customerMap[wo.customerId] || wo.customer || wo.customerId || null,
+        customer: resolvedCust,
+        customerName: resolvedCust || wo.customer || customerMap[wo.customerId] || null,
         operations: woOps,
         qcInspections: woQcs,
         reworkLogs: woReworks,
@@ -9395,8 +9422,53 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
     const completedSteps = enrichedOps.filter((o: any) => o.status === 'Completed').length;
     const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
 
+    // Resolve Customer Name if missing
+    let woCustomerName = wo.customer || null;
+    if (!woCustomerName && wo.customerId) {
+      try {
+        const [custRows]: any = await db.query(
+          'SELECT name, company FROM customers WHERE id = ? UNION SELECT name, company FROM leads WHERE id = ? LIMIT 1',
+          [wo.customerId, wo.customerId]
+        );
+        if (custRows && custRows.length > 0) {
+          woCustomerName = custRows[0].company ? `${custRows[0].name} (${custRows[0].company})` : custRows[0].name;
+        }
+      } catch(e) {}
+    }
+    if (!woCustomerName && wo.quoteId) {
+      try {
+        const [qRows]: any = await db.query(
+          `SELECT q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany 
+           FROM quotations q 
+           LEFT JOIN leads l ON q.leadId = l.id 
+           LEFT JOIN customers c ON q.leadId = c.id 
+           WHERE q.id = ? OR q.quotationNo = ? LIMIT 1`,
+          [wo.quoteId, wo.quoteId]
+        );
+        if (qRows && qRows.length > 0) {
+          const qr = qRows[0];
+          let qData: any = {};
+          try { qData = typeof qr.data === 'string' ? JSON.parse(qr.data) : (qr.data || {}); } catch(e) {}
+          woCustomerName = qr.leadCompany || qr.custCompany || qr.leadName || qr.custName || qData.customerCompany || qData.customerName || null;
+        }
+      } catch(e) {}
+    }
+    if (!woCustomerName && wo.orderNo) {
+      try {
+        const [soRows]: any = await db.query(
+          'SELECT customerName FROM finished_goods_orders WHERE orderNo = ? OR id = ? LIMIT 1',
+          [wo.orderNo, wo.orderNo]
+        );
+        if (soRows && soRows.length > 0) {
+          woCustomerName = soRows[0].customerName || null;
+        }
+      } catch(e) {}
+    }
+
     res.json({
       ...wo,
+      customer: woCustomerName || wo.customer,
+      customerName: woCustomerName || wo.customer,
       qcCheckpoints: parsedQcCheckpoints,
       dispatches: parsedDispatches,
       operations: enrichedOps,
@@ -9439,9 +9511,43 @@ app.post('/api/production/work-orders', async (req, res) => {
       }
     }
 
+    let resolvedCustomer = (customer || req.body.customerName || '').trim();
+    if (!resolvedCustomer && customerId) {
+      resolvedCustomer = customerMap[customerId] || '';
+    }
+    if (!resolvedCustomer && sourceQuoteId) {
+      try {
+        const [qRows]: any = await db.query(
+          `SELECT q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany 
+           FROM quotations q 
+           LEFT JOIN leads l ON q.leadId = l.id 
+           LEFT JOIN customers c ON q.leadId = c.id 
+           WHERE q.id = ? OR q.quotationNo = ? LIMIT 1`,
+          [sourceQuoteId, sourceQuoteId]
+        );
+        if (qRows && qRows.length > 0) {
+          const qr = qRows[0];
+          let qData: any = {};
+          try { qData = typeof qr.data === 'string' ? JSON.parse(qr.data) : (qr.data || {}); } catch(e) {}
+          resolvedCustomer = qr.leadCompany || qr.custCompany || qr.leadName || qr.custName || qData.customerCompany || qData.customerName || '';
+        }
+      } catch(e) {}
+    }
+    if (!resolvedCustomer && req.body.orderNo) {
+      try {
+        const [soRows]: any = await db.query(
+          `SELECT customerName, customerId FROM finished_goods_orders WHERE orderNo = ? OR id = ? LIMIT 1`,
+          [req.body.orderNo, req.body.orderNo]
+        );
+        if (soRows && soRows.length > 0) {
+          resolvedCustomer = soRows[0].customerName || '';
+        }
+      } catch(e) {}
+    }
+
     // Strict validation: If customer requires advance payment, a Work Order CANNOT be created without an Advance Payment Proforma Invoice
     let requiresAdvance = false;
-    let checkedCustName = customer || '';
+    let checkedCustName = resolvedCustomer || customer || '';
     if (customerId) {
       const [custRows]: any = await db.query(
         'SELECT id, name, company, requiresAdvance FROM customers WHERE id = ? UNION SELECT id, name, company, IFNULL(requiresAdvance, 0) AS requiresAdvance FROM leads WHERE id = ? LIMIT 1',
@@ -9451,10 +9557,10 @@ app.post('/api/production/work-orders', async (req, res) => {
         requiresAdvance = Boolean(custRows[0].requiresAdvance === 1 || custRows[0].requiresAdvance === true);
         checkedCustName = custRows[0].company || custRows[0].name || checkedCustName;
       }
-    } else if (customer) {
+    } else if (checkedCustName) {
       const [custRows]: any = await db.query(
         'SELECT id, name, company, requiresAdvance FROM customers WHERE UPPER(company) = ? OR UPPER(name) = ? UNION SELECT id, name, company, IFNULL(requiresAdvance, 0) AS requiresAdvance FROM leads WHERE UPPER(company) = ? OR UPPER(name) = ? LIMIT 1',
-        [customer.toUpperCase(), customer.toUpperCase(), customer.toUpperCase(), customer.toUpperCase()]
+        [checkedCustName.toUpperCase(), checkedCustName.toUpperCase(), checkedCustName.toUpperCase(), checkedCustName.toUpperCase()]
       );
       if (custRows && custRows.length > 0) {
         requiresAdvance = Boolean(custRows[0].requiresAdvance === 1 || custRows[0].requiresAdvance === true);
@@ -9519,7 +9625,7 @@ app.post('/api/production/work-orders', async (req, res) => {
        (id, orderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, attachments, overheadPct, estimatedCost, createdAt, updatedAt) 
        VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        woId, orderNo, title, customerId || null, customer || null, sourceQuoteId || null, 
+        woId, orderNo, title, customerId || null, resolvedCustomer || customer || null, sourceQuoteId || null, 
         priority || 'Normal', plannedStartDate || new Date(), deadline || null, 
         Math.max(1, Number(jobQty || 1)), bom ? JSON.stringify(bom) : null, 
         notes || null, attachments ? JSON.stringify(attachments) : null,

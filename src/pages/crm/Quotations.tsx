@@ -446,10 +446,14 @@ export const Quotations: React.FC = () => {
       }
 
       const jobQty = Math.max(1, Number(data.jobQty || (data.custItems && data.custItems[0]?.qty) || (data.items && data.items[0]?.qty) || 1));
+      const targetCustomerName = woDialog.group.leadCompany || woDialog.group.leadName || woDialog.group.clientName || 'Customer';
 
       const woData = {
-        title: `WO: ${woDialog.group.quoNo} - ${woDialog.group.leadName || 'Customer'}`,
-        customerId: woDialog.group.leadId,
+        title: `WO: ${woDialog.group.quoNo} - ${targetCustomerName}`,
+        customerId: woDialog.group.leadId || null,
+        customer: targetCustomerName,
+        customerName: targetCustomerName,
+        quotationNo: woDialog.group.quoNo,
         sourceQuoteId: woDialog.latestMain?.id || null,
         priority: 'Medium',
         jobQty,

@@ -42,8 +42,10 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
 
   // Find linked sales order if available
   const linkedOrder = (allOrders || []).find((o: any) =>
+    (workOrder.salesOrderNo && (String(o.orderNo).toLowerCase() === String(workOrder.salesOrderNo).toLowerCase() || String(o.id) === String(workOrder.salesOrderNo))) ||
     (workOrder.orderNo && (String(o.orderNo).toLowerCase() === String(workOrder.orderNo).toLowerCase() || String(o.id) === String(workOrder.orderNo))) ||
-    (workOrder.id && (String(o.orderNo) === String(workOrder.id) || String(o.id) === String(workOrder.id)))
+    (workOrder.id && (String(o.orderNo) === String(workOrder.id) || String(o.id) === String(workOrder.id))) ||
+    (workOrder.quoteId && o.quoteId && String(o.quoteId) === String(workOrder.quoteId))
   );
 
   // Find linked quotation
@@ -51,7 +53,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
     const qIdStr = String(q.id || '').trim().toLowerCase();
     const qNoStr = String(q.quotationNo || '').trim().toLowerCase();
     const refStr = String(quoteRef || '').trim().toLowerCase();
-    const soRef = String(workOrder.orderNo || '').trim().toLowerCase();
+    const soRef = String(workOrder.salesOrderNo || workOrder.orderNo || '').trim().toLowerCase();
     return (
       (refStr && (qIdStr === refStr || qNoStr === refStr || qNoStr.includes(refStr))) ||
       (soRef && q.orderNo && String(q.orderNo).toLowerCase() === soRef) ||
@@ -67,12 +69,22 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
     try { quoteData = typeof linkedQuote.data === 'string' ? JSON.parse(linkedQuote.data) : linkedQuote.data; } catch {}
   }
 
+  // Extract from title fallback if title contains format "WO: ... - Customer"
+  let titleCustomer = '';
+  if (workOrder.title && workOrder.title.includes(' - ')) {
+    const parts = workOrder.title.split(' - ');
+    if (parts.length > 1 && parts[parts.length - 1].trim()) {
+      titleCustomer = parts[parts.length - 1].trim();
+    }
+  }
+
   // Customer Name: ONLY client name (no personal phone, no personal email on floor traveller)
   const customerName = (
     workOrder.customerName ||
     workOrder.customer ||
     workOrder.clientName ||
     linkedOrder?.customerName ||
+    titleCustomer ||
     quoteData?.customerCompany ||
     quoteData?.customerName ||
     linkedQuote?.customerCompany ||
