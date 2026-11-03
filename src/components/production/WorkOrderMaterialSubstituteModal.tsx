@@ -43,15 +43,14 @@ export const WorkOrderMaterialSubstituteModal: React.FC<Props> = ({
   onSuccess,
   onOpenDirectIssue
 }) => {
-  if (!isOpen || !item) return null;
 
   const [selectedInvId, setSelectedInvId] = useState<string>('');
   const [useCustomMaterial, setUseCustomMaterial] = useState<boolean>(false);
   const [substituteMaterial, setSubstituteMaterial] = useState<string>('');
   const [substituteSpec, setSubstituteSpec] = useState<string>('');
-  const [substituteQty, setSubstituteQty] = useState<number>(item.qty || 1);
-  const [substituteUnit, setSubstituteUnit] = useState<string>(item.unit || 'pcs');
-  const [substituteUnitCost, setSubstituteUnitCost] = useState<number>(item.unitPrice || 0);
+  const [substituteQty, setSubstituteQty] = useState<number>(item?.qty || 1);
+  const [substituteUnit, setSubstituteUnit] = useState<string>(item?.unit || 'pcs');
+  const [substituteUnitCost, setSubstituteUnitCost] = useState<number>(item?.unitPrice || 0);
   
   const [reasonCategory, setReasonCategory] = useState<string>('Using Available Factory Remnant / Alternative Bar Size');
   const [customReasonNotes, setCustomReasonNotes] = useState<string>('');
@@ -65,6 +64,8 @@ export const WorkOrderMaterialSubstituteModal: React.FC<Props> = ({
   const selectedInvItem = useMemo(() => {
     return inventory.find(inv => inv.id === selectedInvId) || null;
   }, [selectedInvId, inventory]);
+
+  if (!isOpen || !item) return null;
 
   // Handle inventory selection
   const handleSelectInventory = (invId: string) => {

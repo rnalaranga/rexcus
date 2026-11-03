@@ -691,6 +691,25 @@ export const GatePassesHub: React.FC = () => {
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {gp.type === 'goods_delivery' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              icon={FileText}
+                              onClick={() => {
+                                const qParam = new URLSearchParams();
+                                if (gp.orderId) qParam.set('orderId', gp.orderId);
+                                if (gp.orderNo) qParam.set('soNo', gp.orderNo);
+                                if (gp.passNo || gp.id) qParam.set('dispatchNo', gp.passNo || gp.id);
+                                if (gp.id) qParam.set('gatePassId', gp.id);
+                                navigate(`/finance/invoices/new?${qParam.toString()}`);
+                              }}
+                              className="text-xs border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 font-bold py-1 px-2.5 rounded-none flex items-center gap-1"
+                              title="Create Tax Invoice for this specific Dispatch Note"
+                            >
+                              Create Invoice
+                            </Button>
+                          )}
                           <Button
                             variant="primary"
                             size="sm"

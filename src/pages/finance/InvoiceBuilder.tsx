@@ -4,7 +4,7 @@ import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
   CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt, FileDown,
-  RefreshCw
+  RefreshCw, Truck
 } from 'lucide-react';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
@@ -92,11 +92,14 @@ export const InvoiceBuilder: React.FC = () => {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [loadedSourceOrder, setLoadedSourceOrder] = useState<any | null>(null);
   const [loadedSourceQuote, setLoadedSourceQuote] = useState<any | null>(null);
+  const [orderDispatchesList, setOrderDispatchesList] = useState<any[]>([]);
+  const [selectedDispatchId, setSelectedDispatchId] = useState<string>('');
 
   const [searchParams] = useSearchParams();
   const paramOrderId = searchParams.get('orderId');
   const paramQuoteId = searchParams.get('quoteId');
   const paramEditInvoiceId = searchParams.get('editInvoiceId') || searchParams.get('invoiceId') || searchParams.get('edit');
+  const paramDispatchNo = searchParams.get('dispatchNo') || searchParams.get('gatePassId') || searchParams.get('dn');
 
   useEffect(() => {
     if (!paramOrderId && !paramQuoteId && !paramEditInvoiceId) return;
@@ -217,9 +220,31 @@ export const InvoiceBuilder: React.FC = () => {
             if (ord.attention) setAttention(ord.attention);
             const rawPo = ord.customerPoNo || ord.poNo || ord.customerPo || ord.clientPo || '';
             if (rawPo) setPoNo(rawPo);
-            const dpNo = ord.gatePassNo || ord.gatePassId || ord.dispatchNo || '';
+            // Parse all dispatches linked to this order
+            let parsedDispatches: any[] = [];
+            try {
+              parsedDispatches = typeof ord.dispatches === 'string' ? JSON.parse(ord.dispatches || '[]') : (ord.dispatches || []);
+            } catch (e) {
+              parsedDispatches = [];
+            }
+            if (isMounted) setOrderDispatchesList(parsedDispatches);
+
+            // Match specific dispatch if requested via URL param
+            const activeDp = (paramDispatchNo && parsedDispatches.length > 0)
+              ? parsedDispatches.find((d: any) => 
+                  d.gatePassId === paramDispatchNo || 
+                  d.dispatchNo === paramDispatchNo || 
+                  d.id === paramDispatchNo
+                )
+              : null;
+
+            const dpNo = activeDp
+              ? (activeDp.gatePassId || activeDp.dispatchNo || activeDp.id)
+              : (paramDispatchNo || ord.gatePassNo || ord.gatePassId || ord.dispatchNo || '');
+
             if (dpNo) {
               setDispatchNo(dpNo);
+              if (activeDp) setSelectedDispatchId(activeDp.gatePassId || activeDp.dispatchNo || activeDp.id);
             } else {
               try {
                 const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
@@ -243,9 +268,11 @@ export const InvoiceBuilder: React.FC = () => {
               setTaxEnabled(true);
             }
 
-            // Parse items
+            // Parse items — If specific partial dispatch is chosen, load its exact items/quantities!
             let parsedItems: any[] = [];
-            if (ord.items) {
+            if (activeDp && Array.isArray(activeDp.items) && activeDp.items.length > 0) {
+              parsedItems = activeDp.items;
+            } else if (ord.items) {
               try {
                 parsedItems = typeof ord.items === 'string' ? JSON.parse(ord.items) : ord.items;
               } catch (e) {}
@@ -255,21 +282,36 @@ export const InvoiceBuilder: React.FC = () => {
             if (Array.isArray(parsedItems) && parsedItems.length > 0) {
               for (const it of parsedItems) {
                 const desc = it.description || it.productName || it.desc || it.name || '';
+                // Resolve unit price from order items if missing in dispatch note
+                let resolvedPrice = Number(it.unitPrice ?? it.price ?? 0);
+                if (!resolvedPrice && ord.items) {
+                  try {
+                    const fullOrdItems = typeof ord.items === 'string' ? JSON.parse(ord.items) : ord.items;
+                    const matchedOrdItem = (fullOrdItems || []).find((oi: any) =>
+                      (oi.productId && it.productId && oi.productId === it.productId) ||
+                      (oi.description && it.description && oi.description === it.description)
+                    );
+                    if (matchedOrdItem) resolvedPrice = Number(matchedOrdItem.unitPrice ?? matchedOrdItem.price ?? 0);
+                  } catch (e) {}
+                }
+                if (!resolvedPrice && ord.unitPrice) resolvedPrice = Number(ord.unitPrice);
+
                 lineItems.push({
                   id: crypto.randomUUID(),
                   inventoryId: it.productId || it.inventoryId || '',
                   description: desc || ord.productName || 'Order Item',
                   qty: Number(it.qty) || 1,
-                  unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+                  unitPrice: resolvedPrice,
                   taxRateId: ''
                 });
               }
             } else if (ord.productName) {
+              const qtyToBill = activeDp ? (Number(activeDp.dispatchedQty) || 1) : (Number(ord.qty) || 1);
               lineItems.push({
                 id: crypto.randomUUID(),
                 inventoryId: ord.productId || '',
                 description: ord.productName + (ord.productSku ? ` (${ord.productSku})` : ''),
-                qty: Number(ord.qty) || 1,
+                qty: qtyToBill,
                 unitPrice: Number(ord.unitPrice) || 0,
                 taxRateId: ''
               });
@@ -278,7 +320,11 @@ export const InvoiceBuilder: React.FC = () => {
             if (lineItems.length > 0) {
               setItems(lineItems);
             }
-            toast(`Loaded details and ${lineItems.length} item(s) from Sales Order ${ord.orderNo || ord.id}!`, 'success');
+            if (activeDp) {
+              toast(`Loaded Dispatch ${activeDp.gatePassId || activeDp.dispatchNo} (${lineItems.length} item(s)) from Sales Order ${ord.orderNo || ord.id}!`, 'success');
+            } else {
+              toast(`Loaded details and ${lineItems.length} item(s) from Sales Order ${ord.orderNo || ord.id}!`, 'success');
+            }
           }
         } else if (paramQuoteId) {
           let q: any = null;
@@ -476,6 +522,101 @@ export const InvoiceBuilder: React.FC = () => {
     loadSourceData();
     return () => { isMounted = false; };
   }, [paramOrderId, paramQuoteId, customers.length, leads.length]);
+
+  // Handle switching between Full Order items and a specific Partial Dispatch
+  const handleSelectDispatchForInvoice = (dpId: string) => {
+    setSelectedDispatchId(dpId);
+    if (!loadedSourceOrder) return;
+
+    if (dpId === 'all') {
+      // Revert to full order line items
+      setDispatchNo(loadedSourceOrder.gatePassNo || loadedSourceOrder.gatePassId || loadedSourceOrder.dispatchNo || '');
+      let fullItems: any[] = [];
+      try {
+        fullItems = typeof loadedSourceOrder.items === 'string' ? JSON.parse(loadedSourceOrder.items || '[]') : (loadedSourceOrder.items || []);
+      } catch (e) {
+        fullItems = [];
+      }
+      if (Array.isArray(fullItems) && fullItems.length > 0) {
+        setItems(fullItems.map((it: any) => ({
+          id: crypto.randomUUID(),
+          inventoryId: it.productId || it.inventoryId || '',
+          description: it.description || it.productName || it.name || loadedSourceOrder.productName || 'Order Item',
+          qty: Number(it.qty) || 1,
+          unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+          taxRateId: ''
+        })));
+      } else if (loadedSourceOrder.productName) {
+        setItems([{
+          id: crypto.randomUUID(),
+          inventoryId: loadedSourceOrder.productId || '',
+          description: loadedSourceOrder.productName + (loadedSourceOrder.productSku ? ` (${loadedSourceOrder.productSku})` : ''),
+          qty: Number(loadedSourceOrder.qty) || 1,
+          unitPrice: Number(loadedSourceOrder.unitPrice) || 0,
+          taxRateId: ''
+        }]);
+      }
+      toast('Switched to Full Sales Order items', 'info');
+      return;
+    }
+
+    const targetDp = orderDispatchesList.find((d: any) =>
+      d.gatePassId === dpId || d.dispatchNo === dpId || d.id === dpId
+    );
+    if (!targetDp) return;
+
+    setDispatchNo(targetDp.gatePassId || targetDp.dispatchNo || targetDp.id || '');
+    if (targetDp.date) setDeliveryDate(targetDp.date.slice(0, 10));
+
+    let dpItems = targetDp.items;
+    if (typeof dpItems === 'string') {
+      try { dpItems = JSON.parse(dpItems); } catch (e) { dpItems = []; }
+    }
+
+    let fullOrdItems: any[] = [];
+    try {
+      fullOrdItems = typeof loadedSourceOrder.items === 'string' ? JSON.parse(loadedSourceOrder.items || '[]') : (loadedSourceOrder.items || []);
+    } catch (e) {}
+
+    const newLines: any[] = [];
+    if (Array.isArray(dpItems) && dpItems.length > 0) {
+      for (const it of dpItems) {
+        const desc = it.description || it.productName || it.name || '';
+        let resolvedPrice = Number(it.unitPrice ?? it.price ?? 0);
+        if (!resolvedPrice) {
+          const matchedOrdItem = (fullOrdItems || []).find((oi: any) =>
+            (oi.productId && it.productId && oi.productId === it.productId) ||
+            (oi.description && it.description && oi.description === it.description)
+          );
+          if (matchedOrdItem) resolvedPrice = Number(matchedOrdItem.unitPrice ?? matchedOrdItem.price ?? 0);
+        }
+        if (!resolvedPrice && loadedSourceOrder.unitPrice) resolvedPrice = Number(loadedSourceOrder.unitPrice);
+
+        newLines.push({
+          id: crypto.randomUUID(),
+          inventoryId: it.productId || it.inventoryId || '',
+          description: desc || loadedSourceOrder.productName || 'Order Item',
+          qty: Number(it.qty) || 1,
+          unitPrice: resolvedPrice,
+          taxRateId: ''
+        });
+      }
+    } else {
+      newLines.push({
+        id: crypto.randomUUID(),
+        inventoryId: loadedSourceOrder.productId || '',
+        description: loadedSourceOrder.productName + (loadedSourceOrder.productSku ? ` (${loadedSourceOrder.productSku})` : ''),
+        qty: Number(targetDp.dispatchedQty) || 1,
+        unitPrice: Number(loadedSourceOrder.unitPrice) || 0,
+        taxRateId: ''
+      });
+    }
+
+    if (newLines.length > 0) {
+      setItems(newLines);
+      toast(`Switched line items to Dispatch ${targetDp.gatePassId || targetDp.dispatchNo}!`, 'success');
+    }
+  };
 
   // Auto-fill dispatch / gate pass number if quotationNo or orderNo is entered and dispatchNo is empty
   useEffect(() => {
@@ -1458,11 +1599,34 @@ export const InvoiceBuilder: React.FC = () => {
 
           {/* Row 2 — Line Items (full width) */}
           <GlassCard className="p-0 overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-theme-subtle flex items-center justify-between bg-surface/40">
-              <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                <FileText size={16} className="text-blue-500" /> Line Items
-              </h2>
-              <span className="text-[10px] font-mono text-muted">{items.length} line{items.length !== 1 ? 's' : ''}</span>
+            <div className="px-5 py-3 border-b border-theme-subtle flex flex-wrap items-center justify-between gap-3 bg-surface/40">
+              <div className="flex items-center gap-3">
+                <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                  <FileText size={16} className="text-blue-500" /> Line Items
+                </h2>
+                <span className="text-[10px] font-mono text-muted">{items.length} line{items.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {/* Partial Dispatch Billing Quick-Selector */}
+              {orderDispatchesList.length > 0 && (
+                <div className="flex items-center gap-2 bg-surface2/60 border border-theme-subtle/80 px-2.5 py-1 text-xs">
+                  <span className="text-[10.5px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
+                    <Truck size={12} className="text-emerald-500" /> Dispatch Scope:
+                  </span>
+                  <select
+                    value={selectedDispatchId || 'all'}
+                    onChange={e => handleSelectDispatchForInvoice(e.target.value)}
+                    className="bg-surface text-primary border border-theme-subtle px-2 py-0.5 text-xs font-semibold outline-none focus:border-blue-500"
+                  >
+                    <option value="all">Full Sales Order (All Items)</option>
+                    {orderDispatchesList.map((dp: any, idx: number) => (
+                      <option key={dp.id || idx} value={dp.gatePassId || dp.dispatchNo || dp.id}>
+                        {dp.gatePassId || dp.dispatchNo || `Dispatch #${idx + 1}`} ({dp.dispatchedQty} pcs{dp.date ? ` - ${String(dp.date).slice(0, 10)}` : ''})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">

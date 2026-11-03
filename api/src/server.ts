@@ -5511,19 +5511,40 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       }
     }
 
-    const gatePassItemsList = parsedItems.length > 0
-      ? parsedItems.map(it => ({
-          description: it.description || it.productName || order.productName,
-          qty: currentDispatchQty,
-          unit: it.uom || 'Nos',
-          remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
-        }))
-      : [{
-          description: order.productName || 'Finished Goods',
-          qty: currentDispatchQty,
-          unit: 'Nos',
-          remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
-        }];
+    // Support item-level partial dispatch if provided by client (dispatchDetails.dispatchItems)
+    const customDispatchItems = Array.isArray(dispatchDetails.dispatchItems) && dispatchDetails.dispatchItems.length > 0
+      ? dispatchDetails.dispatchItems
+      : null;
+
+    const gatePassItemsList = customDispatchItems
+      ? customDispatchItems
+          .filter((it: any) => Number(it.dispatchQty || it.qty || 0) > 0)
+          .map((it: any) => ({
+            productId: it.productId || it.inventoryId || null,
+            inventoryId: it.inventoryId || it.productId || null,
+            description: it.description || it.productName || order.productName,
+            qty: Number(it.dispatchQty || it.qty || 1),
+            unitPrice: Number(it.unitPrice || it.price || 0),
+            unit: it.uom || it.unit || 'Nos',
+            remarks: `Order ${order.orderNo} (Partial Dispatch: ${it.dispatchQty || it.qty} ${it.uom || 'Nos'})`
+          }))
+      : (parsedItems.length > 0
+          ? parsedItems.map(it => ({
+              productId: it.productId || it.inventoryId || null,
+              inventoryId: it.inventoryId || it.productId || null,
+              description: it.description || it.productName || order.productName,
+              qty: currentDispatchQty,
+              unitPrice: Number(it.unitPrice || it.price || 0),
+              unit: it.uom || 'Nos',
+              remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
+            }))
+          : [{
+              description: order.productName || 'Finished Goods',
+              qty: currentDispatchQty,
+              unitPrice: Number(order.unitPrice || 0),
+              unit: 'Nos',
+              remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
+            }]);
 
     // 2. Insert Gate Pass
     const resolvedVehicleNo = (dispatchDetails.vehicleNo && typeof dispatchDetails.vehicleNo === 'string' && dispatchDetails.vehicleNo.trim())
@@ -5571,12 +5592,16 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
 
     await db.query('INSERT INTO gate_passes SET ?', safeGatePassData);
 
-    // 3. Deduct stock for all items
-    if (parsedItems.length > 0) {
-      for (const it of parsedItems) {
+    // 3. Deduct stock for dispatched items
+    const itemsToDeduct = customDispatchItems && customDispatchItems.length > 0
+      ? customDispatchItems.filter((it: any) => Number(it.dispatchQty || it.qty || 0) > 0)
+      : (parsedItems.length > 0 ? parsedItems : []);
+
+    if (itemsToDeduct.length > 0) {
+      for (const it of itemsToDeduct) {
         const prodId = it.productId || it.inventoryId;
-        const itQty = Number(it.qty) || 1;
-        if (prodId) {
+        const itQty = Number(it.dispatchQty !== undefined ? it.dispatchQty : (it.qty || 1));
+        if (prodId && itQty > 0) {
           const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [prodId]);
           if (invRows.length > 0) {
             const currentQty = Number(invRows[0].quantity || 0);
@@ -5597,7 +5622,7 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
         }
       }
     } else if (order.productId) {
-      const dispatchQty = Number(order.qty) || 1;
+      const dispatchQty = currentDispatchQty || Number(order.qty) || 1;
       const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [order.productId]);
       if (invRows.length > 0) {
         const currentQty = Number(invRows[0].quantity || 0);

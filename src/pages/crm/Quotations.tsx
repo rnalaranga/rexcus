@@ -965,7 +965,6 @@ export const Quotations: React.FC = () => {
     return groupedQuotations.reduce((sum, g) => sum + Number((g.main[0] || g.customer[0] || g.job[0])?.totalAmount || 0), 0);
   }, [groupedQuotations]);
 
-  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
 
   const filtered = groupedQuotations.filter(g => {
     const latestMain = g.main[0] || g.customer[0] || g.job[0];
@@ -1080,6 +1079,9 @@ export const Quotations: React.FC = () => {
       return 0;
     });
   }, [filtered, qSortField, qSortDir]);
+
+  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
+
 
   const renderActionsDropdown = (
     group: any,

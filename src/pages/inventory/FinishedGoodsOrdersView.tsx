@@ -193,7 +193,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     driverName: '',
     destination: '',
     reason: '',
-    notes: ''
+    notes: '',
+    dispatchItems: [] as any[]
   })
 
   // Payment Receipts state
@@ -1143,6 +1144,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const prevDispatched = Number(order.dispatchedQty || (order.isDispatched ? totalOrderQty : 0))
     const remainingToDispatch = Math.max(0, totalOrderQty - prevDispatched)
 
+    let parsedItems: any[] = []
+    if (order.items) {
+      try {
+        parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+      } catch (e) {
+        parsedItems = []
+      }
+    }
+
+    const initialDispatchItems = Array.isArray(parsedItems) && parsedItems.length > 0
+      ? parsedItems.map((it: any) => {
+          const itTotalQty = Math.max(1, Number(it.qty || 1))
+          return {
+            ...it,
+            totalQty: itTotalQty,
+            dispatchQty: itTotalQty
+          }
+        })
+      : []
+
     setDispatchModalOrder(order)
     setDispatchForm({
       dispatchQty: remainingToDispatch > 0 ? remainingToDispatch : 1,
@@ -1151,7 +1172,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       driverName: order.driverName || '',
       destination: order.deliveryAddress || '',
       reason: `Finished Goods Delivery for Order ${order.orderNo}`,
-      notes: order.notes || ''
+      notes: order.notes || '',
+      dispatchItems: initialDispatchItems
     })
   }
 
@@ -1763,36 +1785,83 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </button>
             )}
 
-            {/* 4. Final Commercial Invoice */}
-            {linkedInvoice || order.invoiceNo ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenActionOrderId(null)
-                  navigate(`/finance/invoices?search=${encodeURIComponent(linkedInvoice?.invoiceNo || order.invoiceNo)}`)
-                }}
-                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
-              >
-                <span className="flex items-center gap-2">
-                  <FileText size={13} className="text-purple-500" /> View Commercial Invoice
-                </span>
-                <span className="text-[10px] font-mono px-1 py-0.2 bg-purple-500/10 border border-purple-500/20">Tax Inv</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenActionOrderId(null)
-                  handleInvoiceClick(order)
-                }}
-                className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
-              >
-                <span className="flex items-center gap-2">
-                  <FileText size={13} className="text-indigo-500" /> Create Final Tax Invoice
-                </span>
-                <span className="text-[10px] text-muted font-mono">+Invoice</span>
-              </button>
-            )}
+            {/* 4. Commercial Invoices & Dispatch-wise Billing */}
+            {(() => {
+              let orderDispatches: any[] = [];
+              try {
+                orderDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || []);
+              } catch (e) {
+                orderDispatches = [];
+              }
+
+              // All linked commercial invoices (for full order or individual partial dispatches)
+              const matchedInvs = allInvoices.filter((inv: any) =>
+                (!inv.isProforma && inv.invoiceType !== 'proforma' && !inv.invoiceNo?.startsWith('PI-') && !inv.id?.startsWith('PI-')) &&
+                (
+                  (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
+                  (order.invoiceNo && (String(inv.invoiceNo) === String(order.invoiceNo) || String(inv.id) === String(order.invoiceNo))) ||
+                  (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo))
+                )
+              );
+
+              return (
+                <div className="space-y-0.5">
+                  {matchedInvs.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenActionOrderId(null);
+                        navigate(`/finance/invoices?search=${encodeURIComponent(matchedInvs[0]?.invoiceNo || order.orderNo)}`);
+                      }}
+                      className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-purple-600 dark:text-purple-400 font-semibold"
+                    >
+                      <span className="flex items-center gap-2">
+                        <FileText size={13} className="text-purple-500" /> View Invoice{matchedInvs.length > 1 ? `s (${matchedInvs.length})` : ''}
+                      </span>
+                      <span className="text-[10px] font-mono px-1 py-0.2 bg-purple-500/10 border border-purple-500/20">Tax Inv</span>
+                    </button>
+                  ) : null}
+
+                  {/* Create Invoice Option — full order or latest dispatch */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenActionOrderId(null);
+                      handleInvoiceClick(order);
+                    }}
+                    className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-indigo-600 dark:text-indigo-400 font-medium"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText size={13} className="text-indigo-500" /> {matchedInvs.length > 0 ? '+ Another Dispatch Invoice' : 'Create Tax Invoice'}
+                    </span>
+                    <span className="text-[10px] text-muted font-mono">+Invoice</span>
+                  </button>
+
+                  {/* If order has multiple partial dispatches, provide direct 1-click links for each dispatch */}
+                  {orderDispatches.length > 1 && (
+                    <div className="px-3 py-1 bg-surface2/30 border-y border-theme-subtle/40 text-[10.5px] space-y-1">
+                      <span className="text-muted font-bold block text-[9.5px] uppercase">Bill Specific Partial Dispatch:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {orderDispatches.map((dp: any, dpIdx: number) => (
+                          <button
+                            key={dp.id || dpIdx}
+                            type="button"
+                            onClick={() => {
+                              setOpenActionOrderId(null);
+                              navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}&dispatchNo=${encodeURIComponent(dp.gatePassId || dp.dispatchNo || '')}`);
+                            }}
+                            className="px-1.5 py-0.5 bg-surface border border-theme-subtle hover:border-indigo-400 hover:text-indigo-600 text-[10px] font-mono rounded-none"
+                            title={`Create invoice specifically for ${dp.gatePassId || dp.dispatchNo} (${dp.dispatchedQty} pcs)`}
+                          >
+                            {dp.gatePassId || dp.dispatchNo || `Batch ${dpIdx + 1}`} ({dp.dispatchedQty} pcs)
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="my-1 border-t border-theme-subtle" />
             <div className="px-3 py-1 text-[10px] font-bold text-muted uppercase tracking-wider font-mono">
@@ -3595,39 +3664,115 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               const totalOrdQty = Math.max(1, Number(dispatchModalOrder.qty || 1));
               const prevDispatchedQty = Number(dispatchModalOrder.dispatchedQty || (dispatchModalOrder.isDispatched ? totalOrdQty : 0));
               const remainingToDispatch = Math.max(0, totalOrdQty - prevDispatchedQty);
+              const hasMultiItems = Array.isArray(dispatchForm.dispatchItems) && dispatchForm.dispatchItems.length > 0;
 
               return (
-                <div className="p-3 bg-surface border border-theme-subtle space-y-2">
+                <div className="p-3 bg-surface border border-theme-subtle space-y-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-secondary uppercase tracking-wider">Dispatch Batch Quantity</span>
+                    <span className="font-bold text-secondary uppercase tracking-wider">
+                      {hasMultiItems ? 'Item-wise Dispatch Quantities' : 'Dispatch Batch Quantity'}
+                    </span>
                     <span className="font-mono text-muted">
-                      Previously Dispatched: <strong className="text-emerald-500">{prevDispatchedQty} / {totalOrdQty} pcs</strong>
+                      Total Dispatched So Far: <strong className="text-emerald-500">{prevDispatchedQty} / {totalOrdQty} pcs</strong>
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="block text-[11px] text-muted mb-1">Quantity to Handover in this Batch:</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max={remainingToDispatch > 0 ? remainingToDispatch : totalOrdQty}
-                        value={dispatchForm.dispatchQty}
-                        onChange={e => setDispatchForm({ ...dispatchForm, dispatchQty: Math.max(1, Number(e.target.value)) })}
-                        className="w-full input-base text-sm font-mono font-bold"
-                        required
-                      />
+                  {hasMultiItems ? (
+                    <div className="border border-theme-subtle overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-surface2/70 border-b border-theme-subtle text-[10px] font-bold text-muted uppercase">
+                          <tr>
+                            <th className="px-3 py-2">Item Description</th>
+                            <th className="px-2 py-2 text-center w-20">Order Qty</th>
+                            <th className="px-2 py-2 text-center w-28">Dispatch Now</th>
+                            <th className="px-2 py-2 text-right w-24">Unit</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-theme-subtle/40">
+                          {dispatchForm.dispatchItems.map((it: any, itIdx: number) => (
+                            <tr key={it.id || itIdx} className="hover:bg-surface2/20">
+                              <td className="px-3 py-2">
+                                <span className="font-semibold text-primary block leading-tight">{it.description || it.productName || 'Order Item'}</span>
+                                {it.sku && <span className="text-[10px] text-muted font-mono">{it.sku}</span>}
+                              </td>
+                              <td className="px-2 py-2 text-center font-mono font-bold text-muted">
+                                {it.totalQty || it.qty || 1}
+                              </td>
+                              <td className="px-2 py-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={it.totalQty || it.qty || 99999}
+                                  value={it.dispatchQty !== undefined ? it.dispatchQty : (it.qty || 0)}
+                                  onChange={e => {
+                                    const val = Math.max(0, Number(e.target.value));
+                                    const updatedItems = dispatchForm.dispatchItems.map((item: any, i: number) =>
+                                      i === itIdx ? { ...item, dispatchQty: val } : item
+                                    );
+                                    const sumQty = updatedItems.reduce((acc: number, item: any) => acc + Number(item.dispatchQty || 0), 0);
+                                    setDispatchForm({
+                                      ...dispatchForm,
+                                      dispatchItems: updatedItems,
+                                      dispatchQty: sumQty > 0 ? sumQty : 1
+                                    });
+                                  }}
+                                  className="w-full input-base py-1 px-2 text-center text-xs font-mono font-bold"
+                                />
+                              </td>
+                              <td className="px-2 py-2 text-right text-muted font-mono text-[11px]">
+                                {it.uom || it.unit || 'pcs'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="p-2 bg-surface2/40 border-t border-theme-subtle flex items-center justify-between text-[11px]">
+                        <span className="text-muted">Total items in this dispatch note: <strong className="text-primary font-mono">{dispatchForm.dispatchQty} pcs</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updatedItems = dispatchForm.dispatchItems.map((item: any) => ({
+                              ...item,
+                              dispatchQty: item.totalQty || item.qty || 1
+                            }));
+                            const sumQty = updatedItems.reduce((acc: number, item: any) => acc + Number(item.dispatchQty || 0), 0);
+                            setDispatchForm({
+                              ...dispatchForm,
+                              dispatchItems: updatedItems,
+                              dispatchQty: sumQty
+                            });
+                          }}
+                          className="text-xs font-bold text-rex-600 dark:text-rex-400 hover:underline"
+                        >
+                          Dispatch All Items (100%)
+                        </button>
+                      </div>
                     </div>
-                    {remainingToDispatch > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setDispatchForm({ ...dispatchForm, dispatchQty: remainingToDispatch })}
-                        className="text-xs font-bold text-rex-600 dark:text-rex-400 hover:underline pt-4"
-                      >
-                        All Remaining ({remainingToDispatch} pcs)
-                      </button>
-                    )}
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[11px] text-muted mb-1">Quantity to Handover in this Batch:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={remainingToDispatch > 0 ? remainingToDispatch : totalOrdQty}
+                          value={dispatchForm.dispatchQty}
+                          onChange={e => setDispatchForm({ ...dispatchForm, dispatchQty: Math.max(1, Number(e.target.value)) })}
+                          className="w-full input-base text-sm font-mono font-bold"
+                          required
+                        />
+                      </div>
+                      {remainingToDispatch > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setDispatchForm({ ...dispatchForm, dispatchQty: remainingToDispatch })}
+                          className="text-xs font-bold text-rex-600 dark:text-rex-400 hover:underline pt-4"
+                        >
+                          All Remaining ({remainingToDispatch} pcs)
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   <div className="text-[11px] text-muted font-mono">
                     After this dispatch: {prevDispatchedQty + Number(dispatchForm.dispatchQty || 0)} / {totalOrdQty} pcs dispatched.
