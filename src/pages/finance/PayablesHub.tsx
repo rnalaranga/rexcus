@@ -12,7 +12,7 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useBills, usePurchaseOrders, useGRNs, useMaterialRequests } from '@/hooks/usePurchasing';
-import { useSuppliers } from '@/hooks/useData';
+import { useSuppliers, useWorkOrders } from '@/hooks/useData';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 
 type ActiveTab = 'aging' | 'bills' | 'pos';
@@ -32,6 +32,7 @@ export const PayablesHub: React.FC = () => {
   const { data: grns = [] } = useGRNs();
   const { data: mrs = [] } = useMaterialRequests();
   const { data: suppliers = [] } = useSuppliers();
+  const { data: workOrders = [] } = useWorkOrders();
 
   // Sorting states
   const [billSortField, setBillSortField] = useState<string>('date');
@@ -180,6 +181,36 @@ export const PayablesHub: React.FC = () => {
       });
     }
 
+    // 4. Linked Work Orders (via PO / MR)
+    const linkedPoObj = bill.poId ? pos.find((p: any) => p.id === bill.poId) : null;
+    const billMrList: string[] = linkedPoObj ? (Array.isArray(linkedPoObj.mrIds)
+      ? linkedPoObj.mrIds
+      : (typeof linkedPoObj.mrIds === 'string'
+          ? (() => { try { const m = JSON.parse(linkedPoObj.mrIds); return Array.isArray(m) ? m : [linkedPoObj.mrIds]; } catch { return [linkedPoObj.mrIds]; } })()
+          : (linkedPoObj.mrId ? [linkedPoObj.mrId] : []))) : [];
+    
+    const billWos = new Set<string>();
+    billMrList.forEach(mId => {
+      const mrObj = mrs.find((m: any) => m.id === mId);
+      if (mrObj) {
+        if (mrObj.workOrderNo) billWos.add(mrObj.workOrderNo);
+        if (mrObj.jobNo) billWos.add(mrObj.jobNo);
+        if (mrObj.workOrderId) billWos.add(mrObj.workOrderId);
+      }
+    });
+
+    billWos.forEach(woNum => {
+      const matchedWo = workOrders.find((w: any) => w.orderNo === woNum || w.id === woNum);
+      traces.push({
+        type: 'work_order',
+        title: 'Work Order',
+        reference: woNum,
+        subtitle: matchedWo?.title ? `Job • ${matchedWo.title}` : 'Linked Job Traveler',
+        statusBadge: { label: matchedWo?.status || 'WO Linked', variant: 'info' },
+        navigateUrl: `/production/work-orders?search=${encodeURIComponent(woNum)}`
+      });
+    });
+
     return traces;
   };
 
@@ -200,13 +231,14 @@ export const PayablesHub: React.FC = () => {
       });
     }
 
-    // 2. Linked Material Requests
+    // 2. Linked Material Requests & Work Orders
     const linkedMrList: string[] = Array.isArray(po.mrIds)
       ? po.mrIds
       : (typeof po.mrIds === 'string'
           ? (() => { try { const m = JSON.parse(po.mrIds); return Array.isArray(m) ? m : [po.mrIds]; } catch { return [po.mrIds]; } })()
           : (po.mrId ? [po.mrId] : []));
 
+    const poWos = new Set<string>();
     linkedMrList.forEach(mrNum => {
       traces.push({
         type: 'mr',
@@ -215,6 +247,25 @@ export const PayablesHub: React.FC = () => {
         subtitle: 'Originating Requisition',
         statusBadge: { label: 'MR Linked', variant: 'info' },
         navigateUrl: `/purchasing/mr-builder/${mrNum}`
+      });
+
+      const mrObj = mrs.find((m: any) => m.id === mrNum);
+      if (mrObj) {
+        if (mrObj.workOrderNo) poWos.add(mrObj.workOrderNo);
+        if (mrObj.jobNo) poWos.add(mrObj.jobNo);
+        if (mrObj.workOrderId) poWos.add(mrObj.workOrderId);
+      }
+    });
+
+    poWos.forEach(woNum => {
+      const matchedWo = workOrders.find((w: any) => w.orderNo === woNum || w.id === woNum);
+      traces.push({
+        type: 'work_order',
+        title: 'Work Order',
+        reference: woNum,
+        subtitle: matchedWo?.title ? `Job • ${matchedWo.title}` : 'Linked Job Traveler',
+        statusBadge: { label: matchedWo?.status || 'WO Linked', variant: 'info' },
+        navigateUrl: `/production/work-orders?search=${encodeURIComponent(woNum)}`
       });
     });
 

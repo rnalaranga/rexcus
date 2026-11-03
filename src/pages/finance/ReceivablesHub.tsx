@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { addInvoicePayment, fetchPaymentReceipts, deleteInvoice, deletePaymentReceipt } from '@/lib/api';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
-import { useQuotations, useFinishedGoodsOrders } from '@/hooks/useData';
+import { useQuotations, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData';
 import { fetchGatePasses } from '@/lib/api';
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal';
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
@@ -46,6 +46,7 @@ export const ReceivablesHub: React.FC = () => {
   const { data: accounts = [] } = useAccounts();
   const { data: quotations = [] } = useQuotations();
   const { data: salesOrders = [] } = useFinishedGoodsOrders();
+  const { data: workOrders = [] } = useWorkOrders();
   const [gatePasses, setGatePasses] = useState<any[]>([]);
 
   // Sorting States for Receivables tables
@@ -133,6 +134,27 @@ export const ReceivablesHub: React.FC = () => {
       });
     }
 
+    // Linked Work Order
+    const matchedWo = workOrders.find((w: any) =>
+      (ordNo && (w.orderNo === ordNo || (w.title && w.title.includes(ordNo)) || (w.salesOrderNo && w.salesOrderNo === ordNo))) ||
+      (matchedSO?.orderNo && (w.orderNo === matchedSO.orderNo || (w.title && w.title.includes(matchedSO.orderNo)) || (w.salesOrderNo && w.salesOrderNo === matchedSO.orderNo))) ||
+      (quoteNo && ((w.quotationNo && w.quotationNo === quoteNo) || (w.sourceQuoteId && (String(w.sourceQuoteId) === String(quoteNo) || String(w.sourceQuoteId) === String(inv.quotationId))))) ||
+      (matchedQuote?.id && (w.sourceQuoteId && String(w.sourceQuoteId) === String(matchedQuote.id)))
+    );
+    if (matchedWo) {
+      nodes.push({
+        type: 'work_order',
+        title: 'Work Order',
+        reference: matchedWo.orderNo || matchedWo.id,
+        subtitle: `Job Traveler • ${matchedWo.title || ''}`,
+        statusBadge: {
+          label: matchedWo.status || 'In Production',
+          variant: matchedWo.status === 'Completed' ? 'success' : 'warning'
+        },
+        navigateUrl: `/production/work-orders?search=${encodeURIComponent(matchedWo.orderNo || matchedWo.id)}`
+      });
+    }
+
     matchedGP.forEach((gp: any) => {
       nodes.push({
         type: 'gate_pass',
@@ -207,6 +229,27 @@ export const ReceivablesHub: React.FC = () => {
       });
     }
 
+    // Linked Work Order
+    const matchedWo = workOrders.find((w: any) =>
+      (ordNo && (w.orderNo === ordNo || (w.title && w.title.includes(ordNo)) || (w.salesOrderNo && w.salesOrderNo === ordNo))) ||
+      (matchedSO?.orderNo && (w.orderNo === matchedSO.orderNo || (w.title && w.title.includes(matchedSO.orderNo)) || (w.salesOrderNo && w.salesOrderNo === matchedSO.orderNo))) ||
+      (quoteNo && ((w.quotationNo && w.quotationNo === quoteNo) || (w.sourceQuoteId && String(w.sourceQuoteId) === String(pi.quotationId)))) ||
+      (matchedQuote?.id && (w.sourceQuoteId && String(w.sourceQuoteId) === String(matchedQuote.id)))
+    );
+    if (matchedWo) {
+      nodes.push({
+        type: 'work_order',
+        title: 'Work Order',
+        reference: matchedWo.orderNo || matchedWo.id,
+        subtitle: `Job Traveler • ${matchedWo.title || ''}`,
+        statusBadge: {
+          label: matchedWo.status || 'In Production',
+          variant: matchedWo.status === 'Completed' ? 'success' : 'warning'
+        },
+        navigateUrl: `/production/work-orders?search=${encodeURIComponent(matchedWo.orderNo || matchedWo.id)}`
+      });
+    }
+
     nodes.push({
       type: 'proforma',
       title: 'Advance Proforma',
@@ -265,6 +308,25 @@ export const ReceivablesHub: React.FC = () => {
         reference: invNo,
         statusBadge: { label: 'Linked', variant: 'info' },
         navigateUrl: `/finance/invoices?search=${encodeURIComponent(invNo)}`
+      });
+    }
+
+    // Linked Work Order
+    const matchedWo = workOrders.find((w: any) =>
+      (ordNo && (w.orderNo === ordNo || (w.title && w.title.includes(ordNo)) || (w.salesOrderNo && w.salesOrderNo === ordNo))) ||
+      (quoteNo && ((w.quotationNo && w.quotationNo === quoteNo) || (w.title && w.title.includes(quoteNo))))
+    );
+    if (matchedWo) {
+      nodes.push({
+        type: 'work_order',
+        title: 'Work Order',
+        reference: matchedWo.orderNo || matchedWo.id,
+        subtitle: `Job Traveler • ${matchedWo.title || ''}`,
+        statusBadge: {
+          label: matchedWo.status || 'In Production',
+          variant: matchedWo.status === 'Completed' ? 'success' : 'warning'
+        },
+        navigateUrl: `/production/work-orders?search=${encodeURIComponent(matchedWo.orderNo || matchedWo.id)}`
       });
     }
 
@@ -1131,20 +1193,85 @@ export const ReceivablesHub: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-theme-subtle bg-surface2/50 text-[10.5px] uppercase tracking-wider text-muted font-bold">
-                    <th className="px-4 py-3">Proforma No</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Linked Sales Order</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Due Date</th>
-                    <th className="px-4 py-3 text-right">Advance Amount</th>
-                    <th className="px-4 py-3 text-right">Received</th>
-                    <th className="px-4 py-3 text-right">Balance Due</th>
+                    <th 
+                      onClick={() => handleToggleSort('invoiceNo', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Proforma No</span>
+                        {renderSortIndicator('invoiceNo', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('customer', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Customer</span>
+                        {renderSortIndicator('customer', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('orderNo', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Linked Sales Order</span>
+                        {renderSortIndicator('orderNo', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('date', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Date</span>
+                        {renderSortIndicator('date', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('dueDate', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Due Date</span>
+                        {renderSortIndicator('dueDate', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('total', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Advance Amount</span>
+                        {renderSortIndicator('total', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('paid', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Received</span>
+                        {renderSortIndicator('paid', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('due', profSortField, setProfSortField, profSortDir, setProfSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Balance Due</span>
+                        {renderSortIndicator('due', profSortField, profSortDir)}
+                      </div>
+                    </th>
+                    <th className="px-3 py-3 text-center">Traceability</th>
                     <th className="px-4 py-3 text-center">Advance Status</th>
                     <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {filteredProformas.map((pi: any) => {
+                  {sortedProformas.map((pi: any) => {
                     const tot = Number(pi.total || pi.amount || 0);
                     const paid = Number(pi.paidAmount || 0);
                     const due = Math.max(0, tot - paid);
@@ -1199,6 +1326,15 @@ export const ReceivablesHub: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-black text-rose-600 dark:text-rose-400">
                           {formatCurrency(due)}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                            <TraceabilityDropdown
+                              title={`Traceability for ${pi.invoiceNo || pi.id}`}
+                              traces={buildProformaTraceNodes(pi)}
+                              compact
+                            />
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <Badge
@@ -1276,19 +1412,52 @@ export const ReceivablesHub: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-theme-subtle bg-surface2/50 text-[10.5px] uppercase tracking-wider text-muted font-bold">
-                    <th className="px-4 py-3">Receipt No</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Customer</th>
+                    <th 
+                      onClick={() => handleToggleSort('receiptNo', recSortField, setRecSortField, recSortDir, setRecSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Receipt No</span>
+                        {renderSortIndicator('receiptNo', recSortField, recSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('date', recSortField, setRecSortField, recSortDir, setRecSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Date</span>
+                        {renderSortIndicator('date', recSortField, recSortDir)}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleSort('customer', recSortField, setRecSortField, recSortDir, setRecSortDir)}
+                      className="px-4 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <span>Customer</span>
+                        {renderSortIndicator('customer', recSortField, recSortDir)}
+                      </div>
+                    </th>
                     <th className="px-4 py-3">Reference (Quote / Order)</th>
-                    <th className="px-4 py-3 text-right">Amount Received</th>
+                    <th 
+                      onClick={() => handleToggleSort('amount', recSortField, setRecSortField, recSortDir, setRecSortDir)}
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center justify-end">
+                        <span>Amount Received</span>
+                        {renderSortIndicator('amount', recSortField, recSortDir)}
+                      </div>
+                    </th>
                     <th className="px-4 py-3">Payment Method</th>
                     <th className="px-4 py-3">Deposit Account</th>
                     <th className="px-4 py-3">Received By</th>
+                    <th className="px-3 py-3 text-center">Traceability</th>
                     <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {filteredReceipts.map((rec: any) => (
+                  {sortedReceipts.map((rec: any) => (
                     <tr key={rec.id} className="hover:bg-surface2/30 transition-colors">
                       <td className="px-4 py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
                         {rec.receiptNo || rec.id}
@@ -1332,6 +1501,15 @@ export const ReceivablesHub: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 text-secondary">
                         {rec.receivedBy || 'Accounts Officer'}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                          <TraceabilityDropdown
+                            title={`Traceability for ${rec.receiptNo || rec.id}`}
+                            traces={buildReceiptTraceNodes(rec)}
+                            compact
+                          />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">

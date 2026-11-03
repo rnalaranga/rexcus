@@ -78,12 +78,20 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
   )
+  const isStoreRole = Boolean(
+    user?.role === 'store_keeper' ||
+    user?.role === 'store_assistant' ||
+    user?.roleName?.toLowerCase().includes('store') ||
+    user?.roleName?.toLowerCase().includes('warehouse')
+  );
   const canEditOrder = Boolean(
-    isAdmin || 
-    (can ? can('approvals.sales_order_edit') : false) || 
-    (can ? can('sales_orders.edit') : false) ||
-    user?.role === 'manager' ||
-    user?.role === 'sales_head'
+    !isStoreRole && (
+      isAdmin || 
+      (can ? can('approvals.sales_order_edit') : false) || 
+      (can ? can('sales_orders.edit') : false) ||
+      user?.role === 'manager' ||
+      user?.role === 'sales_head'
+    )
   );
   const { toast, showConfirm } = useDialog()
   const { settings } = useSettings()
@@ -1591,6 +1599,34 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }
     }
 
+    if (isStoreRole) {
+      return (
+        <div className="flex items-center justify-end gap-1.5">
+          {remainingToDispatch > 0 && !order.isDispatched ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleOpenDispatchModal(order)}
+              className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none"
+              title="Dispatch Goods & Generate Security Gate Pass"
+            >
+              <Truck size={12} className="mr-1" /> Dispatch ({remainingToDispatch})
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleViewGatePass(order)}
+              className="h-7 px-2.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 border border-emerald-500/30 rounded-none text-xs font-semibold flex items-center gap-1"
+              title="View Gate Pass (Dispatched)"
+            >
+              <Truck size={12} /> Gate Pass
+            </Button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center justify-end gap-1.5">
         {/* Quick Contextual Action */}
@@ -2098,15 +2134,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           </div>
         </GlassCard>
 
-        <GlassCard className="p-4 flex items-center justify-between">
-          <div>
-            <span className="text-xs text-muted font-medium">Total Orders Value</span>
-            <div className="text-xl font-mono font-bold text-rex-600 mt-1">{formatCurrency(metrics.totalRev)}</div>
-          </div>
-          <div className="w-10 h-10 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
-            <DollarSign size={18} />
-          </div>
-        </GlassCard>
+        {!isStoreRole && (
+          <GlassCard className="p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs text-muted font-medium">Total Orders Value</span>
+              <div className="text-xl font-mono font-bold text-rex-600 mt-1">{formatCurrency(metrics.totalRev)}</div>
+            </div>
+            <div className="w-10 h-10 rounded-none bg-surface2 text-secondary border border-theme-subtle flex items-center justify-center">
+              <DollarSign size={18} />
+            </div>
+          </GlassCard>
+        )}
       </div>
 
       {/* ── WORKFLOW PIPELINE BANNER ────────────────────────────────────────── */}
@@ -2179,14 +2217,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             placeholder="Search order #, product, customer..."
             className="w-64"
           />
-          <Button
-            variant="primary"
-            icon={Plus}
-            onClick={() => handleOpenCreateModal()}
-            className="whitespace-nowrap"
-          >
-            New Sales Order
-          </Button>
+          {!isStoreRole && (
+            <Button
+              variant="primary"
+              icon={Plus}
+              onClick={() => handleOpenCreateModal()}
+              className="whitespace-nowrap"
+            >
+              New Sales Order
+            </Button>
+          )}
         </div>
       </div>
 
@@ -2334,15 +2374,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {renderOrderSortIndicator('qty')}
                   </div>
                 </th>
-                <th 
-                  onClick={() => handleToggleOrderSort('value')}
-                  className="px-3.5 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
-                >
-                  <div className="flex items-center justify-end">
-                    <span>Value & Advance</span>
-                    {renderOrderSortIndicator('value')}
-                  </div>
-                </th>
+                {!isStoreRole && (
+                  <th 
+                    onClick={() => handleToggleOrderSort('value')}
+                    className="px-3.5 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  >
+                    <div className="flex items-center justify-end">
+                      <span>Value & Advance</span>
+                      {renderOrderSortIndicator('value')}
+                    </div>
+                  </th>
+                )}
                 <th className="px-3 py-3 text-center">Traceability</th>
                 <th 
                   onClick={() => handleToggleOrderSort('status')}
@@ -2566,32 +2608,34 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Value & Advance Proforma */}
-                    <td className="px-3.5 py-2.5 text-right">
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="font-mono font-bold text-xs text-primary">
-                          {formatCurrency(order.totalPrice)}
-                        </span>
-                        {Number(order.taxAmount) > 0 ? (
-                          <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
-                            Incl. Tax: {formatCurrency(order.taxAmount)}
+                    {!isStoreRole && (
+                      <td className="px-3.5 py-2.5 text-right">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="font-mono font-bold text-xs text-primary">
+                            {formatCurrency(order.totalPrice)}
                           </span>
-                        ) : (
-                          <span className="text-[10px] font-mono text-muted">
-                            Tax: 0.00
-                          </span>
-                        )}
-                        {linkedProforma && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPrintProforma(linkedProforma, order)}
-                            className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors mt-0.5"
-                            title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
-                          >
-                            <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                          {Number(order.taxAmount) > 0 ? (
+                            <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
+                              Incl. Tax: {formatCurrency(order.taxAmount)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-muted">
+                              Tax: 0.00
+                            </span>
+                          )}
+                          {linkedProforma && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPrintProforma(linkedProforma, order)}
+                              className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors mt-0.5"
+                              title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
+                            >
+                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
 
                     {/* Traceability Dropdown with Glowing Lamp */}
                     <td className="px-3 py-2.5 text-center">

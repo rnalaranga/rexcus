@@ -1110,6 +1110,38 @@ export const PurchasingHub: React.FC = () => {
                   navigateUrl: `/purchasing/bill-builder/${b.id}`
                 });
               });
+
+              // Linked Work Orders from referenced POs / MRs
+              const grnWos = new Set<string>();
+              linkedPoList.forEach(pNum => {
+                const poObj = pos.find((p: any) => p.id === pNum);
+                if (poObj) {
+                  const mrList: string[] = Array.isArray(poObj.mrIds)
+                    ? poObj.mrIds
+                    : (typeof poObj.mrIds === 'string'
+                        ? (() => { try { const m = JSON.parse(poObj.mrIds); return Array.isArray(m) ? m : [poObj.mrIds]; } catch { return [poObj.mrIds]; } })()
+                        : (poObj.mrId ? [poObj.mrId] : []));
+                  mrList.forEach(mNum => {
+                    const mrObj = mrs.find((m: any) => m.id === mNum);
+                    if (mrObj) {
+                      if (mrObj.workOrderNo) grnWos.add(mrObj.workOrderNo);
+                      if (mrObj.jobNo) grnWos.add(mrObj.jobNo);
+                      if (mrObj.workOrderId) grnWos.add(mrObj.workOrderId);
+                    }
+                  });
+                }
+              });
+
+              grnWos.forEach(woNum => {
+                traces.push({
+                  type: 'work_order',
+                  title: 'Production Job',
+                  reference: woNum,
+                  subtitle: 'Linked Work Order',
+                  statusBadge: { label: 'WO Linked', variant: 'info' },
+                  navigateUrl: `/production/work-orders?search=${encodeURIComponent(woNum)}`
+                });
+              });
             }
 
             return (
@@ -1180,6 +1212,35 @@ export const PurchasingHub: React.FC = () => {
                 navigateUrl: `/purchasing/grn-builder/${g.id}`
               });
             });
+
+            // Linked Work Orders via PO -> MR
+            const poObj = pos.find((p: any) => p.id === row.poId);
+            if (poObj) {
+              const mrList: string[] = Array.isArray(poObj.mrIds)
+                ? poObj.mrIds
+                : (typeof poObj.mrIds === 'string'
+                    ? (() => { try { const m = JSON.parse(poObj.mrIds); return Array.isArray(m) ? m : [poObj.mrIds]; } catch { return [poObj.mrIds]; } })()
+                    : (poObj.mrId ? [poObj.mrId] : []));
+              const billWos = new Set<string>();
+              mrList.forEach(mNum => {
+                const mrObj = mrs.find((m: any) => m.id === mNum);
+                if (mrObj) {
+                  if (mrObj.workOrderNo) billWos.add(mrObj.workOrderNo);
+                  if (mrObj.jobNo) billWos.add(mrObj.jobNo);
+                  if (mrObj.workOrderId) billWos.add(mrObj.workOrderId);
+                }
+              });
+              billWos.forEach(woNum => {
+                traces.push({
+                  type: 'work_order',
+                  title: 'Production Job',
+                  reference: woNum,
+                  subtitle: 'Linked Work Order',
+                  statusBadge: { label: 'WO Linked', variant: 'info' },
+                  navigateUrl: `/production/work-orders?search=${encodeURIComponent(woNum)}`
+                });
+              });
+            }
           }
 
           if (row.supplierId) {

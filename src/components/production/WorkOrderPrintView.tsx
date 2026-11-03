@@ -385,11 +385,6 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
               <div className="font-black text-[15px] text-black uppercase tracking-tight mb-2">
                 {customerName}
               </div>
-              {jobType && jobType !== '-' && (
-                <div className="text-[11px] text-neutral-800 mt-1">
-                  <span className="font-bold text-black">Type of Job / Scope:</span> {jobType}
-                </div>
-              )}
             </div>
             <div className="mt-3 pt-2 border-t border-neutral-300 flex items-center justify-between text-[10px]">
               <div>

@@ -207,12 +207,23 @@ export const Quotations: React.FC = () => {
   }
 
   const getExistingWO = (group: any, latestMain: any) => {
-    if (!latestMain) return null
+    const qId = latestMain?.id ? String(latestMain.id) : null;
+    const qNo = group?.quoNo || latestMain?.quotationNo;
+    const orderNos = allOrders
+      .filter((o: any) => (qId && o.quoteId && String(o.quoteId) === qId) || (qNo && o.quotationNo === qNo))
+      .map((o: any) => o.orderNo);
+
     return workOrdersList.find((w: any) => 
-      (w.sourceQuoteId && String(w.sourceQuoteId) === String(latestMain.id)) ||
-      (w.quoteId && String(w.quoteId) === String(latestMain.id)) ||
-      (w.title && group.quoNo && w.title.includes(group.quoNo))
-    )
+      (qId && w.sourceQuoteId && String(w.sourceQuoteId) === qId) ||
+      (qId && w.quoteId && String(w.quoteId) === qId) ||
+      (qNo && w.quotationNo && String(w.quotationNo) === qNo) ||
+      (qNo && w.title && w.title.includes(qNo)) ||
+      (orderNos.length > 0 && orderNos.some((soNo: string) => 
+        (w.orderNo && w.orderNo === soNo) || 
+        (w.salesOrderNo && w.salesOrderNo === soNo) ||
+        (w.title && w.title.includes(soNo))
+      ))
+    ) || null;
   }
 
   const getStatusColor = (status: string) => {

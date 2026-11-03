@@ -220,8 +220,11 @@ export const GatePassesHub: React.FC = () => {
     // 2. Linked Work Order
     const matchedWo = workOrders.find((wo: any) =>
       (wo.orderNo && soRef && String(wo.orderNo).toLowerCase() === soRef) ||
+      (wo.salesOrderNo && soRef && String(wo.salesOrderNo).toLowerCase() === soRef) ||
       (wo.id && String(wo.id) === String(gp.orderId)) ||
-      (matchedSo?.orderNo && wo.orderNo && String(wo.orderNo).toLowerCase() === String(matchedSo.orderNo).toLowerCase())
+      (matchedSo?.orderNo && wo.orderNo && String(wo.orderNo).toLowerCase() === String(matchedSo.orderNo).toLowerCase()) ||
+      (matchedSo?.orderNo && wo.salesOrderNo && String(wo.salesOrderNo).toLowerCase() === String(matchedSo.orderNo).toLowerCase()) ||
+      (matchedSo?.orderNo && wo.title && String(wo.title).toLowerCase().includes(String(matchedSo.orderNo).toLowerCase()))
     );
     if (matchedWo) {
       traces.push({
@@ -691,7 +694,21 @@ export const GatePassesHub: React.FC = () => {
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {gp.type === 'goods_delivery' && (
+                          {(() => {
+                            const gpNo = gp.passNo || gp.id;
+                            const hasInvoice = allInvoices.some((inv: any) =>
+                              (!inv.isProforma && inv.invoiceType !== 'proforma' && !inv.invoiceNo?.startsWith('PI-') && !inv.id?.startsWith('PI-')) &&
+                              (
+                                (inv.dispatchNo && (inv.dispatchNo === gpNo || inv.dispatchNo === gp.id)) ||
+                                (inv.gatePassId && (inv.gatePassId === gp.id || inv.gatePassId === gpNo))
+                              )
+                            );
+
+                            if (gp.type !== 'goods_delivery' || hasInvoice) {
+                              return null;
+                            }
+
+                            return (
                             <Button
                               variant="outline"
                               size="sm"
@@ -709,7 +726,8 @@ export const GatePassesHub: React.FC = () => {
                             >
                               Create Invoice
                             </Button>
-                          )}
+                            );
+                          })()}
                           <Button
                             variant="primary"
                             size="sm"

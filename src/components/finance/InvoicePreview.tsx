@@ -258,29 +258,29 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const paymentModeDisplay = modeOfPayment || 'Credit';
   const amountInWords = toWords(total);
 
-  // VAT Rate determination - ensures percentage is always displayed
+  // VAT Rate determination - ensures statutory 18% is displayed
   let displayVatRate: number | string | null = null;
 
   if (taxProfile) {
-    if (taxProfile.tax2_name === 'VAT' && taxProfile.tax2_rate) {
+    if (taxProfile.tax2_name === 'VAT' && Number(taxProfile.tax2_rate) > 0) {
       displayVatRate = taxProfile.tax2_rate;
-    } else if (taxProfile.tax1_name === 'VAT' && taxProfile.tax1_rate) {
+    } else if (taxProfile.tax1_name === 'VAT' && Number(taxProfile.tax1_rate) > 0) {
       displayVatRate = taxProfile.tax1_rate;
-    } else if (taxProfile.tax2_rate) {
+    } else if (Number(taxProfile.tax2_rate) > 0) {
       displayVatRate = taxProfile.tax2_rate;
-    } else if (taxProfile.tax1_rate) {
+    } else if (Number(taxProfile.tax1_rate) > 0) {
       displayVatRate = taxProfile.tax1_rate;
     }
   }
 
-  if (!displayVatRate && taxBreakdown) {
-    if (taxBreakdown.vatRate) displayVatRate = taxBreakdown.vatRate;
-    else if (taxBreakdown.tax2Rate) displayVatRate = taxBreakdown.tax2Rate;
-    else if (taxBreakdown.tax1Rate) displayVatRate = taxBreakdown.tax1Rate;
+  if ((!displayVatRate || Number(displayVatRate) === 0) && taxBreakdown) {
+    if (Number(taxBreakdown.vatRate) > 0) displayVatRate = taxBreakdown.vatRate;
+    else if (Number(taxBreakdown.tax2Rate) > 0) displayVatRate = taxBreakdown.tax2Rate;
+    else if (Number(taxBreakdown.tax1Rate) > 0) displayVatRate = taxBreakdown.tax1Rate;
   }
 
   // Derive mathematically from taxAmount and subtotal if not provided
-  if (!displayVatRate && subtotal > 0 && taxAmount > 0) {
+  if ((!displayVatRate || Number(displayVatRate) === 0) && subtotal > 0 && taxAmount > 0) {
     const rawRate = (taxAmount / subtotal) * 100;
     const roundedRate = Math.round(rawRate * 10) / 10;
     if (roundedRate > 0) {
@@ -288,15 +288,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     }
   }
 
-  // Fallback to settings or standard statutory rate (18% in Sri Lanka)
-  if (displayVatRate === null || displayVatRate === undefined) {
-    if (company?.vat_percentage) {
+  // Fallback to statutory rate (18% in Sri Lanka) unless strictly non-taxable / zero tax explicitly chosen
+  if (!displayVatRate || Number(displayVatRate) === 0) {
+    if (Number(company?.vat_percentage) > 0) {
       displayVatRate = company.vat_percentage;
-    } else if (taxAmount > 0) {
-      displayVatRate = 18;
-    } else if (taxAmount === 0 && (taxType === 'none' || !taxProfile)) {
-      displayVatRate = 0;
     } else {
+      // Default to statutory 18% VAT rate for all standard supply invoices
       displayVatRate = 18;
     }
   }

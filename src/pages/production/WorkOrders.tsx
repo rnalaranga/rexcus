@@ -593,6 +593,19 @@ export const WorkOrders: React.FC = () => {
       }
     },
     {
+      key: 'traceability',
+      header: 'Traceability',
+      align: 'center',
+      render: (_: any, row: any) => (
+        <div onClick={e => e.stopPropagation()} className="flex justify-center">
+          <TraceabilityDropdown
+            title={`WO #${row.orderNo || row.id}`}
+            traces={getWorkOrderTraces(row)}
+          />
+        </div>
+      )
+    },
+    {
       key: 'actions',
       header: '',
       align: 'right',
@@ -665,11 +678,6 @@ export const WorkOrders: React.FC = () => {
           >
             <Truck size={12} className="mr-1 text-emerald-500"/> DN
           </Button>
-
-          <TraceabilityDropdown
-            title={`WO #${row.orderNo || row.id}`}
-            traces={getWorkOrderTraces(row)}
-          />
 
           {isAdmin && (
             <button 
