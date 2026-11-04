@@ -517,18 +517,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     if (Array.isArray(parsedItems) && parsedItems.length > 0) {
       parsedItems = parsedItems.map((it: any, idx: number) => ({
         ...it,
-        productId: it.productId || `CUSTOM-ITEM-${idx + 1}`,
-        productName: it.productName || it.description || order.productName || 'Order Item',
+        productId: it.productId || `ITEM-${idx + 1}`,
+        productName: it.productName || it.description || order.productName || '',
         description: it.description || it.productName || '',
         qty: Number(it.qty) || 1,
         unitPrice: Number(it.unitPrice) || 0,
         amount: Number((Number(it.qty || 1) * Number(it.unitPrice || 0)).toFixed(2)),
         uom: it.uom || order.uom || 'Nos'
       }));
-    } else if (source === 'custom_job') {
+    } else if (source === 'custom_job' || source === 'ready_made') {
       parsedItems = [{
-        productId: order.productId || 'CUSTOM-ITEM-1',
-        productName: order.productName || 'Custom Machining Item',
+        productId: order.productId || 'ITEM-1',
+        productName: order.productName || '',
         description: order.description || order.productName || '',
         qty: Number(order.qty) || 1,
         unitPrice: Number(order.unitPrice) || 0,
@@ -597,27 +597,36 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       } else if (src === 'ready_made') {
         const firstProd = finishedProducts[0];
         const unitP = firstProd?.unitPrice ? Number(firstProd.unitPrice) : (Number(prev.unitPrice) || 0);
-        const q = Number(prev.qty) || 1;
-        const sub = q * unitP;
-        const { taxAmount, totalPrice } = calculateOrderTaxes(sub, prev.taxProfileId, prev.taxRate);
+        const defaultItems = prev.items && prev.items.length > 0 ? prev.items : [{
+          productId: firstProd?.id || '',
+          productName: firstProd?.name || '',
+          productSku: firstProd?.sku || '',
+          description: '',
+          qty: 1,
+          unitPrice: unitP,
+          amount: unitP,
+          uom: firstProd?.uom || 'Nos'
+        }];
+        const subtotal = Number(defaultItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
+        const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
         return {
           ...prev,
           orderSource: src,
           quoteId: '',
           quotationNo: '',
-          productId: firstProd?.id || '',
-          productName: firstProd?.name || '',
-          productSku: firstProd?.sku || '',
-          unitPrice: String(unitP),
-          items: [],
-          subtotal: sub,
+          productId: defaultItems[0]?.productId || firstProd?.id || '',
+          productName: defaultItems[0]?.productName || firstProd?.name || '',
+          productSku: defaultItems[0]?.productSku || firstProd?.sku || '',
+          unitPrice: String(defaultItems[0]?.unitPrice || unitP),
+          items: defaultItems,
+          subtotal,
           taxAmount,
           totalPrice
         };
       } else {
         const defaultItems = prev.items && prev.items.length > 0 ? prev.items : [{
           productId: 'CUSTOM-ITEM-1',
-          productName: 'Custom Machining Item',
+          productName: '',
           description: prev.description || '',
           qty: 1,
           unitPrice: Number(prev.unitPrice) || 0,
@@ -764,8 +773,43 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }));
   };
 
-  const handleProductSelect = (pId: string) => {
+  const handleProductSelect = (pId: string, itemIdx?: number) => {
     const selected = finishedProducts.find(p => p.id === pId)
+    if (itemIdx !== undefined) {
+      setFormData(prev => {
+        const currentItems = [...(prev.items || [])]
+        const existing = currentItems[itemIdx] || { qty: 1, unitPrice: 0, uom: 'Nos' }
+        const unitP = selected?.unitPrice ? Number(selected.unitPrice) : (Number(existing.unitPrice) || 0)
+        const q = Number(existing.qty) || 1
+        currentItems[itemIdx] = {
+          ...existing,
+          productId: selected?.id || pId,
+          productName: selected?.name || existing.productName || '',
+          productSku: selected?.sku || existing.productSku || '',
+          description: selected?.name || existing.description || '',
+          unitPrice: unitP,
+          amount: Number((q * unitP).toFixed(2)),
+          uom: selected?.uom || existing.uom || 'Nos'
+        }
+        const subtotal = Number(currentItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2))
+        const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate)
+        const totalQty = currentItems.reduce((acc, x) => acc + (Number(x.qty) || 0), 0)
+        return {
+          ...prev,
+          productId: currentItems[0]?.productId || pId,
+          productName: currentItems[0]?.productName || selected?.name || prev.productName,
+          productSku: currentItems[0]?.productSku || selected?.sku || prev.productSku,
+          items: currentItems,
+          subtotal,
+          taxAmount,
+          totalPrice,
+          qty: String(totalQty || 1),
+          unitPrice: currentItems.length === 1 ? String(currentItems[0].unitPrice || 0) : prev.unitPrice
+        }
+      })
+      return
+    }
+
     if (selected) {
       setFormData(prev => ({
         ...prev,
@@ -780,7 +824,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const calculateCurrentSubtotal = (f: typeof formData) => {
-    if ((f.orderSource === 'from_quote' || f.orderSource === 'custom_job') && f.items && f.items.length > 0) {
+    if ((f.orderSource === 'from_quote' || f.orderSource === 'custom_job' || f.orderSource === 'ready_made') && f.items && f.items.length > 0) {
       return f.items.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
     }
     return (Number(f.qty) || 1) * (Number(f.unitPrice) || 0);
@@ -891,7 +935,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setFormData(prev => {
       const currentItems = (prev.items && prev.items.length > 0) ? [...prev.items] : [{
         productId: 'CUSTOM-ITEM-1',
-        productName: 'Custom Machining Item',
+        productName: '',
         description: '',
         qty: 1,
         unitPrice: 0,
@@ -900,7 +944,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }];
       const existing = currentItems[idx] || {
         productId: `CUSTOM-ITEM-${idx + 1}`,
-        productName: 'Custom Machining Item',
+        productName: '',
         description: '',
         qty: 1,
         unitPrice: 0,
@@ -913,7 +957,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       it.amount = Number((q * up).toFixed(2));
 
       // Auto-extract a neat single-line product name if user is writing description
-      if (field === 'description' && value && (!it.productName || it.productName === 'Custom Machining Item' || it.productName === 'Additional Item')) {
+      if (field === 'description' && value && (!it.productName || it.productName === 'Custom Machining Item' || it.productName === 'Additional Item' || it.productName === 'Order Item')) {
         const firstLine = String(value).split('\n')[0].replace(/^[•\-\*\s]+/, '').trim();
         if (firstLine) it.productName = firstLine.slice(0, 100);
       }
@@ -924,7 +968,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
 
       const totalQty = currentItems.reduce((acc, x) => acc + (Number(x.qty) || 0), 0);
-      const resolvedTitle = (!prev.productName || prev.productName === 'Custom Machining Item') && currentItems[0]?.productName
+      const resolvedTitle = (!prev.productName || prev.productName === 'Custom Machining Item' || prev.productName === 'Order Item') && currentItems[0]?.productName
         ? currentItems[0].productName
         : prev.productName;
 
@@ -945,7 +989,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setFormData(prev => {
       const currentItems = (prev.items && prev.items.length > 0) ? [...prev.items] : [{
         productId: 'CUSTOM-ITEM-1',
-        productName: 'Custom Machining Item',
+        productName: '',
         description: '',
         qty: 1,
         unitPrice: 0,
@@ -954,7 +998,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }];
       const newItems = [...currentItems, {
         productId: `CUSTOM-ITEM-${currentItems.length + 1}`,
-        productName: 'Additional Item',
+        productName: '',
         description: '',
         qty: 1,
         unitPrice: 0,
@@ -1026,13 +1070,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     // Build items list
     let itemsList: any[] = [];
-    if ((formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job') && formData.items && formData.items.length > 0) {
+    if ((formData.orderSource === 'from_quote' || formData.orderSource === 'custom_job' || formData.orderSource === 'ready_made') && formData.items && formData.items.length > 0) {
       itemsList = formData.items.map((it: any, idx: number) => {
         const q = Math.max(0, Number(it.qty) || 1);
         const up = Math.max(0, Number(it.unitPrice) || 0);
         return {
           ...it,
-          productId: it.productId || `CUSTOM-ITEM-${idx + 1}`,
+          productId: it.productId || `ITEM-${idx + 1}`,
           productName: it.productName || it.description || resolvedProductName || 'Order Item',
           description: it.description || it.productName || resolvedProductName,
           qty: q,
@@ -1071,7 +1115,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     const itemSum = Number(itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0).toFixed(2));
 
-    const finalSubtotal = (formData.orderSource === 'custom_job' || formData.orderSource === 'from_quote')
+    const finalSubtotal = (formData.orderSource === 'custom_job' || formData.orderSource === 'from_quote' || formData.orderSource === 'ready_made')
       ? (itemSum > 0 ? itemSum : (Number(formData.subtotal) || 0))
       : (Number(formData.subtotal) || itemSum);
 
@@ -3019,9 +3063,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                           <div className="relative">
                                             <textarea
                                               rows={2}
-                                              value={it.description || it.productName || ''}
+                                              value={it.description !== undefined ? it.description : (it.productName || '')}
                                               onChange={e => handleItemChangeInOrder(idx, 'description', e.target.value)}
-                                              onKeyDown={e => handleBulletKeyDown(e, it.description || it.productName || '', val => handleItemChangeInOrder(idx, 'description', val))}
+                                              onKeyDown={e => handleBulletKeyDown(e, it.description !== undefined ? it.description : (it.productName || ''), val => handleItemChangeInOrder(idx, 'description', val))}
                                               placeholder="Description (Press Enter for • bullet)..."
                                               className="w-full p-1.5 text-xs font-mono bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none leading-relaxed resize-y"
                                             />
@@ -3109,70 +3153,166 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 {formData.orderSource === 'ready_made' && (
                   <div className="sm:col-span-2 space-y-3">
                     <div className="flex items-center justify-between">
-                      <label className="block text-xs font-semibold text-secondary">
-                        Search Finished Product (Autocomplete) <span className="text-red-500">*</span>
-                      </label>
+                      <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <Package size={13} className="text-blue-500" />
+                        Order Finished Products ({(formData.items || []).length})
+                      </span>
                       <button
                         type="button"
-                        onClick={() => handleSourceChange('custom_job')}
-                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        onClick={() => {
+                          setFormData(prev => {
+                            const current = prev.items && prev.items.length > 0 ? [...prev.items] : [];
+                            const newItems = [...current, {
+                              productId: '',
+                              productName: '',
+                              productSku: '',
+                              description: '',
+                              qty: 1,
+                              unitPrice: 0,
+                              amount: 0,
+                              uom: 'Nos'
+                            }];
+                            return { ...prev, items: newItems };
+                          });
+                        }}
+                        className="px-2 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <Plus size={12} /> Enter Custom Unlisted Product / Job Scope instead
+                        <Plus size={11} /> Add Another Product
                       </button>
                     </div>
 
-                    <ProductAutocomplete
-                      value={formData.productId}
-                      onChange={(pId) => handleProductSelect(pId)}
-                      products={finishedProducts}
-                      filterType="finished_product"
-                      placeholder="Type product name, SKU, or specs to autocomplete..."
-                    />
+                    <div className="space-y-3">
+                      {(formData.items && formData.items.length > 0 ? formData.items : [{
+                        productId: formData.productId || '',
+                        productName: formData.productName || '',
+                        productSku: formData.productSku || '',
+                        description: '',
+                        qty: Number(formData.qty) || 1,
+                        unitPrice: Number(formData.unitPrice) || 0,
+                        amount: (Number(formData.qty) || 1) * (Number(formData.unitPrice) || 0),
+                        uom: 'Nos'
+                      }]).map((it: any, itIdx: number) => {
+                        const matchedProd = finishedProducts.find(p => p.id === it.productId);
+                        const prodStock = Number(matchedProd?.quantity || 0);
+                        const prodRequested = Number(it.qty) || 1;
+                        const isShort = matchedProd && prodRequested > prodStock;
 
-                    {/* Allow Custom override / details for this product */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-secondary mb-1">
-                          Product Name / Title <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={formData.productName}
-                          onChange={e => setFormData({ ...formData, productName: e.target.value })}
-                          placeholder="e.g. Standard Gear Shaft or Custom Spec"
-                          className="w-full input-base text-xs font-medium"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Product Code / SKU</label>
-                        <input
-                          type="text"
-                          value={formData.productSku}
-                          onChange={e => setFormData({ ...formData, productSku: e.target.value })}
-                          placeholder="e.g. SKU-1002"
-                          className="w-full input-base font-mono text-xs"
-                        />
-                      </div>
+                        return (
+                          <div key={itIdx} className="p-3 bg-surface border border-theme-subtle space-y-2.5 relative">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-secondary uppercase tracking-wider">
+                                Product #{itIdx + 1}
+                              </span>
+                              {(formData.items || []).length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItemFromOrder(itIdx)}
+                                  className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 font-semibold"
+                                >
+                                  <Trash2 size={12} /> Remove
+                                </button>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-secondary mb-1">
+                                Search Finished Product (Autocomplete) <span className="text-red-500">*</span>
+                              </label>
+                              <ProductAutocomplete
+                                value={it.productId}
+                                onChange={(pId) => handleProductSelect(pId, itIdx)}
+                                products={finishedProducts}
+                                filterType="finished_product"
+                                placeholder="Type product name, SKU, or specs to autocomplete..."
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                              <div className="sm:col-span-2">
+                                <label className="block text-[11px] font-medium text-secondary mb-1">
+                                  Product Name / Title
+                                </label>
+                                <input
+                                  type="text"
+                                  value={it.productName || ''}
+                                  onChange={e => handleItemChangeInOrder(itIdx, 'productName', e.target.value)}
+                                  placeholder="e.g. Standard Gear Shaft"
+                                  className="w-full input-base text-xs font-medium"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-medium text-secondary mb-1">SKU / Code</label>
+                                <input
+                                  type="text"
+                                  value={it.productSku || ''}
+                                  onChange={e => handleItemChangeInOrder(itIdx, 'productSku', e.target.value)}
+                                  placeholder="e.g. SKU-1002"
+                                  className="w-full input-base font-mono text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-medium text-secondary mb-1">Unit</label>
+                                <input
+                                  type="text"
+                                  value={it.uom || 'Nos'}
+                                  onChange={e => handleItemChangeInOrder(itIdx, 'uom', e.target.value)}
+                                  className="w-full input-base text-xs text-center"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 items-end">
+                              <div>
+                                <label className="block text-[11px] font-medium text-secondary mb-1">Order Quantity</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="any"
+                                  value={it.qty}
+                                  onChange={e => handleItemChangeInOrder(itIdx, 'qty', e.target.value)}
+                                  className="w-full input-base font-mono font-bold text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-medium text-secondary mb-1">Unit Price (Rs)</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={it.unitPrice}
+                                  onChange={e => handleItemChangeInOrder(itIdx, 'unitPrice', e.target.value)}
+                                  className="w-full input-base font-mono font-bold text-xs"
+                                />
+                              </div>
+                              <div className="col-span-2 sm:col-span-1 text-right">
+                                <span className="block text-[10px] text-muted uppercase font-bold">Line Total</span>
+                                <span className="font-mono font-bold text-primary text-xs">
+                                  {formatCurrency((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))}
+                                </span>
+                              </div>
+                            </div>
+
+                            {matchedProd && (
+                              <div className="p-2 bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2">
+                                  <Package size={13} className="text-rex-600" />
+                                  <span>In Stock: <strong className="font-mono text-primary">{prodStock} {matchedProd.uom || 'pcs'}</strong></span>
+                                </div>
+                                {isShort ? (
+                                  <span className="text-xs font-semibold text-amber-500 flex items-center gap-1">
+                                    <AlertTriangle size={12} /> Shortage: {prodRequested - prodStock} needed
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
+                                    <CheckCircle2 size={12} /> In Stock
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-
-                    {selectedProduct && (
-                      <div className="mt-2 p-2.5 rounded-none bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <Package size={14} className="text-rex-600" />
-                          <span>In Stock: <strong className="font-mono text-primary">{availableStock} {selectedProduct.uom || 'pcs'}</strong></span>
-                        </div>
-                        {hasShortage ? (
-                          <span className="text-xs font-semibold text-amber-500 flex items-center gap-1.5">
-                            <AlertTriangle size={13} /> Shortage: {requestedQty - availableStock} needed
-                          </span>
-                        ) : (
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1.5">
-                            <CheckCircle2 size={13} /> Sufficient Stock Available
-                          </span>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -3210,7 +3350,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           <tbody className="divide-y divide-theme-subtle/40">
                             {(formData.items && formData.items.length > 0 ? formData.items : [{
                               productId: 'CUSTOM-ITEM-1',
-                              productName: 'Custom Machining Item',
+                              productName: '',
                               description: '',
                               qty: 1,
                               unitPrice: 0,
@@ -3224,9 +3364,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                     <div className="relative">
                                       <textarea
                                         rows={2}
-                                        value={it.description || it.productName || ''}
+                                        value={it.description !== undefined ? it.description : (it.productName || '')}
                                         onChange={e => handleItemChangeInOrder(idx, 'description', e.target.value)}
-                                        onKeyDown={e => handleBulletKeyDown(e, it.description || it.productName || '', val => handleItemChangeInOrder(idx, 'description', val))}
+                                        onKeyDown={e => handleBulletKeyDown(e, it.description !== undefined ? it.description : (it.productName || ''), val => handleItemChangeInOrder(idx, 'description', val))}
                                         placeholder="Description (Press Enter for • bullet)..."
                                         className="w-full p-1.5 text-xs font-mono bg-surface border border-theme-subtle focus:border-blue-500 focus:outline-none leading-relaxed resize-y"
                                       />
@@ -3384,49 +3524,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   />
                 </div>
 
-                {formData.orderSource === 'ready_made' && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-secondary mb-1">Order Quantity</label>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        required
-                        value={formData.qty}
-                        onChange={e => {
-                          const newQty = e.target.value;
-                          setFormData(prev => {
-                            const sub = (Number(newQty) || 0) * (Number(prev.unitPrice) || 0);
-                            const { taxAmount, totalPrice } = calculateOrderTaxes(sub, prev.taxProfileId, prev.taxRate);
-                            return { ...prev, qty: newQty, subtotal: sub, taxAmount, totalPrice };
-                          });
-                        }}
-                        className="w-full input-base font-mono font-bold text-sm"
-                      />
-                    </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-secondary mb-1">Unit Price (Rs)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        required
-                        value={formData.unitPrice}
-                        onChange={e => {
-                          const newPrice = e.target.value;
-                          setFormData(prev => {
-                            const sub = (Number(prev.qty) || 0) * (Number(newPrice) || 0);
-                            const { taxAmount, totalPrice } = calculateOrderTaxes(sub, prev.taxProfileId, prev.taxRate);
-                            return { ...prev, unitPrice: newPrice, subtotal: sub, taxAmount, totalPrice };
-                          });
-                        }}
-                        className="w-full input-base font-mono font-bold text-sm"
-                      />
-                    </div>
-                  </>
-                )}
 
                 {/* ── TAXES & PRICING CONFIGURATION (APPLY TAXES TO FINAL VALUE) ── */}
                 <div className="sm:col-span-2 p-3.5 bg-indigo-500/5 border border-indigo-500/20 rounded-none space-y-3">
