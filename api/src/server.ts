@@ -1830,6 +1830,35 @@ async function runDatabaseSync() {
   // Ensure sales_order next_number starts from 6004 if not set
   try {
     await db.query("UPDATE document_sequences SET next_number = 6004 WHERE id = 'sales_order' AND (next_number < 6001 OR next_number = 7528 OR next_number = 7529)");
+    // Auto-sync sequence with highest existing orderNo if present
+    const [maxOrder]: any = await db.query(
+      "SELECT MAX(CAST(REGEXP_SUBSTR(orderNo, '[0-9]+$') AS UNSIGNED)) as maxNum FROM finished_goods_orders WHERE orderNo REGEXP '[0-9]+$'"
+    );
+    if (maxOrder && maxOrder[0] && maxOrder[0].maxNum) {
+      const highestNum = Number(maxOrder[0].maxNum);
+      if (highestNum >= 1000 && highestNum < 100000 && highestNum !== 7528) {
+        await db.query(
+          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'sales_order'",
+          [highestNum + 1]
+        );
+      }
+    }
+  } catch (err) {}
+
+  // Auto-migrate column types to TEXT to support long product descriptions and customer names
+  try {
+    await db.query("ALTER TABLE finished_goods_orders MODIFY productName TEXT");
+    await db.query("ALTER TABLE finished_goods_orders MODIFY customerName TEXT");
+    await db.query("ALTER TABLE finished_goods_orders MODIFY stockStatus TEXT");
+    await db.query("ALTER TABLE finished_goods_orders MODIFY carrier TEXT");
+    await db.query("ALTER TABLE finished_goods_orders MODIFY driverName TEXT");
+    await db.query("ALTER TABLE work_orders MODIFY title TEXT");
+    await db.query("ALTER TABLE work_orders MODIFY customer TEXT");
+    await db.query("ALTER TABLE invoices MODIFY customerName TEXT");
+    await db.query("ALTER TABLE invoices MODIFY customerCompany TEXT");
+    await db.query("ALTER TABLE gate_passes MODIFY customerName TEXT");
+    await db.query("ALTER TABLE gate_passes MODIFY customerCompany TEXT");
+    await db.query("ALTER TABLE gate_passes MODIFY reason TEXT");
   } catch (err) {}
 
   // Auto-seed user_quotation_sequences for users with prefixes
@@ -5123,7 +5152,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
             id VARCHAR(50) PRIMARY KEY,
             orderNo VARCHAR(50) NOT NULL,
             productId VARCHAR(50) DEFAULT 'CUSTOM-ORDER',
-            productName VARCHAR(255) DEFAULT 'Order Item',
+            productName TEXT DEFAULT NULL,
             productSku VARCHAR(100) DEFAULT NULL,
             customerId VARCHAR(50) DEFAULT NULL,
             customerName VARCHAR(255) NOT NULL,
@@ -5771,6 +5800,166 @@ app.delete('/api/finished-goods-orders/:id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// CANCEL SALES ORDER WITH CUSTOMER RATING IMPACT
+app.post('/api/finished-goods-orders/:id/cancel', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const { id } = req.params;
+    const {
+      cancellationReason,
+      reasonCategory,
+      applyPenalty = true,
+      newRating,
+      cancelledBy = 'User',
+      notes
+    } = req.body;
+
+    await conn.beginTransaction();
+
+    // 1. Find Order
+    const [orders]: any = await conn.query(
+      'SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1',
+      [id, id]
+    );
+
+    if (!orders || orders.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Sales Order not found' });
+    }
+
+    const order = orders[0];
+    if (order.status === 'Cancelled') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'This sales order is already cancelled' });
+    }
+
+    const cancellationTimestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const reasonText = cancellationReason || reasonCategory || 'Order cancelled by user';
+
+    // 2. Customer Rating Impact
+    let previousRating = 0;
+    let targetNewRating: number | null = null;
+    let resolvedCustomerId = order.customerId;
+
+    if (!resolvedCustomerId && order.customerName) {
+      const [matchedCust]: any = await conn.query(
+        'SELECT id, rating FROM customers WHERE company = ? OR name = ? LIMIT 1',
+        [order.customerName, order.customerName]
+      );
+      if (matchedCust && matchedCust.length > 0) {
+        resolvedCustomerId = matchedCust[0].id;
+        previousRating = Number(matchedCust[0].rating || 0);
+      }
+    } else if (resolvedCustomerId) {
+      const [matchedCust]: any = await conn.query(
+        'SELECT id, rating FROM customers WHERE id = ? LIMIT 1',
+        [resolvedCustomerId]
+      );
+      if (matchedCust && matchedCust.length > 0) {
+        previousRating = Number(matchedCust[0].rating || 0);
+      }
+    }
+
+    if (newRating !== undefined && newRating !== null && !isNaN(Number(newRating))) {
+      targetNewRating = Math.max(0, Math.min(5, Number(newRating)));
+    } else if (applyPenalty) {
+      targetNewRating = previousRating > 1 ? (previousRating - 1) : 1;
+    }
+
+    if (resolvedCustomerId && targetNewRating !== null) {
+      await conn.query(
+        'UPDATE customers SET rating = ? WHERE id = ?',
+        [targetNewRating, resolvedCustomerId]
+      );
+    }
+
+    // 3. Update Sales Order
+    const cancelAuditNote = `\n[ORDER CANCELLED on ${cancellationTimestamp} by ${cancelledBy}]: Reason: ${reasonText}${notes ? ` | Notes: ${notes}` : ''} | Customer Rating: ${previousRating}★ ➔ ${targetNewRating !== null ? `${targetNewRating}★` : 'No Change'}`;
+    const updatedNotes = (order.notes || '') + cancelAuditNote;
+
+    let soChangeLog: any[] = [];
+    if (order.soChangeInfo) {
+      try {
+        soChangeLog = typeof order.soChangeInfo === 'string' ? JSON.parse(order.soChangeInfo) : order.soChangeInfo;
+        if (!Array.isArray(soChangeLog)) soChangeLog = [];
+      } catch (e) {
+        soChangeLog = [];
+      }
+    }
+    soChangeLog.push({
+      action: 'CANCEL_ORDER',
+      timestamp: cancellationTimestamp,
+      user: cancelledBy,
+      reason: reasonText,
+      notes: notes || '',
+      ratingImpact: {
+        customerId: resolvedCustomerId,
+        previousRating,
+        newRating: targetNewRating
+      }
+    });
+
+    await conn.query(
+      `UPDATE finished_goods_orders 
+       SET status = 'Cancelled', 
+           notes = ?, 
+           soChangeInfo = ?, 
+           isEdited = 1, 
+           lastEditedBy = ?, 
+           lastEditedAt = NOW() 
+       WHERE id = ?`,
+      [updatedNotes, JSON.stringify(soChangeLog), cancelledBy, order.id]
+    );
+
+    // 4. Cancel linked Work Orders if not completed
+    try {
+      const orderSearch = order.orderNo || order.id;
+      await conn.query(
+        `UPDATE work_orders 
+         SET status = 'Cancelled', 
+             notes = CONCAT(COALESCE(notes, ''), '\n[Auto-Cancelled: Parent Sales Order ${orderSearch} was cancelled on ${cancellationTimestamp}]') 
+         WHERE (salesOrderNo = ? OR orderNo = ? OR id = ?) AND status NOT IN ('Completed', 'Dispatched')`,
+        [orderSearch, orderSearch, `WO-${orderSearch}`]
+      );
+    } catch (woErr) {
+      console.warn('Could not cancel linked work orders:', woErr);
+    }
+
+    // 5. Cancel linked unpaid invoices
+    try {
+      const orderSearch = order.orderNo || order.id;
+      await conn.query(
+        `UPDATE invoices 
+         SET status = 'cancelled', 
+             notes = CONCAT(COALESCE(notes, ''), '\n[Auto-Cancelled: Sales Order ${orderSearch} cancelled]') 
+         WHERE (orderNo = ? OR orderId = ?) AND (status = 'sent' OR status = 'unpaid' OR status = 'draft')`,
+        [orderSearch, orderSearch]
+      );
+    } catch (invErr) {
+      console.warn('Could not cancel linked invoices:', invErr);
+    }
+
+    await conn.commit();
+
+    res.json({
+      success: true,
+      orderId: order.id,
+      orderNo: order.orderNo,
+      status: 'Cancelled',
+      customerId: resolvedCustomerId,
+      previousRating,
+      newRating: targetNewRating,
+      reason: reasonText
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Cancel Sales Order Error:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -10370,7 +10559,12 @@ app.post('/api/production/work-orders', async (req, res) => {
 
     let resolvedCustomer = (customer || req.body.customerName || '').trim();
     if (!resolvedCustomer && customerId) {
-      resolvedCustomer = customerMap[customerId] || '';
+      try {
+        const [cRows]: any = await db.query('SELECT company, name FROM customers WHERE id = ? LIMIT 1', [customerId]);
+        if (cRows && cRows.length > 0) {
+          resolvedCustomer = cRows[0].company || cRows[0].name || '';
+        }
+      } catch (cErr) {}
     }
     if (!resolvedCustomer && sourceQuoteId) {
       try {
@@ -10531,7 +10725,7 @@ app.post('/api/production/work-orders', async (req, res) => {
       );
     }
 
-    res.json({ success: true, id: woId, orderNo });
+    res.json({ success: true, id: woId, orderNo: finalWoNo, woNo: finalWoNo, salesOrderNo: finalSoNo });
   } catch (error: any) {
     console.error('Error creating work order:', error);
     res.status(500).json({ error: error.message });
@@ -11352,7 +11546,7 @@ app.post('/api/production/work-orders/:id/create-mr-shortage', async (req, res) 
           mrId,
           mrNo,
           wo.customer || 'Production',
-          mrItems[0].estimatedTotal,
+          mrItems[0]?.estimatedTotal || 0,
           requestedBy || 'Department Head',
           `Created Material Request ${mrNo} for ${item.material} against Work Order ${wo.orderNo || id}`,
           JSON.stringify({ workOrderId: id, mrId, mrNo })

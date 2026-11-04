@@ -402,6 +402,24 @@ export const deleteFinishedGoodsOrder = async (id: string) => {
   return json;
 };
 
+export const cancelFinishedGoodsOrder = async (id: string, payload: {
+  cancellationReason: string;
+  reasonCategory?: string;
+  applyPenalty?: boolean;
+  newRating?: number;
+  cancelledBy?: string;
+  notes?: string;
+}) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${id}/cancel`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to cancel sales order');
+  return json;
+};
+
 // -- SUPPLIERS --
 export const fetchSuppliers = async () => {
   const res = await fetch(`${API_URL}/suppliers`);

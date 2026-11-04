@@ -544,7 +544,6 @@ export const MRBuilder: React.FC = () => {
         await updateMR(id, payload);
       } else {
         await createMR(payload);
-        fetchNextDocumentNumber('material_request', { reserve: true }).catch(console.error);
       }
       navigate('/purchasing');
     } catch (e) {

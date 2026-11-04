@@ -14,10 +14,12 @@ import { createCashbookEntry, deleteCashbookEntry, CashbookEntry } from '@/lib/a
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSettings } from '@/contexts/SettingsContext';
 
 export const DailyCashbook: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { settings } = useSettings();
   const { toast, showError, showConfirm } = useDialog();
 
   // Date state (defaults to today)
@@ -978,7 +980,9 @@ export const DailyCashbook: React.FC = () => {
             {/* Header */}
             <div className="flex justify-between items-start border-b border-slate-200 pb-4">
               <div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 uppercase">REX INTERNATIONAL (PVT) LTD</h2>
+                <h2 className="text-xl font-bold tracking-tight text-slate-900 uppercase">
+                  {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
+                </h2>
                 <p className="text-xs text-slate-500 mt-0.5">DAILY CASH STATEMENT & RECONCILIATION</p>
                 <p className="text-xs text-slate-600 font-medium mt-1">
                   Cash Account: <span className="font-bold">{cashbookData?.cashAccount?.code} - {cashbookData?.cashAccount?.name}</span>

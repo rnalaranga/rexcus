@@ -6,7 +6,8 @@ import {
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
-  ShoppingBag, Receipt, UploadCloud, Paperclip, Camera, Maximize2, Minimize2
+  ShoppingBag, Receipt, UploadCloud, Paperclip, Camera, Maximize2, Minimize2,
+  Star, XCircle, Ban
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -43,6 +44,7 @@ import {
   updateFinishedGoodsOrder, 
   dispatchFinishedGoodsOrder, 
   deleteFinishedGoodsOrder,
+  cancelFinishedGoodsOrder,
   createWorkOrder,
   fetchWorkOrders,
   fetchPaymentReceipts,
@@ -102,7 +104,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { settings } = useSettings()
   const { data: orders, loading, refetch } = useFinishedGoodsOrders()
   const { data: inventory, refetch: refetchInventory } = useInventory()
-  const { data: customers = [] } = useCustomers()
+  const { data: customers = [], refetch: refetchCustomers } = useCustomers()
   const { data: leads = [] } = useLeads()
   const { data: rawQuotations = [] } = useQuotations()
   const { data: allInvoices = [], refetch: refetchInvoices } = useInvoices()
@@ -194,6 +196,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
+  
+  // Cancellation Modal State & Customer Rating Impact
+  const [cancelOrderTarget, setCancelOrderTarget] = useState<any | null>(null)
+  const [cancellationReason, setCancellationReason] = useState<string>('Customer Default / Refused Advance')
+  const [cancellationNotes, setCancellationNotes] = useState<string>('')
+  const [ratingMode, setRatingMode] = useState<'penalty_minus_one' | 'penalty_poor' | 'custom' | 'no_penalty'>('penalty_minus_one')
+  const [customRatingValue, setCustomRatingValue] = useState<number>(1)
+  const [submittingCancel, setSubmittingCancel] = useState(false)
   
   // Modals for PDF / Print & Dispatch Gate Pass
   const [printOrder, setPrintOrder] = useState<any | null>(null)
@@ -1183,7 +1193,6 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         await updateFinishedGoodsOrder(editingOrder.id, payload)
       } else {
         await createFinishedGoodsOrder(payload)
-        fetchNextDocumentNumber('sales_order', { reserve: true }).catch(console.error);
       }
       refetch()
       setShowOrderModal(false)
@@ -1195,6 +1204,66 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       setSubmitting(false)
     }
   }
+
+  const handleOpenCancelOrderModal = (order: any) => {
+    setCancelOrderTarget(order);
+    setCancellationReason('Customer Default / Refused Advance');
+    setCancellationNotes('');
+    setRatingMode('penalty_minus_one');
+
+    const cust = customers.find((c: any) => c.id === order.customerId || c.company === order.customerName || c.name === order.customerName);
+    const currentRate = cust?.rating || 0;
+    const targetRate = currentRate > 1 ? (currentRate - 1) : 1;
+    setCustomRatingValue(targetRate);
+  };
+
+  const handleConfirmCancelOrder = async () => {
+    if (!cancelOrderTarget) return;
+
+    const cust = customers.find((c: any) => c.id === cancelOrderTarget.customerId || c.company === cancelOrderTarget.customerName || c.name === cancelOrderTarget.customerName);
+    const currentRate = cust?.rating || 0;
+
+    let calculatedNewRating = currentRate;
+    let applyPenalty = true;
+
+    if (ratingMode === 'penalty_minus_one') {
+      calculatedNewRating = currentRate > 1 ? (currentRate - 1) : 1;
+      applyPenalty = true;
+    } else if (ratingMode === 'penalty_poor') {
+      calculatedNewRating = 1;
+      applyPenalty = true;
+    } else if (ratingMode === 'custom') {
+      calculatedNewRating = customRatingValue;
+      applyPenalty = false;
+    } else if (ratingMode === 'no_penalty') {
+      calculatedNewRating = currentRate;
+      applyPenalty = false;
+    }
+
+    setSubmittingCancel(true);
+    try {
+      const res = await cancelFinishedGoodsOrder(cancelOrderTarget.id || cancelOrderTarget.orderNo, {
+        cancellationReason,
+        notes: cancellationNotes.trim() || undefined,
+        applyPenalty,
+        newRating: calculatedNewRating,
+        cancelledBy: user?.name || user?.username || 'User'
+      });
+
+      toast(
+        `Sales Order ${cancelOrderTarget.orderNo || cancelOrderTarget.id} cancelled. Customer rating updated to ${res.newRating !== null ? `${res.newRating}★` : 'unchanged'}.`,
+        'success'
+      );
+      setCancelOrderTarget(null);
+      refetch();
+      if (refetchCustomers) refetchCustomers();
+    } catch (err: any) {
+      console.error(err);
+      toast(err.message || 'Failed to cancel sales order', 'error');
+    } finally {
+      setSubmittingCancel(false);
+    }
+  };
 
   const handleOpenDispatchModal = (order: any) => {
     const totalOrderQty = Math.max(1, Number(order.qty || 1))
@@ -2132,6 +2201,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </button>
             )}
 
+            {/* Cancel Sales Order with Customer Rating Impact */}
+            {order.status !== 'Cancelled' && (
+              <>
+                <div className="my-1 border-t border-theme-subtle" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionOrderId(null)
+                    handleOpenCancelOrderModal(order)
+                  }}
+                  className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors text-rose-600 dark:text-rose-400 font-semibold cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <XCircle size={13} className="text-rose-500 shrink-0" /> Cancel Sales Order
+                  </span>
+                  <span className="text-[10px] bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded font-mono">
+                    Rating Impact
+                  </span>
+                </button>
+              </>
+            )}
+
             {/* 7. Delete Order (available for Admin only) */}
             {isAdmin && (
               <>
@@ -2795,6 +2886,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     <td className="px-3 py-2.5 text-center">
                       <Badge
                         variant={
+                          order.status === 'Cancelled' ? 'error' :
                           order.status === 'Dispatched' ? 'success' :
                           order.status === 'In Production' ? 'warning' :
                           (order.status === 'Pending Approval' || order.status === 'Pending Advance Approval') ? 'warning' :
@@ -4192,6 +4284,217 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 disabled={submitting}
               >
                 {submitting ? 'Deleting...' : 'Delete Order'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* CANCEL SALES ORDER & CUSTOMER RATING IMPACT MODAL */}
+      {cancelOrderTarget && (
+        <Modal
+          isOpen={true}
+          onClose={() => !submittingCancel && setCancelOrderTarget(null)}
+          title={`Cancel Sales Order #${cancelOrderTarget.orderNo || cancelOrderTarget.id}`}
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3">
+              <AlertTriangle className="text-rose-500 shrink-0 mt-0.5" size={18} />
+              <div className="text-xs text-rose-700 dark:text-rose-300">
+                <span className="font-bold">Cancellation Impact:</span> Cancelling this sales order will halt production, void any active work orders, and cancel any unpaid invoices. This action will also directly impact the customer's credibility rating.
+              </div>
+            </div>
+
+            {/* Order & Customer Summary */}
+            <div className="bg-surface2/60 p-3 rounded-lg border border-theme-subtle text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-secondary">Customer:</span>
+                <span className="font-bold text-primary">{cancelOrderTarget.customerName || cancelOrderTarget.customer}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-secondary">Order Total:</span>
+                <span className="font-mono font-bold text-primary">{formatCurrency(cancelOrderTarget.totalAmount || 0)}</span>
+              </div>
+              {(() => {
+                const cust = customers.find((c: any) => c.id === cancelOrderTarget.customerId || c.company === cancelOrderTarget.customerName || c.name === cancelOrderTarget.customerName);
+                const currentRate = cust?.rating || 0;
+                return (
+                  <div className="flex justify-between items-center pt-1 border-t border-theme-subtle">
+                    <span className="text-secondary">Current Customer Rating:</span>
+                    <div className="flex items-center gap-1 font-semibold text-amber-500">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <Star
+                          key={star}
+                          size={13}
+                          className={star <= currentRate ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'}
+                        />
+                      ))}
+                      <span className="ml-1 text-xs text-primary font-mono">({currentRate} / 5)</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Cancellation Reason Selection */}
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">
+                Reason for Cancellation <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={cancellationReason}
+                onChange={e => setCancellationReason(e.target.value)}
+                className="w-full h-9 px-2.5 text-xs bg-surface border border-theme-subtle rounded text-primary focus:outline-none focus:border-rose-500"
+              >
+                <option value="Customer Default / Refused Advance">Customer Default / Refused Advance</option>
+                <option value="Customer Cancelled (Budget Constraints)">Customer Cancelled (Budget Constraints)</option>
+                <option value="Customer Backed Out / Found Alternative">Customer Backed Out / Found Alternative</option>
+                <option value="Unreachable / Fake Inquiry">Unreachable / Fake Inquiry</option>
+                <option value="Delivery Delay / Production Issue (Internal)">Delivery Delay / Production Issue (Internal)</option>
+                <option value="Pricing / Specification Dispute">Pricing / Specification Dispute</option>
+                <option value="Mutual Cancellation">Mutual Cancellation</option>
+                <option value="Other / Custom Reason">Other / Custom Reason</option>
+              </select>
+            </div>
+
+            {/* Custom Notes / Audit */}
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">
+                Additional Notes / Explanation
+              </label>
+              <textarea
+                value={cancellationNotes}
+                onChange={e => setCancellationNotes(e.target.value)}
+                placeholder="Explain why this order was cancelled for the audit log..."
+                className="w-full p-2.5 text-xs bg-surface border border-theme-subtle rounded text-primary focus:outline-none focus:border-rose-500 resize-none h-16"
+              />
+            </div>
+
+            {/* Customer Rating Penalty Configuration */}
+            <div className="border border-theme-subtle rounded-lg p-3 bg-surface">
+              <label className="block text-xs font-bold text-primary mb-2 flex items-center gap-1.5">
+                <Star size={14} className="text-amber-500" /> Customer Reliability Rating Impact
+              </label>
+              
+              <div className="space-y-2 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-surface2">
+                  <input
+                    type="radio"
+                    name="ratingMode"
+                    checked={ratingMode === 'penalty_minus_one'}
+                    onChange={() => setRatingMode('penalty_minus_one')}
+                    className="accent-rose-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-primary">Penalty: Deduct 1 Star</span>
+                    <span className="text-secondary ml-1.5 text-[11px]">(Standard default penalty)</span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-surface2">
+                  <input
+                    type="radio"
+                    name="ratingMode"
+                    checked={ratingMode === 'penalty_poor'}
+                    onChange={() => setRatingMode('penalty_poor')}
+                    className="accent-rose-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-rose-600 dark:text-rose-400">Severe Penalty: Drop to 1 Star (Poor / Blacklist Warning)</span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-surface2">
+                  <input
+                    type="radio"
+                    name="ratingMode"
+                    checked={ratingMode === 'custom'}
+                    onChange={() => setRatingMode('custom')}
+                    className="accent-rose-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-primary">Set Custom Rating:</span>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => {
+                            setRatingMode('custom');
+                            setCustomRatingValue(star);
+                          }}
+                          className={`p-0.5 rounded hover:scale-110 transition-transform ${star <= customRatingValue ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}
+                        >
+                          <Star size={15} className={star <= customRatingValue ? 'fill-amber-400' : ''} />
+                        </button>
+                      ))}
+                      <span className="font-mono font-bold text-xs ml-1 text-primary">({customRatingValue}★)</span>
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-surface2">
+                  <input
+                    type="radio"
+                    name="ratingMode"
+                    checked={ratingMode === 'no_penalty'}
+                    onChange={() => setRatingMode('no_penalty')}
+                    className="accent-rose-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-secondary">No Penalty (Internal / Rexcus reason)</span>
+                    <span className="text-secondary ml-1.5 text-[11px]">(Customer rating remains unchanged)</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Rating Preview */}
+              {(() => {
+                const cust = customers.find((c: any) => c.id === cancelOrderTarget.customerId || c.company === cancelOrderTarget.customerName || c.name === cancelOrderTarget.customerName);
+                const currentRate = cust?.rating || 0;
+                let projectedRating = currentRate;
+                if (ratingMode === 'penalty_minus_one') projectedRating = currentRate > 1 ? (currentRate - 1) : 1;
+                else if (ratingMode === 'penalty_poor') projectedRating = 1;
+                else if (ratingMode === 'custom') projectedRating = customRatingValue;
+                else if (ratingMode === 'no_penalty') projectedRating = currentRate;
+
+                return (
+                  <div className="mt-2.5 pt-2 border-t border-theme-subtle flex items-center justify-between text-xs bg-surface2/50 px-2 py-1.5 rounded">
+                    <span className="text-secondary">Projected Rating Outcome:</span>
+                    <span className="font-bold flex items-center gap-1.5">
+                      <span className="text-secondary">{currentRate}★</span>
+                      <ArrowRight size={12} className="text-secondary" />
+                      <span className={projectedRating < currentRate ? 'text-rose-500 font-bold' : 'text-primary'}>
+                        {projectedRating}★
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex justify-end gap-3 pt-2 border-t border-theme-subtle">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setCancelOrderTarget(null)}
+                disabled={submittingCancel}
+              >
+                Go Back
+              </Button>
+              <Button
+                variant="danger"
+                type="button"
+                onClick={handleConfirmCancelOrder}
+                disabled={submittingCancel}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1.5"
+              >
+                {submittingCancel ? 'Cancelling...' : (
+                  <>
+                    <Ban size={14} /> Confirm Cancellation
+                  </>
+                )}
               </Button>
             </div>
           </div>

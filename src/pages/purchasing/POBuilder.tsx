@@ -556,11 +556,6 @@ export const POBuilder: React.FC = () => {
       } else {
         const res = await createPO(payload);
         if (res && res.error) throw new Error(res.error);
-        try {
-          await fetchNextDocumentNumber('purchase_order', { reserve: true });
-        } catch (e) {
-          console.warn('Failed to reserve PO sequence number:', e);
-        }
         toast(`Purchase Order ${docNo} created successfully!`, 'success');
       }
       navigate('/purchasing');

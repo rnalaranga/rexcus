@@ -550,7 +550,6 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
       const res = await createFinishedGoodsOrder(payload);
       if (res && res.error) throw new Error(res.error);
-      fetchNextDocumentNumber('sales_order', { reserve: true }).catch(console.error);
 
       // Sync PO status back to quotation
       if (quotationData?.quotation?.id) {

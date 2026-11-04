@@ -9,6 +9,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 import { fetchAdvancedReport, fetchCustomers } from '@/lib/api';
 import * as XLSX from 'xlsx';
 // @ts-ignore
@@ -17,6 +18,7 @@ import html2pdf from 'html2pdf.js';
 type MainTab = 'invoices' | 'unpaid' | 'cashbook' | 'tax' | 'pnl' | 'bs' | 'tb' | 'exp';
 
 export const FinancialReports: React.FC = () => {
+  const { settings } = useSettings();
   const [activeTab, setActiveTab] = useState<MainTab>('invoices');
 
   // Date filters
@@ -625,7 +627,9 @@ export const FinancialReports: React.FC = () => {
               <div className="flex items-center gap-3">
                 <img src="/rex-logo.png" alt="REX" className="h-10 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
                 <div>
-                  <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">REX INTERNATIONAL (PVT) LTD</h2>
+                  <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">
+                    {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
+                  </h2>
                   <p className="text-[11px] text-slate-500 uppercase tracking-widest font-semibold">
                     {activeTab === 'invoices' && 'INVOICE SALES & TAX BREAKDOWN REGISTER'}
                     {activeTab === 'unpaid' && 'ACCOUNTS RECEIVABLE & UNPAID INVOICES AGING REPORT'}

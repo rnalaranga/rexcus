@@ -483,7 +483,6 @@ export const GRNBuilder: React.FC = () => {
 
     try {
       await createGRN(payload);
-      fetchNextDocumentNumber('purchase_grn', { reserve: true }).catch(console.error);
       navigate('/purchasing');
     } catch (e: any) {
       console.error(e);
