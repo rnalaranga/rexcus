@@ -861,40 +861,58 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         </tbody>
       </table>
 
-      {/* ── SIGNATURE SECTION ── */}
+      {/* ── 3. SIGNATURE SECTION ── */}
       <div 
         className="print-no-break"
         style={{ 
-          marginTop: '22px', 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr 1fr', 
-          gap: '20px', 
-          paddingTop: '6px',
+          marginTop: '24px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-end',
+          fontSize: '10px',
+          pageBreakInside: 'avoid',
           width: '100%',
           boxSizing: 'border-box'
         }}
       >
+        {/* Customer Signature & Stamp */}
+        <div style={{ textAlign: 'center', width: '31%' }}>
+          <div style={{ height: '36px' }}></div>
+          <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
+            <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
+              Customer Signature
+            </div>
+            <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+              Received in Good Condition / Stamp &amp; Date
+            </div>
+          </div>
+        </div>
+
         {/* Prepared By */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ borderBottom: '1px dotted #000000', height: '36px', marginBottom: '6px' }}></div>
-          <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-            Prepared By
+        <div style={{ textAlign: 'center', width: '28%' }}>
+          <div style={{ height: '36px' }}></div>
+          <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
+            <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
+              Prepared By
+            </div>
+            <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+              Accounts / Finance Dept.
+            </div>
           </div>
         </div>
 
-        {/* Authorized Signature */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ borderBottom: '1px dotted #000000', height: '36px', marginBottom: '6px' }}></div>
-          <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-            Authorized Signature
+        {/* Authorized Signatory */}
+        <div style={{ textAlign: 'center', width: '33%' }}>
+          <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#111', marginBottom: '18px', letterSpacing: '0.2px' }}>
+            For {company?.name || 'Rex Industries (Pvt) Ltd'}
           </div>
-        </div>
-
-        {/* Customer Signature */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ borderBottom: '1px dotted #000000', height: '36px', marginBottom: '6px' }}></div>
-          <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-            Customer Signature
+          <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
+            <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
+              Authorized Signatory
+            </div>
+            <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+              Official Signature &amp; Stamp
+            </div>
           </div>
         </div>
       </div>
