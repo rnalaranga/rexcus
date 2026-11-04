@@ -336,6 +336,21 @@ export const CustomerDetail: React.FC = () => {
       return
     }
 
+    if (!formData.address?.trim()) {
+      showError('Customer Address is required.')
+      return
+    }
+
+    if (!formData.name?.trim()) {
+      showError('Primary Contact Person Name is required.')
+      return
+    }
+
+    if (!formData.phone?.trim()) {
+      showError('Primary Contact Phone Number is required.')
+      return
+    }
+
     const duplicate = (customers || []).find((c: any) => 
       c.id !== customer.id && c.company && c.company.trim().toUpperCase() === trimmedCompany
     )
@@ -1355,8 +1370,10 @@ export const CustomerDetail: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1.5 col-span-2">
-                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Physical Address</label>
-                  <input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full input-base" />
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                    Physical Address <span className="text-rose-500 font-bold">*</span>
+                  </label>
+                  <input required value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full input-base" />
                 </div>
               </div>
             </div>
@@ -1453,8 +1470,10 @@ export const CustomerDetail: React.FC = () => {
                   <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full input-base" />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Primary Phone</label>
-                  <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full input-base" />
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                    Primary Phone <span className="text-rose-500 font-bold">*</span>
+                  </label>
+                  <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full input-base" />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Secondary Phone</label>

@@ -320,7 +320,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         placeOfSupply: order?.deliveryAddress || 'Negombo, Sri Lanka',
         date: toDateOnly(date) || new Date().toISOString().slice(0, 10),
         dueDate: toDateOnly(dueDate),
-        deliveryDate: toDateOnly(order?.targetDeliveryDate || order?.deliveryDate || date) || toDateOnly(date),
+        deliveryDate: toDateOnly(date) || new Date().toISOString().slice(0, 10),
         subtotal: calculation.totalPayable,
         taxAmount: 0,
         total: calculation.totalPayable,

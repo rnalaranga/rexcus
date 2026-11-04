@@ -505,6 +505,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Actions',
       key: 'id',
+      align: 'right',
       render: (_, item) => {
         const isLinearOrRaw = item.type === 'raw_material' || 
           ['shaft', 'bar', 'rod', 'pipe', 'tube', 'angle', 'channel', 'beam', 'plate', 'sheet'].some((k: string) => (item.name || '').toLowerCase().includes(k)) ||
@@ -754,6 +755,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Actions',
       key: 'id',
+      align: 'right',
       render: (_: any, item: any) => (
         <div className="flex items-center justify-end gap-1.5">
           <button
@@ -1186,6 +1188,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Actions',
       key: 'actions',
+      align: 'right',
       render: (_: any, row: any) => {
         const isDispatched = row.status === 'Dispatched' || !!row.gatePassId;
         return (
@@ -1337,6 +1340,7 @@ export const Inventory: React.FC = () => {
     {
       header: 'Actions',
       key: 'actions',
+      align: 'right',
       render: (_: any, row: any) => (
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -1389,7 +1393,7 @@ export const Inventory: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">
             {activeTab === 'customer_sample' 
@@ -1418,27 +1422,29 @@ export const Inventory: React.FC = () => {
               : 'Manage raw materials, steel bars, plates, hydraulic fittings, reorder thresholds, and bin locations.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <PageHelpButton moduleId="inventory-stock" />
           {activeTab === 'customer_sample' ? (
-            <Button variant="primary" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
+            <Button variant="primary" size="sm" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
               Receive Customer Sample
             </Button>
           ) : activeTab === 'finished_product' ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button 
                 variant="primary" 
+                size="sm"
                 icon={Plus} 
                 onClick={() => {
                   setSelectedFinishedProduct(null)
                   setFinishedProductModalOpen(true)
                 }}
-                className="font-bold shadow-xs"
+                className="font-bold shadow-xs text-xs"
               >
                 Add Ready-Made Product
               </Button>
               <Button 
                 variant="outline" 
+                size="sm"
                 icon={Wrench} 
                 onClick={() => {
                   setSelectedFinishedProduct({
@@ -1447,45 +1453,46 @@ export const Inventory: React.FC = () => {
                   })
                   setFinishedProductModalOpen(true)
                 }}
-                className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 font-bold"
+                className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 font-bold text-xs"
                 title="Create a new spare part or replacement component with photo, specs & BOM"
               >
                 Add Spare Part
               </Button>
             </div>
           ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : activeTab === 'linear_remnants' ? null : (
-            <>
+            <div className="flex flex-wrap items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
                 icon={PackageCheck}
                 onClick={() => navigate('/inventory/material-issue')}
-                className="text-xs text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none font-bold"
+                className="text-xs text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 font-bold"
               >
                 Material Issue Station
               </Button>
               <Button 
                 variant="outline" 
+                size="sm"
                 icon={Tags} 
                 onClick={() => setShowCategoriesModal(true)}
-                className="border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-bold"
+                className="border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-bold text-xs"
                 title="Manage Raw Material Categories & Families"
               >
                 Categories
               </Button>
-              <Button variant="ghost" icon={Layers} onClick={() => setActiveTab('stock_ledger')}>Stock Ledger</Button>
-              <Button variant="ghost" icon={Scissors} onClick={() => setActiveTab('linear_remnants')}>Cut Studio</Button>
               <Button 
                 variant="ghost" 
+                size="sm"
                 icon={ShoppingCart} 
                 onClick={() => navigate('/inventory/sales-orders')}
                 className="text-xs text-secondary hover:text-primary border border-theme-subtle"
                 title="View Sales Orders for Stores (Dispatch Only)"
               >
-                Sales Orders for Stores
+                Stores Orders
               </Button>
               <Button 
                 variant="ghost" 
+                size="sm"
                 icon={Truck} 
                 onClick={() => navigate('/inventory/gate-passes')}
                 className="text-xs text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10 font-medium"
@@ -1493,11 +1500,25 @@ export const Inventory: React.FC = () => {
               >
                 Gate Passes
               </Button>
-              <Button variant="ghost" icon={Download} onClick={() => setShowImport(true)}>Import Items</Button>
-              <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()}>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                icon={Download} 
+                onClick={() => setShowImport(true)}
+                className="text-xs border border-theme-subtle"
+              >
+                Import Items
+              </Button>
+              <Button 
+                variant="primary" 
+                size="sm"
+                icon={Plus} 
+                onClick={() => handleOpenForm()}
+                className="text-xs font-bold"
+              >
                 {activeTab === 'service' ? 'Add Service' : 'Add Raw Material'}
               </Button>
-            </>
+            </div>
           )}
         </div>
       </div>

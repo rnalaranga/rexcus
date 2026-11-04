@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   Wallet, ArrowDownLeft, ArrowUpRight, Plus, Printer, Calendar,
   ChevronLeft, ChevronRight, Search, Trash2, ArrowRightLeft,
-  DollarSign, CheckCircle2, Clock, FileText, User, Tag, BookOpen, AlertCircle
+  DollarSign, CheckCircle2, Clock, FileText, User, Tag, BookOpen, AlertCircle, Coins
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useCashbook, useAccounts } from '@/hooks/useFinance';
-import { createCashbookEntry, deleteCashbookEntry, CashbookEntry } from '@/lib/api';
+import { createCashbookEntry, deleteCashbookEntry, setCashbookFloat, CashbookEntry } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,7 +32,14 @@ export const DailyCashbook: React.FC = () => {
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isFloatModalOpen, setIsFloatModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingFloat, setIsSubmittingFloat] = useState(false);
+
+  // Float modal state
+  const [floatAmount, setFloatAmount] = useState('');
+  const [floatFundingSource, setFloatFundingSource] = useState('acc_1000');
+  const [floatNotes, setFloatNotes] = useState('Petty Cash Initial Float / Replenishment');
 
   // Hook data
   const { data: cashbookData, loading, refetch } = useCashbook(selectedDate, selectedCashAccountId || undefined);
@@ -224,6 +231,35 @@ export const DailyCashbook: React.FC = () => {
     }
   };
 
+  // Handle Set / Top-Up Petty Cash Float
+  const handleSetFloat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const num = Number(floatAmount);
+    if (isNaN(num) || num <= 0) {
+      showError('Please enter a valid float amount greater than 0', 'Validation');
+      return;
+    }
+    try {
+      setIsSubmittingFloat(true);
+      await setCashbookFloat({
+        cashAccountId: selectedCashAccountId || (cashbookData?.cashAccount?.id || 'acc_1110'),
+        floatAmount: num,
+        fundingSourceAccountId: floatFundingSource || undefined,
+        notes: floatNotes,
+        date: selectedDate,
+        createdBy: user?.name || 'Cashier'
+      });
+      toast(`Successfully set Petty Cash float of ${formatCurrency(num)}!`, 'success');
+      setIsFloatModalOpen(false);
+      setFloatAmount('');
+      refetch();
+    } catch (err: any) {
+      showError(err.message || 'Failed to set float', 'Error');
+    } finally {
+      setIsSubmittingFloat(false);
+    }
+  };
+
   // Filtered transactions for view
   const filteredEntries = useMemo(() => {
     if (!cashbookData?.entries) return [];
@@ -258,9 +294,14 @@ export const DailyCashbook: React.FC = () => {
               <Wallet size={26} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-primary tracking-tight">Daily Cashbook</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-primary tracking-tight">Daily Cashbook</h1>
+                <Badge variant="success" className="text-[11px] font-medium py-0.5 px-2 bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                  Petty Cash Linked
+                </Badge>
+              </div>
               <p className="text-xs text-muted">
-                LKAS double-entry compliant daily cash receipts & payments with real-time Chart of Accounts mapping.
+                LKAS double-entry daily cash receipts & payments synchronized with Petty Cash (1110) & Chart of Accounts.
               </p>
             </div>
           </div>
@@ -268,6 +309,16 @@ export const DailyCashbook: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Coins}
+            onClick={() => setIsFloatModalOpen(true)}
+            className="border border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-medium"
+          >
+            Set / Top-Up Float
+          </Button>
+
           <Button
             variant="ghost"
             size="sm"
@@ -363,14 +414,14 @@ export const DailyCashbook: React.FC = () => {
             >
               {(cashbookData?.allCashAccounts || []).map(acc => (
                 <option key={acc.id} value={acc.id}>
-                  {acc.code} - {acc.name} ({formatCurrency(acc.balance)})
+                  {acc.code === '1110' ? '★ ' : ''}{acc.code} - {acc.name} ({formatCurrency(acc.balance)})
                 </option>
               ))}
             </select>
           </div>
 
           <Badge variant="outline" className="text-xs font-mono py-1">
-            Current GL Bal: {formatCurrency(cashbookData?.cashAccount?.balance || 0)}
+            GL Bal: {formatCurrency(cashbookData?.cashAccount?.balance || 0)}
           </Badge>
         </div>
       </GlassCard>
@@ -378,12 +429,23 @@ export const DailyCashbook: React.FC = () => {
       {/* 5 KPI Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {/* Opening Balance */}
-        <GlassCard className="p-4 border-l-4 border-l-blue-500">
-          <span className="text-xs font-medium text-muted block uppercase tracking-wider">Opening Balance</span>
+        <GlassCard className="p-4 border-l-4 border-l-blue-500 relative group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted block uppercase tracking-wider">Opening Balance</span>
+            <button
+              onClick={() => setIsFloatModalOpen(true)}
+              title="Set or Replenish Float"
+              className="text-[10px] text-blue-500 hover:text-blue-600 underline font-medium"
+            >
+              Float Setup
+            </button>
+          </div>
           <div className="text-xl font-bold text-primary mt-1">
             {formatCurrency(openingBalance)}
           </div>
-          <span className="text-[11px] text-muted block mt-0.5">At start of day</span>
+          <span className="text-[11px] text-muted block mt-0.5">
+            {cashbookData?.cashAccount?.name || 'Petty Cash'} at start of day
+          </span>
         </GlassCard>
 
         {/* Cash In */}
@@ -1098,6 +1160,122 @@ export const DailyCashbook: React.FC = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Set / Top-Up Petty Cash Float Modal */}
+      <Modal
+        isOpen={isFloatModalOpen}
+        onClose={() => setIsFloatModalOpen(false)}
+        title="Set / Top-Up Petty Cash Float"
+      >
+        <form onSubmit={handleSetFloat} className="space-y-4">
+          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
+            <p className="font-semibold mb-1">LKAS Double-Entry Imprest Petty Cash Integration</p>
+            <p className="text-[11px] leading-relaxed">
+              Setting or topping up the float debits <strong>Petty Cash (1110)</strong> and credits your selected funding source (Bank Account or Equity). This automatically updates today's and future opening balances across the Daily Cashbook.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-secondary mb-1">
+              Cash Account
+            </label>
+            <input
+              type="text"
+              readOnly
+              value={`${cashbookData?.cashAccount?.code || '1110'} - ${cashbookData?.cashAccount?.name || 'Petty Cash'} (Current GL: ${formatCurrency(cashbookData?.cashAccount?.balance || 0)})`}
+              className="w-full bg-surface-secondary border border-theme rounded-lg px-3 py-2 text-xs text-secondary font-mono outline-none cursor-not-allowed"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-secondary mb-1">
+              Float / Top-Up Amount (LKR) *
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-xs font-bold">Rs.</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                placeholder="25000.00"
+                value={floatAmount}
+                onChange={e => setFloatAmount(e.target.value)}
+                className="w-full bg-surface border border-theme rounded-lg pl-9 pr-3 py-2 text-sm font-bold text-primary outline-none focus:ring-1 focus:ring-rex-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-secondary mb-1">
+              Funding Source (Offset Account) *
+            </label>
+            <select
+              value={floatFundingSource}
+              onChange={e => setFloatFundingSource(e.target.value)}
+              className="w-full bg-surface border border-theme rounded-lg px-3 py-2 text-xs text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
+            >
+              <optgroup label="Bank Accounts (Transfer)">
+                {(allAccounts || []).filter(a => a.subtype === 'Bank' || a.name.toLowerCase().includes('bank')).map(acc => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.code} - {acc.name} ({formatCurrency(acc.balance)})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Equity / Capital (Initial Float)">
+                {(allAccounts || []).filter(a => a.type === 'Equity').map(acc => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.code} - {acc.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Other Cash Accounts">
+                {(allAccounts || []).filter(a => (a.subtype === 'Cash' || a.name.toLowerCase().includes('cash')) && a.id !== (cashbookData?.cashAccount?.id || 'acc_1110')).map(acc => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.code} - {acc.name} ({formatCurrency(acc.balance)})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <p className="text-[10px] text-muted mt-1">
+              Select <strong>Commercial Bank</strong> for standard bank withdrawal / replenishment, or <strong>Equity</strong> for initial business capital float.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-secondary mb-1">
+              Description / Notes
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Petty cash monthly float replenishment"
+              value={floatNotes}
+              onChange={e => setFloatNotes(e.target.value)}
+              className="w-full bg-surface border border-theme rounded-lg px-3 py-2 text-xs text-primary outline-none focus:ring-1 focus:ring-rex-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-theme">
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => setIsFloatModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="submit"
+              loading={isSubmittingFloat}
+              className="bg-rex-600 hover:bg-rex-700 font-medium"
+            >
+              Confirm & Update Float
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

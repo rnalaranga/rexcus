@@ -873,16 +873,32 @@ export const InvoiceBuilder: React.FC = () => {
 
   useEffect(() => {
     if (selectedCustomer) {
-      const days = Number(selectedCustomer.creditDays) || 0;
+      const isCredit = Boolean(
+        selectedCustomer.isCreditCustomer === 1 ||
+        selectedCustomer.isCreditCustomer === true ||
+        (selectedCustomer.creditDays && Number(selectedCustomer.creditDays) > 0) ||
+        (selectedCustomer.creditLimit && Number(selectedCustomer.creditLimit) > 0)
+      );
+      const days = isCredit ? (Number(selectedCustomer.creditDays) || 30) : 0;
       setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
       if (selectedCustomer.vat) setCustomerVat(selectedCustomer.vat);
-      if (selectedCustomer.paymentTerms && !notes) {
-        setNotes(selectedCustomer.paymentTerms);
-        if (/advance/i.test(selectedCustomer.paymentTerms)) setModeOfPayment('Advance');
-        else if (/credit/i.test(selectedCustomer.paymentTerms)) setModeOfPayment('Credit');
-      } else if (days > 0 && !notes) {
-        setNotes(`${days} days credit`);
+
+      // Auto-select Mode of Payment based on Customer Registration
+      if (selectedCustomer.defaultPaymentMode) {
+        setModeOfPayment(selectedCustomer.defaultPaymentMode);
+      } else if (!isCredit) {
+        setModeOfPayment('Cash');
+      } else {
         setModeOfPayment('Credit');
+      }
+
+      // Auto-select Payment Terms based on Customer Registration
+      if (selectedCustomer.paymentTerms) {
+        setNotes(selectedCustomer.paymentTerms);
+      } else if (!isCredit) {
+        setNotes('Cash');
+      } else {
+        setNotes(`${days} Days Credit`);
       }
     }
   }, [selectedCustomer?.id, date]);
@@ -1079,7 +1095,7 @@ export const InvoiceBuilder: React.FC = () => {
           method: r.paymentMethod || 'Advance',
           reference: `Advance Receipt ${r.receiptNo || ''}`
         }))) : null,
-        deliveryDate: deliveryDate || null, 
+        deliveryDate: date || deliveryDate || null, 
         placeOfSupply: placeOfSupply || 'Negombo',
     modeOfPayment,
         additionalInfo,
@@ -1425,7 +1441,11 @@ export const InvoiceBuilder: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Date of Invoice</label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className={docInputClass} />
+                    <input type="date" value={date} onChange={e => {
+                      const newD = e.target.value;
+                      setDate(newD);
+                      setDeliveryDate(newD);
+                    }} className={docInputClass} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-muted uppercase mb-1">Due Date</label>
@@ -1579,17 +1599,89 @@ export const InvoiceBuilder: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-[10px] font-bold text-muted uppercase">Payment Terms / Notes</label>
-                      {notes && <span className="text-[9px] text-emerald-500 font-semibold">Active on Invoice</span>}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[10px] font-bold text-muted uppercase">Payment Terms *</label>
+                      {notes && <span className="text-[9px] text-emerald-500 font-semibold truncate max-w-[150px]">Active: {notes}</span>}
                     </div>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={
+                          notes.toLowerCase() === 'cash' ? 'Cash' :
+                          /advance/i.test(notes) ? 'Advance' :
+                          /7\s*days/i.test(notes) ? '7 Days Credit' :
+                          /15\s*days/i.test(notes) ? '15 Days Credit' :
+                          /30\s*days/i.test(notes) ? '30 Days Credit' :
+                          /45\s*days/i.test(notes) ? '45 Days Credit' :
+                          /60\s*days/i.test(notes) ? '60 Days Credit' :
+                          /90\s*days/i.test(notes) ? '90 Days Credit' :
+                          'custom'
+                        }
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (val === 'Cash') {
+                            setNotes('Cash');
+                            setModeOfPayment('Cash');
+                            setDueDate(date);
+                          } else if (val === 'Advance') {
+                            setNotes('100% Advance Payment');
+                            setModeOfPayment('Bank Transfer');
+                            setDueDate(date);
+                          } else if (val.includes('Credit')) {
+                            setNotes(val);
+                            setModeOfPayment('Credit');
+                            const days = parseInt(val, 10) || 30;
+                            setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
+                          }
+                        }}
+                        className={`${docInputClass} font-semibold text-xs`}
+                      >
+                        <option value="Cash">Cash (Immediate / Cash on Delivery)</option>
+                        <option value="Advance">Advance Payment (100% Upfront)</option>
+                        <option value="7 Days Credit">7 Days Credit</option>
+                        <option value="15 Days Credit">15 Days Credit</option>
+                        <option value="30 Days Credit">30 Days Credit</option>
+                        <option value="45 Days Credit">45 Days Credit</option>
+                        <option value="60 Days Credit">60 Days Credit</option>
+                        <option value="90 Days Credit">90 Days Credit</option>
+                        <option value="custom">Custom / Other Terms...</option>
+                      </select>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {['Cash', '30 Days Credit'].map(term => (
+                          <button
+                            key={term}
+                            type="button"
+                            onClick={() => {
+                              if (term === 'Cash') {
+                                setNotes('Cash');
+                                setModeOfPayment('Cash');
+                                setDueDate(date);
+                              } else {
+                                setNotes('30 Days Credit');
+                                setModeOfPayment('Credit');
+                                setDueDate(new Date(new Date(date).getTime() + 30 * 86400000).toISOString().split('T')[0]);
+                              }
+                            }}
+                            className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${
+                              notes.toLowerCase() === term.toLowerCase()
+                                ? 'bg-rex-500/15 border-rex-500 text-rex-600 dark:text-rex-400'
+                                : 'bg-surface border-theme text-muted hover:text-primary'
+                            }`}
+                          >
+                            {term}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <textarea 
                       value={notes} 
                       onChange={e => setNotes(e.target.value)} 
                       rows={2} 
                       className={`${docInputClass} resize-none font-medium`} 
-                      placeholder="e.g. 30 days from date of delivery / 50% Advance with confirmed PO" 
+                      placeholder="e.g. Cash / 30 days from date of delivery / 50% Advance with confirmed PO" 
                     />
                   </div>
                 </div>

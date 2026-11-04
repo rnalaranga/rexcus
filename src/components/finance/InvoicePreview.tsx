@@ -174,7 +174,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const purchaserAddress = customer?.address || customerAddress || customer?.deliveryAddress || customer?.billingAddress || '-';
   const purchaserPhone = customer?.phone || customerPhone || customer?.mobile || '-';
   const invoiceDateFormatted = formatGazetteDate(date);
-  const supplyDateFormatted = formatGazetteDate(deliveryDate || date);
+  const supplyDateFormatted = formatGazetteDate(date || deliveryDate);
 
   const isProforma = Boolean(
     isProformaProp ||

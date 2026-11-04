@@ -839,6 +839,24 @@ export const deleteCashbookEntry = async (id: string) => {
   return json;
 };
 
+export const setCashbookFloat = async (data: {
+  cashAccountId?: string;
+  floatAmount: number;
+  fundingSourceAccountId?: string;
+  notes?: string;
+  date?: string;
+  createdBy?: string;
+}) => {
+  const res = await fetch(`${API_URL}/finance/cashbook/set-float`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to set petty cash float');
+  return json;
+};
+
 export const fetchAdvancedReport = async (params: {
   reportType: 'invoices' | 'unpaid_invoices' | 'cashbook' | 'tax_register';
   startDate?: string;

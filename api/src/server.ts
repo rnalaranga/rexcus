@@ -1377,6 +1377,7 @@ async function runDatabaseSync() {
       const defaultAccounts = [
         { id: 'acc_1000', code: '1000', name: 'Commercial Bank', type: 'Asset', subtype: 'Bank', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_1100', code: '1100', name: 'Cash in Hand', type: 'Asset', subtype: 'Cash', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_1110', code: '1110', name: 'Petty Cash', type: 'Asset', subtype: 'Cash', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_1500', code: '1500', name: 'Accounts Receivable', type: 'Asset', subtype: 'Current Asset', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_1600', code: '1600', name: 'Inventory - Raw Materials', type: 'Asset', subtype: 'Inventory', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_1610', code: '1610', name: 'Inventory - Finished Goods', type: 'Asset', subtype: 'Inventory', balance: 0.00, isTaxAccount: 0 },
@@ -1505,6 +1506,8 @@ async function runDatabaseSync() {
     "ALTER TABLE customers ADD COLUMN paymentTerms TEXT",
     "ALTER TABLE customers ADD COLUMN deliveryTerms TEXT",
     "ALTER TABLE customers ADD COLUMN contacts TEXT",
+    "ALTER TABLE customers ADD COLUMN isCreditCustomer TINYINT(1) DEFAULT 0",
+    "ALTER TABLE customers ADD COLUMN defaultPaymentMode VARCHAR(50) DEFAULT 'Cash'",
     "ALTER TABLE tax_profiles ADD COLUMN tax1_hidden TINYINT(1) DEFAULT '0'",
     "ALTER TABLE tax_profiles ADD COLUMN tax1_show_separately TINYINT(1) DEFAULT 0",
     "ALTER TABLE tax_profiles ADD COLUMN tax2_show_separately TINYINT(1) DEFAULT 1",
@@ -1805,6 +1808,7 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())",
+    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1110', '1110', 'Petty Cash', 'Asset', 'Cash', 0, NOW())",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('quotation', 'Quotations (Normal & Product)', '', 2206, 4, 1, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('work_order', 'Work Orders', 'WO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
@@ -2779,6 +2783,22 @@ app.post('/api/customers', async (req, res) => {
       return res.status(400).json({ error: 'Company name is required and cannot be empty.' });
     }
 
+    // Required Customer Validations (Address, Contact Person, Phone, Credit Status)
+    if (!data.address || !String(data.address).trim()) {
+      return res.status(400).json({ error: 'Customer address is required.' });
+    }
+    if (!data.name || !String(data.name).trim()) {
+      return res.status(400).json({ error: 'Primary contact person name is required.' });
+    }
+    if (!data.phone || !String(data.phone).trim()) {
+      return res.status(400).json({ error: 'Primary contact phone number is required.' });
+    }
+    if (data.isCreditCustomer === undefined || data.isCreditCustomer === null) {
+      return res.status(400).json({ error: 'Customer credit status (Credit vs Cash) is required.' });
+    }
+    data.isCreditCustomer = data.isCreditCustomer ? 1 : 0;
+    data.defaultPaymentMode = data.defaultPaymentMode || (data.isCreditCustomer ? 'Credit' : 'Cash');
+
     const [dupRows]: any = await db.query(
       'SELECT id, name, company FROM customers WHERE UPPER(TRIM(company)) = ? AND id != ? LIMIT 1',
       [data.company, data.id || '']
@@ -2807,25 +2827,33 @@ app.post('/api/customers', async (req, res) => {
     }
     let isPending = false;
     
-    if (data.creditLimit && Number(data.creditLimit) > 0) {
-      data.pendingCreditLimit = data.creditLimit;
+    if (!data.isCreditCustomer) {
       data.creditLimit = 0;
-      isPending = true;
-    }
-    
-    if (data.requiresAdvance) {
-      data.pendingRequiresAdvance = 1;
-      data.requiresAdvance = 0;
-      isPending = true;
-    }
+      data.creditDays = 0;
+      data.pendingCreditLimit = 0;
+      data.pendingCreditDays = null;
+      data.creditLimitStatus = 'approved';
+    } else {
+      if (data.creditLimit && Number(data.creditLimit) > 0) {
+        data.pendingCreditLimit = data.creditLimit;
+        data.creditLimit = 0;
+        isPending = true;
+      }
+      
+      if (data.requiresAdvance) {
+        data.pendingRequiresAdvance = 1;
+        data.requiresAdvance = 0;
+        isPending = true;
+      }
 
-    if (data.creditDays && Number(data.creditDays) !== 30) {
-      data.pendingCreditDays = data.creditDays;
-      data.creditDays = 30;
-      isPending = true;
-    }
+      if (data.creditDays && Number(data.creditDays) !== 30) {
+        data.pendingCreditDays = data.creditDays;
+        data.creditDays = 30;
+        isPending = true;
+      }
 
-    data.creditLimitStatus = isPending ? 'pending' : 'approved';
+      data.creditLimitStatus = isPending ? 'pending' : 'approved';
+    }
 
     const [result] = await db.query('INSERT INTO customers SET ?', data);
     res.json({ success: true, id: data.id });
@@ -7314,12 +7342,13 @@ app.post('/api/invoices', async (req, res) => {
       }
     }
 
-    if ('deliveryDate' in safeData) {
-      safeData.deliveryDate = formatMySQLDateOnly(safeData.deliveryDate);
-    }
-    if ('date' in safeData) {
+    if ('date' in safeData && safeData.date) {
       safeData.date = formatMySQLDateOnly(safeData.date) || new Date().toISOString().slice(0, 10);
+    } else {
+      safeData.date = new Date().toISOString().slice(0, 10);
     }
+    // Date of supply must be the same date invoice was created
+    safeData.deliveryDate = safeData.date;
     if ('dueDate' in safeData) {
       safeData.dueDate = formatMySQLDateOnly(safeData.dueDate);
     }
@@ -8829,46 +8858,75 @@ app.get('/api/finance/cashbook', async (req, res) => {
   try {
     const requestedDate = (req.query.date as string) || new Date().toISOString().slice(0, 10);
     
-    // Fetch all cash & bank accounts
+    // Fetch all cash & bank accounts (Petty Cash 1110 prioritized)
     const [cashAccounts]: any = await db.query(
       `SELECT id, code, name, type, subtype, balance 
        FROM chart_of_accounts 
        WHERE type = 'Asset' AND (
+         code = '1110' OR
          LOWER(name) LIKE '%cash%' OR 
          LOWER(subtype) LIKE '%cash%' OR 
          LOWER(name) LIKE '%bank%' OR 
          LOWER(subtype) LIKE '%bank%'
        ) 
-       ORDER BY code ASC`
+       ORDER BY CASE 
+         WHEN code = '1110' OR LOWER(name) LIKE '%petty%' THEN 0 
+         WHEN code = '1100' OR LOWER(name) LIKE '%cash in hand%' THEN 1 
+         ELSE 2 
+       END, code ASC`
     );
 
-    // Determine current cash account
+    // Determine current cash account (prioritize Petty Cash)
     let selectedCashAccountId = (req.query.cashAccountId as string);
     if (!selectedCashAccountId || !cashAccounts.some((a: any) => a.id === selectedCashAccountId)) {
-      const defaultAcc = cashAccounts.find((a: any) => a.id === 'acc_1100') 
+      const defaultAcc = cashAccounts.find((a: any) => a.code === '1110' || a.id === 'acc_1110' || a.name?.toLowerCase().includes('petty'))
+        || cashAccounts.find((a: any) => a.id === 'acc_1100') 
         || cashAccounts.find((a: any) => a.subtype?.toLowerCase().includes('cash'))
         || cashAccounts[0];
-      selectedCashAccountId = defaultAcc ? defaultAcc.id : 'acc_1100';
+      selectedCashAccountId = defaultAcc ? defaultAcc.id : 'acc_1110';
     }
 
     const currentCashAccount = cashAccounts.find((a: any) => a.id === selectedCashAccountId) || {
       id: selectedCashAccountId,
-      code: '1100',
-      name: 'Cash in Hand',
+      code: '1110',
+      name: 'Petty Cash',
       balance: 0
     };
 
-    // LKAS opening balance calculation: sum of all debits minus credits on this cash account strictly before the requested date
-    const [openingRows]: any = await db.query(
-      `SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS openingBal
+    // Live General Ledger balance
+    const currentGlBal = Number(currentCashAccount.balance || 0);
+
+    // Prior movements strictly before requestedDate
+    const [priorRows]: any = await db.query(
+      `SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS priorBal,
+              COUNT(*) AS priorCount
        FROM journal_lines jl
        JOIN journal_entries je ON jl.entryId = je.id
        WHERE jl.accountId = ? AND DATE(je.date) < ?`,
       [selectedCashAccountId, requestedDate]
     );
-    const openingBalance = Number(openingRows[0]?.openingBal || 0);
+    const priorBal = Number(priorRows[0]?.priorBal || 0);
+    const priorCount = Number(priorRows[0]?.priorCount || 0);
 
-    // Fetch entries on the requested date for this cash account
+    // Movements on or after requestedDate
+    const [postRows]: any = await db.query(
+      `SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS postBal
+       FROM journal_lines jl
+       JOIN journal_entries je ON jl.entryId = je.id
+       WHERE jl.accountId = ? AND DATE(je.date) >= ?`,
+      [selectedCashAccountId, requestedDate]
+    );
+    const postBal = Number(postRows[0]?.postBal || 0);
+
+    // LKAS Opening Balance:
+    // Balance at start of day T = current GL balance minus movements on or after day T.
+    // If currentGlBal is 0 but prior transactions exist, fallback to priorBal.
+    let openingBalance = currentGlBal - postBal;
+    if (currentGlBal === 0 && priorCount > 0) {
+      openingBalance = priorBal;
+    }
+
+    // Fetch cashbook entries on requested date for this cash account
     const [entries]: any = await db.query(
       `SELECT 
          cb.*,
@@ -8885,6 +8943,64 @@ app.get('/api/finance/cashbook', async (req, res) => {
        ORDER BY cb.time ASC, cb.createdAt ASC, cb.id ASC`,
       [selectedCashAccountId, requestedDate]
     );
+
+    // Also include external journal entries affecting this cash account on requestedDate not in cashbook_entries (e.g. Banking transfers TRF-...)
+    const [externalJournals]: any = await db.query(
+      `SELECT 
+         je.id AS journalEntryId,
+         je.reference AS referenceNo,
+         DATE_FORMAT(je.date, '%H:%i') AS time,
+         jl.id AS journalLineId,
+         jl.debit,
+         jl.credit,
+         COALESCE(NULLIF(jl.description, ''), je.description, 'General Ledger Entry') AS particulars,
+         je.createdBy
+       FROM journal_lines jl
+       JOIN journal_entries je ON jl.entryId = je.id
+       WHERE jl.accountId = ? 
+         AND DATE(je.date) = ?
+         AND je.id NOT IN (SELECT COALESCE(journalEntryId, '') FROM cashbook_entries WHERE cashAccountId = ?)
+         AND je.reference NOT IN (SELECT id FROM cashbook_entries WHERE cashAccountId = ?)`,
+      [selectedCashAccountId, requestedDate, selectedCashAccountId, selectedCashAccountId]
+    );
+
+    for (const ej of externalJournals) {
+      const isDebit = Number(ej.debit) > 0;
+      const amt = isDebit ? Number(ej.debit) : Number(ej.credit);
+      const [offset]: any = await db.query(
+        `SELECT coa.id, coa.code, coa.name, coa.type, coa.subtype
+         FROM journal_lines jl
+         JOIN chart_of_accounts coa ON jl.accountId = coa.id
+         WHERE jl.entryId = ? AND jl.accountId != ?
+         LIMIT 1`,
+        [ej.journalEntryId, selectedCashAccountId]
+      );
+      entries.push({
+        id: ej.journalEntryId,
+        date: requestedDate,
+        time: ej.time || '12:00',
+        entryType: isDebit ? 'IN' : 'OUT',
+        amount: amt,
+        particulars: ej.particulars,
+        accountId: offset[0]?.id || null,
+        cashAccountId: selectedCashAccountId,
+        referenceNo: ej.referenceNo || ej.journalEntryId,
+        partyName: null,
+        journalEntryId: ej.journalEntryId,
+        createdBy: ej.createdBy || 'System',
+        notes: 'Auto-synchronized from Banking / GL Transfer',
+        accountCode: offset[0]?.code || 'GL',
+        accountName: offset[0]?.name || 'General Ledger Transfer',
+        accountType: offset[0]?.type || '',
+        accountSubtype: offset[0]?.subtype || '',
+        cashAccountCode: currentCashAccount.code,
+        cashAccountName: currentCashAccount.name,
+        isExternalJournal: true
+      });
+    }
+
+    // Chronological order
+    entries.sort((a: any, b: any) => String(a.time || '').localeCompare(String(b.time || '')));
 
     let currentRunning = openingBalance;
     let totalIn = 0;
@@ -9131,6 +9247,105 @@ app.delete('/api/finance/cashbook/:id', async (req, res) => {
     await conn.rollback();
     console.error('Error deleting cashbook entry:', error);
     res.status(500).json({ error: error.message || 'Failed to delete cashbook entry' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Set or Replenish Petty Cash Opening Float
+app.post('/api/finance/cashbook/set-float', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { cashAccountId, floatAmount, fundingSourceAccountId, notes, date, createdBy } = req.body;
+    const targetCashAccId = cashAccountId || 'acc_1110';
+    const numAmount = Number(floatAmount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Float amount must be greater than 0' });
+    }
+    
+    // Verify cash account exists
+    const [cashRows]: any = await conn.query('SELECT * FROM chart_of_accounts WHERE id = ?', [targetCashAccId]);
+    if (cashRows.length === 0) return res.status(404).json({ error: 'Cash account not found' });
+    const cashAcc = cashRows[0];
+
+    // Source account (default to Commercial Bank acc_1000 or Retained Earnings acc_3900)
+    let sourceId = fundingSourceAccountId;
+    if (!sourceId) {
+      const [bankRows]: any = await conn.query("SELECT id FROM chart_of_accounts WHERE id = 'acc_1000' OR (type = 'Asset' AND subtype = 'Bank') LIMIT 1");
+      sourceId = bankRows[0]?.id || 'acc_3900';
+    }
+    const [sourceRows]: any = await conn.query('SELECT * FROM chart_of_accounts WHERE id = ?', [sourceId]);
+    const sourceAcc = sourceRows[0] || { id: 'acc_3900', code: '3900', name: 'Retained Earnings / Share Capital', type: 'Equity' };
+
+    const formattedDate = date ? String(date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const entryTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const docId = `FLOAT-${Date.now().toString().slice(-6)}`;
+    const journalId = `JE-${docId}`;
+
+    // LKAS double entry:
+    // Debit Petty Cash (Asset increase)
+    // Credit Funding Source (Bank or Equity)
+    await conn.query('INSERT INTO journal_entries SET ?', {
+      id: journalId,
+      date: `${formattedDate} ${entryTime}:00`,
+      reference: docId,
+      description: `[Petty Cash Float Setup / Replenishment] ${notes || 'Float from ' + sourceAcc.name}`,
+      totalAmount: numAmount,
+      createdBy: createdBy || 'Cashier',
+      status: 'posted',
+      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    });
+
+    // Cash Line (Debit)
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-1`,
+      entryId: journalId,
+      accountId: cashAcc.id,
+      debit: numAmount,
+      credit: 0,
+      description: `Float Replenishment from ${sourceAcc.name}`
+    });
+    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, cashAcc.id]);
+
+    // Source Line (Credit)
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-2`,
+      entryId: journalId,
+      accountId: sourceAcc.id,
+      debit: 0,
+      credit: numAmount,
+      description: `Disbursement to ${cashAcc.name}`
+    });
+    const sourceIsDebitNormal = (sourceAcc.type || '').toLowerCase().includes('asset') || (sourceAcc.type || '').toLowerCase().includes('expense');
+    if (sourceIsDebitNormal) {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, sourceAcc.id]);
+    } else {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, sourceAcc.id]);
+    }
+
+    // Cashbook Entry
+    await conn.query('INSERT INTO cashbook_entries SET ?', {
+      id: docId,
+      date: formattedDate,
+      time: entryTime,
+      entryType: 'IN',
+      amount: numAmount,
+      particulars: `Petty Cash Float / Replenishment from ${sourceAcc.name}`,
+      accountId: sourceAcc.id,
+      cashAccountId: cashAcc.id,
+      referenceNo: docId,
+      partyName: sourceAcc.name,
+      journalEntryId: journalId,
+      createdBy: createdBy || 'Cashier',
+      notes: notes || 'Petty cash opening float setup'
+    });
+
+    await conn.commit();
+    res.json({ success: true, id: docId, newBalance: Number(cashAcc.balance || 0) + numAmount });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message || 'Failed to set float' });
   } finally {
     conn.release();
   }
