@@ -884,7 +884,15 @@ export const Quotations: React.FC = () => {
         if (g.customer.length > 0) g.main.push(...g.customer);
         else if (g.job.length > 0) g.main.push(...g.job);
       }
-      g.main.sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1));
+      // Ensure real/approved quotations take precedence over unconfirmed drafts
+      g.main.sort((a, b) => {
+        const aIsDraft = a.type === 'draft' || a.type === 'product_draft' || (a.status || '').toLowerCase() === 'draft';
+        const bIsDraft = b.type === 'draft' || b.type === 'product_draft' || (b.status || '').toLowerCase() === 'draft';
+        if (aIsDraft !== bIsDraft) {
+          return aIsDraft ? 1 : -1;
+        }
+        return (Number(b.version) || 1) - (Number(a.version) || 1);
+      });
       g.job.sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1));
       g.customer.sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1));
     });
@@ -949,10 +957,11 @@ export const Quotations: React.FC = () => {
         return;
       }
 
-      const latestMain = g.main[0] || g.customer[0] || g.job[0];
+      const approvedOrReal = g.main.find((m: any) => m.type !== 'draft' && m.type !== 'product_draft' && (m.status || '').toLowerCase() !== 'draft');
+      const latestMain = approvedOrReal || g.main[0] || g.customer[0] || g.job[0];
       const isAutoDraft = latestMain?.type === "draft";
       const s = (latestMain?.status || "Draft").toLowerCase();
-      const isDraft = isAutoDraft || s === 'draft';
+      const isDraft = (isAutoDraft || s === 'draft') && !approvedOrReal;
       
       if (!isDraft) {
         counts.all++;
@@ -982,7 +991,8 @@ export const Quotations: React.FC = () => {
 
 
   const filtered = groupedQuotations.filter(g => {
-    const latestMain = g.main[0] || g.customer[0] || g.job[0];
+    const approvedOrReal = g.main.find((m: any) => m.type !== 'draft' && m.type !== 'product_draft' && (m.status || '').toLowerCase() !== 'draft');
+    const latestMain = approvedOrReal || g.main[0] || g.customer[0] || g.job[0];
     const isAutoDraft = latestMain?.type === "draft";
 
     // Category filter
@@ -1008,7 +1018,7 @@ export const Quotations: React.FC = () => {
     } else {
       if (g.isDeleted) return false;
       const latestStatus = (latestMain?.status || "Draft").toLowerCase();
-      const isDraft = isAutoDraft || latestStatus === "draft";
+      const isDraft = (isAutoDraft || latestStatus === "draft") && !approvedOrReal;
       if (statusFilter === "all") {
         // Hide drafts from the main list so "All" stays clean for confirmed/real quotations, unless user explicitly searched for it
         if (isDraft && !search) return false;
@@ -2301,10 +2311,11 @@ export const Quotations: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
                 {sortedQuotations.map((group, idx) => {
-                  const latestMain = group.main[0];
+                  const approvedOrReal = group.main.find((m: any) => m.type !== 'draft' && m.type !== 'product_draft' && (m.status || '').toLowerCase() !== 'draft');
+                  const latestMain = approvedOrReal || group.main[0];
                   const latestJob = group.job[0];
                   const latestCust = group.customer[0];
-                  const displayQ = latestMain || latestCust || latestJob || (group.main && group.main[0]);
+                  const displayQ = approvedOrReal || latestMain || latestCust || latestJob || (group.main && group.main[0]);
                   if (!displayQ) return null;
 
                   let parsed: any = {};
@@ -2970,10 +2981,11 @@ export const Quotations: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
           {filtered.map((group, idx) => {
-            const latestMain = group.main[0];
+            const approvedOrReal = group.main.find((m: any) => m.type !== 'draft' && m.type !== 'product_draft' && (m.status || '').toLowerCase() !== 'draft');
+            const latestMain = approvedOrReal || group.main[0];
             const latestJob = group.job[0];
             const latestCust = group.customer[0];
-            const displayQ = latestMain || latestCust || latestJob || (group.main && group.main[0]);
+            const displayQ = approvedOrReal || latestMain || latestCust || latestJob || (group.main && group.main[0]);
             if (!displayQ) return null;
 
             let parsed: any = {};

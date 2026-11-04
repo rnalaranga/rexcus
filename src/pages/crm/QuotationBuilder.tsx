@@ -332,7 +332,7 @@ export const QuotationBuilder: React.FC = () => {
 
         // Auto-load if quoteId is in URL (only on initial load so it doesn't overwrite user edits)
         if (quoteIdParam && !initialLoadedRef.current) {
-          const target = targetQuote || data.find((v: any) => v.id === quoteIdParam);
+          const target = targetQuote || data.find((v: any) => v.id === quoteIdParam || v.quotationNo === quoteIdParam) || allQuotations.find((v: any) => v.id === quoteIdParam || v.quotationNo === quoteIdParam);
           if (target) {
             initialLoadedRef.current = true;
             const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;

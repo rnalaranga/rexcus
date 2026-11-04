@@ -362,9 +362,14 @@ export const ProductQuotations: React.FC = () => {
       }
     });
 
-    // Sort versions descending
+    // Sort versions descending - real quotes take precedence over drafts
     Object.values(map).forEach((g: any) => {
-      g.versions.sort((a: any, b: any) => b.version - a.version);
+      g.versions.sort((a: any, b: any) => {
+        const aIsDraft = a.type === 'draft' || a.type === 'product_draft' || (a.status || '').toLowerCase() === 'draft';
+        const bIsDraft = b.type === 'draft' || b.type === 'product_draft' || (b.status || '').toLowerCase() === 'draft';
+        if (aIsDraft !== bIsDraft) return aIsDraft ? 1 : -1;
+        return (Number(b.version) || 1) - (Number(a.version) || 1);
+      });
     });
 
     return Object.values(map).sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
@@ -410,10 +415,11 @@ export const ProductQuotations: React.FC = () => {
       rejected: 0
     };
     groupedQuotes.forEach((g: any) => {
-      const latest = g.versions[0];
+      const approvedOrReal = g.versions.find((v: any) => v.type !== 'product_draft' && v.type !== 'draft' && (v.status || '').toLowerCase() !== 'draft');
+      const latest = approvedOrReal || g.versions[0];
       const isAutoDraft = latest?.type === 'product_draft';
       const s = (latest?.status || 'Draft').toLowerCase();
-      const isDraft = isAutoDraft || s === 'draft';
+      const isDraft = (isAutoDraft || s === 'draft') && !approvedOrReal;
 
       if (!isDraft) {
         counts.all++;
@@ -435,11 +441,12 @@ export const ProductQuotations: React.FC = () => {
   // Filter search, status, customer & date range
   const filteredGroups = useMemo(() => {
     return groupedQuotes.filter((g: any) => {
-      const latest = g.versions[0];
+      const approvedOrReal = g.versions.find((v: any) => v.type !== 'product_draft' && v.type !== 'draft' && (v.status || '').toLowerCase() !== 'draft');
+      const latest = approvedOrReal || g.versions[0];
       const status = latest?.status || 'Draft';
       const isAutoDraft = latest?.type === 'product_draft';
       const s = status.toLowerCase();
-      const isDraft = isAutoDraft || s === 'draft';
+      const isDraft = (isAutoDraft || s === 'draft') && !approvedOrReal;
 
       // 1. Status filter
       if (statusFilter === 'all') {
