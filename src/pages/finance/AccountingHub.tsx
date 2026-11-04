@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2 } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2, Wallet } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -204,6 +204,7 @@ export const AccountingHub: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <PageHelpButton moduleId="finance-accounting" />
+          <Button variant="ghost" size="sm" icon={Wallet} onClick={() => navigate('/finance/cashbook')} className="border border-theme-subtle text-amber-500 font-medium">Daily Cashbook</Button>
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/income-builder')} className="border border-theme-subtle text-emerald-500">Record Income</Button>
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/expense-builder')} className="border border-theme-subtle text-red-500">Record Expense</Button>

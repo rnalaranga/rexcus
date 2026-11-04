@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck, Wallet
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -63,8 +63,9 @@ const navGroups: NavGroup[] = [
   {
     title: 'Finance', icon: DollarSign, active: true,
     items: [
-      { label: 'Dashboard',    path: '/finance/dashboard',     icon: BarChart3,        permission: 'finance.reports.view' },
-      { label: 'Banking',      path: '/finance/banking',       icon: Landmark,         permission: 'finance.banking.view' },
+      { label: 'Dashboard',      path: '/finance/dashboard',     icon: BarChart3,        permission: 'finance.reports.view' },
+      { label: 'Daily Cashbook', path: '/finance/cashbook',      icon: Wallet,           permission: 'finance.accounting.view' },
+      { label: 'Banking',        path: '/finance/banking',       icon: Landmark,         permission: 'finance.banking.view' },
       { label: 'Invoices',     path: '/finance/invoices',      icon: FileText,         permission: 'finance.invoices.view' },
       { label: 'Accounting',   path: '/finance',               icon: DollarSign,       permission: 'finance.accounting.view' },
       { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight,     permission: 'finance.receivables.view' },

@@ -743,6 +743,84 @@ export const createJournal = async (data: any) => {
   return json;
 };
 
+export interface CashbookEntry {
+  id: string;
+  date: string;
+  time: string;
+  entryType: 'IN' | 'OUT';
+  amount: number;
+  particulars: string;
+  accountId: string;
+  cashAccountId: string;
+  referenceNo?: string;
+  partyName?: string;
+  journalEntryId?: string;
+  createdBy?: string;
+  notes?: string;
+  createdAt?: string;
+  accountCode?: string;
+  accountName?: string;
+  accountType?: string;
+  accountSubtype?: string;
+  cashAccountCode?: string;
+  cashAccountName?: string;
+  runningBalance?: number;
+}
+
+export interface CashbookData {
+  date: string;
+  cashAccount: {
+    id: string;
+    code: string;
+    name: string;
+    balance: number;
+  };
+  allCashAccounts: Array<{
+    id: string;
+    code: string;
+    name: string;
+    balance: number;
+    subtype?: string;
+  }>;
+  openingBalance: number;
+  totalIn: number;
+  totalOut: number;
+  netMovement: number;
+  closingBalance: number;
+  entries: CashbookEntry[];
+}
+
+export const fetchCashbook = async (date?: string, cashAccountId?: string): Promise<CashbookData> => {
+  const params = new URLSearchParams();
+  if (date) params.append('date', date);
+  if (cashAccountId) params.append('cashAccountId', cashAccountId);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_URL}/finance/cashbook${query}`);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to fetch cashbook');
+  return json;
+};
+
+export const createCashbookEntry = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/cashbook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to create cashbook entry');
+  return json;
+};
+
+export const deleteCashbookEntry = async (id: string) => {
+  const res = await fetch(`${API_URL}/finance/cashbook/${id}`, {
+    method: 'DELETE'
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to delete cashbook entry');
+  return json;
+};
+
 export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
 export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());
 export const fetchMachiningOperations = async () => (await fetch(`${API_URL}/machining-operations`)).json();

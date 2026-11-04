@@ -1,7 +1,7 @@
 import { fetchCostCenters } from '@/lib/api';
 import { fetchFinanceDashboard } from '@/lib/api';
 ﻿import { useState, useEffect, useCallback } from 'react';
-import { fetchAccounts, fetchTaxes, fetchJournals } from '@/lib/api';
+import { fetchAccounts, fetchTaxes, fetchJournals, fetchCashbook, CashbookData } from '@/lib/api';
 
 export function useAccounts() {
   const [data, setData] = useState<any[]>([]);
@@ -111,4 +111,27 @@ export function useCurrencies() {
 
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
+}
+
+export function useCashbook(date?: string, cashAccountId?: string) {
+  const [data, setData] = useState<CashbookData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchCashbook(date, cashAccountId);
+      setData(res);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || 'Failed to fetch cashbook');
+    } finally {
+      setLoading(false);
+    }
+  }, [date, cashAccountId]);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, error, refetch: load };
 }
