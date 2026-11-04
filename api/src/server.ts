@@ -7793,6 +7793,242 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
   }
 });
 
+// ==========================================
+// MULTI-INVOICE CUSTOMER SETTLEMENT (KNOCK-OFF / PARTIAL ALLOCATION)
+// ==========================================
+app.post('/api/finance/receivables/settle', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const {
+      customerId,
+      customerName,
+      paymentDate,
+      paymentMethod,
+      depositAccountId,
+      reference,
+      notes,
+      totalAmount,
+      allocations,
+      receivedBy
+    } = req.body;
+
+    const numTotal = Number(totalAmount || 0);
+    if (isNaN(numTotal) || numTotal <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please enter a valid total payment amount greater than zero' });
+    }
+
+    if (!allocations || !Array.isArray(allocations) || allocations.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one invoice must be selected for settlement' });
+    }
+
+    const validAllocations = allocations.filter((a: any) => Number(a.allocatedAmount) > 0);
+    if (validAllocations.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one invoice must have an allocated amount greater than zero' });
+    }
+
+    const totalAllocated = validAllocations.reduce((sum: number, a: any) => sum + Number(a.allocatedAmount), 0);
+    if (Math.abs(numTotal - totalAllocated) > 0.05) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `Allocated sum (${totalAllocated.toFixed(2)}) does not match Total Payment Received (${numTotal.toFixed(2)})`
+      });
+    }
+
+    const formattedDate = paymentDate ? String(paymentDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const receiptNum = `REC-${Date.now().toString().slice(-6)}`;
+    const journalId = `JE-${receiptNum}`;
+
+    let finalDepositAccountId = depositAccountId || null;
+    let finalDepositAccountName = 'Cash/Bank Account';
+    if (finalDepositAccountId) {
+      const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [finalDepositAccountId]);
+      if (accRows.length > 0) {
+        finalDepositAccountId = accRows[0].id;
+        finalDepositAccountName = accRows[0].name;
+      }
+    }
+    if (!finalDepositAccountId) {
+      const isBank = (paymentMethod || '').toLowerCase().includes('bank') || (paymentMethod || '').toLowerCase().includes('cheque') || (paymentMethod || '').toLowerCase().includes('card');
+      const searchSubtype = isBank ? 'Bank' : 'Cash';
+      const [found]: any = await conn.query(
+        'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
+        [searchSubtype, `%${searchSubtype}%`]
+      );
+      if (found.length > 0) {
+        finalDepositAccountId = found[0].id;
+        finalDepositAccountName = found[0].name;
+      } else {
+        finalDepositAccountId = isBank ? 'acc_1000' : 'acc_1100';
+        finalDepositAccountName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+      }
+    }
+
+    let arAccountId = 'acc_1500';
+    const [arRows]: any = await conn.query(
+      'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR subtype = "Current Asset") AND type = "Asset" ORDER BY CASE WHEN name LIKE "%Trade%" THEN 1 ELSE 2 END LIMIT 1'
+    );
+    if (arRows.length > 0) {
+      arAccountId = arRows[0].id;
+    }
+
+    const settledInvoiceNumbers: string[] = [];
+    const updatedInvoicesList: any[] = [];
+
+    for (const alloc of validAllocations) {
+      const allocAmt = Number(alloc.allocatedAmount);
+      const [invRows]: any = await conn.query(
+        'SELECT * FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1',
+        [alloc.invoiceId, alloc.invoiceId]
+      );
+
+      if (invRows.length === 0) continue;
+      const inv = invRows[0];
+      const invTotal = Number(inv.total !== null && inv.total !== undefined ? inv.total : (inv.amount || 0));
+      const prevPaid = Number(inv.paidAmount || 0);
+      const newPaid = prevPaid + allocAmt;
+      const balanceDueAfter = Math.max(0, invTotal - newPaid);
+
+      let existingPayments: any[] = [];
+      if (inv.payments) {
+        try {
+          existingPayments = typeof inv.payments === 'string' ? JSON.parse(inv.payments) : inv.payments;
+          if (!Array.isArray(existingPayments)) existingPayments = [];
+        } catch (e) {
+          existingPayments = [];
+        }
+      }
+
+      existingPayments.push({
+        id: `PAY-${receiptNum}-${alloc.invoiceId}`,
+        receiptNo: receiptNum,
+        date: `${formattedDate} 12:00:00`,
+        amount: allocAmt,
+        method: paymentMethod || 'Bank Transfer',
+        accountId: finalDepositAccountId,
+        accountName: finalDepositAccountName,
+        reference: reference || receiptNum
+      });
+
+      const newStatus = balanceDueAfter <= 0.01 ? 'paid' : 'partial';
+
+      await conn.query(
+        'UPDATE invoices SET payments = ?, paidAmount = ?, status = ? WHERE id = ?',
+        [JSON.stringify(existingPayments), newPaid, newStatus, inv.id]
+      );
+
+      try {
+        const orderSearch = inv.orderNo || inv.orderId;
+        const orderPaymentStatus = newStatus === 'paid' ? 'Paid' : (newPaid > 0 ? 'Partially Paid' : 'Unpaid');
+        if (orderSearch) {
+          await conn.query(
+            'UPDATE finished_goods_orders SET paymentStatus = ?, paidAmount = ? WHERE orderNo = ? OR id = ? OR invoiceNo = ? OR invoiceId = ?',
+            [orderPaymentStatus, newPaid, orderSearch, orderSearch, inv.invoiceNo || inv.id, inv.id]
+          );
+        }
+      } catch (err) {}
+
+      settledInvoiceNumbers.push(inv.invoiceNo || inv.id);
+      updatedInvoicesList.push({
+        invoiceId: inv.id,
+        invoiceNo: inv.invoiceNo || inv.id,
+        allocatedAmount: allocAmt,
+        total: invTotal,
+        newPaidAmount: newPaid,
+        balanceDue: balanceDueAfter,
+        status: newStatus
+      });
+    }
+
+    const settledInvoicesText = settledInvoiceNumbers.join(', ');
+
+    // 1. Create Double-Entry GL Journal Entry (Debit Bank/Cash, Credit Accounts Receivable)
+    await conn.query('INSERT INTO journal_entries SET ?', {
+      id: journalId,
+      date: `${formattedDate} 12:00:00`,
+      reference: reference || receiptNum,
+      description: `Customer Outstanding Settlement (${settledInvoicesText}) - ${customerName || customerId}`,
+      totalAmount: numTotal,
+      createdBy: receivedBy || 'Accounts Officer',
+      status: 'posted',
+      createdAt: nowIso
+    });
+
+    // Debit Line: Cash / Bank Account
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-1`,
+      entryId: journalId,
+      accountId: finalDepositAccountId,
+      debit: numTotal,
+      credit: 0,
+      description: `Payment received for Invoices: ${settledInvoicesText}`,
+      partyType: 'Customer',
+      partyId: customerId || null
+    });
+    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numTotal, finalDepositAccountId]);
+
+    // Credit Line: Accounts Receivable
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-2`,
+      entryId: journalId,
+      accountId: arAccountId,
+      debit: 0,
+      credit: numTotal,
+      description: `Settlement of Accounts Receivable (${settledInvoicesText})`,
+      partyType: 'Customer',
+      partyId: customerId || null
+    });
+    await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, arAccountId]);
+
+    // 2. Insert Official Payment Receipt
+    const receiptPayload: any = {
+      id: receiptNum,
+      receiptNo: receiptNum,
+      date: formattedDate,
+      invoiceId: validAllocations[0]?.invoiceId || null,
+      invoiceNo: settledInvoicesText,
+      customerId: customerId || null,
+      customerName: customerName || 'Customer',
+      totalQuotedAmount: numTotal,
+      amount: numTotal,
+      balanceDue: 0,
+      paymentMethod: paymentMethod || 'Bank Transfer',
+      accountId: finalDepositAccountId,
+      accountName: finalDepositAccountName,
+      reference: reference || `Settlement of ${settledInvoicesText}`,
+      receivedBy: receivedBy || 'Accounts Officer',
+      notes: notes || `Multi-invoice settlement for: ${settledInvoicesText}`,
+      status: 'Received',
+      journalEntryId: journalId,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    await conn.query('INSERT INTO payment_receipts SET ?', receiptPayload);
+
+    await conn.commit();
+
+    res.json({
+      success: true,
+      receipt: receiptPayload,
+      settledInvoices: updatedInvoicesList,
+      totalAmount: numTotal,
+      journalEntryId: journalId
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Customer settlement error:', error);
+    res.status(500).json({ error: error.message || 'Failed to settle customer payment' });
+  } finally {
+    conn.release();
+  }
+});
+
 // -- SUPPLIER LEDGER --
 app.get('/api/supplier-ledger/:supplierId', async (req, res) => {
   try {
@@ -9243,6 +9479,292 @@ app.get('/api/finance/reports/aging', async (req, res) => {
     const [rows] = await db.query(query);
     res.json(rows);
   } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ==========================================
+// ADVANCED QUICKBOOKS-STYLE REPORTING ENGINE
+// ==========================================
+app.get('/api/finance/reports/advanced', async (req, res) => {
+  try {
+    const reportType = (req.query.reportType as string) || 'invoices';
+    const startDate = (req.query.startDate as string) || '';
+    const endDate = (req.query.endDate as string) || '';
+    const customerId = (req.query.customerId as string) || '';
+    const status = (req.query.status as string) || 'all';
+    const cashAccountId = (req.query.cashAccountId as string) || '';
+
+    // 1. INVOICE REGISTER (Invoice-wise Tax Breakdown, Status, Balance Due)
+    if (reportType === 'invoices' || reportType === 'unpaid_invoices') {
+      let query = `
+        SELECT 
+          i.*,
+          COALESCE(i.invoiceNo, i.id) as displayNo,
+          COALESCE(c.name, l.name, i.customerName, 'Walk-in Customer') as resolvedCustomerName,
+          COALESCE(c.company, l.company, i.customerCompany, '') as resolvedCompany,
+          COALESCE(c.phone, l.phone, i.customerPhone, '') as resolvedPhone,
+          COALESCE(c.vat, i.customerVat, '') as resolvedVatNo
+        FROM invoices i
+        LEFT JOIN customers c ON i.customerId = c.id
+        LEFT JOIN leads l ON (i.leadId = l.id OR (i.customerId = l.id AND c.id IS NULL))
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (startDate) {
+        query += ' AND DATE(COALESCE(i.date, i.createdAt)) >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ' AND DATE(COALESCE(i.date, i.createdAt)) <= ?';
+        params.push(endDate);
+      }
+      if (customerId && customerId !== 'all') {
+        query += ' AND (i.customerId = ? OR i.leadId = ?)';
+        params.push(customerId, customerId);
+      }
+      if (reportType === 'unpaid_invoices' || status === 'unpaid') {
+        query += " AND (i.status != 'paid' OR i.status IS NULL) AND (i.total - COALESCE(i.paidAmount, 0)) > 0.01";
+      } else if (status && status !== 'all') {
+        query += ' AND i.status = ?';
+        params.push(status);
+      }
+
+      query += ' ORDER BY COALESCE(i.date, i.createdAt) DESC, i.id DESC';
+
+      const [rows]: any = await db.query(query, params);
+
+      // Process invoices & calculate tax breakdowns
+      let totalSubtotal = 0;
+      let totalSscl = 0;
+      let totalVat = 0;
+      let totalTax = 0;
+      let totalGross = 0;
+      let totalPaid = 0;
+      let totalBalanceDue = 0;
+
+      const processed = rows.map((inv: any) => {
+        const sub = Number(inv.subtotal || inv.amount || 0);
+        const gross = Number(inv.total || inv.amount || 0);
+        const paid = Number(inv.paidAmount || 0);
+        const balanceDue = Math.max(0, gross - paid);
+
+        let sscl = 0;
+        let vat = 0;
+        let parsedBreakdown: any = null;
+
+        if (inv.taxBreakdown) {
+          try {
+            parsedBreakdown = typeof inv.taxBreakdown === 'string' ? JSON.parse(inv.taxBreakdown) : inv.taxBreakdown;
+            sscl = Number(parsedBreakdown.tax1Amount || parsedBreakdown.sscl || 0);
+            vat = Number(parsedBreakdown.tax2Amount || parsedBreakdown.vat || 0);
+          } catch (e) {}
+        }
+
+        const storedTax = Number(inv.taxAmount || 0);
+        if (storedTax > 0 && sscl === 0 && vat === 0) {
+          if (inv.taxType === 'vat_sscl' || inv.taxType === 'both') {
+            sscl = Math.round(sub * 0.0256 * 100) / 100;
+            vat = Math.round((storedTax - sscl) * 100) / 100;
+          } else {
+            vat = storedTax;
+          }
+        }
+
+        const invTax = (sscl + vat) > 0 ? (sscl + vat) : storedTax;
+
+        const invDateObj = inv.date ? new Date(inv.date) : (inv.createdAt ? new Date(inv.createdAt) : new Date());
+        const dueDateObj = inv.dueDate ? new Date(inv.dueDate) : invDateObj;
+        const now = new Date();
+        const diffDays = Math.floor((now.getTime() - invDateObj.getTime()) / (1000 * 3600 * 24));
+        const daysOverdue = Math.max(0, Math.floor((now.getTime() - dueDateObj.getTime()) / (1000 * 3600 * 24)));
+
+        let agingBucket = '0 - 30 Days';
+        if (diffDays > 90) agingBucket = '90+ Days';
+        else if (diffDays > 60) agingBucket = '61 - 90 Days';
+        else if (diffDays > 30) agingBucket = '31 - 60 Days';
+
+        const dateStr = !isNaN(invDateObj.getTime()) ? invDateObj.toISOString().slice(0, 10) : '';
+        const dueDateStr = inv.dueDate && !isNaN(dueDateObj.getTime()) ? dueDateObj.toISOString().slice(0, 10) : '';
+
+        totalSubtotal += sub;
+        totalSscl += sscl;
+        totalVat += vat;
+        totalTax += invTax;
+        totalGross += gross;
+        totalPaid += paid;
+        totalBalanceDue += balanceDue;
+
+        return {
+          id: inv.id,
+          invoiceNo: inv.displayNo,
+          date: dateStr,
+          dueDate: dueDateStr,
+          customerName: inv.resolvedCustomerName,
+          customerCompany: inv.resolvedCompany,
+          customerPhone: inv.resolvedPhone,
+          customerVat: inv.resolvedVatNo,
+          poNo: inv.poNo || '',
+          orderNo: inv.orderNo || '',
+          quotationNo: inv.quotationNo || '',
+          dispatchNo: inv.dispatchNo || '',
+          taxType: inv.taxType || 'none',
+          status: balanceDue <= 0.01 ? 'paid' : (paid > 0 ? 'partial' : (daysOverdue > 0 ? 'overdue' : (inv.status || 'unpaid'))),
+          subtotal: sub,
+          ssclAmount: sscl,
+          vatAmount: vat,
+          taxAmount: invTax,
+          total: gross,
+          paidAmount: paid,
+          balanceDue,
+          diffDays,
+          daysOverdue,
+          agingBucket
+        };
+      });
+
+      return res.json({
+        reportType,
+        filters: { startDate, endDate, customerId, status },
+        summary: {
+          totalCount: processed.length,
+          totalSubtotal,
+          totalSscl,
+          totalVat,
+          totalTax,
+          totalGross,
+          totalPaid,
+          totalBalanceDue
+        },
+        rows: processed
+      });
+    }
+
+    // 2. CASHBOOK ADVANCED REPORT (Since date X, by Target COA Account, Running Total)
+    if (reportType === 'cashbook') {
+      let query = `
+        SELECT 
+          cb.*,
+          targetAcc.code AS accountCode,
+          targetAcc.name AS accountName,
+          targetAcc.type AS accountType,
+          targetAcc.subtype AS accountSubtype,
+          cashAcc.code AS cashAccountCode,
+          cashAcc.name AS cashAccountName
+        FROM cashbook_entries cb
+        LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
+        LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (startDate) {
+        query += ' AND cb.date >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ' AND cb.date <= ?';
+        params.push(endDate);
+      }
+      if (cashAccountId && cashAccountId !== 'all') {
+        query += ' AND cb.cashAccountId = ?';
+        params.push(cashAccountId);
+      }
+
+      query += ' ORDER BY cb.date ASC, cb.time ASC, cb.id ASC';
+      const [entries]: any = await db.query(query, params);
+
+      let openingBalance = 0;
+      if (startDate) {
+        let opQuery = `
+          SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS openingBal
+          FROM journal_lines jl
+          JOIN journal_entries je ON jl.entryId = je.id
+          JOIN chart_of_accounts ca ON jl.accountId = ca.id
+          WHERE (LOWER(ca.name) LIKE '%cash%' OR LOWER(ca.subtype) LIKE '%cash%')
+          AND DATE(je.date) < ?
+        `;
+        const opParams: any[] = [startDate];
+        if (cashAccountId && cashAccountId !== 'all') {
+          opQuery = `
+            SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS openingBal
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.entryId = je.id
+            WHERE jl.accountId = ? AND DATE(je.date) < ?
+          `;
+          opParams.unshift(cashAccountId);
+        }
+        const [opRows]: any = await db.query(opQuery, opParams);
+        openingBalance = Number(opRows[0]?.openingBal || 0);
+      }
+
+      const accountSummaryMap: Record<string, any> = {};
+      let totalCashIn = 0;
+      let totalCashOut = 0;
+      let currentRunning = openingBalance;
+
+      const processedEntries = entries.map((e: any) => {
+        const amt = Number(e.amount || 0);
+        if (e.entryType === 'IN') {
+          totalCashIn += amt;
+          currentRunning += amt;
+        } else {
+          totalCashOut += amt;
+          currentRunning -= amt;
+        }
+
+        const accKey = e.accountId || 'OTHER';
+        if (!accountSummaryMap[accKey]) {
+          accountSummaryMap[accKey] = {
+            accountId: accKey,
+            accountCode: e.accountCode || 'N/A',
+            accountName: e.accountName || 'General Account',
+            accountType: e.accountType || 'Expense',
+            totalIn: 0,
+            totalOut: 0,
+            net: 0,
+            transactionCount: 0
+          };
+        }
+        if (e.entryType === 'IN') {
+          accountSummaryMap[accKey].totalIn += amt;
+          accountSummaryMap[accKey].net += amt;
+        } else {
+          accountSummaryMap[accKey].totalOut += amt;
+          accountSummaryMap[accKey].net -= amt;
+        }
+        accountSummaryMap[accKey].transactionCount += 1;
+
+        return {
+          ...e,
+          date: String(e.date).slice(0, 10),
+          amount: amt,
+          runningBalance: currentRunning
+        };
+      });
+
+      const accountSummaries = Object.values(accountSummaryMap).sort((a: any, b: any) => b.totalOut - a.totalOut);
+
+      return res.json({
+        reportType: 'cashbook',
+        filters: { startDate, endDate, cashAccountId },
+        summary: {
+          openingBalance,
+          totalCashIn,
+          totalCashOut,
+          netMovement: totalCashIn - totalCashOut,
+          closingBalance: currentRunning,
+          totalTransactions: entries.length
+        },
+        accountSummaries,
+        rows: processedEntries
+      });
+    }
+
+    res.status(400).json({ error: 'Invalid reportType specified' });
+  } catch (error: any) {
+    console.error('Advanced report error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate advanced report' });
+  }
 });
 
 

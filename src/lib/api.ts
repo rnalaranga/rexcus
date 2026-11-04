@@ -821,6 +821,52 @@ export const deleteCashbookEntry = async (id: string) => {
   return json;
 };
 
+export const fetchAdvancedReport = async (params: {
+  reportType: 'invoices' | 'unpaid_invoices' | 'cashbook' | 'tax_register';
+  startDate?: string;
+  endDate?: string;
+  customerId?: string;
+  status?: string;
+  cashAccountId?: string;
+}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') {
+      q.append(k, String(v));
+    }
+  });
+  const res = await fetch(`${API_URL}/finance/reports/advanced?${q.toString()}`);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to fetch advanced report');
+  return json;
+};
+
+export const settleCustomerOutstanding = async (data: {
+  customerId: string;
+  customerName?: string;
+  paymentDate?: string;
+  paymentMethod: string;
+  depositAccountId?: string;
+  reference?: string;
+  notes?: string;
+  totalAmount: number;
+  allocations: Array<{
+    invoiceId: string;
+    invoiceNo?: string;
+    allocatedAmount: number;
+  }>;
+  receivedBy?: string;
+}) => {
+  const res = await fetch(`${API_URL}/finance/receivables/settle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to settle customer payment');
+  return json;
+};
+
 export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
 export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());
 export const fetchMachiningOperations = async () => (await fetch(`${API_URL}/machining-operations`)).json();

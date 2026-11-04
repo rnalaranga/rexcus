@@ -25,6 +25,7 @@ import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModa
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal';
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal';
 import { CreateOpeningOutstandingModal } from '@/components/finance/CreateOpeningOutstandingModal';
+import { MultiInvoiceSettlementModal } from '@/components/finance/MultiInvoiceSettlementModal';
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner';
 
 type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
@@ -368,6 +369,10 @@ export const ReceivablesHub: React.FC = () => {
   const [isCreateReceiptOpen, setIsCreateReceiptOpen] = useState(false);
   const [printReceipt, setPrintReceipt] = useState<any | null>(null);
   const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
+
+  // Multi-Invoice Customer Settlement Modal States
+  const [isMultiSettlementOpen, setIsMultiSettlementOpen] = useState(false);
+  const [settlementCustomer, setSettlementCustomer] = useState<any | null>(null);
 
   // Fetch AR Aging Report Data
   const loadAging = useCallback(() => {
@@ -784,17 +789,12 @@ export const ReceivablesHub: React.FC = () => {
             size="sm" 
             className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
             onClick={() => {
-              // Find first unpaid invoice for this customer
-              const custInv = openInvoices.find((i: any) => i.customerId === row.partyId || i.leadId === row.partyId);
-              if (custInv) {
-                handleOpenPaymentModal(custInv);
-              } else {
-                setActiveTab('invoices');
-                setSearch(row.partyName);
-              }
+              const custObj = customers.find((c: any) => c.id === row.partyId) || { id: row.partyId, name: row.partyName, company: row.partyName };
+              setSettlementCustomer(custObj);
+              setIsMultiSettlementOpen(true);
             }}
           >
-            Settle Payment
+            Settle Invoices
           </Button>
         </div>
       )
@@ -849,6 +849,18 @@ export const ReceivablesHub: React.FC = () => {
             className="text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
           >
             + Add Opening Outstanding
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Receipt}
+            onClick={() => {
+              setSettlementCustomer(null);
+              setIsMultiSettlementOpen(true);
+            }}
+            className="text-xs border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
+          >
+            Settle Invoices (Multi/Partial)
           </Button>
           <Button
             variant="primary"
@@ -1644,18 +1656,33 @@ export const ReceivablesHub: React.FC = () => {
               💡 Submitting will immediately credit Accounts Receivable, debit Bank/Cash in the General Ledger, mark the invoice as <strong>Paid</strong>, and update the Sales Order status.
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-theme-subtle">
-              <Button variant="ghost" type="button" onClick={() => setPaymentModalInvoice(null)} className="text-xs">
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={submittingPayment}
-                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            <div className="flex items-center justify-between pt-2 border-t border-theme-subtle">
+              <button
+                type="button"
+                onClick={() => {
+                  const custObj = customers.find((c: any) => c.id === paymentModalInvoice?.customerId || c.id === paymentModalInvoice?.leadId) || { id: paymentModalInvoice?.customerId, name: paymentModalInvoice?.customerName };
+                  setSettlementCustomer(custObj);
+                  setPaymentModalInvoice(null);
+                  setIsMultiSettlementOpen(true);
+                }}
+                className="text-[11px] text-rex-600 dark:text-rex-400 font-semibold hover:underline"
               >
-                {submittingPayment ? 'Recording...' : 'Confirm Payment & Update GL'}
-              </Button>
+                Need to settle across multiple invoices? Open Multi-Invoice Settlement &rarr;
+              </button>
+
+              <div className="flex gap-2">
+                <Button variant="ghost" type="button" onClick={() => setPaymentModalInvoice(null)} className="text-xs">
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={submittingPayment}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                >
+                  {submittingPayment ? 'Recording...' : 'Confirm Payment & Update GL'}
+                </Button>
+              </div>
             </div>
           </form>
         </Modal>
@@ -1700,6 +1727,24 @@ export const ReceivablesHub: React.FC = () => {
         onSuccess={() => {
           loadAging();
           refetchInvoices();
+        }}
+      />
+
+      {/* MULTI-INVOICE CUSTOMER SETTLEMENT MODAL */}
+      <MultiInvoiceSettlementModal
+        isOpen={isMultiSettlementOpen}
+        onClose={() => setIsMultiSettlementOpen(false)}
+        customer={settlementCustomer}
+        allCustomers={customers}
+        openInvoices={openInvoices}
+        depositAccounts={accounts.filter((a: any) => a.type === 'Asset')}
+        onSuccess={(receipt) => {
+          loadAging();
+          loadReceipts();
+          refetchInvoices();
+          const unboxed = receipt?.receipt || receipt;
+          setPrintReceipt(unboxed);
+          toast('Customer invoices settled and payment receipt generated successfully!', 'success');
         }}
       />
     </div>
