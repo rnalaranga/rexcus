@@ -35,9 +35,9 @@ export const PayablesHub: React.FC = () => {
   const { data: workOrders = [] } = useWorkOrders();
 
   // Sorting states
-  const [billSortField, setBillSortField] = useState<string>('date');
+  const [billSortField, setBillSortField] = useState<string>('billNo');
   const [billSortDir, setBillSortDir] = useState<SortDir>('desc');
-  const [poSortField, setPoSortField] = useState<string>('date');
+  const [poSortField, setPoSortField] = useState<string>('poNo');
   const [poSortDir, setPoSortDir] = useState<SortDir>('desc');
 
   const loadAging = useCallback(() => {

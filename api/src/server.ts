@@ -1744,6 +1744,7 @@ async function runDatabaseSync() {
     "ALTER TABLE work_orders ADD COLUMN qcCheckpoints LONGTEXT DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE work_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN salesOrderNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN soChangeInfo LONGTEXT DEFAULT NULL",
@@ -9617,15 +9618,32 @@ app.post('/api/production/work-orders', async (req, res) => {
       }
     }
 
-    const woId = 'WO-' + Date.now().toString().slice(-5);
-    const orderNo = req.body.orderNo || `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    const rawOrderNo = (req.body.orderNo || '').trim();
+    const rawSalesOrderNo = (req.body.salesOrderNo || req.body.soNo || '').trim();
+
+    let finalWoNo = '';
+    let finalSoNo = rawSalesOrderNo || null;
+
+    if (rawOrderNo.startsWith('SO-') || rawOrderNo.startsWith('ORD-')) {
+      // Caller passed the Sales Order number in orderNo
+      finalSoNo = rawOrderNo;
+      finalWoNo = req.body.woNo || `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    } else if (rawOrderNo.startsWith('WO-')) {
+      finalWoNo = rawOrderNo;
+    } else if (rawOrderNo) {
+      finalWoNo = rawOrderNo;
+    } else {
+      finalWoNo = `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    }
+
+    const woId = finalWoNo;
 
     await db.query(
       `INSERT INTO work_orders 
-       (id, orderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, attachments, overheadPct, estimatedCost, createdAt, updatedAt) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+       (id, orderNo, salesOrderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, attachments, overheadPct, estimatedCost, createdAt, updatedAt) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        woId, orderNo, title, customerId || null, resolvedCustomer || customer || null, sourceQuoteId || null, 
+        woId, finalWoNo, finalSoNo, title, customerId || null, resolvedCustomer || customer || null, sourceQuoteId || null, 
         priority || 'Normal', plannedStartDate || new Date(), deadline || null, 
         Math.max(1, Number(jobQty || 1)), bom ? JSON.stringify(bom) : null, 
         notes || null, attachments ? JSON.stringify(attachments) : null,

@@ -43,7 +43,7 @@ export const GatePassesHub: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'this_month'>('all');
   
   // Sorting state (Excel-like)
-  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortField, setSortField] = useState<SortField>('id');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   // Print modal

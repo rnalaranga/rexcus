@@ -115,7 +115,7 @@ export const Quotations: React.FC = () => {
   const [salesRepFilter, setSalesRepFilter] = useState<'all' | string>('all');
 
   // Excel-like Column Sorting
-  const [qSortField, setQSortField] = useState<string>('date');
+  const [qSortField, setQSortField] = useState<string>('quoNo');
   const [qSortDir, setQSortDir] = useState<'asc' | 'desc'>('desc');
 
   const handleToggleQSort = (field: string) => {

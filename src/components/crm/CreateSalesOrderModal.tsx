@@ -589,7 +589,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-4xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col max-h-[94vh] overflow-hidden">
+      <div className="relative w-full max-w-6xl xl:max-w-7xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col max-h-[94vh] overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2">
           <div className="flex items-center gap-2.5">

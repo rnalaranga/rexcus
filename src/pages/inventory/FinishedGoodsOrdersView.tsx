@@ -104,7 +104,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const { data: taxProfiles = [] } = useTaxProfiles()
 
     // Sales Orders Table Sorting
-  const [orderSortField, setOrderSortField] = useState<string>('orderDate');
+  const [orderSortField, setOrderSortField] = useState<string>('orderNo');
   const [orderSortDir, setOrderSortDir] = useState<'asc' | 'desc'>('desc');
 
   const handleToggleOrderSort = (field: string) => {
@@ -1325,7 +1325,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         title: createWoJobTitle || `WO: ${order.orderNo} - ${order.customerName}`,
         customerId: order.customerId || null,
         customer: order.customerName,
-        orderNo: order.orderNo,
+        salesOrderNo: order.orderNo,
+        orderNo: `WO-${String(new Date().getFullYear()).slice(-2)}-${Date.now().toString().slice(-4)}`,
         sourceQuoteId: order.quoteId || null,
         priority: createWoPriority || 'Normal',
         jobQty,
@@ -1419,7 +1420,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         title: `WO: ${order.orderNo} - ${order.customerName}`,
         customerId: order.customerId || null,
         customer: order.customerName,
-        orderNo: order.orderNo,
+        salesOrderNo: order.orderNo,
+        orderNo: `WO-${String(new Date().getFullYear()).slice(-2)}-${Date.now().toString().slice(-4)}`,
         sourceQuoteId: order.quoteId || null,
         priority: 'Medium',
         jobQty,
@@ -1921,9 +1923,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               type="button"
               onClick={() => {
                 setOpenActionOrderId(null)
-                const targetWO = existingWO || {
+                const targetWO = existingWO ? {
+                  ...existingWO,
+                  salesOrderNo: existingWO.salesOrderNo || (existingWO.orderNo?.startsWith('SO-') ? existingWO.orderNo : order.orderNo),
+                  orderNo: existingWO.orderNo?.startsWith('WO-') ? existingWO.orderNo : (existingWO.id?.startsWith('WO-') ? existingWO.id : `WO-${order.orderNo}`)
+                } : {
                   id: `WO-${order.orderNo || order.id}`,
-                  orderNo: order.orderNo,
+                  orderNo: `WO-${order.orderNo || order.id}`,
                   title: `WO: ${order.orderNo} - ${order.customerName}`,
                   customerName: order.customerName,
                   customer: order.customerName,
@@ -1933,7 +1939,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   jobQty: Math.max(1, Number(order.qty || 1)),
                   productName: order.productName || (orderItems?.[0]?.description) || 'Precision Component',
                   items: orderItems,
-                  status: existingWO?.status || 'Confirmed Order (Factory Traveler)',
+                  status: 'Confirmed Order (Factory Traveler)',
                   date: order.orderDate || order.createdAt
                 };
                 setPrintWorkOrderTarget(targetWO);
@@ -2819,7 +2825,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           <div className={`relative w-full bg-surface border border-theme-subtle rounded-none shadow-2xl p-4 sm:p-6 transition-all duration-200 overflow-hidden flex flex-col ${
             isOrderModalExpanded
               ? 'max-w-[98vw] h-[96vh] max-h-[96vh]'
-              : 'max-w-3xl max-h-[92vh]'
+              : 'max-w-5xl xl:max-w-6xl max-h-[92vh]'
           }`}>
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-theme-subtle shrink-0">
               <h3 className="text-base font-bold text-primary flex items-center gap-2 truncate pr-2">
@@ -3101,10 +3107,20 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                 {/* 2. READY-MADE PRODUCT PICKER */}
                 {formData.orderSource === 'ready_made' && (
-                  <div className="sm:col-span-2 space-y-1.5">
-                    <label className="block text-xs font-semibold text-secondary mb-1">
-                      Search Finished Product (Autocomplete) <span className="text-red-500">*</span>
-                    </label>
+                  <div className="sm:col-span-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-secondary">
+                        Search Finished Product (Autocomplete) <span className="text-red-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleSourceChange('custom_job')}
+                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus size={12} /> Enter Custom Unlisted Product / Job Scope instead
+                      </button>
+                    </div>
+
                     <ProductAutocomplete
                       value={formData.productId}
                       onChange={(pId) => handleProductSelect(pId)}
@@ -3112,6 +3128,33 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       filterType="finished_product"
                       placeholder="Type product name, SKU, or specs to autocomplete..."
                     />
+
+                    {/* Allow Custom override / details for this product */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-secondary mb-1">
+                          Product Name / Title <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.productName}
+                          onChange={e => setFormData({ ...formData, productName: e.target.value })}
+                          placeholder="e.g. Standard Gear Shaft or Custom Spec"
+                          className="w-full input-base text-xs font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-secondary mb-1">Product Code / SKU</label>
+                        <input
+                          type="text"
+                          value={formData.productSku}
+                          onChange={e => setFormData({ ...formData, productSku: e.target.value })}
+                          placeholder="e.g. SKU-1002"
+                          className="w-full input-base font-mono text-xs"
+                        />
+                      </div>
+                    </div>
 
                     {selectedProduct && (
                       <div className="mt-2 p-2.5 rounded-none bg-surface2/50 border border-theme-subtle flex items-center justify-between text-xs">
@@ -3691,10 +3734,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 <span className="text-muted">Product / Spec:</span>
                 <span className="font-semibold text-primary">{dispatchModalOrder.productName}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Total Order Value:</span>
-                <span className="font-mono font-bold text-emerald-600">{formatCurrency(dispatchModalOrder.totalPrice)}</span>
-              </div>
+              {!isStoreRole && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Total Order Value:</span>
+                  <span className="font-mono font-bold text-emerald-600">{formatCurrency(dispatchModalOrder.totalPrice)}</span>
+                </div>
+              )}
               {dispatchModalOrder.quotationNo && (
                 <div className="flex justify-between">
                   <span className="text-muted">Quotation Ref:</span>

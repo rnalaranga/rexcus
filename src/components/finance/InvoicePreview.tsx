@@ -860,6 +860,44 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           )}
         </tbody>
       </table>
+
+      {/* ── SIGNATURE SECTION ── */}
+      <div 
+        className="print-no-break"
+        style={{ 
+          marginTop: '22px', 
+          display: 'grid', 
+          gridTemplateColumns: '1fr 1fr 1fr', 
+          gap: '20px', 
+          paddingTop: '6px',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
+        {/* Prepared By */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ borderBottom: '1px dotted #000000', height: '36px', marginBottom: '6px' }}></div>
+          <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            Prepared By
+          </div>
+        </div>
+
+        {/* Authorized Signature */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ borderBottom: '1px dotted #000000', height: '36px', marginBottom: '6px' }}></div>
+          <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            Authorized Signature
+          </div>
+        </div>
+
+        {/* Customer Signature */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ borderBottom: '1px dotted #000000', height: '36px', marginBottom: '6px' }}></div>
+          <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#000000', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            Customer Signature
+          </div>
+        </div>
+      </div>
     </div>
     </>
   );

@@ -979,7 +979,15 @@ export const WorkOrderDetail: React.FC = () => {
               <ArrowLeft size={13}/> Work Orders
             </button>
             <span>/</span>
-            <span className="font-mono font-bold text-primary">{wo.orderNo || wo.id}</span>
+            <span className="font-mono font-bold text-primary">{wo.orderNo?.startsWith('WO-') ? wo.orderNo : (wo.id?.startsWith('WO-') ? wo.id : (wo.orderNo || wo.id))}</span>
+            {(wo.salesOrderNo || (wo.orderNo?.startsWith('SO-') ? wo.orderNo : null)) && (
+              <>
+                <span>/</span>
+                <span className="text-muted flex items-center gap-1">
+                  SO: <button onClick={() => navigate('/crm/sales-orders?search=' + (wo.salesOrderNo || wo.orderNo))} className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold cursor-pointer">{wo.salesOrderNo || wo.orderNo}</button>
+                </span>
+              </>
+            )}
             {linkedQuote && (
               <>
                 <span>/</span>

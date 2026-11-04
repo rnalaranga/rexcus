@@ -50,13 +50,13 @@ export const ReceivablesHub: React.FC = () => {
   const [gatePasses, setGatePasses] = useState<any[]>([]);
 
   // Sorting States for Receivables tables
-  const [invSortField, setInvSortField] = useState<string>('date');
+  const [invSortField, setInvSortField] = useState<string>('invoiceNo');
   const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const [profSortField, setProfSortField] = useState<string>('date');
+  const [profSortField, setProfSortField] = useState<string>('invoiceNo');
   const [profSortDir, setProfSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const [recSortField, setRecSortField] = useState<string>('date');
+  const [recSortField, setRecSortField] = useState<string>('receiptNo');
   const [recSortDir, setRecSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {

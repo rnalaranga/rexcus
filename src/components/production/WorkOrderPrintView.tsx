@@ -36,8 +36,8 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   if (!workOrder) return null;
 
   // 1. Identifiers
-  const woId = workOrder.orderNo || workOrder.id || 'WO-XXXX';
-  const soNo = workOrder.salesOrderNo || workOrder.soId || workOrder.orderNo || '-';
+  const woId = workOrder.orderNo?.startsWith('WO-') ? workOrder.orderNo : (workOrder.id?.startsWith('WO-') ? workOrder.id : (workOrder.woNo || workOrder.orderNo || workOrder.id || 'WO-XXXX'));
+  const soNo = workOrder.salesOrderNo || (workOrder.orderNo?.startsWith('SO-') ? workOrder.orderNo : (workOrder.soId || '-'));
   const quoteRef = workOrder.quoteId || workOrder.sourceQuoteId || workOrder.quotationId || workOrder.quotationNo;
 
   // Find linked sales order if available
