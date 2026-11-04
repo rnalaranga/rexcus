@@ -113,7 +113,7 @@ function AppRoutes() {
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/inventory/gate-passes" element={<GatePassesHub />} />
           <Route path="/gate-passes" element={<Navigate to="/inventory/gate-passes" replace />} />
-          <Route path="/inventory/sales-orders" element={<Navigate to="/crm/sales-orders" replace />} />
+          <Route path="/inventory/sales-orders" element={<SalesOrdersHub isStoresMode={true} />} />
           <Route path="/inventory/material-issue" element={<MaterialIssueHub />} />
           <Route path="/material-issue" element={<Navigate to="/inventory/material-issue" replace />} />
           <Route path="/inventory/suppliers" element={<Suppliers />} />

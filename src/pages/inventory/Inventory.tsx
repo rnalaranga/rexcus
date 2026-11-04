@@ -1478,7 +1478,7 @@ export const Inventory: React.FC = () => {
               <Button 
                 variant="ghost" 
                 icon={ShoppingCart} 
-                onClick={() => navigate('/crm/sales-orders')}
+                onClick={() => navigate('/inventory/sales-orders')}
                 className="text-xs text-secondary hover:text-primary border border-theme-subtle"
                 title="View Sales Orders for Stores (Dispatch Only)"
               >

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { 
   ShoppingCart, ArrowRight, Package, Plus, Search, Filter, CheckCircle, 
   Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
@@ -72,6 +72,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   isStoresView = false
 }) => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, can } = useAuth()
   const isAdmin = Boolean(
     user?.role === 'admin' ||
@@ -82,6 +83,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   )
   const isStoreRole = Boolean(
     isStoresView ||
+    location.pathname.startsWith('/inventory/sales-orders') ||
     user?.role === 'store_keeper' ||
     user?.role === 'store_assistant' ||
     user?.roleName?.toLowerCase().includes('store') ||

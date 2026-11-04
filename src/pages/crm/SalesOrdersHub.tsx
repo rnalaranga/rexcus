@@ -1,13 +1,24 @@
 import React from 'react'
-import { ShoppingBag, ArrowLeft, Plus } from 'lucide-react'
+import { ShoppingBag } from 'lucide-react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { FinishedGoodsOrdersView } from '@/pages/inventory/FinishedGoodsOrdersView'
 import { Badge } from '@/components/ui/Badge'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { useAuth } from '@/contexts/AuthContext'
 
-export const SalesOrdersHub: React.FC = () => {
+interface SalesOrdersHubProps {
+  isStoresMode?: boolean
+}
+
+export const SalesOrdersHub: React.FC<SalesOrdersHubProps> = ({ isStoresMode = false }) => {
   const { user } = useAuth()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+
   const isStoreRole = Boolean(
+    isStoresMode ||
+    location.pathname.startsWith('/inventory/sales-orders') ||
+    searchParams.get('view') === 'stores' ||
     user?.role === 'store_keeper' ||
     user?.role === 'store_assistant' ||
     user?.roleName?.toLowerCase().includes('store') ||
@@ -40,12 +51,12 @@ export const SalesOrdersHub: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <PageHelpButton moduleId="crm-sales-orders" />
+          <PageHelpButton moduleId={isStoreRole ? 'inventory-sales-orders' : 'crm-sales-orders'} />
         </div>
       </div>
 
       {/* Main Finished Goods & Sales Orders View */}
-      <FinishedGoodsOrdersView />
+      <FinishedGoodsOrdersView isStoresView={isStoreRole} />
     </div>
   )
 }

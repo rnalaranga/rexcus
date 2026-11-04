@@ -344,7 +344,7 @@ export const GatePassesHub: React.FC = () => {
             variant="primary"
             size="sm"
             icon={ShoppingBag}
-            onClick={() => navigate('/crm/sales-orders')}
+            onClick={() => navigate('/inventory/sales-orders')}
             className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
           >
             Dispatch From Sales Orders
@@ -465,7 +465,7 @@ export const GatePassesHub: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate('/crm/sales-orders')}
+              onClick={() => navigate('/inventory/sales-orders')}
               className="mt-4 text-xs"
             >
               Go to Sales Orders Hub

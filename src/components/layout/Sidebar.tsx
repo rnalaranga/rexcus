@@ -45,7 +45,7 @@ const navGroups: NavGroup[] = [
     title: 'Inventory', icon: Package, active: true,
     items: [
       { label: 'Stock',          path: '/inventory',                icon: Package,      permission: 'inventory.items.view' },
-      { label: 'Sales Orders for Stores', path: '/crm/sales-orders', icon: ShoppingBag, permission: 'inventory.items.view' },
+      { label: 'Sales Orders for Stores', path: '/inventory/sales-orders', icon: ShoppingBag, permission: 'inventory.items.view' },
       { label: 'Gate Passes',    path: '/inventory/gate-passes',    icon: Truck,        permission: 'inventory.items.view' },
       { label: 'Material Issue', path: '/inventory/material-issue', icon: PackageCheck, permission: 'inventory.items.view' },
       { label: 'Suppliers',      path: '/inventory/suppliers',      icon: Building2,    permission: 'purchasing.suppliers.view' },
