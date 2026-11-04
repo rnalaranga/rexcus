@@ -1831,10 +1831,8 @@ async function runDatabaseSync() {
     await db.query("UPDATE document_sequences SET next_number = 2206 WHERE id = 'quotation' AND next_number < 2206");
   } catch (err) {}
 
-  // Ensure sales_order next_number starts from 6004 if not set
+  // Safely auto-sync sales_order sequence with highest existing orderNo without overwriting user's sequence or altering existing VPS records
   try {
-    await db.query("UPDATE document_sequences SET next_number = 6004 WHERE id = 'sales_order' AND (next_number < 6001 OR next_number = 7528 OR next_number = 7529)");
-    // Auto-sync sequence with highest existing orderNo if present
     const [maxOrder]: any = await db.query(
       "SELECT MAX(CAST(REGEXP_SUBSTR(orderNo, '[0-9]+$') AS UNSIGNED)) as maxNum FROM finished_goods_orders WHERE orderNo REGEXP '[0-9]+$'"
     );
@@ -5985,6 +5983,127 @@ app.post('/api/finished-goods-orders/:id/cancel', async (req, res) => {
   } catch (error: any) {
     await conn.rollback();
     console.error('Cancel Sales Order Error:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  } finally {
+    conn.release();
+  }
+});
+
+// CHANGE SALES ORDER NUMBER WITH CASCADE UPDATES
+app.post('/api/finished-goods-orders/:id/change-number', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const rawId = decodeURIComponent(req.params.id || '').trim();
+    const newOrderNo = (req.body.newOrderNo || req.body.orderNo || '').trim().replace(/\s+/g, '');
+    if (!newOrderNo) {
+      return res.status(400).json({ error: 'New Sales Order number is required.' });
+    }
+
+    // 1. Fetch target sales order
+    const [existingRows]: any = await conn.query(
+      'SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1',
+      [rawId, rawId]
+    );
+    if (!existingRows || existingRows.length === 0) {
+      return res.status(404).json({ error: 'Sales Order not found.' });
+    }
+
+    const currentOrder = existingRows[0];
+    const oldId = currentOrder.id;
+    const oldOrderNo = currentOrder.orderNo || oldId;
+
+    if (newOrderNo === oldOrderNo) {
+      return res.json({ success: true, id: oldId, orderNo: oldOrderNo, message: 'No change needed.' });
+    }
+
+    // 2. Collision check
+    const [collision]: any = await conn.query(
+      'SELECT id, orderNo FROM finished_goods_orders WHERE (orderNo = ? OR id = ?) AND id != ? AND orderNo != ? LIMIT 1',
+      [newOrderNo, newOrderNo, oldId, oldOrderNo]
+    );
+    if (collision && collision.length > 0) {
+      return res.status(400).json({ error: `Sales Order number "${newOrderNo}" is already in use by another order.` });
+    }
+
+    await conn.beginTransaction();
+
+    // 3. Update Sales Order
+    const updateId = (oldId === oldOrderNo);
+    const targetId = updateId ? newOrderNo : oldId;
+
+    let soChangeLog: any[] = [];
+    if (currentOrder.soChangeInfo) {
+      try {
+        soChangeLog = typeof currentOrder.soChangeInfo === 'string' ? JSON.parse(currentOrder.soChangeInfo) : currentOrder.soChangeInfo;
+        if (!Array.isArray(soChangeLog)) soChangeLog = [];
+      } catch (e) {
+        soChangeLog = [];
+      }
+    }
+    soChangeLog.push({
+      action: 'CHANGE_ORDER_NUMBER',
+      timestamp: new Date().toISOString(),
+      user: req.body.changedBy || 'Admin',
+      oldOrderNo,
+      newOrderNo
+    });
+
+    await conn.query(
+      'UPDATE finished_goods_orders SET orderNo = ?, id = ?, soChangeInfo = ?, isEdited = 1, lastEditedBy = ?, lastEditedAt = NOW() WHERE id = ?',
+      [newOrderNo, targetId, JSON.stringify(soChangeLog), req.body.changedBy || 'Admin', oldId]
+    );
+
+    // 4. Cascade to work_orders
+    try {
+      await conn.query(
+        'UPDATE work_orders SET salesOrderNo = ? WHERE salesOrderNo = ? OR salesOrderNo = ?',
+        [newOrderNo, oldOrderNo, oldId]
+      );
+    } catch (e) { console.warn('Could not cascade SO change to work orders:', e); }
+
+    // 5. Cascade to invoices
+    try {
+      await conn.query(
+        'UPDATE invoices SET orderNo = ?, orderId = ? WHERE orderNo = ? OR orderId = ? OR orderNo = ? OR orderId = ?',
+        [newOrderNo, targetId, oldOrderNo, oldId, oldOrderNo, oldOrderNo]
+      );
+    } catch (e) { console.warn('Could not cascade SO change to invoices:', e); }
+
+    // 6. Cascade to gate_passes
+    try {
+      await conn.query(
+        'UPDATE gate_passes SET orderNo = ?, orderId = ? WHERE orderNo = ? OR orderId = ? OR orderNo = ? OR orderId = ?',
+        [newOrderNo, targetId, oldOrderNo, oldId, oldOrderNo, oldOrderNo]
+      );
+    } catch (e) { console.warn('Could not cascade SO change to gate passes:', e); }
+
+    // 7. Cascade to payment_receipts
+    try {
+      await conn.query(
+        'UPDATE payment_receipts SET orderNo = ?, orderId = ? WHERE orderNo = ? OR orderId = ? OR orderNo = ? OR orderId = ?',
+        [newOrderNo, targetId, oldOrderNo, oldId, oldOrderNo, oldOrderNo]
+      );
+    } catch (e) { console.warn('Could not cascade SO change to payment receipts:', e); }
+
+    // 8. Auto-sync sequence so it doesn't fall behind or generate duplicate
+    try {
+      const numMatch = newOrderNo.match(/\d+$/);
+      if (numMatch) {
+        const num = parseInt(numMatch[0], 10);
+        if (num >= 1000 && num < 100000) {
+          await conn.query(
+            "UPDATE document_sequences SET next_number = GREATEST(next_number, ?) WHERE id = 'sales_order'",
+            [num + 1]
+          );
+        }
+      }
+    } catch (e) {}
+
+    await conn.commit();
+    res.json({ success: true, oldOrderNo, newOrderNo, id: targetId });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error changing sales order number:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
   } finally {
     conn.release();

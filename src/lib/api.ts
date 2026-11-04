@@ -420,6 +420,17 @@ export const cancelFinishedGoodsOrder = async (id: string, payload: {
   return json;
 };
 
+export const changeSalesOrderNumber = async (id: string, newOrderNo: string) => {
+  const res = await fetch(`${API_URL}/finished-goods-orders/${encodeURIComponent(id)}/change-number`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newOrderNo })
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to change sales order number');
+  return json;
+};
+
 // -- SUPPLIERS --
 export const fetchSuppliers = async () => {
   const res = await fetch(`${API_URL}/suppliers`);

@@ -7,7 +7,7 @@ import {
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
   ShoppingBag, Receipt, UploadCloud, Paperclip, Camera, Maximize2, Minimize2,
-  Star, XCircle, Ban
+  Star, XCircle, Ban, Edit3
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -50,7 +50,8 @@ import {
   fetchPaymentReceipts,
   deleteInvoice,
   fetchAllCustomerGRNs,
-  fetchNextDocumentNumber
+  fetchNextDocumentNumber,
+  changeSalesOrderNumber
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -233,6 +234,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [recordPoOrder, setRecordPoOrder] = useState<any | null>(null)
   const [viewPoOrder, setViewPoOrder] = useState<any | null>(null)
 
+  // Change Sales Order Number State
+  const [changeNumberTarget, setChangeNumberTarget] = useState<any | null>(null)
+  const [newOrderNoInput, setNewOrderNoInput] = useState<string>('')
+  const [submittingChangeNumber, setSubmittingChangeNumber] = useState(false)
+
   const handleOpenPrintProforma = (proforma: any, order?: any) => {
     if (!proforma) return
     const enriched = {
@@ -269,6 +275,38 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     } catch (err: any) {
       console.error('Failed to delete proforma invoice:', err);
       toast(err.message || 'Failed to delete proforma invoice', 'error');
+    }
+  };
+
+  const handleOpenChangeOrderNoModal = (order: any) => {
+    setChangeNumberTarget(order);
+    setNewOrderNoInput(order.orderNo || order.id || '');
+  };
+
+  const handleConfirmChangeOrderNo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changeNumberTarget) return;
+    const cleanNo = newOrderNoInput.trim().replace(/\s+/g, '');
+    if (!cleanNo) {
+      toast('Please enter a valid Sales Order number.', 'error');
+      return;
+    }
+    if (cleanNo === (changeNumberTarget.orderNo || changeNumberTarget.id)) {
+      setChangeNumberTarget(null);
+      return;
+    }
+    try {
+      setSubmittingChangeNumber(true);
+      await changeSalesOrderNumber(changeNumberTarget.id || changeNumberTarget.orderNo, cleanNo);
+      toast(`Sales Order number changed to ${cleanNo}!`, 'success');
+      setChangeNumberTarget(null);
+      refetch();
+      refetchInvoices();
+    } catch (err: any) {
+      console.error('Failed to change Sales Order number:', err);
+      toast(err.message || 'Failed to change Sales Order number', 'error');
+    } finally {
+      setSubmittingChangeNumber(false);
     }
   };
 
@@ -2127,6 +2165,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <Edit size={13} /> Edit Sales Order Details{!canEditOrder && ' (Admin Approval Required)'}
             </button>
 
+            {/* Change Sales Order Number */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                handleOpenChangeOrderNoModal(order)
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-amber-600 dark:text-amber-400 font-medium"
+            >
+              <Hash size={13} className="text-amber-500" /> Change Order Number
+            </button>
+
             {/* View Sample Inspection Photos */}
             {(() => {
               const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
@@ -2598,9 +2648,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {/* Order No & Dates */}
                     <td className="px-3.5 py-2.5">
                       <div className="flex flex-col">
-                        <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
-                          {order.orderNo}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
+                            {order.orderNo}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenChangeOrderNoModal(order);
+                            }}
+                            title="Change Sales Order Number"
+                            className="p-0.5 text-muted hover:text-amber-600 hover:bg-amber-500/10 transition-colors rounded"
+                          >
+                            <Edit3 size={11} />
+                          </button>
+                        </div>
                         {(() => {
                           const isPoPending = isOrderPoPending(order);
                           const hasPo = order.customerPoNo && !isPoPending && order.customerPoNo !== 'WITHOUT PO';
@@ -4790,6 +4853,80 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           settings={settings}
           onDelete={handleDeleteProforma}
         />
+      )}
+
+      {/* Change Sales Order Number Modal */}
+      {changeNumberTarget && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (!submittingChangeNumber) setChangeNumberTarget(null);
+          }}
+          title={`Change Sales Order Number — #${changeNumberTarget.orderNo || changeNumberTarget.id}`}
+        >
+          <form onSubmit={handleConfirmChangeOrderNo} className="space-y-4">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-none text-xs text-amber-700 dark:text-amber-400 space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <AlertTriangle size={14} className="shrink-0" /> Important Data Integrity Notice
+              </div>
+              <p>
+                Changing the Sales Order number will update all linked Work Orders, Invoices, Delivery Gate Passes, and Receipts. Existing orders and other numbers in the system remain safe and unaffected.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-secondary uppercase tracking-wider mb-1">
+                Current Sales Order Number
+              </label>
+              <input
+                type="text"
+                disabled
+                value={changeNumberTarget.orderNo || changeNumberTarget.id}
+                className="w-full bg-surface2 border border-theme-subtle rounded-none p-2 font-mono text-xs text-muted cursor-not-allowed"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-secondary uppercase tracking-wider mb-1">
+                New Sales Order Number <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                autoFocus
+                required
+                value={newOrderNoInput}
+                onChange={(e) => setNewOrderNoInput(e.target.value)}
+                placeholder="e.g. SO-6004, SO-1001"
+                className="w-full bg-surface border border-theme-subtle rounded-none p-2 font-mono text-xs text-primary outline-none focus:border-amber-500"
+              />
+              <span className="text-[11px] text-muted mt-1 block">
+                Enter your preferred order number. Spaces will be trimmed automatically.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-theme-subtle">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setChangeNumberTarget(null)}
+                disabled={submittingChangeNumber}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={submittingChangeNumber}
+                className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold"
+              >
+                Update Order Number
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
 
 
