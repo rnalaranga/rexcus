@@ -54,6 +54,7 @@ import {
 interface FinishedGoodsOrdersViewProps {
   onRefreshProducts?: () => void
   onOpenProductBOM?: (product: any) => void
+  isStoresView?: boolean
 }
 
 const isOrderPoPending = (order: any): boolean => {
@@ -67,7 +68,8 @@ const isOrderPoPending = (order: any): boolean => {
 
 export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = ({
   onRefreshProducts,
-  onOpenProductBOM
+  onOpenProductBOM,
+  isStoresView = false
 }) => {
   const navigate = useNavigate()
   const { user, can } = useAuth()
@@ -79,6 +81,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     user?.permissions?.includes('admin')
   )
   const isStoreRole = Boolean(
+    isStoresView ||
     user?.role === 'store_keeper' ||
     user?.role === 'store_assistant' ||
     user?.roleName?.toLowerCase().includes('store') ||
@@ -2216,24 +2219,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             }`}
           >
             <ShoppingCart size={14} />
-            <span>Sales Orders ({orders.length})</span>
+            <span>{isStoreRole ? 'Sales Orders for Stores' : 'Sales Orders'} ({orders.length})</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveViewTab('proformas')
-              setSearchParams({ tab: 'proformas' })
-            }}
-            className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
-              activeViewTab === 'proformas'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-500/10'
-                : 'border-transparent text-secondary hover:text-primary hover:bg-surface2/40'
-            }`}
-          >
-            <FileText size={14} />
-            <span>Advance Proforma Invoices ({proformaInvoicesList.length})</span>
-          </button>
+          {!isStoreRole && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveViewTab('proformas')
+                setSearchParams({ tab: 'proformas' })
+              }}
+              className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                activeViewTab === 'proformas'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-500/10'
+                  : 'border-transparent text-secondary hover:text-primary hover:bg-surface2/40'
+              }`}
+            >
+              <FileText size={14} />
+              <span>Advance Proforma Invoices ({proformaInvoicesList.length})</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -3,8 +3,17 @@ import { ShoppingBag, ArrowLeft, Plus } from 'lucide-react'
 import { FinishedGoodsOrdersView } from '@/pages/inventory/FinishedGoodsOrdersView'
 import { Badge } from '@/components/ui/Badge'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
+import { useAuth } from '@/contexts/AuthContext'
 
 export const SalesOrdersHub: React.FC = () => {
+  const { user } = useAuth()
+  const isStoreRole = Boolean(
+    user?.role === 'store_keeper' ||
+    user?.role === 'store_assistant' ||
+    user?.roleName?.toLowerCase().includes('store') ||
+    user?.roleName?.toLowerCase().includes('warehouse')
+  );
+
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
@@ -15,13 +24,17 @@ export const SalesOrdersHub: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold text-primary tracking-tight">Sales Orders & Commercial Dispatch</h1>
+              <h1 className="text-xl font-bold text-primary tracking-tight">
+                {isStoreRole ? 'Sales Orders for Stores' : 'Sales Orders & Commercial Dispatch'}
+              </h1>
               <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 text-xs font-semibold uppercase tracking-wider rounded-none">
-                CRM Orders
+                {isStoreRole ? 'Stores Dispatch' : 'CRM Orders'}
               </Badge>
             </div>
             <p className="text-xs text-muted mt-0.5">
-              Approved commercial orders, sales order PDFs, invoice conversions, and security gate pass dispatches.
+              {isStoreRole 
+                ? 'Store dispatch station for client sales orders, security gate passes and delivery quantities.'
+                : 'Approved commercial orders, sales order PDFs, invoice conversions, and security gate pass dispatches.'}
             </p>
           </div>
         </div>

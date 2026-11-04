@@ -1480,9 +1480,9 @@ export const Inventory: React.FC = () => {
                 icon={ShoppingCart} 
                 onClick={() => navigate('/crm/sales-orders')}
                 className="text-xs text-secondary hover:text-primary border border-theme-subtle"
-                title="View Sales Orders dispatched or pending"
+                title="View Sales Orders for Stores (Dispatch Only)"
               >
-                Sales Orders
+                Sales Orders for Stores
               </Button>
               <Button 
                 variant="ghost" 
@@ -1611,7 +1611,7 @@ export const Inventory: React.FC = () => {
                 onClick={() => setFinishedSubTab('orders')}
                 className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 ${finishedSubTab === 'orders' ? 'bg-rex-600 text-white shadow-sm font-bold' : 'bg-surface hover:bg-surface2 text-primary border border-theme-subtle'}`}
               >
-                <ShoppingCart size={14} /> Customer Orders ({fgOrders.length})
+                <ShoppingCart size={14} /> Sales Orders for Stores ({fgOrders.length})
               </button>
             </div>
 
@@ -1701,6 +1701,7 @@ export const Inventory: React.FC = () => {
         />
       ) : activeTab === 'finished_product' && finishedSubTab === 'orders' ? (
         <FinishedGoodsOrdersView
+          isStoresView={true}
           onRefreshProducts={refetch}
           onOpenProductBOM={(prod) => {
             setSelectedFinishedProduct(prod)
