@@ -443,7 +443,7 @@ export const ProductQuotations: React.FC = () => {
 
       // 1. Status filter
       if (statusFilter === 'all') {
-        if (isDraft) return false;
+        if (isDraft && !search.trim()) return false;
       } else if (statusFilter === 'draft') {
         if (!isDraft) return false;
       } else {

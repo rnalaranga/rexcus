@@ -986,7 +986,7 @@ export const Quotations: React.FC = () => {
     const isAutoDraft = latestMain?.type === "draft";
 
     // Category filter
-    if (categoryFilter !== "all") {
+    if (categoryFilter !== "all" && !search) {
       if (categoryFilter === "product" && !g.isProduct) return false;
       if (categoryFilter === "custom" && g.isProduct) return false;
     }
@@ -1010,8 +1010,8 @@ export const Quotations: React.FC = () => {
       const latestStatus = (latestMain?.status || "Draft").toLowerCase();
       const isDraft = isAutoDraft || latestStatus === "draft";
       if (statusFilter === "all") {
-        // Hide drafts from the main list so "All" stays clean for confirmed/real quotations
-        if (isDraft) return false;
+        // Hide drafts from the main list so "All" stays clean for confirmed/real quotations, unless user explicitly searched for it
+        if (isDraft && !search) return false;
       } else if (statusFilter === "draft") {
         if (!isDraft) return false;
       } else if (statusFilter.toLowerCase() === "po pending") {
