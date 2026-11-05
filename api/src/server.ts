@@ -1527,6 +1527,14 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN approvedBy VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN approvedAt DATETIME DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN rejectionReason TEXT DEFAULT NULL",
+    "ALTER TABLE quotations CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    "ALTER TABLE leads CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    "ALTER TABLE customers CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    "ALTER TABLE quotations ADD INDEX idx_quo_date (date)",
+    "ALTER TABLE quotations ADD INDEX idx_quo_leadId (leadId)",
+    "ALTER TABLE quotations ADD INDEX idx_quo_no (quotationNo)",
+    "ALTER TABLE quotations ADD INDEX idx_quo_status (status)",
+    "ALTER TABLE leads ADD INDEX idx_leads_cust (customerId)",
     "ALTER TABLE customers ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
     "ALTER TABLE customers ADD COLUMN paymentTerms TEXT",
     "ALTER TABLE customers ADD COLUMN deliveryTerms TEXT",
@@ -3179,8 +3187,8 @@ app.get('/api/quotations', async (req, res) => {
         COALESCE(c.vat, l.vat, '') as leadVat,
         COALESCE(c.svat, l.svat, '') as leadSvat
       FROM quotations q 
-      LEFT JOIN leads l ON (q.leadId = l.id OR l.id = CONCAT('LEAD-', LPAD(q.leadId, 3, '0')) OR q.leadId = l.customerId OR q.leadId = REPLACE(l.id, 'LEAD-', ''))
-      LEFT JOIN customers c ON (q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
+      LEFT JOIN customers c ON q.leadId = c.id
+      LEFT JOIN leads l ON (q.leadId = l.id OR q.leadId = l.customerId)
       ORDER BY q.date DESC`);
       res.json(rows);
     } catch (error) {

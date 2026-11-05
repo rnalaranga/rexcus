@@ -33,6 +33,7 @@ import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSect
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { CreateSalesOrderModal } from '@/components/crm/CreateSalesOrderModal'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
+import { Pagination } from '@/components/ui/Pagination'
 import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { GatePassPrintModal } from '@/components/GatePassPrintModal'
@@ -1104,6 +1105,24 @@ export const Quotations: React.FC = () => {
       return 0;
     });
   }, [filtered, qSortField, qSortDir]);
+
+  // Pagination State & Logic
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, categoryFilter, customerFilter, startDate, endDate, qSortField, qSortDir]);
+
+  const totalQuotations = sortedQuotations.length;
+  const totalPages = Math.max(1, Math.ceil(totalQuotations / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalQuotations);
+
+  const paginatedQuotations = useMemo(() => {
+    return sortedQuotations.slice(startIndex, endIndex);
+  }, [sortedQuotations, startIndex, endIndex]);
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
 
@@ -2243,12 +2262,17 @@ export const Quotations: React.FC = () => {
                     <input
                       type="checkbox"
                       className="w-3.5 h-3.5 cursor-pointer accent-rex-500 rounded-none shrink-0"
-                      checked={filtered.length > 0 && selectedQuotes.length === filtered.length}
+                      checked={paginatedQuotations.length > 0 && paginatedQuotations.every(g => selectedQuotes.includes(g.quoNo))}
                       onChange={(e) => {
-                        if (e.target.checked) setSelectedQuotes(filtered.map(g => g.quoNo));
-                        else setSelectedQuotes([]);
+                        if (e.target.checked) {
+                          const pageKeys = paginatedQuotations.map(g => g.quoNo);
+                          setSelectedQuotes(prev => Array.from(new Set([...prev, ...pageKeys])));
+                        } else {
+                          const pageKeys = new Set(paginatedQuotations.map(g => g.quoNo));
+                          setSelectedQuotes(prev => prev.filter(q => !pageKeys.has(q)));
+                        }
                       }}
-                      title="Select all"
+                      title="Select all on this page"
                     />
                   </th>
                   <th 
@@ -2310,7 +2334,7 @@ export const Quotations: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
-                {sortedQuotations.map((group, idx) => {
+                {paginatedQuotations.map((group, idx) => {
                   const approvedOrReal = group.main.find((m: any) => m.type !== 'draft' && m.type !== 'product_draft' && (m.status || '').toLowerCase() !== 'draft');
                   const latestMain = approvedOrReal || group.main[0];
                   const latestJob = group.job[0];
@@ -2980,7 +3004,7 @@ export const Quotations: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-          {filtered.map((group, idx) => {
+          {paginatedQuotations.map((group, idx) => {
             const approvedOrReal = group.main.find((m: any) => m.type !== 'draft' && m.type !== 'product_draft' && (m.status || '').toLowerCase() !== 'draft');
             const latestMain = approvedOrReal || group.main[0];
             const latestJob = group.job[0];
@@ -3269,6 +3293,23 @@ export const Quotations: React.FC = () => {
               </GlassCard>
             );
           })}
+        </div>
+      )}
+
+      {totalQuotations > 0 && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={safeCurrentPage}
+            pageSize={pageSize}
+            totalItems={totalQuotations}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[15, 25, 50, 100]}
+            itemLabel="quotations"
+          />
         </div>
       )}
 

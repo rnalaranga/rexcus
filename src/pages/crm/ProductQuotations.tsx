@@ -40,6 +40,7 @@ import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal
 import { GatePassPrintModal } from '@/components/GatePassPrintModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
+import { Pagination } from '@/components/ui/Pagination'
 import { FileSpreadsheet } from 'lucide-react'
 import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
 
@@ -525,6 +526,24 @@ export const ProductQuotations: React.FC = () => {
       return 0;
     });
   }, [filteredGroups, pqSortField, pqSortDir]);
+
+  // Pagination State & Logic
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, customerFilter, startDate, endDate, pqSortField, pqSortDir]);
+
+  const totalQuotations = sortedGroups.length;
+  const totalPages = Math.max(1, Math.ceil(totalQuotations / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalQuotations);
+
+  const paginatedGroups = useMemo(() => {
+    return sortedGroups.slice(startIndex, endIndex);
+  }, [sortedGroups, startIndex, endIndex]);
 
   // Status Change
   const handleStatusChange = async (id: string, newStatus: string, currentStatus?: string) => {
@@ -1597,7 +1616,7 @@ export const ProductQuotations: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
-                {sortedGroups.map((group: any, idx: number) => {
+                {paginatedGroups.map((group: any, idx: number) => {
                   const latest = group.versions[0];
                   const parsed = latest?.parsed || {};
                   const status = latest?.status || 'Draft';
@@ -2183,7 +2202,7 @@ export const ProductQuotations: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-          {filteredGroups.map((group: any, idx: number) => {
+          {paginatedGroups.map((group: any, idx: number) => {
             const latest = group.versions[0];
             const parsed = latest?.parsed || {};
             const status = latest?.status || 'Draft';
@@ -2356,6 +2375,23 @@ export const ProductQuotations: React.FC = () => {
               </GlassCard>
             );
           })}
+        </div>
+      )}
+
+      {totalQuotations > 0 && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={safeCurrentPage}
+            pageSize={pageSize}
+            totalItems={totalQuotations}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[15, 25, 50, 100]}
+            itemLabel="quotations"
+          />
         </div>
       )}
 
