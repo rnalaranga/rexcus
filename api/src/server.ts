@@ -169,7 +169,7 @@ async function getWarmBrowser() {
   try {
     sharedWarmBrowser = await puppeteer.launch({
       executablePath: chromePath,
-      headless: 'new',
+      headless: true as any,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -451,7 +451,7 @@ app.get('/api/machining-operations', async (req, res) => {
 app.post('/api/machining-operations', async (req, res) => {
   try {
     const { groupName, name, hrRate, setTimeRate, machineId } = req.body;
-    const [result] = await db.query(
+    const [result]: any = await db.query(
       'INSERT INTO machining_operations (groupName, name, hrRate, setTimeRate, machineId) VALUES (?, ?, ?, ?, ?)',
       [groupName, name, hrRate || 0, setTimeRate || 0, machineId || null]
     );
@@ -525,8 +525,8 @@ app.delete('/api/production/categories/:id', async (req, res) => {
 // ==========================
 app.get('/api/production/machineries/:id/operators', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT employeeId FROM employee_machines WHERE machineId=?', [req.params.id]);
-    res.json(rows.map(r => r.employeeId));
+    const [rows]: any = await db.query('SELECT employeeId FROM employee_machines WHERE machineId=?', [req.params.id]);
+    res.json(rows.map((r: any) => r.employeeId));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2975,7 +2975,7 @@ app.put('/api/customers/:id', async (req, res) => {
       }
     }
     
-    const [existingRows] = await db.query('SELECT creditLimit, requiresAdvance, creditDays FROM customers WHERE id = ?', [id]);
+    const [existingRows]: any = await db.query('SELECT creditLimit, requiresAdvance, creditDays FROM customers WHERE id = ?', [id]);
     if (existingRows.length > 0) {
        const existing = existingRows[0];
        let isPending = false;
@@ -3287,8 +3287,9 @@ app.post('/api/quotations', async (req, res) => {
     const qType = data.type || 'customer';
     const qData = data.data ? (typeof data.data === 'string' ? JSON.parse(data.data) : data.data) : {};
     const qNo = data.quotationNo || qData.quotationNo || null;
-    const createdBy = data.createdBy || qData.createdBy || (req.user && (req.user.id || req.user.username)) || null;
-    const createdByName = data.createdByName || qData.createdByName || (req.user && (req.user.name || req.user.username)) || null;
+    const reqUser = (req as any).user;
+    const createdBy = data.createdBy || qData.createdBy || (reqUser && (reqUser.id || reqUser.username)) || null;
+    const createdByName = data.createdByName || qData.createdByName || (reqUser && (reqUser.name || reqUser.username)) || null;
 
     // 1. If explicit id is provided and exists in DB, update instead of creating duplicate
     if (data.id) {
@@ -9036,9 +9037,9 @@ app.post('/api/finance/accounts/import', async (req, res) => {
         createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
       };
       
-      const [existing] = await db.query('SELECT id FROM chart_of_accounts WHERE code = ?', [data.code]);
+      const [existing]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = ?', [data.code]);
       if (existing.length > 0) {
-        data.updatedAt = data.createdAt;
+        (data as any).updatedAt = data.createdAt;
         delete data.createdAt;
         await db.query('UPDATE chart_of_accounts SET ? WHERE id = ?', [data, existing[0].id]);
       } else {
@@ -9080,8 +9081,8 @@ app.delete('/api/finance/accounts/:id', async (req, res) => {
 
 app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
   try {
-    const [account] = await db.query('SELECT * FROM chart_of_accounts WHERE id = ?', [req.params.id]);
-    const [lines] = await db.query(
+    const [account]: any = await db.query('SELECT * FROM chart_of_accounts WHERE id = ?', [req.params.id]);
+    const [lines]: any = await db.query(
       `SELECT jl.*, je.date, je.reference, je.description as entryDescription
        FROM journal_lines jl
        JOIN journal_entries je ON jl.entryId = je.id
@@ -9193,14 +9194,14 @@ app.delete('/api/finance/journals/:id', async (req, res) => {
   try {
     const entryId = req.params.id;
     // Get all lines to revert balances
-    const [lines] = await conn.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId = ?', [entryId]);
+    const [lines]: any = await conn.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId = ?', [entryId]);
     
     // Begin Transaction
     await conn.beginTransaction();
     
     // Revert balances
     for (const line of lines) {
-      const [accRows] = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+      const [accRows]: any = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
       if (accRows.length > 0) {
         const type = accRows[0].type.toLowerCase();
         let isDebitNormal = type.includes('asset') || type.includes('expense');
@@ -10146,14 +10147,14 @@ app.delete('/api/finance/payment-receipts/:id', async (req, res) => {
 // ==========================================
 app.get('/api/finance/reports/trial-balance', async (req, res) => {
   try {
-    const [accounts] = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');
-    const [lines] = await db.query('SELECT accountId, SUM(debit) as totalDebit, SUM(credit) as totalCredit FROM journal_lines GROUP BY accountId');
+    const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');
+    const [lines]: any = await db.query('SELECT accountId, SUM(debit) as totalDebit, SUM(credit) as totalCredit FROM journal_lines GROUP BY accountId');
     
     let totalDebit = 0;
     let totalCredit = 0;
     
-    const result = accounts.map(acc => {
-      const line = lines.find(l => l.accountId === acc.id) || { totalDebit: 0, totalCredit: 0 };
+    const result = accounts.map((acc: any) => {
+      const line = lines.find((l: any) => l.accountId === acc.id) || { totalDebit: 0, totalCredit: 0 };
       const debit = Number(line.totalDebit);
       const credit = Number(line.totalCredit);
       let netDebit = 0;
@@ -10166,36 +10167,36 @@ app.get('/api/finance/reports/trial-balance', async (req, res) => {
       return { ...acc, debit: netDebit, credit: netCredit };
     });
     
-    res.json({ accounts: result.filter(a => a.debit > 0 || a.credit > 0), totalDebit, totalCredit });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ accounts: result.filter((a: any) => a.debit > 0 || a.credit > 0), totalDebit, totalCredit });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/finance/reports/expenses', async (req, res) => { try { const [lines] = await db.query('SELECT jl.*, je.date, je.reference, ca.name as accountName, ca.code as accountCode FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.type = \'Expense\' ORDER BY je.date DESC'); let total = 0; lines.forEach(l => total += Number(l.debit) - Number(l.credit)); res.json({ lines, total }); } catch(e){ res.status(500).json({error:e.message}); } });
+app.get('/api/finance/reports/expenses', async (req, res) => { try { const [lines]: any = await db.query('SELECT jl.*, je.date, je.reference, ca.name as accountName, ca.code as accountCode FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.type = \'Expense\' ORDER BY je.date DESC'); let total = 0; lines.forEach((l: any) => total += Number(l.debit) - Number(l.credit)); res.json({ lines, total }); } catch(e: any){ res.status(500).json({error:e.message}); } });
 
 app.get('/api/finance/reports/pnl', async (req, res) => {
   try {
-    const [accounts] = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Revenue", "Expense") ORDER BY code ASC');
+    const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Revenue", "Expense") ORDER BY code ASC');
     let totalRevenue = 0;
     let totalExpense = 0;
     
-    accounts.forEach(acc => {
+    accounts.forEach((acc: any) => {
       if (acc.type === 'Revenue') totalRevenue += Number(acc.balance);
       if (acc.type === 'Expense') totalExpense += Number(acc.balance);
     });
     
     res.json({
-      revenue: accounts.filter(a => a.type === 'Revenue'),
-      expenses: accounts.filter(a => a.type === 'Expense'),
+      revenue: accounts.filter((a: any) => a.type === 'Revenue'),
+      expenses: accounts.filter((a: any) => a.type === 'Expense'),
       totalRevenue,
       totalExpense,
       netProfit: totalRevenue - totalExpense
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/finance/reports/balance-sheet', async (req, res) => {
   try {
-    const [accounts] = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Asset", "Liability", "Equity", "Revenue", "Expense") ORDER BY code ASC');
+    const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Asset", "Liability", "Equity", "Revenue", "Expense") ORDER BY code ASC');
     
     let totalAssets = 0;
     let totalLiabilities = 0;
@@ -10203,7 +10204,7 @@ app.get('/api/finance/reports/balance-sheet', async (req, res) => {
     
     let netProfit = 0;
     
-    accounts.forEach(acc => {
+    accounts.forEach((acc: any) => {
       if (acc.type === 'Revenue') netProfit += Number(acc.balance);
       if (acc.type === 'Expense') netProfit -= Number(acc.balance);
       
@@ -10216,9 +10217,9 @@ app.get('/api/finance/reports/balance-sheet', async (req, res) => {
     totalEquity += netProfit;
     
     res.json({
-      assets: accounts.filter(a => a.type === 'Asset'),
-      liabilities: accounts.filter(a => a.type === 'Liability'),
-      equity: accounts.filter(a => a.type === 'Equity'),
+      assets: accounts.filter((a: any) => a.type === 'Asset'),
+      liabilities: accounts.filter((a: any) => a.type === 'Liability'),
+      equity: accounts.filter((a: any) => a.type === 'Equity'),
       totalAssets,
       totalLiabilities,
       totalEquity,
@@ -10235,7 +10236,7 @@ app.get('/api/finance/reports/balance-sheet', async (req, res) => {
 // ==========================================
 app.get('/api/finance/dashboard', async (req, res) => {
   try {
-    const [accounts] = await db.query('SELECT * FROM chart_of_accounts');
+    const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts');
     
     let totalCash = 0;
     let totalAR = 0;
@@ -10300,12 +10301,12 @@ app.get('/api/finance/reports/aged', async (req, res) => {
 app.get('/api/finance/reports/tax', async (req, res) => {
   try {
     // Basic tax report logic: Get all tax accounts and their balances
-    const [taxAccounts] = await db.query('SELECT * FROM chart_of_accounts WHERE isTaxAccount = true');
+    const [taxAccounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE isTaxAccount = true');
     // Also get journal lines hitting tax accounts for detailed breakdown
-    const [taxLines] = await db.query('SELECT jl.*, je.date, je.reference FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.isTaxAccount = true ORDER BY je.date DESC');
+    const [taxLines]: any = await db.query('SELECT jl.*, je.date, je.reference FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.isTaxAccount = true ORDER BY je.date DESC');
     
     let totalTaxPayable = 0;
-    taxAccounts.forEach(acc => {
+    taxAccounts.forEach((acc: any) => {
       totalTaxPayable += Number(acc.balance);
     });
 
@@ -10688,15 +10689,15 @@ app.get('/api/production/machineries', async (req, res) => {
       const [machineries] = await db.query('SELECT * FROM machineries ORDER BY createdAt DESC');
       let empMachines = [];
       try {
-        const [rows] = await db.query('SELECT em.machineId, em.employeeId, e.name FROM employee_machines em JOIN employees e ON em.employeeId = e.id');
+        const [rows]: any = await db.query('SELECT em.machineId, em.employeeId, e.name FROM employee_machines em JOIN employees e ON em.employeeId = e.id');
         empMachines = rows;
       } catch(e) {
         console.error("Error fetching employee_machines:", e);
       }
       
-      const enriched = machineries.map(m => ({
+      const enriched = (machineries as any[]).map(m => ({
         ...m,
-        operators: empMachines.filter(em => em.machineId === m.id).map(em => em.name)
+        operators: empMachines.filter((em: any) => em.machineId === m.id).map((em: any) => em.name)
       }));
       
       res.json(enriched);
@@ -10800,14 +10801,14 @@ app.post('/api/hr/employees/:id/skills', async (req, res) => {
 // ==========================
 app.get('/api/hr/employees', async (req, res) => {
   try {
-    const [employees] = await db.query('SELECT * FROM employees ORDER BY createdAt DESC');
-    const [machineAssignments] = await db.query('SELECT employeeId, machineId FROM employee_machines');
-    const [skillAssignments] = await db.query('SELECT employeeId, skillId FROM employee_skills');
+    const [employees]: any = await db.query('SELECT * FROM employees ORDER BY createdAt DESC');
+    const [machineAssignments]: any = await db.query('SELECT employeeId, machineId FROM employee_machines');
+    const [skillAssignments]: any = await db.query('SELECT employeeId, skillId FROM employee_skills');
     
-    const enriched = employees.map(emp => ({
+    const enriched = employees.map((emp: any) => ({
       ...emp,
-      machineIds: machineAssignments.filter(a => a.employeeId === emp.id).map(a => a.machineId),
-      skillIds: skillAssignments.filter(a => a.employeeId === emp.id).map(a => a.skillId)
+      machineIds: machineAssignments.filter((a: any) => a.employeeId === emp.id).map((a: any) => a.machineId),
+      skillIds: skillAssignments.filter((a: any) => a.employeeId === emp.id).map((a: any) => a.skillId)
     }));
     
     res.json(enriched);
@@ -13766,8 +13767,8 @@ app.post('/api/currencies/sync', async (req, res) => {
     const response = await fetch('https://open.er-api.com/v6/latest/LKR');
     const data = await response.json();
     if (data && data.rates) {
-      const [existing] = await db.query('SELECT code FROM currencies');
-      const existingCodes = existing.map(c => c.code);
+      const [existing]: any = await db.query('SELECT code FROM currencies');
+      const existingCodes = existing.map((c: any) => c.code);
       if (!existingCodes.includes('LKR')) {
         await db.query('INSERT INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES (?, ?, ?, ?, ?)', ['LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1]);
       }
@@ -13803,7 +13804,7 @@ setInterval(async () => {
     const response = await fetch('https://open.er-api.com/v6/latest/LKR');
     const data = await response.json();
     if (data && data.rates) {
-      const [existing] = await db.query('SELECT code FROM currencies');
+      const [existing]: any = await db.query('SELECT code FROM currencies');
       for (const row of existing) {
         const code = row.code;
         if (data.rates[code] && code !== 'LKR') {

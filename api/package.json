@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.24.3",
     "nodemailer": "^10.1.1",
+    "@puppeteer/browsers": "^3.2.6",
     "puppeteer-core": "^25.16.0",
     "yauzl": "^3.4.0"
   },

@@ -17,11 +17,12 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          timeout: 60s
+          timeout: 180s
           command_timeout: 25m
           script: |
             set -e
             echo "=== Rexcus Deployment Started ==="
+            export NODE_OPTIONS="--max-old-space-size=4096"
 
             # 0. Safety trap: whatever happens, always ensure PM2 backend is running upon exit
             trap 'echo "Safety trap: Ensuring backend is running..."; pm2 restart rexnw-backend --update-env || pm2 restart all || true; pm2 status || true' EXIT
@@ -86,7 +87,7 @@ jobs:
 
             # 7. Final PM2 Backend Restart & Save
             echo "Final PM2 restart and save..."
-            pm2 restart rexnw-backend --update-env || pm2 restart all
+            pm2 restart rexnw-backend --update-env || pm2 restart all || true
             pm2 save || true
             pm2 status
 
