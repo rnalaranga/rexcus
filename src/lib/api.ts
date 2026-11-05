@@ -593,7 +593,7 @@ export const deleteInvoice = async (id: string) => {
 export const addInvoicePayment = async (id: string, data: any) => {
   const res = await fetch(`${API_URL}/invoices/${id}/payments`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   return res.json();
@@ -906,7 +906,7 @@ export const settleCustomerOutstanding = async (data: {
 }) => {
   const res = await fetch(`${API_URL}/finance/receivables/settle`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   const json = await res.json();

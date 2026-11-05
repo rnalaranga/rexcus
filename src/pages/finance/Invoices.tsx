@@ -25,13 +25,19 @@ import { exportPdf } from '@/lib/exportPdf'
 
 export const Invoices: React.FC = () => {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
   const isAdmin = Boolean(
     user?.role === 'admin' ||
     user?.roleName?.toLowerCase() === 'admin' ||
     user?.roleName?.toLowerCase().includes('administrator') ||
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
+  )
+  const canRecordPayment = Boolean(
+    user?.role === 'finance_manager' ||
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'finance manager' ||
+    can('finance.payments.record')
   )
   const { data: invoices, loading, refetch } = useInvoices()
   const { data: leads } = useLeads()
@@ -204,6 +210,10 @@ export const Invoices: React.FC = () => {
     const pAmount = parseFloat(paymentData.amount);
     if (isNaN(pAmount) || pAmount <= 0) {
       showToast('error', 'Please enter a valid payment amount');
+      return;
+    }
+    if (!canRecordPayment) {
+      showToast('error', 'Access Denied: Only the Finance Manager is authorized to record payments on invoices.');
       return;
     }
     setSubmitting(true);
@@ -1120,7 +1130,7 @@ export const Invoices: React.FC = () => {
               <div className="flex-1 overflow-y-auto p-5">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="text-[11px] font-black text-primary uppercase tracking-widest">Payment History</h4>
-                  {viewInvoice.status !== 'paid' && (
+                  {viewInvoice.status !== 'paid' && canRecordPayment && (
                     <Button variant="ghost" size="sm" className="h-6 text-[10px] border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 px-2 rounded-md" onClick={() => setShowPaymentModal(true)}>
                       + Record
                     </Button>

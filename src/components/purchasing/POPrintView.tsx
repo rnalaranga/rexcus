@@ -42,6 +42,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
   }
 
   const supp = supplier || po.supplier || {};
+  const isTaxInclusive = Boolean(po.isTaxInclusive || taxBreakdown?.isTaxInclusive);
   const subtotal = Number(po.subtotal || 0);
   const tax = Number(po.tax || 0);
   const shippingCost = Number(po.shippingCost || 0);
@@ -395,7 +396,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
           {/* Sub Total */}
           <tr className="border-t border-b border-black h-5 text-[10px] bg-gray-50/30">
             <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right font-bold pr-4">
-              Sub Total
+              {isTaxInclusive ? 'Base Supply Value (Excl. Tax)' : 'Sub Total'}
             </td>
             <td className="font-bold text-center border-l border-black font-mono">
               LKR
@@ -439,7 +440,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
               {Number(taxBreakdown.tax2Amount || 0) > 0 && (
                 <tr className="border-b border-black h-5 text-[10px]">
                   <td colSpan={mrIds.length > 1 ? 4 : 3} className="text-right pr-4 text-neutral-700">
-                    {taxBreakdown.tax2Name || 'VAT'} ({Number(taxBreakdown.tax2Rate || 0)}%)
+                    {taxBreakdown.tax2Name || 'VAT'} ({Number(taxBreakdown.tax2Rate || 0)}%{isTaxInclusive ? ' Extracted' : ''})
                   </td>
                   <td className="text-center border-l border-black font-mono font-semibold">
                     LKR

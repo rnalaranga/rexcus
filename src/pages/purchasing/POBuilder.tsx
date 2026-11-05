@@ -140,7 +140,16 @@ export const POBuilder: React.FC = () => {
   const [paymentTerms, setPaymentTerms] = useState('Net 30');
   
   const [taxEnabled, setTaxEnabled] = useState(false);
-  const [taxProfileId, setTaxProfileId] = useState('');
+  const [taxProfileId, setTaxProfileId] = useState('tp_opt2_sscl_absorbed_vat_sep');
+  const [isTaxInclusive, setIsTaxInclusive] = useState(false);
+
+  useEffect(() => {
+    if (taxProfiles && taxProfiles.length > 0 && !taxProfileId) {
+      const opt2 = taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
+      if (opt2) setTaxProfileId(opt2.id);
+      else setTaxProfileId(taxProfiles[0].id);
+    }
+  }, [taxProfiles, taxProfileId]);
 
   const [items, setItems] = useState<POItem[]>([]);
   const [shippingCost, setShippingCost] = useState(0);
@@ -193,6 +202,14 @@ export const POBuilder: React.FC = () => {
           if (existing.taxProfileId) {
             setTaxProfileId(existing.taxProfileId);
             setTaxEnabled(true);
+          }
+          if (existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null) {
+            setIsTaxInclusive(Boolean(Number(existing.isTaxInclusive) === 1));
+          } else if (existing.taxBreakdown) {
+            try {
+              const tb = typeof existing.taxBreakdown === 'string' ? JSON.parse(existing.taxBreakdown) : existing.taxBreakdown;
+              if (tb && tb.isTaxInclusive) setIsTaxInclusive(true);
+            } catch (e) {}
           }
           const existingItems = typeof existing.items === 'string' ? JSON.parse(existing.items) : existing.items || [];
           setItems(existingItems.map((i: any) => {
@@ -483,28 +500,90 @@ export const POBuilder: React.FC = () => {
   if (taxEnabled && selectedTaxProfile) {
     const t1Rate = Number(selectedTaxProfile.tax1_rate) || 0;
     const t2Rate = Number(selectedTaxProfile.tax2_rate) || 0;
-    const isCompound = Boolean(selectedTaxProfile.tax2_compound);
+    const t1 = t1Rate / 100;
+    const t2 = t2Rate / 100;
 
-    const tax1Amount = netTaxableAmount * (t1Rate / 100);
-    const tax2Base = isCompound ? (netTaxableAmount + tax1Amount) : netTaxableAmount;
-    const tax2Amount = tax2Base * (t2Rate / 100);
+    const isSsclHidden = Boolean(t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 0);
+    const isVatSeparate = Boolean(t2Rate > 0 ? selectedTaxProfile.tax2_show_separately === 1 : true);
+    const isSsclSeparate = Boolean(t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 1);
 
-    totalTax = tax1Amount + tax2Amount;
-    taxBreakdown = {
-      profileName: selectedTaxProfile.name,
-      tax1Name: selectedTaxProfile.tax1_name,
-      tax1Rate: t1Rate,
-      tax1Amount,
-      tax2Name: selectedTaxProfile.tax2_name,
-      tax2Rate: t2Rate,
-      tax2Amount,
-      isCompound
-    };
+    if (isTaxInclusive) {
+      let baseSubtotal = netTaxableAmount;
+      let t1Amount = 0;
+      let t2Amount = 0;
+
+      if (isSsclHidden && isVatSeparate) {
+        // Option 2: VAT separate, SSCL absorbed into supply value
+        baseSubtotal = netTaxableAmount / (1 + t2);
+        t2Amount = netTaxableAmount - baseSubtotal;
+        t1Amount = 0;
+      } else if (isSsclSeparate && isVatSeparate) {
+        // Option 3: Both separate
+        const divisor = selectedTaxProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+        baseSubtotal = netTaxableAmount / divisor;
+        t1Amount = baseSubtotal * t1;
+        const baseForT2 = selectedTaxProfile.tax2_compound ? (baseSubtotal + t1Amount) : baseSubtotal;
+        t2Amount = baseForT2 * t2;
+      } else {
+        // Option 1: Both absorbed
+        baseSubtotal = netTaxableAmount;
+        t1Amount = 0;
+        t2Amount = 0;
+      }
+
+      t1Amount = Math.round(t1Amount * 100) / 100;
+      t2Amount = Math.round((netTaxableAmount - (Math.round(baseSubtotal * 100) / 100) - t1Amount) * 100) / 100;
+      totalTax = t1Amount + t2Amount;
+      taxBreakdown = {
+        profileName: selectedTaxProfile.name,
+        tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
+        tax1Rate: t1Rate,
+        tax1Amount: t1Amount,
+        tax2Name: selectedTaxProfile.tax2_name || 'VAT',
+        tax2Rate: t2Rate,
+        tax2Amount: t2Amount,
+        isCompound: Boolean(selectedTaxProfile.tax2_compound),
+        isTaxInclusive: true
+      };
+    } else {
+      let t1Amount = 0;
+      let t2Amount = 0;
+
+      if (isSsclHidden && isVatSeparate) {
+        // Option 2: VAT separate, SSCL absorbed into supply value
+        t1Amount = 0;
+        t2Amount = netTaxableAmount * t2;
+      } else if (selectedTaxProfile.tax1_show_separately === 0 && selectedTaxProfile.tax2_show_separately === 0) {
+        // Option 1: Both absorbed
+        t1Amount = 0;
+        t2Amount = 0;
+      } else {
+        // Option 3 or VAT only
+        t1Amount = isSsclSeparate ? (netTaxableAmount * t1) : 0;
+        const baseForT2 = selectedTaxProfile.tax2_compound ? (netTaxableAmount + (netTaxableAmount * t1)) : netTaxableAmount;
+        t2Amount = isVatSeparate ? (baseForT2 * t2) : 0;
+      }
+
+      t1Amount = Math.round(t1Amount * 100) / 100;
+      t2Amount = Math.round(t2Amount * 100) / 100;
+      totalTax = t1Amount + t2Amount;
+      taxBreakdown = {
+        profileName: selectedTaxProfile.name,
+        tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
+        tax1Rate: t1Rate,
+        tax1Amount: t1Amount,
+        tax2Name: selectedTaxProfile.tax2_name || 'VAT',
+        tax2Rate: t2Rate,
+        tax2Amount: t2Amount,
+        isCompound: Boolean(selectedTaxProfile.tax2_compound),
+        isTaxInclusive: false
+      };
+    }
   } else {
     totalTax = items.reduce((sum, item) => sum + ((((Number(item.qty) || 0) * (Number(item.unitPrice) || 0) - (Number(item.discount) || 0))) * ((Number(item.taxRate) || 0) / 100)), 0);
   }
 
-  const grandTotal = netTaxableAmount + totalTax + shippingCost;
+  const grandTotal = isTaxInclusive ? (netTaxableAmount + shippingCost) : (netTaxableAmount + totalTax + shippingCost);
 
   // Filter all bills linked to this PO (Multiple Invoices per PO)
   const poBills = useMemo(() => {
@@ -534,11 +613,12 @@ export const POBuilder: React.FC = () => {
         mrIds: JSON.stringify(selectedMrIds),
         taxProfileId: (taxEnabled && selectedTaxProfile) ? taxProfileId : null,
         taxBreakdown: (taxEnabled && selectedTaxProfile) ? JSON.stringify(taxBreakdown) : null,
+        isTaxInclusive: (taxEnabled && selectedTaxProfile && isTaxInclusive) ? 1 : 0,
         supplierId, 
         date: date || new Date().toISOString().slice(0, 10), 
         expectedDate: expectedDate || null, 
         items, 
-        subtotal: Number(subtotal) || 0, 
+        subtotal: isTaxInclusive ? Math.max(0, Number((netTaxableAmount - totalTax).toFixed(2))) : (Number(subtotal) || 0), 
         tax: Number(totalTax) || 0, 
         totalAmount: Number(grandTotal) || 0, 
         notes, 
@@ -1049,7 +1129,7 @@ export const POBuilder: React.FC = () => {
               
               <div className="space-y-4 text-xs font-medium text-secondary">
                 <div className="flex justify-between items-center">
-                  <span>Subtotal</span>
+                  <span>{isTaxInclusive ? 'Gross Item Total (Inc. Tax)' : 'Subtotal'}</span>
                   <span className="text-foreground font-mono">{formatCurrency(subtotal)}</span>
                 </div>
                 {totalDiscount > 0 && (
@@ -1058,53 +1138,135 @@ export const POBuilder: React.FC = () => {
                     <span className="font-mono">-{formatCurrency(totalDiscount)}</span>
                   </div>
                 )}
+                {taxEnabled && isTaxInclusive && totalTax > 0 && (
+                  <div className="flex justify-between items-center text-muted">
+                    <span>Base Value (Excl. Tax)</span>
+                    <span className="font-mono text-primary font-semibold">{formatCurrency(Math.max(0, netTaxableAmount - totalTax))}</span>
+                  </div>
+                )}
 
-                {/* TAX PROFILES SELECTOR */}
+                {/* TAX PROFILES SELECTOR & VAT OPTIONS */}
                 <div className="py-2.5 border-t border-theme-subtle space-y-2 mt-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Tax Profile</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
-                      <input 
-                        type="checkbox" 
-                        checked={taxEnabled} 
-                        onChange={e => {
-                          setTaxEnabled(e.target.checked);
-                          if (!e.target.checked) setTaxProfileId('');
-                          else if (!taxProfileId && taxProfiles.length > 0) setTaxProfileId(taxProfiles[0].id);
-                        }} 
-                        className="rounded border-theme-subtle text-emerald-500 bg-surface" 
-                      />
-                      <span className="text-muted font-medium text-[11px]">Apply Tax</span>
-                    </label>
-                  </div>
-                  {taxEnabled && (
-                    <select 
-                      value={taxProfileId} 
-                      onChange={e => setTaxProfileId(e.target.value)} 
-                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 font-medium"
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Tax Profile / VAT</span>
+                    <button
+                      type="button"
+                      onClick={() => setTaxEnabled(t => !t)}
+                      className={`w-7 h-4 rounded-full transition-colors flex-shrink-0 relative flex items-center ${taxEnabled ? 'bg-emerald-500' : 'bg-surface2 border border-theme-subtle'}`}
+                      title={taxEnabled ? 'Tax enabled' : 'Tax disabled'}
                     >
-                      <option value="">-- Select Configured Tax Profile --</option>
-                      {taxProfiles.map((t: any) => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {taxEnabled && selectedTaxProfile && taxBreakdown && (
-                    <div className="bg-surface/50 p-2.5 rounded-lg border border-theme-subtle space-y-1.5 text-[11px]">
-                      {taxBreakdown.tax1Rate > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-muted">{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%):</span>
-                          <span className="font-mono">{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                      <span className={`block w-2.5 h-2.5 rounded-full bg-white shadow transition-transform mx-0.5 ${taxEnabled ? 'translate-x-3' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {taxEnabled && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_opt1_absorbed')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            taxProfileId === 'tp_opt1_absorbed'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          Option 1<br/><span className="text-[9px] font-normal opacity-80">Both Absorbed</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            taxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || taxProfileId === 'tp_vat_sscl'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          Option 2<br/><span className="text-[9px] font-normal opacity-80">SSCL In, VAT Sep</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_opt3_both_separate')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            taxProfileId === 'tp_opt3_both_separate'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines (SSCL & VAT)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_vat18')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            taxProfileId === 'tp_vat18'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          VAT Only<br/><span className="text-[9px] font-normal opacity-80">18% Separate (No SSCL)</span>
+                        </button>
+                      </div>
+
+                      <select 
+                        value={taxProfileId} 
+                        onChange={e => setTaxProfileId(e.target.value)} 
+                        className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 font-medium"
+                      >
+                        <option value="">No Tax Applied</option>
+                        {taxProfiles.map((t: any) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+
+                      <div className="pt-2 border-t border-theme-subtle/50 flex items-center justify-between">
+                        <div>
+                          <div className="text-[11px] font-semibold text-primary">Tax Inclusive Pricing</div>
+                          <div className="text-[9.5px] text-muted">Prices include VAT/SSCL (extract without adding on top)</div>
                         </div>
-                      )}
-                      {taxBreakdown.tax2Rate > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-muted">{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%):</span>
-                          <span className="font-mono">{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsTaxInclusive(!isTaxInclusive)}
+                          className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isTaxInclusive ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-700'}`}
+                          title="Toggle tax inclusive pricing"
+                        >
+                          <span className={`block w-3 h-3 rounded-full bg-white shadow transition-transform mx-0.5 ${isTaxInclusive ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      {taxBreakdown && selectedTaxProfile && (
+                        <div className="bg-surface/50 p-2.5 rounded-lg border border-theme-subtle space-y-1.5 text-[11px] mt-2">
+                          {selectedTaxProfile.tax1_show_separately === 0 && selectedTaxProfile.tax2_show_separately === 0 ? (
+                            <div className="flex justify-between items-center text-muted">
+                              <span>Taxes Absorbed (SSCL {selectedTaxProfile.tax1_rate}% + VAT {selectedTaxProfile.tax2_rate}%)</span>
+                              <span className="font-mono text-emerald-500 font-semibold">{formatCurrency(totalTax)} (Included)</span>
+                            </div>
+                          ) : (
+                            <>
+                              {selectedTaxProfile.tax1_show_separately === 1 && Number(selectedTaxProfile.tax1_rate) > 0 && (
+                                <div className="flex justify-between items-center text-muted">
+                                  <span>{selectedTaxProfile.tax1_name || 'SSCL'} ({selectedTaxProfile.tax1_rate}%):</span>
+                                  <span className="font-mono text-amber-500">{isTaxInclusive ? '' : '+'}{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                                </div>
+                              )}
+                              {selectedTaxProfile.tax1_show_separately === 0 && Number(selectedTaxProfile.tax1_rate) > 0 && (
+                                <div className="flex justify-between items-center text-muted">
+                                  <span>{selectedTaxProfile.tax1_name || 'SSCL'} ({selectedTaxProfile.tax1_rate}%):</span>
+                                  <span className="font-mono text-emerald-500">{formatCurrency(taxBreakdown.tax1Amount)} (Absorbed)</span>
+                                </div>
+                              )}
+                              {selectedTaxProfile.tax2_show_separately === 1 && Number(selectedTaxProfile.tax2_rate) > 0 && (
+                                <div className="flex justify-between items-center text-muted">
+                                  <span className="font-semibold text-primary">{selectedTaxProfile.tax2_name || 'VAT'} ({selectedTaxProfile.tax2_rate}%):</span>
+                                  <span className="font-mono text-emerald-500 font-semibold">{isTaxInclusive ? '' : '+'}{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                                </div>
+                              )}
+                              {taxBreakdown.isCompound && (
+                                <span className="text-[10px] text-muted italic block">* VAT is compounded on SSCL</span>
+                              )}
+                            </>
+                          )}
                         </div>
-                      )}
-                      {taxBreakdown.isCompound && (
-                        <span className="text-[10px] text-muted italic block">* VAT is compounded on SSCL</span>
                       )}
                     </div>
                   )}
@@ -1199,10 +1361,11 @@ export const POBuilder: React.FC = () => {
             date,
             expectedDate,
             items,
-            subtotal,
+            subtotal: isTaxInclusive ? Math.max(0, Number((netTaxableAmount - totalTax).toFixed(2))) : subtotal,
             tax: totalTax,
             shippingCost,
             totalAmount: grandTotal,
+            isTaxInclusive,
             notes,
             terms,
             shippingMethod,

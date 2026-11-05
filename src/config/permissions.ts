@@ -208,12 +208,24 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   ]
 };
 
+export const canRecordInvoicePayment = (user: any): boolean => {
+  if (!user) return false;
+  const role = String(user.role || '').toLowerCase();
+  const roleName = String(user.roleName || '').toLowerCase();
+  return role === 'finance_manager' || role === 'admin' || roleName === 'finance manager';
+};
+
 export const hasPermission = (
   userPermissions: string[] | undefined,
   requiredPermission: string,
   userRole?: string
 ): boolean => {
   if (userRole === 'admin') return true;
+
+  // STRICT POLICY: Recording payments on invoices is EXCLUSIVELY reserved for Finance Manager (and Admin).
+  if (requiredPermission === 'finance.payments.record') {
+    return userRole === 'finance_manager';
+  }
 
   // STRICT POLICY: Quotation, Invoice, Sales Order, Work Order, PO, MR, and GRN deletion is EXCLUSIVELY reserved for Admin.
   if (

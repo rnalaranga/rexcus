@@ -18,6 +18,12 @@ export const CustomerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate  = useNavigate()
   const { user, can } = useAuth()
+  const canRecordPayment = Boolean(
+    user?.role === 'finance_manager' ||
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'finance manager' ||
+    can('finance.payments.record')
+  )
   
   const { data: quotations } = useQuotations()
   const { data: customers, loading: cl, refetch } = useCustomers()
@@ -157,6 +163,10 @@ export const CustomerDetail: React.FC = () => {
   const handleRecordInvoicePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentInvoice) return;
+    if (!canRecordPayment) {
+      showError('Access Denied: Only the Finance Manager is authorized to record payments.');
+      return;
+    }
     const amt = parseFloat(invoicePaymentForm.amount);
     if (isNaN(amt) || amt <= 0) {
       showError('Please enter a valid payment amount greater than zero');
@@ -900,7 +910,7 @@ export const CustomerDetail: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {balDue > 0 && (
+                            {balDue > 0 && canRecordPayment && (
                               <Button
                                 variant="primary"
                                 size="sm"
@@ -1006,7 +1016,9 @@ export const CustomerDetail: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs">
                   <Button variant="ghost" size="sm" onClick={() => { setAdjustType('opening'); setShowAdjustModal(true); }}>Opening Balance</Button>
                   <Button variant="ghost" size="sm" onClick={() => { setAdjustType('adjust'); setShowAdjustModal(true); }}>Adjust Balance</Button>
-                  <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
+                  {canRecordPayment && (
+                    <Button variant="primary" size="sm" onClick={() => setShowPaymentModal(true)}>Record Payment</Button>
+                  )}
                   <div className="ml-4 pl-4 border-l border-theme-subtle"><span className="text-muted uppercase tracking-widest text-[9px] mr-2">Outstanding</span> <span className="font-bold text-rex-600 dark:text-rex-400">{formatCurrency(ledgerData.balance || 0, true, customer.currency)}</span></div>
                 </div>
               </div>

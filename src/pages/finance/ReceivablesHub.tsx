@@ -32,13 +32,19 @@ type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
 export const ReceivablesHub: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const isAdmin = Boolean(
     user?.role === 'admin' ||
     user?.roleName?.toLowerCase() === 'admin' ||
     user?.roleName?.toLowerCase().includes('administrator') ||
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
+  );
+  const canRecordPayment = Boolean(
+    user?.role === 'finance_manager' ||
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'finance manager' ||
+    can('finance.payments.record')
   );
   const { toast, showConfirm } = useDialog();
   const { settings } = useSettings();
@@ -709,6 +715,10 @@ export const ReceivablesHub: React.FC = () => {
   const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentModalInvoice) return;
+    if (!canRecordPayment) {
+      toast('Access Denied: Only the Finance Manager is authorized to record payments.', 'error');
+      return;
+    }
 
     const amt = parseFloat(paymentForm.amount);
     if (isNaN(amt) || amt <= 0) {
@@ -784,18 +794,20 @@ export const ReceivablesHub: React.FC = () => {
           >
             Ledger
           </Button>
-          <Button 
-            variant="primary" 
-            size="sm" 
-            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-            onClick={() => {
-              const custObj = customers.find((c: any) => c.id === row.partyId) || { id: row.partyId, name: row.partyName, company: row.partyName };
-              setSettlementCustomer(custObj);
-              setIsMultiSettlementOpen(true);
-            }}
-          >
-            Settle Invoices
-          </Button>
+          {canRecordPayment && (
+            <Button 
+              variant="primary" 
+              size="sm" 
+              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              onClick={() => {
+                const custObj = customers.find((c: any) => c.id === row.partyId) || { id: row.partyId, name: row.partyName, company: row.partyName };
+                setSettlementCustomer(custObj);
+                setIsMultiSettlementOpen(true);
+              }}
+            >
+              Settle Invoices
+            </Button>
+          )}
         </div>
       )
     }
@@ -850,18 +862,20 @@ export const ReceivablesHub: React.FC = () => {
           >
             + Add Opening Outstanding
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={Receipt}
-            onClick={() => {
-              setSettlementCustomer(null);
-              setIsMultiSettlementOpen(true);
-            }}
-            className="text-xs border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
-          >
-            Settle Invoices (Multi/Partial)
-          </Button>
+          {canRecordPayment && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Receipt}
+              onClick={() => {
+                setSettlementCustomer(null);
+                setIsMultiSettlementOpen(true);
+              }}
+              className="text-xs border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
+            >
+              Settle Invoices (Multi/Partial)
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"
@@ -1153,14 +1167,16 @@ export const ReceivablesHub: React.FC = () => {
                             >
                               View
                             </Button>
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                              onClick={() => handleOpenPaymentModal(inv)}
-                            >
-                              Record Payment
-                            </Button>
+                            {canRecordPayment && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                                onClick={() => handleOpenPaymentModal(inv)}
+                              >
+                                Record Payment
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"

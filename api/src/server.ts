@@ -581,6 +581,31 @@ function checkIsAdminUser(req: any): boolean {
   }
 }
 
+function checkCanRecordInvoicePayment(req: any): boolean {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (
+        decoded.role === 'finance_manager' ||
+        decoded.role === 'admin' ||
+        decoded.username === 'admin' ||
+        decoded.roleName?.toLowerCase() === 'finance manager'
+      ) {
+        return true;
+      }
+    }
+    const roleHeader = String(req.headers['x-user-role'] || '').toLowerCase();
+    if (roleHeader === 'finance_manager' || roleHeader === 'admin') return true;
+    return false;
+  } catch (e) {
+    const roleHeader = String(req.headers['x-user-role'] || '').toLowerCase();
+    if (roleHeader === 'finance_manager' || roleHeader === 'admin') return true;
+    return false;
+  }
+}
+
 // -- AUTH --
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -1173,7 +1198,7 @@ async function runDatabaseSync() {
         description: 'Billing, invoice management, customer payment receipts, banking ledger, payables and tax returns',
         permissions: JSON.stringify([
           'crm.customers.view', 'quotations.view',
-          'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit', 'finance.payments.record',
+          'finance.invoices.view', 'finance.invoices.create', 'finance.invoices.edit',
           'finance.banking.view', 'finance.banking.manage', 'finance.accounting.view', 'finance.journals.create',
           'finance.receivables.view', 'finance.payables.view', 'finance.tax.manage', 'finance.reports.view',
           'purchasing.bills.manage', 'approvals.bills_payments'
@@ -1350,7 +1375,7 @@ async function runDatabaseSync() {
         description: 'Invoicing creation, payment receipts, customer credit tracking, and general ledger journal postings.',
         permissions: JSON.stringify([
           'quotations.view','quotations.view_all','production.work_orders.view','inventory.items.view',
-          'purchasing.suppliers.view','purchasing.suppliers.manage','finance.invoices.create','finance.payments.record',
+          'purchasing.suppliers.view','purchasing.suppliers.manage','finance.invoices.create',
           'finance.invoices.view','finance.receivables.view','finance.invoices.edit','finance.tax.manage',
           'crm.customers.create','crm.customers.edit','crm.credit.request','crm.customers.view',
           'finance.payables.view','inventory.gatepass.manage','finance.journals.create','finance.accounting.view',
@@ -1606,6 +1631,7 @@ async function runDatabaseSync() {
     "ALTER TABLE purchase_orders ADD COLUMN mrId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0",
     "ALTER TABLE material_requests ADD COLUMN poId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE material_requests ADD COLUMN poIds TEXT DEFAULT NULL",
     "ALTER TABLE material_requests ADD COLUMN workOrderNo VARCHAR(100) DEFAULT NULL",
@@ -1895,6 +1921,22 @@ async function runDatabaseSync() {
           "INSERT IGNORE INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) VALUES (?, ?, 2206, NOW())",
           [pfx, u.id]
         );
+      }
+    }
+  } catch (err) {}
+
+  // Enforce exclusive Finance Manager permission for invoice payment recording
+  try {
+    const [allRoles]: any = await db.query("SELECT id, permissions FROM roles WHERE id != 'finance_manager' AND id != 'admin'");
+    for (const r of (allRoles || [])) {
+      if (r.permissions && typeof r.permissions === 'string' && r.permissions.includes('finance.payments.record')) {
+        try {
+          const perms = JSON.parse(r.permissions);
+          if (Array.isArray(perms)) {
+            const filtered = perms.filter(p => p !== 'finance.payments.record');
+            await db.query("UPDATE roles SET permissions = ? WHERE id = ?", [JSON.stringify(filtered), r.id]);
+          }
+        } catch (e) {}
       }
     }
   } catch (err) {}
@@ -7898,6 +7940,9 @@ app.delete(/^\/api\/invoices\/(.+)$/, handleInvoiceDelete);
 
 app.post('/api/invoices/:id/payments', async (req, res) => {
   try {
+    if (!checkCanRecordInvoicePayment(req)) {
+      return res.status(403).json({ error: 'Access denied: Only the Finance Manager is authorized to record payments on invoices.' });
+    }
     const { id } = req.params;
     const payment = req.body;
     
@@ -8156,6 +8201,9 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
 // MULTI-INVOICE CUSTOMER SETTLEMENT (KNOCK-OFF / PARTIAL ALLOCATION)
 // ==========================================
 app.post('/api/finance/receivables/settle', async (req, res) => {
+  if (!checkCanRecordInvoicePayment(req)) {
+    return res.status(403).json({ error: 'Access denied: Only the Finance Manager is authorized to settle customer invoices.' });
+  }
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
