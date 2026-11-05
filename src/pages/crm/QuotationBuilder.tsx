@@ -2936,7 +2936,7 @@ export const QuotationBuilder: React.FC = () => {
                         <th className="px-4 py-2.5 w-12 text-center">#</th>
                         <th className="px-3 py-2.5 min-w-[300px] w-full">Description</th>
                         <th className="px-3 py-2.5 w-24">Qty</th>
-                        <th className="px-3 py-2.5 w-32">Unit Price (Rs.)</th>
+                        <th className="px-3 py-2.5 w-44 min-w-[170px] whitespace-nowrap">Unit Price (Rs.)</th>
                         <th className="px-4 py-2.5 w-36 text-right">Total (Rs.)</th>
                         <th className="px-3 py-2.5 w-28">Notes</th>
                         <th className="px-3 py-2.5 w-10"></th>
