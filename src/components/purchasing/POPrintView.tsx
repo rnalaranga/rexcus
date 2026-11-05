@@ -346,7 +346,11 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                   </div>
                   {item.cutLength && (
                     <div className="text-[10px] font-mono text-amber-900 font-bold mt-0.5 inline-block bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
-                      ✂ CUT SPEC: {item.cutLength} mm ({item.pieces || 1} pcs) · Standard Bar: {item.standardLength || 6000} mm
+                      {item.cutType === 'sheet' || item.cutWidth ? (
+                        <>✂ CUT SPEC (SHEET / PLATE): {item.cutLength} mm × {item.cutWidth} mm ({item.pieces || 1} pcs) · Area: {(((Number(item.cutLength) * Number(item.cutWidth || 1) * Number(item.pieces || 1))) / 1000000).toFixed(3)} m²</>
+                      ) : (
+                        <>✂ CUT SPEC (SHAFT / BAR): {item.cutLength} mm ({item.pieces || 1} pcs) · Standard Bar: {item.standardLength || 6000} mm</>
+                      )}
                     </div>
                   )}
                   {item.notes && (

@@ -43,7 +43,9 @@ interface POItem {
   balanceToOrder?: number;
   workOrderNos?: string[];
   isCutPiece?: boolean;
+  cutType?: 'shaft' | 'sheet';
   cutLength?: number;
+  cutWidth?: number;
   pieces?: number;
   standardLength?: number;
   cutUnit?: string;
@@ -412,39 +414,75 @@ export const POBuilder: React.FC = () => {
 
   const [activeCutModalItem, setActiveCutModalItem] = useState<POItem | null>(null);
   const [cutForm, setCutForm] = useState({
+    cutType: 'shaft' as 'shaft' | 'sheet',
     cutLength: 200,
+    cutWidth: 100,
     pieces: 1,
     standardLength: 6000,
-    qtyMode: 'pieces' as 'pieces' | 'meters' | 'mm'
+    standardWidth: 1220,
+    qtyMode: 'pieces' as 'pieces' | 'meters' | 'mm' | 'sqm' | 'sqft'
   });
 
   const openCutModal = (item: POItem) => {
     setActiveCutModalItem(item);
+    const isSheet = Boolean(
+      item.cutType === 'sheet' ||
+      item.cutWidth ||
+      item.desc?.toLowerCase().includes('sheet') ||
+      item.desc?.toLowerCase().includes('plate') ||
+      item.desc?.toLowerCase().includes('thahadu') ||
+      item.unit?.toLowerCase().includes('sq') ||
+      item.unit?.toLowerCase().includes('m2')
+    );
     setCutForm({
-      cutLength: Number(item.cutLength) || 200,
+      cutType: isSheet ? 'sheet' : 'shaft',
+      cutLength: Number(item.cutLength) || (isSheet ? 1000 : 200),
+      cutWidth: Number(item.cutWidth) || 500,
       pieces: Number(item.pieces) || (item.qty > 0 && item.qty <= 1000 ? Math.round(item.qty) : 1),
-      standardLength: Number(item.standardLength) || 6000,
-      qtyMode: (item.unit?.toLowerCase() === 'm' || item.unit?.toLowerCase() === 'meter' || item.unit?.toLowerCase() === 'meters') ? 'meters' : 'pieces'
+      standardLength: Number(item.standardLength) || (isSheet ? 2440 : 6000),
+      standardWidth: 1220,
+      qtyMode: (item.unit?.toLowerCase() === 'm' || item.unit?.toLowerCase() === 'meter' || item.unit?.toLowerCase() === 'meters') 
+        ? 'meters' 
+        : (item.unit?.toLowerCase().includes('sqm') || item.unit?.toLowerCase().includes('m2')) 
+          ? 'sqm' 
+          : 'pieces'
     });
   };
 
   const applyCutSpecs = () => {
     if (!activeCutModalItem) return;
+    const cutType = cutForm.cutType;
     const cutLen = Number(cutForm.cutLength) || 200;
+    const cutWid = Number(cutForm.cutWidth) || 100;
     const pcs = Number(cutForm.pieces) || 1;
-    const stdLen = Number(cutForm.standardLength) || 6000;
+    const stdLen = Number(cutForm.standardLength) || (cutType === 'sheet' ? 2440 : 6000);
 
-    // Clean existing [Cut: ...] from desc if present
-    const cleanDesc = activeCutModalItem.desc.replace(/\s*\[Cut:.*?\]/i, '').trim();
-    const newDesc = `${cleanDesc} [Cut: ${cutLen} mm × ${pcs} pcs]`;
-
+    // Clean existing [Cut: ...] or [Cut Sheet: ...] from desc if present
+    const cleanDesc = activeCutModalItem.desc.replace(/\s*\[Cut.*?\]/i, '').trim();
+    
+    let newDesc = '';
     let calculatedQty = activeCutModalItem.qty;
-    if (cutForm.qtyMode === 'meters') {
-      calculatedQty = Number(((cutLen * pcs) / 1000).toFixed(3));
-    } else if (cutForm.qtyMode === 'mm') {
-      calculatedQty = cutLen * pcs;
+
+    if (cutType === 'sheet') {
+      const areaM2 = Number(((cutLen * cutWid * pcs) / 1000000).toFixed(3));
+      newDesc = `${cleanDesc} [Cut Sheet: ${cutLen} mm × ${cutWid} mm × ${pcs} pcs (${areaM2} m²)]`;
+      
+      if (cutForm.qtyMode === 'sqm') {
+        calculatedQty = areaM2;
+      } else if (cutForm.qtyMode === 'sqft') {
+        calculatedQty = Number((areaM2 * 10.7639).toFixed(2));
+      } else {
+        calculatedQty = pcs;
+      }
     } else {
-      calculatedQty = pcs;
+      newDesc = `${cleanDesc} [Cut Shaft: ${cutLen} mm × ${pcs} pcs]`;
+      if (cutForm.qtyMode === 'meters') {
+        calculatedQty = Number(((cutLen * pcs) / 1000).toFixed(3));
+      } else if (cutForm.qtyMode === 'mm') {
+        calculatedQty = cutLen * pcs;
+      } else {
+        calculatedQty = pcs;
+      }
     }
 
     setItems(items.map(it => {
@@ -454,7 +492,9 @@ export const POBuilder: React.FC = () => {
           desc: newDesc,
           qty: calculatedQty,
           isCutPiece: true,
+          cutType,
           cutLength: cutLen,
+          cutWidth: cutType === 'sheet' ? cutWid : undefined,
           pieces: pcs,
           standardLength: stdLen,
           cutUnit: 'mm'
@@ -474,12 +514,14 @@ export const POBuilder: React.FC = () => {
   const removeCutSpecs = (itemId: string) => {
     setItems(items.map(it => {
       if (it.id === itemId) {
-        const cleanDesc = it.desc.replace(/\s*\[Cut:.*?\]/i, '').trim();
+        const cleanDesc = it.desc.replace(/\s*\[Cut.*?\]/i, '').trim();
         return {
           ...it,
           desc: cleanDesc,
           isCutPiece: false,
+          cutType: undefined,
           cutLength: undefined,
+          cutWidth: undefined,
           pieces: undefined,
           standardLength: undefined
         };
@@ -1003,7 +1045,12 @@ export const POBuilder: React.FC = () => {
                             {item.isCutPiece || (item.cutLength && Number(item.cutLength) > 0) ? (
                               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                  <Scissors size={10} /> Cut: {item.cutLength} mm × {item.pieces || 1} pcs
+                                  <Scissors size={10} /> 
+                                  {item.cutType === 'sheet' || item.cutWidth ? (
+                                    <>Sheet: {item.cutLength} × {item.cutWidth} mm × {item.pieces || 1} pcs</>
+                                  ) : (
+                                    <>Shaft: {item.cutLength} mm × {item.pieces || 1} pcs</>
+                                  )}
                                 </span>
                                 <button
                                   type="button"
@@ -1027,7 +1074,7 @@ export const POBuilder: React.FC = () => {
                                 onClick={() => openCutModal(item)}
                                 className="inline-flex items-center gap-1 text-[10px] text-muted hover:text-amber-500 transition-colors w-fit font-medium mt-0.5"
                               >
-                                <Scissors size={10} /> + Cut Piece / Dimension (mm)
+                                <Scissors size={10} /> + Cut Piece / Shaft / Sheet (mm)
                               </button>
                             )}
                           </div>
@@ -1392,92 +1439,232 @@ export const POBuilder: React.FC = () => {
       onSuccess={handleItemCreated}
     />
 
-    {/* Cut Piece Specification Modal */}
+    {/* Cut Piece Specification Modal (Shafts & Sheet Metals / Thahadu) */}
     {activeCutModalItem && (
       <Modal 
         isOpen 
-        title={`Cut Piece Specs — ${activeCutModalItem.desc.replace(/\s*\[Cut:.*?\]/i, '').trim() || 'Raw Material'}`} 
+        title={`Material Dimensions & Cut Specs — ${activeCutModalItem.desc.replace(/\s*\[Cut.*?\]/i, '').trim() || 'Raw Material'}`} 
         onClose={() => setActiveCutModalItem(null)}
       >
         <div className="p-6 space-y-4">
           <p className="text-xs text-muted leading-relaxed">
-            Specify cut piece dimensions for bars, shafts, pipes, or plates. The system will format the supplier PO note and calculate material dimensions.
+            Specify cut piece dimensions for shafts, round bars, pipes, or sheet metals / plates (තහඩු). The system will calculate cut pieces, linear length or square area, and format the supplier PO note.
           </p>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Cut Length (mm) *</label>
-              <input
-                type="number"
-                min="1"
-                value={cutForm.cutLength}
-                onChange={e => setCutForm({ ...cutForm, cutLength: Math.max(1, Number(e.target.value)) })}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
-                placeholder="e.g. 200"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Number of Pieces (Cuts) *</label>
-              <input
-                type="number"
-                min="1"
-                value={cutForm.pieces}
-                onChange={e => setCutForm({ ...cutForm, pieces: Math.max(1, Number(e.target.value)) })}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
-                placeholder="e.g. 1"
-              />
-            </div>
+          {/* Mode Selector: Shaft / Bar vs Sheet / Plate */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-surface2/60 rounded-xl border border-theme-subtle">
+            <button
+              type="button"
+              onClick={() => setCutForm({ ...cutForm, cutType: 'shaft', standardLength: 6000, qtyMode: 'pieces' })}
+              className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                cutForm.cutType === 'shaft'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-muted hover:text-primary'
+              }`}
+            >
+              <span>⚙️ Shaft / Round Bar / Pipe</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCutForm({ ...cutForm, cutType: 'sheet', standardLength: 2440, standardWidth: 1220, qtyMode: 'pieces' })}
+              className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                cutForm.cutType === 'sheet'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-muted hover:text-primary'
+              }`}
+            >
+              <span>📐 Sheet Metal / Plate / තහඩු</span>
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Standard Bar Length (mm)</label>
-              <input
-                type="number"
-                min="1"
-                value={cutForm.standardLength}
-                onChange={e => setCutForm({ ...cutForm, standardLength: Math.max(1, Number(e.target.value)) })}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
-                placeholder="Default: 6000"
-              />
-              <span className="text-[10px] text-muted">Standard supplier bar is usually 6,000 mm (6 Meters).</span>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">PO Order Qty Column</label>
-              <select
-                value={cutForm.qtyMode}
-                onChange={e => setCutForm({ ...cutForm, qtyMode: e.target.value as any })}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary text-sm focus:border-rex-500 outline-none rounded-lg font-medium"
-              >
-                <option value="pieces">Pieces / Nos ({cutForm.pieces} pcs)</option>
-                <option value="meters">Meters ({((cutForm.cutLength * cutForm.pieces) / 1000).toFixed(3)} M)</option>
-                <option value="mm">Millimeters ({cutForm.cutLength * cutForm.pieces} mm)</option>
-              </select>
-              <span className="text-[10px] text-muted">Sets how Qty column is represented in the line item.</span>
-            </div>
-          </div>
+          {cutForm.cutType === 'sheet' ? (
+            /* --- SHEET METAL / PLATE / THAHADU FORM --- */
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Length (mm) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cutForm.cutLength}
+                    onChange={e => setCutForm({ ...cutForm, cutLength: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                    placeholder="e.g. 1200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Width (mm) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cutForm.cutWidth}
+                    onChange={e => setCutForm({ ...cutForm, cutWidth: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                    placeholder="e.g. 600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Pieces (Cuts) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cutForm.pieces}
+                    onChange={e => setCutForm({ ...cutForm, pieces: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                    placeholder="e.g. 1"
+                  />
+                </div>
+              </div>
 
-          {/* Live Calculation Summary */}
-          <div className="bg-surface/60 border border-theme-subtle p-3.5 rounded-lg text-xs space-y-2 font-medium">
-            <div className="flex justify-between items-center">
-              <span className="text-muted">Total Cut Material:</span>
-              <span className="font-mono font-bold text-primary">
-                {cutForm.cutLength * cutForm.pieces} mm ({(cutForm.cutLength * cutForm.pieces / 1000).toFixed(3)} Meters)
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-muted">Standard Bar Fraction:</span>
-              <span className="font-mono text-amber-600 dark:text-amber-400 font-semibold">
-                {((cutForm.cutLength * cutForm.pieces) / cutForm.standardLength).toFixed(4)} of {cutForm.standardLength} mm Full Bar
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-theme-subtle/50">
-              <span className="text-muted">PO Description Note:</span>
-              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                [Cut: {cutForm.cutLength} mm × {cutForm.pieces} pcs]
-              </span>
-            </div>
-          </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Standard Sheet Size (mm)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      value={cutForm.standardLength}
+                      onChange={e => setCutForm({ ...cutForm, standardLength: Math.max(1, Number(e.target.value)) })}
+                      className="w-full bg-surface border border-theme-subtle px-2.5 py-2 text-primary font-mono text-xs focus:border-rex-500 outline-none rounded-lg"
+                      placeholder="Length 2440"
+                      title="Standard Sheet Length (2440 mm / 8 ft)"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={cutForm.standardWidth}
+                      onChange={e => setCutForm({ ...cutForm, standardWidth: Math.max(1, Number(e.target.value)) })}
+                      className="w-full bg-surface border border-theme-subtle px-2.5 py-2 text-primary font-mono text-xs focus:border-rex-500 outline-none rounded-lg"
+                      placeholder="Width 1220"
+                      title="Standard Sheet Width (1220 mm / 4 ft)"
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted">Standard supplier metal sheet is 2,440 × 1,220 mm (4′ × 8′).</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">PO Order Qty Column</label>
+                  <select
+                    value={cutForm.qtyMode}
+                    onChange={e => setCutForm({ ...cutForm, qtyMode: e.target.value as any })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary text-sm focus:border-rex-500 outline-none rounded-lg font-medium"
+                  >
+                    <option value="pieces">Pieces / Nos ({cutForm.pieces} pcs)</option>
+                    <option value="sqm">Square Meters ({((cutForm.cutLength * cutForm.cutWidth * cutForm.pieces) / 1000000).toFixed(3)} m²)</option>
+                    <option value="sqft">Square Feet ({(((cutForm.cutLength * cutForm.cutWidth * cutForm.pieces) / 1000000) * 10.7639).toFixed(2)} sq.ft)</option>
+                  </select>
+                  <span className="text-[10px] text-muted">Sets how the Order Qty column will be billed.</span>
+                </div>
+              </div>
+
+              {/* Live Area Calculation Summary */}
+              {(() => {
+                const totalAreaM2 = (cutForm.cutLength * cutForm.cutWidth * cutForm.pieces) / 1000000;
+                const totalAreaSqFt = totalAreaM2 * 10.7639;
+                const stdAreaM2 = (cutForm.standardLength * (cutForm.standardWidth || 1220)) / 1000000;
+                const sheetFraction = stdAreaM2 > 0 ? (totalAreaM2 / stdAreaM2) : 0;
+                return (
+                  <div className="bg-surface/60 border border-theme-subtle p-3.5 rounded-lg text-xs space-y-2 font-medium">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted">Total Sheet Area:</span>
+                      <span className="font-mono font-bold text-primary">
+                        {totalAreaM2.toFixed(3)} m² ({totalAreaSqFt.toFixed(2)} Sq.Ft)
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-muted">Standard 4′×8′ Sheet Equivalent:</span>
+                      <span className="font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                        {sheetFraction.toFixed(3)} of {cutForm.standardLength}×{cutForm.standardWidth || 1220} mm Full Sheet
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-theme-subtle/50">
+                      <span className="text-muted">PO Description Note:</span>
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                        [Cut Sheet: {cutForm.cutLength} mm × {cutForm.cutWidth} mm × {cutForm.pieces} pcs ({totalAreaM2.toFixed(3)} m²)]
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          ) : (
+            /* --- SHAFT / ROUND BAR / PIPE FORM --- */
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Cut Length (mm) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cutForm.cutLength}
+                    onChange={e => setCutForm({ ...cutForm, cutLength: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                    placeholder="e.g. 200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Number of Pieces (Cuts) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cutForm.pieces}
+                    onChange={e => setCutForm({ ...cutForm, pieces: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                    placeholder="e.g. 1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">Standard Bar Length (mm)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cutForm.standardLength}
+                    onChange={e => setCutForm({ ...cutForm, standardLength: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary font-mono text-sm focus:border-rex-500 outline-none rounded-lg"
+                    placeholder="Default: 6000"
+                  />
+                  <span className="text-[10px] text-muted">Standard supplier bar is usually 6,000 mm (6 Meters).</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted mb-1 uppercase tracking-wider">PO Order Qty Column</label>
+                  <select
+                    value={cutForm.qtyMode}
+                    onChange={e => setCutForm({ ...cutForm, qtyMode: e.target.value as any })}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 text-primary text-sm focus:border-rex-500 outline-none rounded-lg font-medium"
+                  >
+                    <option value="pieces">Pieces / Nos ({cutForm.pieces} pcs)</option>
+                    <option value="meters">Meters ({((cutForm.cutLength * cutForm.pieces) / 1000).toFixed(3)} M)</option>
+                    <option value="mm">Millimeters ({cutForm.cutLength * cutForm.pieces} mm)</option>
+                  </select>
+                  <span className="text-[10px] text-muted">Sets how Qty column is represented in the line item.</span>
+                </div>
+              </div>
+
+              {/* Live Calculation Summary */}
+              <div className="bg-surface/60 border border-theme-subtle p-3.5 rounded-lg text-xs space-y-2 font-medium">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Total Cut Material:</span>
+                  <span className="font-mono font-bold text-primary">
+                    {cutForm.cutLength * cutForm.pieces} mm ({(cutForm.cutLength * cutForm.pieces / 1000).toFixed(3)} Meters)
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-muted">Standard Bar Fraction:</span>
+                  <span className="font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                    {((cutForm.cutLength * cutForm.pieces) / cutForm.standardLength).toFixed(4)} of {cutForm.standardLength} mm Full Bar
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-theme-subtle/50">
+                  <span className="text-muted">PO Description Note:</span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                    [Cut Shaft: {cutForm.cutLength} mm × {cutForm.pieces} pcs]
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setActiveCutModalItem(null)}>Cancel</Button>
