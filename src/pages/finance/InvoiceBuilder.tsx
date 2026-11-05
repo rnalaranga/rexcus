@@ -267,6 +267,18 @@ export const InvoiceBuilder: React.FC = () => {
             if (Number(ord.taxAmount) > 0 || ord.taxProfileId) {
               setTaxEnabled(true);
             }
+            if (ord.isTaxInclusive !== undefined) {
+              setIsTaxInclusive(Boolean(ord.isTaxInclusive));
+            }
+            if (ord.discount !== undefined && ord.discount !== null) {
+              setDiscount(ord.discount);
+            }
+            if (ord.discountType) {
+              setDiscountType(ord.discountType);
+            }
+            if (ord.discountAmount !== undefined && ord.discountAmount !== null) {
+              setDiscountAmount(ord.discountAmount);
+            }
 
             // Parse items — If specific partial dispatch is chosen, load its exact items/quantities!
             let parsedItems: any[] = [];
@@ -614,6 +626,16 @@ export const InvoiceBuilder: React.FC = () => {
 
     if (newLines.length > 0) {
       setItems(newLines);
+      if (loadedSourceOrder.discount) {
+        if (loadedSourceOrder.discountType === 'percent') {
+          setDiscount(loadedSourceOrder.discount);
+        } else {
+          const totalOrdQty = Math.max(1, Number(loadedSourceOrder.qty || 1));
+          const dpQty = Number(targetDp.dispatchedQty || 1);
+          const ratio = Math.min(1, dpQty / totalOrdQty);
+          setDiscountAmount(Number(((Number(loadedSourceOrder.discountAmount || loadedSourceOrder.discount) * ratio)).toFixed(2)));
+        }
+      }
       toast(`Switched line items to Dispatch ${targetDp.gatePassId || targetDp.dispatchNo}!`, 'success');
     }
   };
@@ -1102,6 +1124,7 @@ export const InvoiceBuilder: React.FC = () => {
         quotationNo, 
         dispatchNo, 
         orderNo, 
+        orderId: paramOrderId || (loadedSourceOrder ? loadedSourceOrder.id : null),
         poNo, 
         customerVat, 
         taxType, 
@@ -1124,10 +1147,14 @@ export const InvoiceBuilder: React.FC = () => {
       // If created from a sales order, link invoice details back to the order
       if (paramOrderId) {
         try {
+          const currentInvNos = loadedSourceOrder?.invoiceNo || '';
+          const newInvNos = currentInvNos
+            ? (currentInvNos.split(', ').includes(cleanDocNo) ? currentInvNos : `${currentInvNos}, ${cleanDocNo}`)
+            : cleanDocNo;
           await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${paramOrderId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ invoiceId: cleanDocNo, invoiceNo: cleanDocNo })
+            body: JSON.stringify({ invoiceId: cleanDocNo, invoiceNo: newInvNos })
           });
         } catch (linkErr) {
           console.error('Failed to update sales order with invoice link:', linkErr);

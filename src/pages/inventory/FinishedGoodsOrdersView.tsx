@@ -3,11 +3,11 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { 
   ShoppingCart, ArrowRight, Package, Plus, Search, Filter, CheckCircle, 
-  Clock, Truck, AlertTriangle, Trash2, Edit, User, Phone, 
+  Clock, Truck, AlertTriangle, AlertCircle, Trash2, Edit, User, Phone, 
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
   ShoppingBag, Receipt, UploadCloud, Paperclip, Camera, Maximize2, Minimize2,
-  Star, XCircle, Ban, Edit3
+  Star, XCircle, Ban, Edit3, RotateCcw, Tag
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -192,6 +192,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }, [])
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [dateRangePreset, setDateRangePreset] = useState<string>('all')
+  const [customFromDate, setCustomFromDate] = useState<string>('')
+  const [customToDate, setCustomToDate] = useState<string>('')
+  const [customerFilter, setCustomerFilter] = useState<string>('all')
+  const [poFilter, setPoFilter] = useState<'all' | 'received' | 'pending' | 'without_po'>('all')
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [isOrderModalExpanded, setIsOrderModalExpanded] = useState(false)
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
@@ -352,12 +357,50 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setReceiptModalOpen(true)
   }
 
-  const handleInvoiceClick = (order: any) => {
-    if (order.invoiceNo || order.invoiceId) {
-      navigate(`/finance/invoices?search=${encodeURIComponent(order.invoiceNo || order.invoiceId)}`)
+  const handleInvoiceClick = (order: any, specificDispatchNo?: string) => {
+    let orderDispatches: any[] = []
+    try {
+      orderDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || [])
+    } catch (e) {
+      orderDispatches = []
+    }
+
+    if (specificDispatchNo) {
+      navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}&dispatchNo=${encodeURIComponent(specificDispatchNo)}`)
       return
     }
-    // Direct navigation to final tax invoice without intrusive receipt prompt
+
+    // Find first partial dispatch that hasn't been invoiced yet
+    const unInvoicedDp = orderDispatches.find((dp: any) => {
+      const dpNo = dp.gatePassId || dp.dispatchNo || dp.id
+      return !(allInvoices || []).some((inv: any) => 
+        inv.dispatchNo === dpNo || 
+        (inv.items && typeof inv.items === 'string' && inv.items.includes(dpNo))
+      )
+    })
+
+    if (unInvoicedDp) {
+      const dpNo = unInvoicedDp.gatePassId || unInvoicedDp.dispatchNo || unInvoicedDp.id
+      navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}&dispatchNo=${encodeURIComponent(dpNo)}`)
+      return
+    }
+
+    // If order has existing invoices and all dispatches are already invoiced:
+    const matchedInvs = (allInvoices || []).filter((inv: any) =>
+      (!inv.isProforma && inv.invoiceType !== 'proforma' && !inv.invoiceNo?.startsWith('PI-') && !inv.id?.startsWith('PI-')) &&
+      (
+        (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
+        (order.invoiceNo && (String(inv.invoiceNo) === String(order.invoiceNo) || String(inv.id) === String(order.invoiceNo))) ||
+        (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
+        (inv.orderId && order.id && String(inv.orderId) === String(order.id))
+      )
+    )
+
+    if (matchedInvs.length > 0 && (!orderDispatches.length || orderDispatches.length <= matchedInvs.length)) {
+      navigate(`/finance/invoices?search=${encodeURIComponent(order.orderNo || matchedInvs[0]?.invoiceNo)}`)
+      return
+    }
+
     navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}`)
   }
 
@@ -429,10 +472,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     qty: '1',
     unitPrice: '',
     subtotal: 0,
-    discount: 0,
+    discount: 0 as number | string,
+    discountType: 'percent' as 'percent' | 'amount',
+    discountAmount: 0,
     taxAmount: 0,
     taxRate: 0,
     taxProfileId: '',
+    isTaxInclusive: false,
+    vatAmount: 0,
+    ssclAmount: 0,
     totalPrice: 0,
     status: 'Pending Approval',
     notes: '',
@@ -625,7 +673,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       qty: String(order.qty || (parsedItems.reduce((sum, it) => sum + (Number(it.qty) || 1), 0)) || '1'),
       unitPrice: String(order.unitPrice || (parsedItems[0]?.unitPrice ?? '0')),
       subtotal: ordSubtotal,
-      discount: 0,
+      discount: Number(order.discount || 0),
+      discountType: (order.discountType || 'percent') as 'percent' | 'amount',
+      discountAmount: Number(order.discountAmount || 0),
+      isTaxInclusive: Boolean(order.isTaxInclusive),
+      vatAmount: Number(order.vatAmount || 0),
+      ssclAmount: Number(order.ssclAmount || 0),
       taxAmount: ordTaxAmount,
       taxRate: ordTaxRate,
       taxProfileId: ordTaxProfileId,
@@ -661,7 +714,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           uom: firstProd?.uom || 'Nos'
         }];
         const subtotal = Number(defaultItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
-        const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
+        const fin = calculateFinancials(subtotal, prev.discount, prev.discountType, prev.taxProfileId, prev.taxRate, prev.isTaxInclusive);
         return {
           ...prev,
           orderSource: src,
@@ -672,9 +725,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           productSku: defaultItems[0]?.productSku || firstProd?.sku || '',
           unitPrice: String(defaultItems[0]?.unitPrice || unitP),
           items: defaultItems,
-          subtotal,
-          taxAmount,
-          totalPrice
+          subtotal: fin.subtotal,
+          discountAmount: fin.discountAmount,
+          taxAmount: fin.taxAmount,
+          taxRate: fin.taxRate,
+          vatAmount: fin.vatAmount,
+          ssclAmount: fin.ssclAmount,
+          totalPrice: fin.totalPrice
         };
       } else {
         const defaultItems = prev.items && prev.items.length > 0 ? prev.items : [{
@@ -687,7 +744,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           uom: prev.uom || 'Nos'
         }];
         const subtotal = Number(defaultItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
-        const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
+        const fin = calculateFinancials(subtotal, prev.discount, prev.discountType, prev.taxProfileId, prev.taxRate, prev.isTaxInclusive);
         return {
           ...prev,
           orderSource: src,
@@ -699,9 +756,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           unitPrice: String(defaultItems[0]?.unitPrice || 0),
           uom: prev.uom || 'Nos',
           items: defaultItems,
-          subtotal,
-          taxAmount,
-          totalPrice
+          subtotal: fin.subtotal,
+          discountAmount: fin.discountAmount,
+          taxAmount: fin.taxAmount,
+          taxRate: fin.taxRate,
+          vatAmount: fin.vatAmount,
+          ssclAmount: fin.ssclAmount,
+          totalPrice: fin.totalPrice
         };
       }
     });
@@ -845,7 +906,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           uom: selected?.uom || existing.uom || 'Nos'
         }
         const subtotal = Number(currentItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2))
-        const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate)
+        const fin = calculateFinancials(subtotal, prev.discount, prev.discountType, prev.taxProfileId, prev.taxRate, prev.isTaxInclusive)
         const totalQty = currentItems.reduce((acc, x) => acc + (Number(x.qty) || 0), 0)
         return {
           ...prev,
@@ -853,9 +914,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           productName: currentItems[0]?.productName || selected?.name || prev.productName,
           productSku: currentItems[0]?.productSku || selected?.sku || prev.productSku,
           items: currentItems,
-          subtotal,
-          taxAmount,
-          totalPrice,
+          subtotal: fin.subtotal,
+          discountAmount: fin.discountAmount,
+          taxAmount: fin.taxAmount,
+          taxRate: fin.taxRate,
+          vatAmount: fin.vatAmount,
+          ssclAmount: fin.ssclAmount,
+          totalPrice: fin.totalPrice,
           qty: String(totalQty || 1),
           unitPrice: currentItems.length === 1 ? String(currentItems[0].unitPrice || 0) : prev.unitPrice
         }
@@ -883,71 +948,277 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     return (Number(f.qty) || 1) * (Number(f.unitPrice) || 0);
   };
 
-  const calculateOrderTaxes = useCallback((
-    subtotal: number,
+  const calculateFinancials = useCallback((
+    grossSubtotal: number,
+    discountVal: number | string = 0,
+    discountType: 'percent' | 'amount' = 'percent',
     profileId?: string,
-    customRate?: number
+    customRate?: number,
+    isTaxInclusive: boolean = false
   ) => {
-    const sub = Math.max(0, Number(subtotal) || 0);
+    const gross = Math.max(0, Number(grossSubtotal) || 0);
+
+    // 1. Discount calculation
+    let discountAmt = 0;
+    const discNum = Math.max(0, Number(discountVal) || 0);
+    if (discountType === 'percent') {
+      discountAmt = Number(((gross * discNum) / 100).toFixed(2));
+    } else {
+      discountAmt = Math.min(gross, discNum);
+    }
+    const netGross = Math.max(0, gross - discountAmt);
+
+    // 2. Taxes calculation (matches InvoiceBuilder.tsx exactly)
     const pId = profileId !== undefined ? profileId : formData.taxProfileId;
     if (!pId || pId === 'none' || pId === 'no_tax') {
       return {
+        subtotal: gross,
+        discount: discNum,
+        discountType,
+        discountAmount: discountAmt,
+        netBase: netGross,
         taxAmount: 0,
         taxRate: 0,
-        totalPrice: sub
+        vatAmount: 0,
+        ssclAmount: 0,
+        totalPrice: netGross
       };
     }
+
     if (pId === 'custom') {
       const rate = Math.max(0, Number(customRate !== undefined ? customRate : formData.taxRate) || 0);
-      const taxAmount = Number(((sub * rate) / 100).toFixed(2));
-      return {
-        taxAmount,
-        taxRate: rate,
-        totalPrice: Number((sub + taxAmount).toFixed(2))
-      };
+      if (isTaxInclusive) {
+        const base = netGross / (1 + (rate / 100));
+        const taxAmt = Number((netGross - base).toFixed(2));
+        return {
+          subtotal: gross,
+          discount: discNum,
+          discountType,
+          discountAmount: discountAmt,
+          netBase: Number(base.toFixed(2)),
+          taxAmount: taxAmt,
+          taxRate: rate,
+          vatAmount: taxAmt,
+          ssclAmount: 0,
+          totalPrice: netGross
+        };
+      } else {
+        const taxAmt = Number(((netGross * rate) / 100).toFixed(2));
+        return {
+          subtotal: gross,
+          discount: discNum,
+          discountType,
+          discountAmount: discountAmt,
+          netBase: netGross,
+          taxAmount: taxAmt,
+          taxRate: rate,
+          vatAmount: taxAmt,
+          ssclAmount: 0,
+          totalPrice: Number((netGross + taxAmt).toFixed(2))
+        };
+      }
     }
 
     const profile = taxProfiles?.find((p: any) => p.id === pId);
     if (!profile) {
       if (formData.taxRate > 0) {
-        const taxAmount = Number(((sub * formData.taxRate) / 100).toFixed(2));
+        const taxAmt = Number(((netGross * formData.taxRate) / 100).toFixed(2));
         return {
-          taxAmount,
+          subtotal: gross,
+          discount: discNum,
+          discountType,
+          discountAmount: discountAmt,
+          netBase: netGross,
+          taxAmount: taxAmt,
           taxRate: formData.taxRate,
-          totalPrice: Number((sub + taxAmount).toFixed(2))
+          vatAmount: taxAmt,
+          ssclAmount: 0,
+          totalPrice: Number((netGross + taxAmt).toFixed(2))
         };
       }
       return {
+        subtotal: gross,
+        discount: discNum,
+        discountType,
+        discountAmount: discountAmt,
+        netBase: netGross,
         taxAmount: 0,
         taxRate: 0,
-        totalPrice: sub
+        vatAmount: 0,
+        ssclAmount: 0,
+        totalPrice: netGross
       };
     }
 
-    const t1 = Number(profile.tax1_rate || 0) / 100;
-    const t2 = Number(profile.tax2_rate || 0) / 100;
-    const sscl = sub * t1;
-    const vat = profile.tax2_compound ? (sub + sscl) * t2 : sub * t2;
-    const taxAmount = Number((sscl + vat).toFixed(2));
-    const effectiveRate = sub > 0 ? Number(((taxAmount / sub) * 100).toFixed(2)) : (Number(profile.tax2_rate) || 0);
-    return {
-      taxAmount,
-      taxRate: effectiveRate,
-      totalPrice: Number((sub + taxAmount).toFixed(2))
-    };
+    const t1 = Number(profile.tax1_rate || 0) / 100; // SSCL rate
+    const t2 = Number(profile.tax2_rate || 0) / 100; // VAT rate
+    const isSsclHidden = Boolean(Number(profile.tax1_rate) > 0 && profile.tax1_show_separately === 0);
+    const isVatSeparate = Boolean(Number(profile.tax2_rate) > 0 ? profile.tax2_show_separately === 1 : true);
+    const isSsclSeparate = Boolean(Number(profile.tax1_rate) > 0 && profile.tax1_show_separately === 1);
+
+    if (isTaxInclusive) {
+      let baseSubtotal = netGross;
+      let t1Amount = 0;
+      let t2Amount = 0;
+
+      if (isSsclHidden && isVatSeparate) {
+        // Option 2: VAT separate, SSCL absorbed into supply value
+        baseSubtotal = netGross / (1 + t2);
+        t2Amount = netGross - baseSubtotal;
+        t1Amount = 0;
+      } else if (isSsclSeparate && isVatSeparate) {
+        // Option 3: Both separate
+        const divisor = profile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+        baseSubtotal = netGross / divisor;
+        t1Amount = baseSubtotal * t1;
+        const baseForT2 = profile.tax2_compound ? (baseSubtotal + t1Amount) : baseSubtotal;
+        t2Amount = baseForT2 * t2;
+      } else {
+        // Option 1: Both absorbed
+        baseSubtotal = netGross;
+        t1Amount = 0;
+        t2Amount = 0;
+      }
+
+      const finalBase = Math.round(baseSubtotal * 100) / 100;
+      t1Amount = Math.round(t1Amount * 100) / 100;
+      t2Amount = Math.round((netGross - finalBase - t1Amount) * 100) / 100;
+      const taxAmount = Number((t1Amount + t2Amount).toFixed(2));
+      const effectiveRate = netGross > 0 ? Number(((taxAmount / netGross) * 100).toFixed(2)) : (Number(profile.tax2_rate) || 0);
+
+      return {
+        subtotal: gross,
+        discount: discNum,
+        discountType,
+        discountAmount: discountAmt,
+        netBase: finalBase,
+        taxAmount,
+        taxRate: effectiveRate,
+        vatAmount: t2Amount,
+        ssclAmount: t1Amount,
+        totalPrice: netGross
+      };
+    } else {
+      // Standard Exclusive: taxes added on top of discounted net gross
+      const t1Amount = netGross * t1;
+      const baseForT2 = profile.tax2_compound ? (netGross + t1Amount) : netGross;
+      const t2Amount = baseForT2 * t2;
+      const taxAmount = Number((t1Amount + t2Amount).toFixed(2));
+      const effectiveRate = netGross > 0 ? Number(((taxAmount / netGross) * 100).toFixed(2)) : (Number(profile.tax2_rate) || 0);
+      const totalPrice = Number((netGross + taxAmount).toFixed(2));
+
+      return {
+        subtotal: gross,
+        discount: discNum,
+        discountType,
+        discountAmount: discountAmt,
+        netBase: netGross,
+        taxAmount,
+        taxRate: effectiveRate,
+        vatAmount: Number(t2Amount.toFixed(2)),
+        ssclAmount: Number(t1Amount.toFixed(2)),
+        totalPrice
+      };
+    }
   }, [taxProfiles, formData.taxProfileId, formData.taxRate]);
+
+  const handleDiscountValueChange = (val: string) => {
+    setFormData(prev => {
+      const currentSub = calculateCurrentSubtotal(prev);
+      const fin = calculateFinancials(
+        currentSub,
+        val,
+        prev.discountType,
+        prev.taxProfileId,
+        prev.taxRate,
+        prev.isTaxInclusive
+      );
+      return {
+        ...prev,
+        discount: val,
+        discountAmount: fin.discountAmount,
+        subtotal: fin.subtotal,
+        taxAmount: fin.taxAmount,
+        taxRate: fin.taxRate,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice
+      };
+    });
+  };
+
+  const handleDiscountTypeChange = (type: 'percent' | 'amount') => {
+    setFormData(prev => {
+      const currentSub = calculateCurrentSubtotal(prev);
+      const fin = calculateFinancials(
+        currentSub,
+        prev.discount,
+        type,
+        prev.taxProfileId,
+        prev.taxRate,
+        prev.isTaxInclusive
+      );
+      return {
+        ...prev,
+        discountType: type,
+        discountAmount: fin.discountAmount,
+        subtotal: fin.subtotal,
+        taxAmount: fin.taxAmount,
+        taxRate: fin.taxRate,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice
+      };
+    });
+  };
+
+  const handleTaxInclusiveToggle = () => {
+    setFormData(prev => {
+      const newInclusive = !prev.isTaxInclusive;
+      const currentSub = calculateCurrentSubtotal(prev);
+      const fin = calculateFinancials(
+        currentSub,
+        prev.discount,
+        prev.discountType,
+        prev.taxProfileId,
+        prev.taxRate,
+        newInclusive
+      );
+      return {
+        ...prev,
+        isTaxInclusive: newInclusive,
+        subtotal: fin.subtotal,
+        discountAmount: fin.discountAmount,
+        taxAmount: fin.taxAmount,
+        taxRate: fin.taxRate,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice
+      };
+    });
+  };
 
   const handleTaxProfileChange = (profileId: string) => {
     setFormData(prev => {
       const currentSub = calculateCurrentSubtotal(prev);
-      const { taxAmount, taxRate, totalPrice } = calculateOrderTaxes(currentSub, profileId);
+      const fin = calculateFinancials(
+        currentSub,
+        prev.discount,
+        prev.discountType,
+        profileId,
+        prev.taxRate,
+        prev.isTaxInclusive
+      );
       return {
         ...prev,
         taxProfileId: profileId,
-        taxAmount,
-        taxRate,
-        subtotal: currentSub,
-        totalPrice
+        subtotal: fin.subtotal,
+        discountAmount: fin.discountAmount,
+        taxAmount: fin.taxAmount,
+        taxRate: fin.taxRate,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice
       };
     });
   };
@@ -956,14 +1227,24 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setFormData(prev => {
       const currentSub = calculateCurrentSubtotal(prev);
       const rate = Math.max(0, Number(rateVal) || 0);
-      const taxAmount = Number(((currentSub * rate) / 100).toFixed(2));
+      const fin = calculateFinancials(
+        currentSub,
+        prev.discount,
+        prev.discountType,
+        'custom',
+        rate,
+        prev.isTaxInclusive
+      );
       return {
         ...prev,
         taxProfileId: 'custom',
         taxRate: rate,
-        taxAmount,
-        subtotal: currentSub,
-        totalPrice: Number((currentSub + taxAmount).toFixed(2))
+        subtotal: fin.subtotal,
+        discountAmount: fin.discountAmount,
+        taxAmount: fin.taxAmount,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice
       };
     });
   };
@@ -971,15 +1252,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const handleCustomTaxAmountChange = (amtVal: string) => {
     setFormData(prev => {
       const currentSub = calculateCurrentSubtotal(prev);
+      const netBase = Math.max(0, currentSub - Number(prev.discountAmount || 0));
       const taxAmount = Math.max(0, Number(amtVal) || 0);
-      const rate = currentSub > 0 ? Number(((taxAmount / currentSub) * 100).toFixed(2)) : 0;
+      const rate = netBase > 0 ? Number(((taxAmount / netBase) * 100).toFixed(2)) : 0;
+      const totalPrice = prev.isTaxInclusive ? netBase : Number((netBase + taxAmount).toFixed(2));
       return {
         ...prev,
         taxProfileId: 'custom',
         taxRate: rate,
         taxAmount,
+        vatAmount: taxAmount,
+        ssclAmount: 0,
         subtotal: currentSub,
-        totalPrice: Number((currentSub + taxAmount).toFixed(2))
+        totalPrice
       };
     });
   };
@@ -1018,7 +1303,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       currentItems[idx] = it;
 
       const subtotal = Number(currentItems.reduce((acc, x) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
-      const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
+      const fin = calculateFinancials(subtotal, prev.discount, prev.discountType, prev.taxProfileId, prev.taxRate, prev.isTaxInclusive);
 
       const totalQty = currentItems.reduce((acc, x) => acc + (Number(x.qty) || 0), 0);
       const resolvedTitle = (!prev.productName || prev.productName === 'Custom Machining Item' || prev.productName === 'Order Item') && currentItems[0]?.productName
@@ -1029,9 +1314,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         ...prev,
         productName: resolvedTitle,
         items: currentItems,
-        subtotal,
-        taxAmount,
-        totalPrice,
+        subtotal: fin.subtotal,
+        discountAmount: fin.discountAmount,
+        taxAmount: fin.taxAmount,
+        taxRate: fin.taxRate,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice,
         qty: String(totalQty || 1),
         unitPrice: currentItems.length === 1 ? String(currentItems[0].unitPrice || 0) : prev.unitPrice
       };
@@ -1067,14 +1356,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       if ((prev.items || []).length <= 1) return prev;
       const newItems = prev.items.filter((_: any, i: number) => i !== idx);
       const subtotal = Number(newItems.reduce((acc: number, x: any) => acc + (Number(x.amount) || ((Number(x.qty) || 0) * (Number(x.unitPrice) || 0))), 0).toFixed(2));
-      const { taxAmount, totalPrice } = calculateOrderTaxes(subtotal, prev.taxProfileId, prev.taxRate);
+      const fin = calculateFinancials(subtotal, prev.discount, prev.discountType, prev.taxProfileId, prev.taxRate, prev.isTaxInclusive);
       const totalQty = newItems.reduce((acc: number, x: any) => acc + (Number(x.qty) || 0), 0);
       return {
         ...prev,
         items: newItems,
-        subtotal,
-        taxAmount,
-        totalPrice,
+        subtotal: fin.subtotal,
+        discountAmount: fin.discountAmount,
+        taxAmount: fin.taxAmount,
+        taxRate: fin.taxRate,
+        vatAmount: fin.vatAmount,
+        ssclAmount: fin.ssclAmount,
+        totalPrice: fin.totalPrice,
         qty: String(totalQty || 1),
         unitPrice: newItems.length === 1 ? String(newItems[0].unitPrice || 0) : prev.unitPrice
       };
@@ -1108,6 +1401,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const requestedQty = Number(formData.qty) || 1
   const hasShortage = formData.orderSource === 'ready_made' && requestedQty > availableStock
 
+  // Duplicate PO verification: Check if Customer PO is already used on another Sales Order
+  const duplicatePoOrder = useMemo(() => {
+    const po = formData.customerPoNo?.trim();
+    if (!po) return null;
+    const poUpper = po.toUpperCase();
+    if (['PO PENDING', 'WITHOUT PO', 'N/A', '-'].includes(poUpper)) return null;
+
+    return (orders || []).find((ord: any) => {
+      if (editingOrder && (ord.id === editingOrder.id || ord.orderNo === editingOrder.orderNo)) return false;
+      if (!ord.customerPoNo) return false;
+      const ordPo = String(ord.customerPoNo).trim();
+      const ordPoUpper = ordPo.toUpperCase();
+      if (['PO PENDING', 'WITHOUT PO', 'N/A', '-'].includes(ordPoUpper)) return false;
+      return ordPo.toLowerCase() === po.toLowerCase();
+    });
+  }, [formData.customerPoNo, editingOrder, orders]);
+
   const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault()
     if (editingOrder && !canEditOrder) {
@@ -1117,6 +1427,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const resolvedProductName = formData.productName || (formData.items && formData.items.length > 0 ? (formData.items[0].description?.split('\n')[0] || formData.items[0].productName) : '');
     if (!resolvedProductName || !formData.customerName) {
       toast('Please enter customer and order details', 'error');
+      return;
+    }
+    if (duplicatePoOrder) {
+      toast(`Customer PO #${formData.customerPoNo?.trim()} is already assigned to Sales Order #${duplicatePoOrder.orderNo}. Same PO number cannot be used on multiple sales orders.`, 'error');
       return;
     }
     setSubmitting(true)
@@ -1168,17 +1482,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     const itemSum = Number(itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0).toFixed(2));
 
-    const finalSubtotal = (formData.orderSource === 'custom_job' || formData.orderSource === 'from_quote' || formData.orderSource === 'ready_made')
+    const grossSubtotal = (formData.orderSource === 'custom_job' || formData.orderSource === 'from_quote' || formData.orderSource === 'ready_made')
       ? (itemSum > 0 ? itemSum : (Number(formData.subtotal) || 0))
       : (Number(formData.subtotal) || itemSum);
 
-    const { taxAmount: recomputedTax } = calculateOrderTaxes(finalSubtotal, formData.taxProfileId, formData.taxRate);
+    const financials = calculateFinancials(
+      grossSubtotal,
+      formData.discount,
+      formData.discountType || 'percent',
+      formData.taxProfileId,
+      formData.taxRate,
+      formData.isTaxInclusive
+    );
 
-    const finalTaxAmount = Number(formData.taxAmount) !== undefined && Number(formData.taxAmount) !== null && !isNaN(Number(formData.taxAmount))
-      ? Number(formData.taxAmount)
-      : recomputedTax;
-
-    const finalTotalPrice = Number((finalSubtotal + finalTaxAmount).toFixed(2));
+    const finalSubtotal = financials.subtotal;
+    const finalDiscount = financials.discount;
+    const finalDiscountType = financials.discountType;
+    const finalDiscountAmount = financials.discountAmount;
+    const finalTaxAmount = financials.taxAmount;
+    const finalTaxRate = financials.taxRate;
+    const finalVatAmount = financials.vatAmount;
+    const finalSsclAmount = financials.ssclAmount;
+    const finalTotalPrice = financials.totalPrice;
 
     const stockStatus = formData.orderSource === 'ready_made'
       ? (hasShortage ? `Shortage (${requestedQty - availableStock} req)` : 'In Stock')
@@ -1211,8 +1536,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       qty: totalQty,
       unitPrice: primaryUnitPrice,
       subtotal: finalSubtotal,
+      discount: finalDiscount,
+      discountType: finalDiscountType,
+      discountAmount: finalDiscountAmount,
+      isTaxInclusive: formData.isTaxInclusive ? 1 : 0,
+      vatAmount: finalVatAmount,
+      ssclAmount: finalSsclAmount,
       taxAmount: finalTaxAmount,
-      taxRate: Number(formData.taxRate) || 0,
+      taxRate: finalTaxRate,
       taxProfileId: formData.taxProfileId || null,
       totalPrice: finalTotalPrice,
       stockStatus,
@@ -1317,20 +1648,58 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }
     }
 
+    let pastDispatches: any[] = [];
+    try {
+      pastDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || []);
+    } catch (e) {
+      pastDispatches = [];
+    }
+
     const initialDispatchItems = Array.isArray(parsedItems) && parsedItems.length > 0
-      ? parsedItems.map((it: any) => {
-          const itTotalQty = Math.max(1, Number(it.qty || 1))
+      ? parsedItems.map((it: any, itIdx: number) => {
+          const itTotalQty = Math.max(1, Number(it.qty || 1));
+          // Calculate cumulative qty already dispatched across all past dispatches for this item
+          let alreadyDispatched = 0;
+          for (const dp of pastDispatches) {
+            let dpItems = dp.items;
+            if (typeof dpItems === 'string') {
+              try { dpItems = JSON.parse(dpItems); } catch (e) { dpItems = []; }
+            }
+            if (Array.isArray(dpItems)) {
+              const matched = dpItems.find((dpi: any, dpiIdx: number) =>
+                (it.id && dpi.id && it.id === dpi.id) ||
+                (it.productId && dpi.productId && it.productId === dpi.productId) ||
+                (it.inventoryId && dpi.inventoryId && it.inventoryId === dpi.inventoryId) ||
+                (dpiIdx === itIdx) ||
+                (it.description && dpi.description && it.description === dpi.description)
+              );
+              if (matched) {
+                alreadyDispatched += Number(matched.qty || matched.dispatchQty || 0);
+              }
+            }
+          }
+          if (alreadyDispatched === 0 && parsedItems.length === 1 && prevDispatched > 0) {
+            alreadyDispatched = prevDispatched;
+          }
+
+          const remainingForItem = Math.max(0, itTotalQty - alreadyDispatched);
+
           return {
             ...it,
             totalQty: itTotalQty,
-            dispatchQty: itTotalQty
-          }
+            alreadyDispatched,
+            remainingQty: remainingForItem,
+            dispatchQty: remainingForItem
+          };
         })
-      : []
+      : [];
+
+    const sumRemaining = initialDispatchItems.reduce((acc: number, it: any) => acc + (it.remainingQty || 0), 0);
+    const defaultBatchQty = sumRemaining > 0 ? sumRemaining : (remainingToDispatch > 0 ? remainingToDispatch : 1);
 
     setDispatchModalOrder(order)
     setDispatchForm({
-      dispatchQty: remainingToDispatch > 0 ? remainingToDispatch : 1,
+      dispatchQty: defaultBatchQty,
       carrier: order.carrier || 'REX Transport',
       vehicleNo: order.vehicleNo || '',
       driverName: order.driverName || '',
@@ -1365,15 +1734,31 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
-  const handleViewGatePass = async (order: any) => {
-    const gpId = order.gatePassId || order.gatePassNo
+  const handleViewGatePass = async (order: any, specificGpId?: string) => {
+    const gpId = specificGpId || order.gatePassId || order.gatePassNo
     if (!gpId) {
       toast('No Gate Pass record found for this order', 'warning')
       return
     }
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes/${gpId}`)
-      if (!res.ok) throw new Error('Gate Pass record not found')
+      if (!res.ok) {
+        if (res.status === 404) {
+          toast(`Gate Pass "${gpId}" was deleted. Restoring order dispatch balance...`, 'info')
+          try {
+            await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${order.id}/reconcile-dispatches`, {
+              method: 'POST'
+            })
+            await refetch()
+            if (refetchInventory) refetchInventory()
+            toast(`Order #${order.orderNo || order.id} balance successfully restored! Remaining items are now ready to dispatch.`, 'success')
+          } catch (recErr) {
+            console.error('Failed to auto-reconcile deleted gate pass:', recErr)
+          }
+          return
+        }
+        throw new Error('Gate Pass record not found')
+      }
       const gp = await res.json()
       setPrintGatePass(gp)
     } catch (err: any) {
@@ -1644,10 +2029,84 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     }
   }
 
-  // Filtered Orders
+  // Customer Filter Options (derived from unique customers across all sales orders)
+  const customerFilterOptions = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; count: number }>();
+    orders.forEach((o: any) => {
+      const name = (o.customerName || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { key: name, name, count: 0 });
+      }
+      map.get(key)!.count += 1;
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [orders]);
+
+  // Date Filter evaluation helper
+  const matchesDateFilter = (ordDate: string, preset: string, from: string, to: string): boolean => {
+    if (preset === 'all' && !from && !to) return true;
+    if (!ordDate) return false;
+
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (preset === 'today') {
+      return ordDate === todayStr;
+    }
+
+    if (preset === 'yesterday') {
+      const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      return ordDate === yest;
+    }
+
+    if (preset === 'this_week') {
+      const day = now.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      const mondayStr = monday.toISOString().slice(0, 10);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const sundayStr = sunday.toISOString().slice(0, 10);
+      return ordDate >= mondayStr && ordDate <= sundayStr;
+    }
+
+    if (preset === 'last_7_days') {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      return ordDate >= sevenDaysAgo && ordDate <= todayStr;
+    }
+
+    if (preset === 'this_month') {
+      const monthPrefix = now.toISOString().slice(0, 7);
+      return ordDate.startsWith(monthPrefix);
+    }
+
+    if (preset === 'last_month') {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthPrefix = lastMonth.toISOString().slice(0, 7);
+      return ordDate.startsWith(lastMonthPrefix);
+    }
+
+    if (preset === 'this_year') {
+      const yearPrefix = String(now.getFullYear());
+      return ordDate.startsWith(yearPrefix);
+    }
+
+    if (preset === 'custom' || from || to) {
+      if (from && ordDate < from) return false;
+      if (to && ordDate > to) return false;
+      return true;
+    }
+
+    return true;
+  };
+
+  // Filtered Orders with search, status, customer, date preset, custom range, and PO status
   const filteredOrders = useMemo(() => {
     return orders.filter(ord => {
-      const q = search.trim().toLowerCase()
+      const q = search.trim().toLowerCase();
       const matchesSearch = !q || (
         (ord.orderNo && ord.orderNo.toLowerCase().includes(q)) ||
         (ord.id && String(ord.id).toLowerCase().includes(q)) ||
@@ -1659,13 +2118,60 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         (ord.customerName && ord.customerName.toLowerCase().includes(q)) ||
         (ord.attention && ord.attention.toLowerCase().includes(q)) ||
         (ord.customerPhone && ord.customerPhone.toLowerCase().includes(q)) ||
+        (ord.customerPoNo && ord.customerPoNo.toLowerCase().includes(q)) ||
         (ord.notes && ord.notes.toLowerCase().includes(q))
-      )
+      );
 
-      const matchesStatus = statusFilter === 'all' || ord.status === statusFilter
-      return matchesSearch && matchesStatus
-    })
-  }, [orders, search, statusFilter])
+      const matchesStatus = statusFilter === 'all' || ord.status === statusFilter;
+
+      // Customer filter
+      let matchesCustomer = true;
+      if (customerFilter !== 'all') {
+        const cTarget = customerFilter.trim().toLowerCase();
+        const ordCustName = String(ord.customerName || '').trim().toLowerCase();
+        const ordCustId = String(ord.customerId || '').trim().toLowerCase();
+        matchesCustomer = ordCustName === cTarget || ordCustId === cTarget;
+      }
+
+      // PO filter
+      let matchesPoFilter = true;
+      if (poFilter !== 'all') {
+        const isPending = isOrderPoPending(ord);
+        const isWithout = ord.customerPoNo === 'WITHOUT PO';
+        const hasRealPo = Boolean(ord.customerPoNo && !isPending && !isWithout && ord.customerPoNo !== 'N/A' && ord.customerPoNo !== '-');
+
+        if (poFilter === 'received') matchesPoFilter = hasRealPo;
+        else if (poFilter === 'pending') matchesPoFilter = isPending;
+        else if (poFilter === 'without_po') matchesPoFilter = isWithout;
+      }
+
+      // Date filter
+      const ordDateStr = String(ord.orderDate || ord.createdAt || '').slice(0, 10);
+      const matchesDate = matchesDateFilter(ordDateStr, dateRangePreset, customFromDate, customToDate);
+
+      return matchesSearch && matchesStatus && matchesCustomer && matchesPoFilter && matchesDate;
+    });
+  }, [orders, search, statusFilter, customerFilter, poFilter, dateRangePreset, customFromDate, customToDate]);
+
+  const isAnyFilterActive = Boolean(
+    statusFilter !== 'all' ||
+    customerFilter !== 'all' ||
+    poFilter !== 'all' ||
+    dateRangePreset !== 'all' ||
+    customFromDate ||
+    customToDate ||
+    search.trim()
+  );
+
+  const handleResetFilters = () => {
+    setStatusFilter('all');
+    setCustomerFilter('all');
+    setPoFilter('all');
+    setDateRangePreset('all');
+    setCustomFromDate('');
+    setCustomToDate('');
+    setSearch('');
+  };
 
   
   // Pre-indexed lookup maps for ultra-fast O(1) row rendering
@@ -2080,25 +2586,56 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     <span className="text-[10px] text-muted font-mono">+Invoice</span>
                   </button>
 
-                  {/* If order has multiple partial dispatches, provide direct 1-click links for each dispatch */}
-                  {orderDispatches.length > 1 && (
-                    <div className="px-3 py-1 bg-surface2/30 border-y border-theme-subtle/40 text-[10.5px] space-y-1">
-                      <span className="text-muted font-bold block text-[9.5px] uppercase">Bill Specific Partial Dispatch:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {orderDispatches.map((dp: any, dpIdx: number) => (
-                          <button
-                            key={dp.id || dpIdx}
-                            type="button"
-                            onClick={() => {
-                              setOpenActionOrderId(null);
-                              navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}&dispatchNo=${encodeURIComponent(dp.gatePassId || dp.dispatchNo || '')}`);
-                            }}
-                            className="px-1.5 py-0.5 bg-surface border border-theme-subtle hover:border-indigo-400 hover:text-indigo-600 text-[10px] font-mono rounded-none"
-                            title={`Create invoice specifically for ${dp.gatePassId || dp.dispatchNo} (${dp.dispatchedQty} pcs)`}
-                          >
-                            {dp.gatePassId || dp.dispatchNo || `Batch ${dpIdx + 1}`} ({dp.dispatchedQty} pcs)
-                          </button>
-                        ))}
+                  {/* Partial Dispatch Billing List — 1-click invoice links for each specific batch */}
+                  {orderDispatches.length >= 1 && (
+                    <div className="px-3 py-1.5 bg-surface2/30 border-y border-theme-subtle/40 text-[10.5px] space-y-1">
+                      <span className="text-muted font-bold block text-[9.5px] uppercase">
+                        Dispatch-wise Invoices ({orderDispatches.length} batch{orderDispatches.length !== 1 ? 'es' : ''}):
+                      </span>
+                      <div className="flex flex-col gap-1">
+                        {orderDispatches.map((dp: any, dpIdx: number) => {
+                          const dpNo = dp.gatePassId || dp.dispatchNo || dp.id;
+                          const dpInv = matchedInvs.find((inv: any) =>
+                            inv.dispatchNo === dpNo ||
+                            inv.dispatchNo === dp.gatePassId ||
+                            inv.dispatchNo === dp.dispatchNo
+                          );
+                          const isAlreadyInvoiced = Boolean(dpInv);
+
+                          return (
+                            <div key={dp.id || dpIdx} className="flex items-center justify-between gap-1 p-1 bg-surface border border-theme-subtle">
+                              <div className="flex items-center gap-1 font-mono text-[10px]">
+                                <span className="font-bold text-primary">{dpNo}</span>
+                                <span className="text-muted">({dp.dispatchedQty} pcs)</span>
+                              </div>
+                              {isAlreadyInvoiced ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionOrderId(null);
+                                    navigate(`/finance/invoices?search=${encodeURIComponent(dpInv.invoiceNo || dpNo)}`);
+                                  }}
+                                  className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[9.5px] font-bold font-mono"
+                                  title={`Invoice ${dpInv.invoiceNo} already created for this batch. Click to view.`}
+                                >
+                                  ✓ Inv: {dpInv.invoiceNo}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionOrderId(null);
+                                    navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}&dispatchNo=${encodeURIComponent(dpNo)}`);
+                                  }}
+                                  className="px-1.5 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[9.5px] font-bold font-mono"
+                                  title={`Create tax invoice specifically for ${dpNo} (${dp.dispatchedQty} pcs)`}
+                                >
+                                  ⚡ Create Invoice
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2154,52 +2691,87 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <Factory size={13} className="text-amber-500" /> Print Work Order (Traveler)
             </button>
 
-            {/* Print Dispatch Note / Gate Pass */}
-            <button
-              type="button"
-              onClick={async () => {
-                setOpenActionOrderId(null)
-                if (order.gatePassId || order.gatePassNo) {
-                  await handleViewGatePass(order)
-                } else {
-                  const targetGP = {
-                    id: order.gatePassNo || `DN-${order.orderNo || order.id}`,
-                    type: 'goods_delivery',
-                    orderNo: order.orderNo,
-                    orderId: order.id,
-                    quoNo: order.quotationNo,
-                    customerName: order.customerName,
-                    customerCompany: order.customerName,
-                    attention: order.attention || order.customerName,
-                    address: order.deliveryAddress,
-                    phone: order.customerPhone,
-                    email: order.customerEmail,
-                    carrier: order.carrier || 'REX Transport',
-                    vehicleNo: order.vehicleNo,
-                    driverName: order.driverName,
-                    reason: `Finished Goods Delivery for Order ${order.orderNo}`,
-                    items: (orderItems && orderItems.length > 0) ? orderItems.map((it) => ({
-                      description: it.description || it.productName || order.productName,
-                      qty: it.qty || order.qty || 1,
-                      unit: it.uom || 'Nos',
-                      remarks: `Order #${order.orderNo}`
-                    })) : [{
-                      description: order.productName || 'Order Items',
-                      qty: order.qty || 1,
-                      unit: 'Nos',
-                      remarks: `Order #${order.orderNo}`
-                    }],
-                    issuedBy: 'Store Keeper / Dispatch',
-                    status: order.isDispatched ? 'Dispatched' : 'Preview / Pending Dispatch',
-                    createdAt: order.orderDate || order.createdAt
-                  };
-                  setPrintGatePass(targetGP);
-                }
-              }}
-              className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-primary font-medium"
-            >
-              <Truck size={13} className="text-emerald-500" /> Print Dispatch Note / Gate Pass
-            </button>
+            {/* Print Specific Gate Pass if multiple, or single Gate Pass */}
+            {(() => {
+              let pastDispatches: any[] = [];
+              try {
+                pastDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || []);
+              } catch (e) {
+                pastDispatches = [];
+              }
+
+              if (pastDispatches.length > 1) {
+                return (
+                  <div className="px-3 py-1 space-y-1">
+                    <span className="text-[10px] text-muted font-bold block uppercase">Print Specific Gate Pass:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {pastDispatches.map((dp: any, dpIdx: number) => (
+                        <button
+                          key={dp.id || dpIdx}
+                          type="button"
+                          onClick={async () => {
+                            setOpenActionOrderId(null);
+                            await handleViewGatePass(order, dp.gatePassId || dp.dispatchNo || dp.id);
+                          }}
+                          className="px-1.5 py-0.5 bg-surface border border-theme-subtle hover:border-emerald-500 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold"
+                          title={`View / Print Gate Pass ${dp.gatePassId || dp.dispatchNo}`}
+                        >
+                          {dp.gatePassId || dp.dispatchNo} ({dp.dispatchedQty} pcs)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setOpenActionOrderId(null)
+                    if (order.gatePassId || order.gatePassNo) {
+                      await handleViewGatePass(order)
+                    } else {
+                      const targetGP = {
+                        id: order.gatePassNo || `DN-${order.orderNo || order.id}`,
+                        type: 'goods_delivery',
+                        orderNo: order.orderNo,
+                        orderId: order.id,
+                        quoNo: order.quotationNo,
+                        customerName: order.customerName,
+                        customerCompany: order.customerName,
+                        attention: order.attention || order.customerName,
+                        address: order.deliveryAddress,
+                        phone: order.customerPhone,
+                        email: order.customerEmail,
+                        carrier: order.carrier || 'REX Transport',
+                        vehicleNo: order.vehicleNo,
+                        driverName: order.driverName,
+                        reason: `Finished Goods Delivery for Order ${order.orderNo}`,
+                        items: (orderItems && orderItems.length > 0) ? orderItems.map((it) => ({
+                          description: it.description || it.productName || order.productName,
+                          qty: it.qty || order.qty || 1,
+                          unit: it.uom || 'Nos',
+                          remarks: `Order #${order.orderNo}`
+                        })) : [{
+                          description: order.productName || 'Order Items',
+                          qty: order.qty || 1,
+                          unit: 'Nos',
+                          remarks: `Order #${order.orderNo}`
+                        }],
+                        issuedBy: 'Store Keeper / Dispatch',
+                        status: order.isDispatched ? 'Dispatched' : 'Preview / Pending Dispatch',
+                        createdAt: order.orderDate || order.createdAt
+                      };
+                      setPrintGatePass(targetGP);
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 transition-colors text-primary font-medium"
+                >
+                  <Truck size={13} className="text-emerald-500" /> Print Security Gate Pass
+                </button>
+              );
+            })()}
 
             <div className="my-1 border-t border-theme-subtle" />
 {/* 6. Edit Order */}
@@ -2434,47 +3006,222 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         </div>
       </div>
 
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted font-medium flex items-center gap-1.5">
-            <Filter size={13} /> Status:
-          </label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary rounded-none focus:outline-none focus:border-rex-500 cursor-pointer shadow-2xs"
-          >
-            <option value="all">All Orders ({orders.length})</option>
-            {orders.some(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval') && (
-              <option value="Pending Approval">Pending Approval ({orders.filter(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval').length})</option>
+      {/* Header, Search & Comprehensive Filters */}
+      <div className="space-y-2.5">
+        {/* Top Controls Row */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Left: Filters Group */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-muted font-bold uppercase tracking-wider flex items-center gap-1">
+                <Filter size={12} className="text-blue-500" /> Status:
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-8 px-2.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary focus:outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="all">All Statuses ({orders.length})</option>
+                {orders.some(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval') && (
+                  <option value="Pending Approval">Pending Approval ({orders.filter(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval').length})</option>
+                )}
+                <option value="Pending">Pending ({orders.filter(o => o.status === 'Pending').length})</option>
+                <option value="Confirmed">Confirmed ({orders.filter(o => o.status === 'Confirmed').length})</option>
+                <option value="In Production">In Production ({orders.filter(o => o.status === 'In Production').length})</option>
+                <option value="Ready to Dispatch">Ready to Dispatch ({orders.filter(o => o.status === 'Ready to Dispatch').length})</option>
+                <option value="Dispatched">Dispatched ({orders.filter(o => o.status === 'Dispatched' || o.isDispatched).length})</option>
+              </select>
+            </div>
+
+            {/* Customer Filter */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-muted font-bold uppercase tracking-wider flex items-center gap-1">
+                <User size={12} className="text-emerald-500" /> Customer:
+              </label>
+              <select
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+                className="h-8 px-2.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[210px] truncate"
+              >
+                <option value="all">All Customers ({customerFilterOptions.length})</option>
+                {customerFilterOptions.map((c) => (
+                  <option key={c.key} value={c.name}>
+                    {c.name} ({c.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date Preset Filter */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-muted font-bold uppercase tracking-wider flex items-center gap-1">
+                <Calendar size={12} className="text-amber-500" /> Date:
+              </label>
+              <select
+                value={dateRangePreset}
+                onChange={(e) => setDateRangePreset(e.target.value)}
+                className="h-8 px-2.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="all">All Dates</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="this_week">This Week (Mon-Sun)</option>
+                <option value="last_7_days">Last 7 Days</option>
+                <option value="this_month">This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="this_year">This Year</option>
+                <option value="custom">Custom Date Range...</option>
+              </select>
+            </div>
+
+            {/* PO Filter */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-muted font-bold uppercase tracking-wider flex items-center gap-1">
+                <FileText size={12} className="text-purple-500" /> PO:
+              </label>
+              <select
+                value={poFilter}
+                onChange={(e) => setPoFilter(e.target.value as any)}
+                className="h-8 px-2.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary focus:outline-none focus:border-purple-500 cursor-pointer"
+              >
+                <option value="all">All PO</option>
+                <option value="received">PO Received</option>
+                <option value="pending">PO Pending</option>
+                <option value="without_po">Without PO</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Right: Search, Reset & New Sales Order */}
+          <div className="flex items-center gap-2 self-end lg:self-auto">
+            <SearchBar
+              value={search}
+              onChange={setSearch}
+              placeholder="Search order #, product, customer..."
+              className="w-52 sm:w-60"
+            />
+            {isAnyFilterActive && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="h-8 px-2.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 flex items-center gap-1 transition-colors"
+                title="Reset all active filters"
+              >
+                <RotateCcw size={12} />
+                <span>Reset</span>
+              </button>
             )}
-            <option value="Pending">Pending ({orders.filter(o => o.status === 'Pending').length})</option>
-            <option value="Confirmed">Confirmed ({orders.filter(o => o.status === 'Confirmed').length})</option>
-            <option value="In Production">In Production ({orders.filter(o => o.status === 'In Production').length})</option>
-            <option value="Ready to Dispatch">Ready to Dispatch ({orders.filter(o => o.status === 'Ready to Dispatch').length})</option>
-            <option value="Dispatched">Dispatched ({orders.filter(o => o.status === 'Dispatched' || o.isDispatched).length})</option>
-          </select>
+            {!isStoreRole && (
+              <Button
+                variant="primary"
+                icon={Plus}
+                onClick={() => handleOpenCreateModal()}
+                className="whitespace-nowrap h-8"
+              >
+                New Sales Order
+              </Button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <SearchBar
-            value={search}
-            onChange={setSearch}
-            placeholder="Search order #, product, customer..."
-            className="w-64"
-          />
-          {!isStoreRole && (
-            <Button
-              variant="primary"
-              icon={Plus}
-              onClick={() => handleOpenCreateModal()}
-              className="whitespace-nowrap"
+        {/* Custom Date Range Picker Bar (Shown when 'custom' is selected) */}
+        {dateRangePreset === 'custom' && (
+          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center gap-3 text-xs animate-fade-in">
+            <span className="font-bold text-amber-800 dark:text-amber-200 flex items-center gap-1">
+              <Calendar size={13} /> Select Custom Date Range:
+            </span>
+            <div className="flex items-center gap-1.5">
+              <label className="text-muted text-[11px] font-semibold">From:</label>
+              <input
+                type="date"
+                value={customFromDate}
+                onChange={(e) => setCustomFromDate(e.target.value)}
+                className="h-7 px-2 text-xs font-mono bg-surface border border-theme-subtle focus:border-amber-500"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-muted text-[11px] font-semibold">To:</label>
+              <input
+                type="date"
+                value={customToDate}
+                onChange={(e) => setCustomToDate(e.target.value)}
+                className="h-7 px-2 text-xs font-mono bg-surface border border-theme-subtle focus:border-amber-500"
+              />
+            </div>
+            {(customFromDate || customToDate) && (
+              <button
+                type="button"
+                onClick={() => { setCustomFromDate(''); setCustomToDate(''); }}
+                className="text-[11px] text-amber-700 dark:text-amber-300 hover:underline font-bold"
+              >
+                Clear Dates
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Active Filters Summary Pill Bar */}
+        {isAnyFilterActive && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-theme-subtle/50 animate-fade-in">
+            <span className="text-[11px] text-muted font-bold mr-1">
+              Showing {filteredOrders.length} of {orders.length} orders:
+            </span>
+
+            {statusFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 border border-blue-500/30 text-blue-700 dark:text-blue-300 text-[11px] font-semibold">
+                Status: {statusFilter}
+                <button type="button" onClick={() => setStatusFilter('all')} className="hover:text-rose-500">
+                  <X size={11} />
+                </button>
+              </span>
+            )}
+
+            {customerFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold">
+                Customer: {customerFilter}
+                <button type="button" onClick={() => setCustomerFilter('all')} className="hover:text-rose-500">
+                  <X size={11} />
+                </button>
+              </span>
+            )}
+
+            {dateRangePreset !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-semibold">
+                Date: {dateRangePreset === 'this_week' ? 'This Week' : dateRangePreset === 'last_7_days' ? 'Last 7 Days' : dateRangePreset === 'this_month' ? 'This Month' : dateRangePreset === 'last_month' ? 'Last Month' : dateRangePreset === 'this_year' ? 'This Year' : dateRangePreset === 'today' ? 'Today' : dateRangePreset === 'yesterday' ? 'Yesterday' : `${customFromDate || 'Start'} to ${customToDate || 'End'}`}
+                <button type="button" onClick={() => { setDateRangePreset('all'); setCustomFromDate(''); setCustomToDate(''); }} className="hover:text-rose-500">
+                  <X size={11} />
+                </button>
+              </span>
+            )}
+
+            {poFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-[11px] font-semibold">
+                PO: {poFilter === 'received' ? 'PO Received' : poFilter === 'pending' ? 'PO Pending' : 'Without PO'}
+                <button type="button" onClick={() => setPoFilter('all')} className="hover:text-rose-500">
+                  <X size={11} />
+                </button>
+              </span>
+            )}
+
+            {search.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface2 border border-theme-subtle text-primary text-[11px] font-semibold">
+                Search: "{search.trim()}"
+                <button type="button" onClick={() => setSearch('')} className="hover:text-rose-500">
+                  <X size={11} />
+                </button>
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-[11px] text-rose-500 hover:underline font-bold ml-1 cursor-pointer"
             >
-              New Sales Order
-            </Button>
-          )}
-        </div>
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Orders Table */}
@@ -2844,6 +3591,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         const totalQty = Math.max(1, Number(order.qty || 1));
                         const dispatchedQty = Number(order.dispatchedQty || (order.isDispatched ? totalQty : 0));
                         const pct = Math.min(100, Math.round((dispatchedQty / totalQty) * 100));
+                        const isPartial = dispatchedQty > 0 && dispatchedQty < totalQty;
+                        const isComplete = dispatchedQty >= totalQty;
 
                         return (
                           <div className="flex flex-col items-center gap-1">
@@ -2852,13 +3601,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             </span>
                             <div className="w-20 h-1.5 bg-surface2 border border-theme-subtle overflow-hidden">
                               <div
-                                className="h-full bg-emerald-500 transition-all duration-300"
+                                className={`h-full transition-all duration-300 ${isComplete ? 'bg-emerald-500' : (isPartial ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700')}`}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
                             <span className="text-[10px] font-mono text-muted">
                               {dispatchedQty} / {totalQty} dispatched
                             </span>
+                            {isPartial && (
+                              <span className="text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/20">
+                                Partial ({pct}%)
+                              </span>
+                            )}
+                            {isComplete && (
+                              <span className="text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded border border-emerald-500/20">
+                                Complete (100%)
+                              </span>
+                            )}
                           </div>
                         );
                       })()}
@@ -2871,15 +3630,64 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           <span className="font-mono font-bold text-xs text-primary">
                             {formatCurrency(order.totalPrice)}
                           </span>
-                          {Number(order.taxAmount) > 0 ? (
-                            <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
-                              Incl. Tax: {formatCurrency(order.taxAmount)}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-mono text-muted">
-                              Tax: 0.00
-                            </span>
-                          )}
+                          {(() => {
+                            let vat = Number(order.vatAmount || 0);
+                            let sscl = Number(order.ssclAmount || 0);
+                            const totalTax = Number(order.taxAmount || 0);
+                            const isInclusive = Boolean(order.isTaxInclusive);
+
+                            // Fallback derivation if vatAmount/ssclAmount were not directly stored
+                            if (vat === 0 && sscl === 0 && totalTax > 0) {
+                              const rate = Number(order.taxRate || 0);
+                              if (Math.abs(rate - 18) < 0.1) {
+                                vat = totalTax;
+                              } else if (Math.abs(rate - 2.5) < 0.1) {
+                                sscl = totalTax;
+                              } else if (rate >= 20 || String(order.taxProfileId || '').includes('sscl')) {
+                                const base = isInclusive ? (Number(order.totalPrice || 0) / 1.2095) : (Number(order.subtotal || 0));
+                                sscl = Number((base * 0.025).toFixed(2));
+                                vat = Number((totalTax - sscl).toFixed(2));
+                              } else {
+                                vat = totalTax;
+                              }
+                            }
+
+                            if (vat > 0 || sscl > 0) {
+                              return (
+                                <div className="flex flex-col items-end gap-0.5 mt-0.5">
+                                  <div className="flex items-center gap-1 text-[9.5px] font-mono font-medium">
+                                    {sscl > 0 && (
+                                      <span className="text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/20" title="Social Security Contribution Levy (2.5%)">
+                                        SSCL: {formatCurrency(sscl)}
+                                      </span>
+                                    )}
+                                    {vat > 0 && (
+                                      <span className="text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20" title="Value Added Tax (18%)">
+                                        VAT: {formatCurrency(vat)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {isInclusive && (
+                                    <span className="text-[8.5px] text-muted italic">
+                                      (Extracted from Total)
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
+                            if (totalTax > 0) {
+                              return (
+                                <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
+                                  Tax: {formatCurrency(totalTax)}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-[10px] font-mono text-muted">
+                                Tax: 0.00
+                              </span>
+                            );
+                          })()}
                           {linkedProforma && (
                             <button
                               type="button"
@@ -2942,7 +3750,29 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               onClick: () => handleOpenPrintProforma(linkedProforma, order)
                             });
                           }
-                          if (order.gatePassNo) {
+                          let pastDispatches: any[] = [];
+                          try {
+                            pastDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || []);
+                          } catch (e) {
+                            pastDispatches = [];
+                          }
+
+                          if (pastDispatches.length > 0) {
+                            pastDispatches.forEach((dp: any, dpIdx: number) => {
+                              const gpRef = dp.gatePassId || dp.dispatchNo || order.gatePassNo;
+                              traces.push({
+                                type: 'gate_pass',
+                                title: `Gate Pass (Batch ${dpIdx + 1})`,
+                                reference: gpRef,
+                                subtitle: `${dp.dispatchedQty} pcs dispatched`,
+                                statusBadge: {
+                                  label: dp.isFinalDispatch ? 'Final Batch' : 'Partial Batch',
+                                  variant: 'success'
+                                },
+                                onClick: () => handleViewGatePass(order, gpRef)
+                              });
+                            });
+                          } else if (order.gatePassNo) {
                             traces.push({
                               type: 'gate_pass',
                               title: 'Security Gate Pass',
@@ -2955,7 +3785,35 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               onClick: () => handleViewGatePass(order)
                             });
                           }
-                          if (order.invoiceNo || linkedInvoice) {
+
+                          // Link all matched invoices (including multiple partial dispatch invoices!)
+                          const allLinkedOrderInvoices = (allInvoices || []).filter((inv: any) =>
+                            (!inv.isProforma && inv.invoiceType !== 'proforma' && !inv.invoiceNo?.startsWith('PI-') && !inv.id?.startsWith('PI-')) &&
+                            (
+                              (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
+                              (inv.orderId && order.id && String(inv.orderId) === String(order.id)) ||
+                              (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
+                              (order.invoiceNo && String(order.invoiceNo).split(', ').includes(inv.invoiceNo))
+                            )
+                          );
+
+                          if (allLinkedOrderInvoices.length > 0) {
+                            allLinkedOrderInvoices.forEach((invItem: any) => {
+                              const isPaid = invItem.status === 'paid';
+                              const isPartPaid = invItem.status === 'partial' || invItem.status === 'partially_paid' || Number(invItem.paidAmount || 0) > 0;
+                              traces.push({
+                                type: 'invoice',
+                                title: invItem.dispatchNo ? `Tax Inv (${invItem.dispatchNo})` : 'Tax Invoice',
+                                reference: invItem.invoiceNo || invItem.id,
+                                subtitle: isPaid ? 'Paid in Full' : (isPartPaid ? `Part Paid: ${formatCurrency(invItem.paidAmount || 0)}` : 'Awaiting Payment'),
+                                statusBadge: {
+                                  label: isPaid ? 'Paid' : isPartPaid ? 'Part Paid' : 'Unpaid',
+                                  variant: isPaid ? 'success' : isPartPaid ? 'warning' : 'danger'
+                                },
+                                navigateUrl: `/finance/invoices?search=${encodeURIComponent(invItem.invoiceNo || invItem.id)}`
+                              });
+                            });
+                          } else if (order.invoiceNo || linkedInvoice) {
                             const invNo = linkedInvoice?.invoiceNo || order.invoiceNo;
                             traces.push({
                               type: 'invoice',
@@ -3047,11 +3905,25 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 <tr>
                   <td colSpan={8} className="py-10 text-center text-muted">
                     <ShoppingCart size={32} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm font-medium text-primary">No finished goods orders found</p>
-                    <p className="text-xs text-muted mt-0.5">
-                      {search ? 'Try adjusting your search criteria.' : 'Create an order to track ready-made product dispatches and customer demand.'}
+                    <p className="text-sm font-medium text-primary">
+                      {isAnyFilterActive ? 'No sales orders match your filter criteria' : 'No finished goods orders found'}
                     </p>
-                    {!search && (
+                    <p className="text-xs text-muted mt-0.5">
+                      {isAnyFilterActive
+                        ? 'Try adjusting or clearing your status, customer, date range, or search filters.'
+                        : 'Create an order to track ready-made product dispatches and customer demand.'}
+                    </p>
+                    {isAnyFilterActive ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={RotateCcw}
+                        onClick={handleResetFilters}
+                        className="mt-3 font-semibold text-xs"
+                      >
+                        Reset All Filters
+                      </Button>
+                    ) : (
                       <Button
                         variant="primary"
                         size="sm"
@@ -3734,94 +4606,246 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
 
 
-                {/* ── TAXES & PRICING CONFIGURATION (APPLY TAXES TO FINAL VALUE) ── */}
-                <div className="sm:col-span-2 p-3.5 bg-indigo-500/5 border border-indigo-500/20 rounded-none space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Receipt size={15} className="text-indigo-600 dark:text-indigo-400" />
-                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                        Apply Taxes to Final Value (බදු සැකසුම්)
-                      </span>
+                {/* ── COMMERCIAL DISCOUNT & TAX POLICY CONFIGURATION ── */}
+                <div className="sm:col-span-2 space-y-3">
+                  {/* 1. Commercial Discount Section */}
+                  <div className="p-3.5 bg-rose-500/5 border border-rose-500/20 rounded-none space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Tag size={15} className="text-rose-600 dark:text-rose-400" />
+                        <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                          Commercial Discount (වට්ටම්)
+                        </span>
+                      </div>
+                      {Number(formData.discountAmount || 0) > 0 && (
+                        <span className="text-[11px] font-mono font-bold text-rose-600 dark:text-rose-400 px-2 py-0.5 bg-rose-500/10 border border-rose-500/25">
+                          -{formatCurrency(formData.discountAmount)} ({formData.discountType === 'percent' ? `${formData.discount}%` : 'Fixed'})
+                        </span>
+                      )}
                     </div>
-                    {formData.taxAmount > 0 && (
-                      <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400 px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/25">
-                        +{formatCurrency(formData.taxAmount)} ({formData.taxRate}%)
-                      </span>
-                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                      {/* Discount Type Toggle */}
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary mb-1">Discount Type</label>
+                        <div className="flex border border-theme-subtle">
+                          <button
+                            type="button"
+                            onClick={() => handleDiscountTypeChange('percent')}
+                            className={`flex-1 py-1 text-xs font-bold transition-all ${
+                              formData.discountType === 'percent'
+                                ? 'bg-rose-500 text-white'
+                                : 'bg-surface text-secondary hover:text-primary'
+                            }`}
+                          >
+                            Percentage (%)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDiscountTypeChange('amount')}
+                            className={`flex-1 py-1 text-xs font-bold transition-all ${
+                              formData.discountType === 'amount'
+                                ? 'bg-rose-500 text-white'
+                                : 'bg-surface text-secondary hover:text-primary'
+                            }`}
+                          >
+                            Fixed (Rs.)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Discount Value Input */}
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary mb-1">
+                          {formData.discountType === 'percent' ? 'Discount Percentage (%)' : 'Discount Amount (Rs.)'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step={formData.discountType === 'percent' ? '0.1' : '0.01'}
+                            value={formData.discount || ''}
+                            onChange={e => handleDiscountValueChange(e.target.value)}
+                            placeholder={formData.discountType === 'percent' ? '0%' : '0.00'}
+                            className="w-full input-base font-mono text-xs font-semibold pr-8"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted font-bold text-xs">
+                            {formData.discountType === 'percent' ? '%' : 'Rs'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Net After Discount Preview */}
+                      <div className="text-right sm:text-left text-xs pb-1 font-mono">
+                        <span className="text-[10px] text-muted block uppercase font-bold">Net After Discount</span>
+                        <span className="font-bold text-primary text-sm">
+                          {formatCurrency(Math.max(0, (formData.subtotal || 0) - (formData.discountAmount || 0)))}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Tax Profile Dropdown */}
-                    <div className={formData.taxProfileId === 'custom' ? 'sm:col-span-1' : 'sm:col-span-2'}>
-                      <label className="block text-xs font-semibold text-secondary mb-1">
-                        Tax Profile / Tax Policy
-                      </label>
-                      <select
-                        value={formData.taxProfileId || 'no_tax'}
-                        onChange={e => handleTaxProfileChange(e.target.value)}
-                        className="w-full input-base text-xs font-medium"
-                      >
-                        <option value="no_tax">No Tax / 0% (Tax Exempt)</option>
-                        {taxProfiles?.map((p: any) => {
-                          const t1 = Number(p.tax1_rate || 0);
-                          const t2 = Number(p.tax2_rate || 0);
-                          const rateLabel = t1 > 0 && t2 > 0 
-                            ? `${p.tax1_name || 'SSCL'} ${t1}% + ${p.tax2_name || 'VAT'} ${t2}%`
-                            : (t2 > 0 ? `${p.tax2_name || 'VAT'} ${t2}%` : (t1 > 0 ? `${p.tax1_name || 'SSCL'} ${t1}%` : '0%'));
-                          return (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({rateLabel})
-                            </option>
-                          );
-                        })}
-                        <option value="custom">Custom Tax Rate (%) / Amount</option>
-                      </select>
+                  {/* 2. Tax Policy & VAT Configuration (Exact same as Invoices!) */}
+                  <div className="p-3.5 bg-indigo-500/5 border border-indigo-500/20 rounded-none space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Receipt size={15} className="text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                          Tax Policy & VAT Configuration (බදු සැකසුම්)
+                        </span>
+                      </div>
+
+                      {/* Tax Inclusive Toggle */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-secondary">Prices are Tax-Inclusive (බදු ඇතුළත්)</span>
+                        <button
+                          type="button"
+                          onClick={handleTaxInclusiveToggle}
+                          className={`w-9 h-5 rounded-full transition-colors relative p-0.5 ${
+                            formData.isTaxInclusive ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                          }`}
+                        >
+                          <span
+                            className={`block w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                              formData.isTaxInclusive ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
                     </div>
 
-                    {/* If Custom, show custom inputs */}
-                    {formData.taxProfileId === 'custom' ? (
-                      <>
-                        <div>
-                          <label className="block text-xs font-semibold text-secondary mb-1">
-                            Tax Rate (%)
-                          </label>
-                          <div className="relative">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Tax Profile Dropdown */}
+                      <div className={formData.taxProfileId === 'custom' ? 'sm:col-span-1' : 'sm:col-span-2'}>
+                        <label className="block text-xs font-semibold text-secondary mb-1">
+                          Tax Profile / VAT Structure
+                        </label>
+                        <select
+                          value={formData.taxProfileId || 'no_tax'}
+                          onChange={e => handleTaxProfileChange(e.target.value)}
+                          className="w-full input-base text-xs font-medium"
+                        >
+                          <option value="no_tax">No Tax / 0% (Tax Exempt)</option>
+                          {taxProfiles?.map((p: any) => {
+                            const t1 = Number(p.tax1_rate || 0);
+                            const t2 = Number(p.tax2_rate || 0);
+                            const rateLabel = t1 > 0 && t2 > 0 
+                              ? `${p.tax1_name || 'SSCL'} ${t1}% + ${p.tax2_name || 'VAT'} ${t2}%`
+                              : (t2 > 0 ? `${p.tax2_name || 'VAT'} ${t2}%` : (t1 > 0 ? `${p.tax1_name || 'SSCL'} ${t1}%` : '0%'));
+                            return (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({rateLabel})
+                              </option>
+                            );
+                          })}
+                          <option value="custom">Custom Tax Rate (%) / Amount</option>
+                        </select>
+                      </div>
+
+                      {/* If Custom, show custom inputs */}
+                      {formData.taxProfileId === 'custom' ? (
+                        <>
+                          <div>
+                            <label className="block text-xs font-semibold text-secondary mb-1">
+                              Tax Rate (%)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={formData.taxRate}
+                                onChange={e => handleCustomTaxRateChange(e.target.value)}
+                                placeholder="e.g. 18"
+                                className="w-full input-base font-mono text-xs pr-8"
+                              />
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted font-bold text-xs">%</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-secondary mb-1">
+                              Tax Amount (Rs.)
+                            </label>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
-                              value={formData.taxRate}
-                              onChange={e => handleCustomTaxRateChange(e.target.value)}
-                              placeholder="e.g. 18"
-                              className="w-full input-base font-mono text-xs pr-8"
+                              value={formData.taxAmount}
+                              onChange={e => handleCustomTaxAmountChange(e.target.value)}
+                              placeholder="Rs. 0.00"
+                              className="w-full input-base font-mono text-xs"
                             />
-                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted font-bold text-xs">%</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-col justify-center">
+                          <span className="text-[10px] text-muted block mb-0.5">Applied Tax Status</span>
+                          <div className="text-xs font-mono font-semibold text-primary truncate">
+                            {formData.taxProfileId && formData.taxProfileId !== 'no_tax' ? (
+                              <span className="text-indigo-600 dark:text-indigo-400">
+                                {formData.isTaxInclusive ? 'Extracted Tax: ' : 'Added Tax: '}
+                                {formatCurrency(formData.taxAmount)} ({formData.taxRate}%)
+                              </span>
+                            ) : (
+                              'Tax Exempt (0.00%)'
+                            )}
                           </div>
                         </div>
+                      )}
+                    </div>
 
-                        <div>
-                          <label className="block text-xs font-semibold text-secondary mb-1">
-                            Tax Amount (Rs.)
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={formData.taxAmount}
-                            onChange={e => handleCustomTaxAmountChange(e.target.value)}
-                            placeholder="Rs. 0.00"
-                            className="w-full input-base font-mono text-xs"
-                          />
+                    {/* Tax Breakdown Preview (VAT / SSCL details separated) */}
+                    {formData.taxAmount > 0 && (
+                      <div className="pt-2.5 border-t border-indigo-500/20 space-y-2">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                          <span>
+                            {formData.isTaxInclusive 
+                              ? '⚡ Final Price Tax Breakout (අවසන් මුදලෙන් බදු වෙන් කිරීම):' 
+                              : '⚡ Statutory Tax Additions (බදු එකතු කිරීම්):'}
+                          </span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-mono">
+                            Total Taxes: {formatCurrency(formData.taxAmount)}
+                          </span>
                         </div>
-                      </>
-                    ) : (
-                      <div className="flex flex-col justify-center">
-                        <span className="text-[10px] text-muted block mb-0.5">Applied Tax Status</span>
-                        <span className="text-xs font-mono font-semibold text-primary truncate">
-                          {formData.taxProfileId && formData.taxProfileId !== 'no_tax' 
-                            ? (taxProfiles?.find((p: any) => p.id === formData.taxProfileId)?.name || 'Standard Tax Profile')
-                            : 'Tax Exempt (0.00%)'}
-                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                          {formData.isTaxInclusive && (
+                            <div className="p-2 bg-slate-100 dark:bg-slate-800/60 rounded border border-slate-300 dark:border-slate-700">
+                              <span className="text-[10px] text-muted block uppercase">Net Base Value</span>
+                              <strong className="text-primary text-xs">
+                                {formatCurrency(Math.max(0, formData.totalPrice - formData.taxAmount))}
+                              </strong>
+                            </div>
+                          )}
+                          {formData.ssclAmount > 0 && (
+                            <div className="p-2 bg-amber-500/10 rounded border border-amber-500/30">
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 block uppercase font-bold">
+                                SSCL (2.5%{formData.isTaxInclusive ? ' In' : ''})
+                              </span>
+                              <strong className="text-amber-700 dark:text-amber-300 text-xs">
+                                {formatCurrency(formData.ssclAmount)}
+                              </strong>
+                            </div>
+                          )}
+                          {formData.vatAmount > 0 && (
+                            <div className="p-2 bg-indigo-500/10 rounded border border-indigo-500/30">
+                              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block uppercase font-bold">
+                                VAT (18%{formData.isTaxInclusive ? ' In' : ''})
+                              </span>
+                              <strong className="text-indigo-700 dark:text-indigo-300 text-xs">
+                                {formatCurrency(formData.vatAmount)}
+                              </strong>
+                            </div>
+                          )}
+                          <div className="p-2 bg-emerald-500/10 rounded border border-emerald-500/30">
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block uppercase font-bold">
+                              Final Total Value
+                            </span>
+                            <strong className="text-emerald-700 dark:text-emerald-300 text-xs">
+                              {formatCurrency(formData.totalPrice)}
+                            </strong>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -3845,40 +4869,70 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">Financial Summary</label>
-                  <div className="w-full p-2.5 bg-surface2/30 border border-theme-subtle font-mono text-xs space-y-1">
+                  <div className="w-full p-2.5 bg-surface2/30 border border-theme-subtle font-mono text-xs space-y-1.5">
                     <div className="flex justify-between text-secondary text-[11px]">
-                      <span>Subtotal:</span>
+                      <span>Subtotal (Gross):</span>
                       <span className="font-semibold text-primary">
                         {formatCurrency(formData.subtotal || calculateCurrentSubtotal(formData))}
                       </span>
                     </div>
-                    {Number(formData.discount || 0) > 0 && (
+                    {Number(formData.discountAmount || 0) > 0 && (
                       <div className="flex justify-between text-rose-500 text-[11px]">
-                        <span>Discount:</span>
-                        <span>-{formatCurrency(formData.discount)}</span>
+                        <span>Discount ({formData.discountType === 'percent' ? `${formData.discount}%` : 'Fixed'}):</span>
+                        <span>-{formatCurrency(formData.discountAmount)}</span>
                       </div>
                     )}
-                    {Number(formData.taxAmount || 0) > 0 ? (
-                      <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
-                        <span>Taxes ({formData.taxRate > 0 ? `${formData.taxRate}%` : 'VAT / SSCL'}):</span>
-                        <span>+{formatCurrency(formData.taxAmount)}</span>
+                    {Number(formData.discountAmount || 0) > 0 && (
+                      <div className="flex justify-between text-secondary text-[11px]">
+                        <span>Net Base:</span>
+                        <span className="font-semibold text-primary">
+                          {formatCurrency(Math.max(0, (formData.subtotal || 0) - (formData.discountAmount || 0)))}
+                        </span>
                       </div>
-                    ) : (
+                    )}
+                    {formData.isTaxInclusive && (formData.taxAmount > 0) && (
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400 text-[11px]">
+                        <span>Base Supply Value (Excl. Tax):</span>
+                        <span className="font-semibold text-primary">
+                          {formatCurrency(Math.max(0, formData.totalPrice - formData.taxAmount))}
+                        </span>
+                      </div>
+                    )}
+                    {Number(formData.ssclAmount || 0) > 0 && (
+                      <div className="flex justify-between text-amber-600 dark:text-amber-400 font-semibold text-[11px]">
+                        <span>SSCL (2.5%{formData.isTaxInclusive ? ' Extracted' : ''}):</span>
+                        <span>{formData.isTaxInclusive ? '' : '+'}{formatCurrency(formData.ssclAmount)}</span>
+                      </div>
+                    )}
+                    {Number(formData.vatAmount || 0) > 0 && (
+                      <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                        <span>VAT (18%{formData.isTaxInclusive ? ' Extracted' : ''}):</span>
+                        <span>{formData.isTaxInclusive ? '' : '+'}{formatCurrency(formData.vatAmount)}</span>
+                      </div>
+                    )}
+                    {Number(formData.taxAmount || 0) > 0 && !(Number(formData.ssclAmount || 0) > 0) && !(Number(formData.vatAmount || 0) > 0) && (
+                      <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                        <span>Taxes ({formData.isTaxInclusive ? 'Extracted' : 'Added'}{formData.taxRate > 0 ? ` ${formData.taxRate}%` : ''}):</span>
+                        <span>{formData.isTaxInclusive ? '' : '+'}{formatCurrency(formData.taxAmount)}</span>
+                      </div>
+                    )}
+                    {!(Number(formData.taxAmount || 0) > 0) && (
                       <div className="flex justify-between text-muted text-[10px]">
                         <span>Taxes:</span>
                         <span>Rs. 0.00 (Exempt)</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm font-black text-rex-600 pt-1 border-t border-theme-subtle">
+                    <div className="flex justify-between text-sm font-black text-emerald-600 dark:text-emerald-400 pt-1.5 border-t border-theme-subtle">
                       <span>Total Value:</span>
                       <span>
-                        {formatCurrency(
-                          formData.totalPrice || (
-                            (Number(formData.subtotal) || calculateCurrentSubtotal(formData)) + Number(formData.taxAmount || 0)
-                          )
-                        )}
+                        {formatCurrency(formData.totalPrice)}
                       </span>
                     </div>
+                    {formData.isTaxInclusive && formData.taxAmount > 0 && (
+                      <div className="text-[10px] text-indigo-600 dark:text-indigo-400 text-right font-medium italic">
+                        ※ Final Entered Price includes SSCL & VAT (වෙන්කර පෙන්වා ඇත)
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3904,8 +4958,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         value={formData.customerPoNo}
                         onChange={e => setFormData({ ...formData, customerPoNo: e.target.value })}
                         placeholder="e.g. PO/2026/0891 or CUST-PO-774"
-                        className="w-full input-base font-mono text-xs font-semibold"
+                        className={`w-full input-base font-mono text-xs font-semibold ${
+                          duplicatePoOrder ? 'border-rose-500 focus:border-rose-500 bg-rose-500/5' : ''
+                        }`}
                       />
+                      {duplicatePoOrder && (
+                        <div className="mt-1.5 p-2 bg-rose-500/15 border border-rose-500/50 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-1.5 animate-fade-in">
+                          <AlertCircle size={14} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block font-bold">Duplicate PO Number!</strong>
+                            <span className="text-[11px] leading-tight block">
+                              PO <strong>{formData.customerPoNo?.trim()}</strong> is already assigned to Sales Order{' '}
+                              <strong className="font-mono text-primary">#{duplicatePoOrder.orderNo}</strong> ({duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -4074,73 +5142,132 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                   {hasMultiItems ? (
                     <div className="border border-theme-subtle overflow-hidden">
+                      <div className="p-2 bg-surface2/50 border-b border-theme-subtle flex items-center justify-between text-xs">
+                        <span className="font-bold text-primary text-[11px]">Select items to include in this partial dispatch batch:</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updatedItems = dispatchForm.dispatchItems.map((item: any) => ({
+                                ...item,
+                                dispatchQty: item.remainingQty !== undefined ? item.remainingQty : Math.max(0, (item.totalQty || item.qty || 1) - (item.alreadyDispatched || 0))
+                              }));
+                              const sumQty = updatedItems.reduce((acc: number, item: any) => acc + Number(item.dispatchQty || 0), 0);
+                              setDispatchForm({
+                                ...dispatchForm,
+                                dispatchItems: updatedItems,
+                                dispatchQty: sumQty
+                              });
+                            }}
+                            className="text-[10.5px] font-bold text-rex-600 dark:text-rex-400 hover:underline px-2 py-0.5 bg-rex-500/10 border border-rex-500/20"
+                          >
+                            All Remaining
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updatedItems = dispatchForm.dispatchItems.map((item: any) => ({
+                                ...item,
+                                dispatchQty: 0
+                              }));
+                              setDispatchForm({
+                                ...dispatchForm,
+                                dispatchItems: updatedItems,
+                                dispatchQty: 0
+                              });
+                            }}
+                            className="text-[10.5px] font-semibold text-muted hover:text-primary px-2 py-0.5 bg-surface border border-theme-subtle"
+                          >
+                            Clear (0)
+                          </button>
+                        </div>
+                      </div>
                       <table className="w-full text-left text-xs">
                         <thead className="bg-surface2/70 border-b border-theme-subtle text-[10px] font-bold text-muted uppercase">
                           <tr>
                             <th className="px-3 py-2">Item Description</th>
-                            <th className="px-2 py-2 text-center w-20">Order Qty</th>
-                            <th className="px-2 py-2 text-center w-28">Dispatch Now</th>
-                            <th className="px-2 py-2 text-right w-24">Unit</th>
+                            <th className="px-2 py-2 text-center w-16">Ordered</th>
+                            <th className="px-2 py-2 text-center w-20">Prev Sent</th>
+                            <th className="px-2 py-2 text-center w-20">Remaining</th>
+                            <th className="px-2 py-2 text-center w-24">Dispatch Now</th>
+                            <th className="px-2 py-2 text-right w-16">Unit</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-theme-subtle/40">
-                          {dispatchForm.dispatchItems.map((it: any, itIdx: number) => (
-                            <tr key={it.id || itIdx} className="hover:bg-surface2/20">
-                              <td className="px-3 py-2">
-                                <span className="font-semibold text-primary block leading-tight">{it.description || it.productName || 'Order Item'}</span>
-                                {it.sku && <span className="text-[10px] text-muted font-mono">{it.sku}</span>}
-                              </td>
-                              <td className="px-2 py-2 text-center font-mono font-bold text-muted">
-                                {it.totalQty || it.qty || 1}
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={it.totalQty || it.qty || 99999}
-                                  value={it.dispatchQty !== undefined ? it.dispatchQty : (it.qty || 0)}
-                                  onChange={e => {
-                                    const val = Math.max(0, Number(e.target.value));
-                                    const updatedItems = dispatchForm.dispatchItems.map((item: any, i: number) =>
-                                      i === itIdx ? { ...item, dispatchQty: val } : item
-                                    );
-                                    const sumQty = updatedItems.reduce((acc: number, item: any) => acc + Number(item.dispatchQty || 0), 0);
-                                    setDispatchForm({
-                                      ...dispatchForm,
-                                      dispatchItems: updatedItems,
-                                      dispatchQty: sumQty > 0 ? sumQty : 1
-                                    });
-                                  }}
-                                  className="w-full input-base py-1 px-2 text-center text-xs font-mono font-bold"
-                                />
-                              </td>
-                              <td className="px-2 py-2 text-right text-muted font-mono text-[11px]">
-                                {it.uom || it.unit || 'pcs'}
-                              </td>
-                            </tr>
-                          ))}
+                          {dispatchForm.dispatchItems.map((it: any, itIdx: number) => {
+                            const itemRem = it.remainingQty !== undefined ? it.remainingQty : Math.max(0, (it.totalQty || it.qty || 1) - (it.alreadyDispatched || 0));
+                            const isFullySent = itemRem <= 0;
+
+                            return (
+                              <tr key={it.id || itIdx} className={`hover:bg-surface2/20 ${isFullySent ? 'bg-surface2/30 opacity-70' : ''}`}>
+                                <td className="px-3 py-2">
+                                  <span className="font-semibold text-primary block leading-tight">{it.description || it.productName || 'Order Item'}</span>
+                                  {it.sku && <span className="text-[10px] text-muted font-mono">{it.sku}</span>}
+                                </td>
+                                <td className="px-2 py-2 text-center font-mono font-bold text-muted">
+                                  {it.totalQty || it.qty || 1}
+                                </td>
+                                <td className="px-2 py-2 text-center font-mono text-xs">
+                                  {Number(it.alreadyDispatched || 0) > 0 ? (
+                                    <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/20">
+                                      {it.alreadyDispatched}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">0</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-2 text-center font-mono text-xs">
+                                  {itemRem > 0 ? (
+                                    <span className="text-blue-600 dark:text-blue-400 font-bold bg-blue-500/10 px-1 py-0.2 rounded border border-blue-500/20">
+                                      {itemRem}
+                                    </span>
+                                  ) : (
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[10px]">
+                                      ✓ Complete
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {isFullySent ? (
+                                    <span className="block text-center text-[10px] font-mono text-muted italic">
+                                      Dispatched
+                                    </span>
+                                  ) : (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={itemRem}
+                                      value={it.dispatchQty !== undefined ? it.dispatchQty : itemRem}
+                                      onChange={e => {
+                                        const rawVal = Math.max(0, Number(e.target.value));
+                                        const val = Math.min(itemRem, rawVal);
+                                        const updatedItems = dispatchForm.dispatchItems.map((item: any, i: number) =>
+                                          i === itIdx ? { ...item, dispatchQty: val } : item
+                                        );
+                                        const sumQty = updatedItems.reduce((acc: number, item: any) => acc + Number(item.dispatchQty || 0), 0);
+                                        setDispatchForm({
+                                          ...dispatchForm,
+                                          dispatchItems: updatedItems,
+                                          dispatchQty: sumQty
+                                        });
+                                      }}
+                                      className="w-full input-base py-1 px-2 text-center text-xs font-mono font-bold focus:border-blue-500"
+                                    />
+                                  )}
+                                </td>
+                                <td className="px-2 py-2 text-right text-muted font-mono text-[11px]">
+                                  {it.uom || it.unit || 'pcs'}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                       <div className="p-2 bg-surface2/40 border-t border-theme-subtle flex items-center justify-between text-[11px]">
-                        <span className="text-muted">Total items in this dispatch note: <strong className="text-primary font-mono">{dispatchForm.dispatchQty} pcs</strong></span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updatedItems = dispatchForm.dispatchItems.map((item: any) => ({
-                              ...item,
-                              dispatchQty: item.totalQty || item.qty || 1
-                            }));
-                            const sumQty = updatedItems.reduce((acc: number, item: any) => acc + Number(item.dispatchQty || 0), 0);
-                            setDispatchForm({
-                              ...dispatchForm,
-                              dispatchItems: updatedItems,
-                              dispatchQty: sumQty
-                            });
-                          }}
-                          className="text-xs font-bold text-rex-600 dark:text-rex-400 hover:underline"
-                        >
-                          Dispatch All Items (100%)
-                        </button>
+                        <span className="text-muted">Total units in this dispatch batch: <strong className="text-primary font-mono">{dispatchForm.dispatchQty} pcs</strong></span>
+                        <span className="text-[10.5px] font-mono text-muted">
+                          Remaining after this batch: <strong className="text-amber-500 font-bold">{Math.max(0, totalOrdQty - (prevDispatchedQty + Number(dispatchForm.dispatchQty || 0)))} pcs</strong>
+                        </span>
                       </div>
                     </div>
                   ) : (

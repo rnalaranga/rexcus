@@ -70,10 +70,37 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
   const tinNumber = customer?.tin || customer?.brNumber || order.customerTin || '';
 
   const subtotal = Number(order.subtotal) || itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
+  const discountAmount = Number(order.discountAmount || (order.discountType === 'percent' ? ((subtotal * Number(order.discount || 0)) / 100) : order.discount) || 0);
   let taxAmount = Number(order.taxAmount) || 0;
-  const totalPrice = Number(order.totalPrice) || (subtotal + taxAmount);
-  if (taxAmount === 0 && totalPrice > subtotal) {
-    taxAmount = totalPrice - subtotal;
+  const totalPrice = Number(order.totalPrice) || Math.max(0, subtotal - discountAmount + taxAmount);
+  if (taxAmount === 0 && totalPrice > (subtotal - discountAmount)) {
+    taxAmount = totalPrice - (subtotal - discountAmount);
+  }
+
+  const isTaxInclusive = Boolean(order.isTaxInclusive);
+  let vatAmount = Number(order.vatAmount || 0);
+  let ssclAmount = Number(order.ssclAmount || 0);
+
+  // If vatAmount / ssclAmount were not directly stored on older records, derive them from taxAmount & taxRate/taxProfile
+  if (vatAmount === 0 && ssclAmount === 0 && taxAmount > 0) {
+    const netBase = Math.max(0, subtotal - discountAmount);
+    const taxRate = Number(order.taxRate) || 0;
+    if (Math.abs(taxRate - 18) < 0.1) {
+      vatAmount = taxAmount;
+    } else if (Math.abs(taxRate - 2.5) < 0.1) {
+      ssclAmount = taxAmount;
+    } else if (taxRate >= 20 || String(order.taxProfileId || '').includes('sscl')) {
+      if (isTaxInclusive) {
+        const base = totalPrice / 1.2095;
+        ssclAmount = Number((base * 0.025).toFixed(2));
+        vatAmount = Number((totalPrice - base - ssclAmount).toFixed(2));
+      } else {
+        ssclAmount = Number((netBase * 0.025).toFixed(2));
+        vatAmount = Number(((netBase + ssclAmount) * 0.18).toFixed(2));
+      }
+    } else {
+      vatAmount = taxAmount;
+    }
   }
 
   return (
@@ -446,17 +473,60 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
               <table className="w-full text-[11px]">
                 <tbody>
                   <tr className="border-b border-black">
-                    <td className="p-1 px-2.5 font-semibold text-gray-700">Subtotal</td>
+                    <td className="p-1 px-2.5 font-semibold text-gray-700">
+                      {isTaxInclusive ? 'Gross Total (Entered)' : 'Subtotal'}
+                    </td>
                     <td className="p-1 px-2.5 text-right font-mono font-bold">{formatCurrency(subtotal)}</td>
                   </tr>
-                  {taxAmount > 0 && (
+                  {discountAmount > 0 && (
+                    <tr className="border-b border-black text-rose-700">
+                      <td className="p-1 px-2.5 font-semibold">Commercial Discount</td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">-{formatCurrency(discountAmount)}</td>
+                    </tr>
+                  )}
+                  {isTaxInclusive && (vatAmount > 0 || ssclAmount > 0) && (
+                    <tr className="border-b border-black text-gray-700 bg-gray-50/50">
+                      <td className="p-1 px-2.5 font-semibold">Net Supply Value (Base Excl. Taxes)</td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">
+                        {formatCurrency(Math.max(0, totalPrice - taxAmount))}
+                      </td>
+                    </tr>
+                  )}
+                  {ssclAmount > 0 && (
+                    <tr className="border-b border-black text-amber-900">
+                      <td className="p-1 px-2.5 font-semibold">
+                        Social Security Contribution Levy (SSCL 2.5%{isTaxInclusive ? ' Extracted' : ''})
+                      </td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">
+                        {isTaxInclusive ? '' : '+'}{formatCurrency(ssclAmount)}
+                      </td>
+                    </tr>
+                  )}
+                  {vatAmount > 0 && (
+                    <tr className="border-b border-black text-blue-950">
+                      <td className="p-1 px-2.5 font-semibold">
+                        Value Added Tax (VAT 18%{isTaxInclusive ? ' Extracted' : ''})
+                      </td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">
+                        {isTaxInclusive ? '' : '+'}{formatCurrency(vatAmount)}
+                      </td>
+                    </tr>
+                  )}
+                  {taxAmount > 0 && ssclAmount === 0 && vatAmount === 0 && (
                     <tr className="border-b border-black">
-                      <td className="p-1 px-2.5 font-semibold text-gray-700">Taxes (VAT / SSCL)</td>
-                      <td className="p-1 px-2.5 text-right font-mono font-bold">{formatCurrency(taxAmount)}</td>
+                      <td className="p-1 px-2.5 font-semibold text-gray-700">
+                        Taxes ({isTaxInclusive ? 'Extracted' : 'Added'})
+                      </td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">
+                        {isTaxInclusive ? '' : '+'}{formatCurrency(taxAmount)}
+                      </td>
                     </tr>
                   )}
                   <tr className="bg-gray-100 font-bold text-[11.5px]">
-                    <td className="p-1.5 px-2.5">Total Order Value</td>
+                    <td className="p-1.5 px-2.5">
+                      Total Order Value
+                      {isTaxInclusive && <span className="block text-[9px] font-normal text-gray-600">(Tax-Inclusive Price)</span>}
+                    </td>
                     <td className="p-1.5 px-2.5 text-right font-mono text-blue-900">{formatCurrency(totalPrice)}</td>
                   </tr>
                 </tbody>

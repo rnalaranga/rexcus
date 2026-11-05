@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, FileCheck, Calendar, Building2, UploadCloud, Eye, Trash2, 
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFinishedGoodsOrders } from '@/hooks/useData';
 
 export type PoEntryMode = 'received' | 'pending' | 'without_po';
 
@@ -33,6 +34,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
 }) => {
   const { toast } = useDialog();
   const { user } = useAuth();
+  const { data: allOrders = [] } = useFinishedGoodsOrders();
 
   const [submitting, setSubmitting] = useState(false);
   const [poMode, setPoMode] = useState<PoEntryMode>('received');
@@ -46,6 +48,24 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
   const [isPreviouslyPending, setIsPreviouslyPending] = useState(false);
 
   const isOrderMode = Boolean(orderData);
+
+  // Duplicate PO verification: Check if PO is already assigned to another order
+  const duplicatePoOrder = useMemo(() => {
+    if (poMode !== 'received') return null;
+    const po = customerPoNo.trim();
+    if (!po) return null;
+    const poUpper = po.toUpperCase();
+    if (poUpper === 'PO PENDING' || poUpper === 'WITHOUT PO' || poUpper === 'N/A' || poUpper === '-') return null;
+
+    return (allOrders || []).find((ord: any) => {
+      if (orderData && (ord.id === orderData.id || ord.orderNo === orderData.orderNo)) return false;
+      if (!ord.customerPoNo) return false;
+      const ordPo = String(ord.customerPoNo).trim();
+      const ordPoUpper = ordPo.toUpperCase();
+      if (ordPoUpper === 'PO PENDING' || ordPoUpper === 'WITHOUT PO' || ordPoUpper === 'N/A' || ordPoUpper === '-') return false;
+      return ordPo.toLowerCase() === po.toLowerCase();
+    });
+  }, [customerPoNo, poMode, allOrders, orderData]);
 
   useEffect(() => {
     if (!isOpen || (!quotationData && !orderData)) return;
@@ -172,6 +192,10 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     if (poMode === 'received') {
       if (!finalPoNo) {
         toast('Please enter the Customer PO Number', 'error');
+        return;
+      }
+      if (duplicatePoOrder) {
+        toast(`Customer PO #${finalPoNo} is already used on Sales Order #${duplicatePoOrder.orderNo} (${duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.`, 'error');
         return;
       }
       finalStatus = 'PO Received';
@@ -384,9 +408,23 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
                   value={customerPoNo}
                   onChange={e => setCustomerPoNo(e.target.value)}
                   placeholder="e.g. PO/2026/0891 or CUST-PO-774"
-                  className="w-full input-base font-mono text-xs font-semibold"
+                  className={`w-full input-base font-mono text-xs font-semibold ${
+                    duplicatePoOrder ? 'border-rose-500 focus:border-rose-500 bg-rose-500/5' : ''
+                  }`}
                   autoFocus
                 />
+                {duplicatePoOrder && (
+                  <div className="mt-1.5 p-2 bg-rose-500/15 border border-rose-500/50 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-1.5 animate-fade-in">
+                    <AlertCircle size={14} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Duplicate PO Number!</strong>
+                      <span className="text-[11px] leading-tight block">
+                        Customer PO <strong>{customerPoNo.trim()}</strong> is already assigned to Sales Order{' '}
+                        <strong className="font-mono text-primary">#{duplicatePoOrder.orderNo}</strong> ({duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

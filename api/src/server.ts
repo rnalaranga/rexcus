@@ -4477,6 +4477,174 @@ app.delete('/api/crm/grns/:id', async (req, res) => {
   }
 });
 
+// Helper: Reconcile finished goods orders and work orders dispatches against existing gate passes
+async function reconcileOrderDispatches(targetOrderId?: string) {
+  try {
+    // 1. Fetch all current gate pass IDs
+    const [allGps]: any = await db.query('SELECT id FROM gate_passes');
+    const validGpIds = new Set(allGps.map((g: any) => String(g.id).trim()));
+
+    // 2. Fetch orders to check
+    let query = 'SELECT * FROM finished_goods_orders WHERE 1=1';
+    const params: any[] = [];
+    if (targetOrderId) {
+      query += ' AND (id = ? OR orderNo = ?)';
+      params.push(targetOrderId, targetOrderId);
+    } else {
+      query += " AND (dispatchedQty > 0 OR (dispatches IS NOT NULL AND dispatches != '[]') OR status IN ('Dispatched', 'Partially Dispatched'))";
+    }
+
+    const [orders]: any = await db.query(query, params);
+    let reconciledCount = 0;
+
+    if (orders && orders.length > 0) {
+      for (const order of orders) {
+        let dispatches: any[] = [];
+        try {
+          dispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || []);
+        } catch (e) {
+          dispatches = [];
+        }
+
+        const orphanedDispatches: any[] = [];
+        const validDispatches: any[] = [];
+
+        for (const d of dispatches) {
+          const gpRef = String(d.gatePassId || '').trim();
+          // If gatePassId is specified but does not exist in gate_passes table
+          if (gpRef && !validGpIds.has(gpRef)) {
+            orphanedDispatches.push(d);
+          } else {
+            validDispatches.push(d);
+          }
+        }
+
+        const singleGpOrphaned = order.gatePassId && !validGpIds.has(String(order.gatePassId).trim());
+
+        if (orphanedDispatches.length > 0 || (singleGpOrphaned && validDispatches.length === 0)) {
+          // Restore inventory for orphaned items
+          for (const orphan of orphanedDispatches) {
+            let orphanItems = orphan.items;
+            if (typeof orphanItems === 'string') {
+              try { orphanItems = JSON.parse(orphanItems); } catch (e) { orphanItems = []; }
+            }
+            if (Array.isArray(orphanItems) && orphanItems.length > 0) {
+              for (const it of orphanItems) {
+                const prodId = it.productId || it.inventoryId;
+                const itQty = Number(it.qty || it.dispatchQty || 0);
+                if (prodId && itQty > 0) {
+                  try {
+                    await db.query('UPDATE inventory SET quantity = quantity + ? WHERE id = ?', [itQty, prodId]);
+                    const ledgerEntry = {
+                      id: 'LGR-' + Date.now().toString().slice(-5) + '-' + Math.floor(Math.random() * 1000),
+                      inventoryId: prodId,
+                      date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                      type: 'IN',
+                      qty: itQty,
+                      reference: `RECON-${orphan.gatePassId || order.orderNo}`,
+                      notes: `Auto-restored stock for deleted Gate Pass ${orphan.gatePassId || ''} (Order ${order.orderNo})`
+                    };
+                    await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+                  } catch (invErr) {
+                    console.error('Error auto-restoring stock during reconcile:', invErr);
+                  }
+                }
+              }
+            } else if (order.productId) {
+              const orphanQty = Number(orphan.dispatchedQty || 0);
+              if (orphanQty > 0) {
+                try {
+                  await db.query('UPDATE inventory SET quantity = quantity + ? WHERE id = ?', [orphanQty, order.productId]);
+                } catch (invErr) {}
+              }
+            }
+          }
+
+          const totalOrderQty = Math.max(1, Number(order.qty || 1));
+          const newDispatchedQty = validDispatches.reduce((acc: number, d: any) => acc + Number(d.dispatchedQty || 0), 0);
+          const newIsDispatched = (newDispatchedQty >= totalOrderQty && totalOrderQty > 0) ? 1 : 0;
+          const newStatus = (newDispatchedQty >= totalOrderQty && totalOrderQty > 0)
+            ? 'Dispatched'
+            : (newDispatchedQty > 0 ? 'Partially Dispatched' : 'Confirmed');
+
+          const lastValid = validDispatches[validDispatches.length - 1];
+          const newGpId = lastValid ? (lastValid.gatePassId || lastValid.dispatchNo) : null;
+
+          await db.query(`
+            UPDATE finished_goods_orders 
+            SET dispatchedQty = ?,
+                dispatches = ?,
+                status = ?,
+                isDispatched = ?,
+                gatePassId = ?,
+                gatePassNo = ?,
+                updatedAt = NOW()
+            WHERE id = ?
+          `, [
+            newDispatchedQty,
+            JSON.stringify(validDispatches),
+            newStatus,
+            newIsDispatched,
+            newGpId,
+            newGpId,
+            order.id
+          ]);
+
+          // Linked work order
+          if (order.orderNo) {
+            try {
+              const [woRows]: any = await db.query('SELECT id, jobQty FROM work_orders WHERE orderNo = ?', [order.orderNo]);
+              if (woRows.length > 0) {
+                const wo = woRows[0];
+                const woStatus = newIsDispatched ? 'Completed' : (newDispatchedQty > 0 ? 'Partially Dispatched' : 'In Progress');
+                await db.query(
+                  'UPDATE work_orders SET dispatchedQty = ?, dispatches = ?, status = ?, updatedAt = NOW() WHERE id = ?',
+                  [newDispatchedQty, JSON.stringify(validDispatches), woStatus, wo.id]
+                );
+              }
+            } catch (woErr) {
+              console.error('Error updating linked work order on reconcile:', woErr);
+            }
+          }
+
+          reconciledCount++;
+        }
+      }
+    }
+
+    // Also reconcile work orders directly if any
+    try {
+      const [allWos]: any = await db.query("SELECT id, orderNo, jobQty, dispatchedQty, dispatches FROM work_orders WHERE dispatchedQty > 0 OR (dispatches IS NOT NULL AND dispatches != '[]')");
+      if (allWos && allWos.length > 0) {
+        for (const wo of allWos) {
+          let woDispatches: any[] = [];
+          try {
+            woDispatches = typeof wo.dispatches === 'string' ? JSON.parse(wo.dispatches || '[]') : (wo.dispatches || []);
+          } catch (e) {
+            woDispatches = [];
+          }
+
+          const validWoDispatches = woDispatches.filter((d: any) => !d.gatePassId || validGpIds.has(String(d.gatePassId).trim()));
+          if (validWoDispatches.length !== woDispatches.length) {
+            const woJobQty = Math.max(1, Number(wo.jobQty || 1));
+            const newWoDispatched = validWoDispatches.reduce((acc: number, d: any) => acc + Number(d.dispatchedQty || 0), 0);
+            const newWoStatus = (newWoDispatched >= woJobQty) ? 'Completed' : (newWoDispatched > 0 ? 'Partially Dispatched' : 'In Progress');
+            await db.query(
+              'UPDATE work_orders SET dispatchedQty = ?, dispatches = ?, status = ?, updatedAt = NOW() WHERE id = ?',
+              [newWoDispatched, JSON.stringify(validWoDispatches), newWoStatus, wo.id]
+            );
+          }
+        }
+      }
+    } catch (e) {}
+
+    return { reconciled: reconciledCount };
+  } catch (error) {
+    console.error('reconcileOrderDispatches error:', error);
+    return { reconciled: 0, error };
+  }
+}
+
 // -- GATE PASSES --
 app.get('/api/gate-passes', async (req, res) => {
   try {
@@ -4600,10 +4768,54 @@ app.delete('/api/gate-passes/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete gate passes.' });
     }
     const { id } = req.params;
+
+    // 1. Fetch gate pass before deleting to inspect items
+    const [gpRows]: any = await db.query('SELECT * FROM gate_passes WHERE id = ?', [id]);
+    const gp = gpRows && gpRows.length > 0 ? gpRows[0] : null;
+
+    if (gp) {
+      // 2. Put back inventory stock
+      let gpItems: any[] = [];
+      try {
+        gpItems = typeof gp.items === 'string' ? JSON.parse(gp.items || '[]') : (gp.items || []);
+      } catch (e) {}
+
+      if (Array.isArray(gpItems) && gpItems.length > 0) {
+        for (const it of gpItems) {
+          const prodId = it.productId || it.inventoryId;
+          const itQty = Number(it.qty || it.dispatchQty || 0);
+          if (prodId && itQty > 0) {
+            try {
+              await db.query('UPDATE inventory SET quantity = quantity + ? WHERE id = ?', [itQty, prodId]);
+              const ledgerEntry = {
+                id: 'LGR-' + Date.now().toString().slice(-5) + '-' + Math.floor(Math.random() * 1000),
+                inventoryId: prodId,
+                date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                type: 'IN',
+                qty: itQty,
+                reference: `REV-${id}`,
+                notes: `Reversal of deleted Gate Pass ${id}`
+              };
+              await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+            } catch (invErr) {
+              console.error('Error reversing inventory stock for gate pass:', invErr);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Update customer_grns
     await db.query("UPDATE customer_grns SET gatePassId = NULL, status = 'In Stock', dispatchedAt = NULL WHERE gatePassId = ?", [id]);
+
+    // 4. Delete the gate pass
     await db.query('DELETE FROM gate_passes WHERE id = ?', [id]);
-    res.json({ success: true, id });
-  } catch (error) {
+
+    // 5. Automatically reconcile finished_goods_orders and work_orders so order balances restore immediately
+    await reconcileOrderDispatches();
+
+    res.json({ success: true, id, message: 'Gate pass deleted and order dispatch balance restored' });
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
@@ -5045,6 +5257,13 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
 // -- FINISHED GOODS ORDERS --
 app.get('/api/finished-goods-orders', async (req, res) => {
   try {
+    // Automatically self-heal any orphaned dispatches (e.g. from deleted gate passes)
+    try {
+      await reconcileOrderDispatches();
+    } catch (recErr) {
+      console.error('Auto-reconcile error on GET /finished-goods-orders:', recErr);
+    }
+
     const { productId, status } = req.query;
     let query = 'SELECT * FROM finished_goods_orders WHERE 1=1';
     const params: any[] = [];
@@ -5062,6 +5281,28 @@ app.get('/api/finished-goods-orders', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/finished-goods-orders/:id/reconcile-dispatches', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await reconcileOrderDispatches(id);
+    const [orders]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1', [id, id]);
+    res.json({ success: true, reconciled: result.reconciled, order: orders[0] || null });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/finished-goods-orders/reconcile-all', async (req, res) => {
+  try {
+    const result = await reconcileOrderDispatches();
+    res.json({ success: true, reconciled: result.reconciled });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -5089,6 +5330,21 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     // Shorten standard SO-20YY- prefix to SO-YY- while preserving custom order numbers
     if (/^SO-20\d{2}-/i.test(orderNo)) {
       orderNo = orderNo.replace(/^SO-20(\d{2})-/i, 'SO-$1-');
+    }
+
+    // Duplicate Customer PO Check: Same PO cannot be used on multiple Sales Orders
+    const rawPo = String(data.customerPoNo || '').trim();
+    const normalizedPo = rawPo.toUpperCase();
+    if (rawPo && !['PO PENDING', 'WITHOUT PO', 'N/A', '-'].includes(normalizedPo)) {
+      const [dupPoRows]: any = await db.query(
+        'SELECT id, orderNo, customerName FROM finished_goods_orders WHERE LOWER(TRIM(customerPoNo)) = LOWER(?) LIMIT 1',
+        [rawPo]
+      );
+      if (dupPoRows && dupPoRows.length > 0) {
+        return res.status(400).json({
+          error: `Customer PO #${rawPo} is already assigned to Sales Order #${dupPoRows[0].orderNo} (${dupPoRows[0].customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.`
+        });
+      }
     }
     
     // Parse items if provided
@@ -5166,9 +5422,15 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       qty: totalQty,
       unitPrice: Number(data.unitPrice) || (totalQty > 0 ? (subtotal / totalQty) : 0),
       subtotal,
+      discount: Number(data.discount) || 0,
+      discountType: data.discountType || 'percent',
+      discountAmount: Number(data.discountAmount) || 0,
       taxAmount,
       taxRate: Number(data.taxRate) || 0,
       taxProfileId: data.taxProfileId || null,
+      isTaxInclusive: data.isTaxInclusive ? 1 : 0,
+      vatAmount: Number(data.vatAmount) || 0,
+      ssclAmount: Number(data.ssclAmount) || 0,
       totalPrice,
       status: data.status || 'Pending',
       stockStatus: String(data.stockStatus || stockStatus || 'In Stock').slice(0, 250),
@@ -5222,6 +5484,12 @@ app.post('/api/finished-goods-orders', async (req, res) => {
         { col: 'customerPoNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoNo VARCHAR(100) DEFAULT NULL' },
         { col: 'customerPoDate', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoDate VARCHAR(50) DEFAULT NULL' },
         { col: 'customerPoAttachment', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoAttachment LONGTEXT DEFAULT NULL' },
+        { col: 'discount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN discount DECIMAL(15,2) DEFAULT 0.00' },
+        { col: 'discountType', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN discountType VARCHAR(20) DEFAULT \'percent\'' },
+        { col: 'discountAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN discountAmount DECIMAL(15,2) DEFAULT 0.00' },
+        { col: 'isTaxInclusive', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0' },
+        { col: 'vatAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN vatAmount DECIMAL(15,2) DEFAULT 0.00' },
+        { col: 'ssclAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN ssclAmount DECIMAL(15,2) DEFAULT 0.00' },
       ];
       for (const q of alterQueries) {
         if (!validCols.has(q.col)) {
@@ -5462,6 +5730,23 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = nowStr;
 
+    // Duplicate Customer PO Check on Update: Same PO cannot be used on multiple Sales Orders
+    if (data.customerPoNo !== undefined && data.customerPoNo !== null) {
+      const rawPo = String(data.customerPoNo || '').trim();
+      const normalizedPo = rawPo.toUpperCase();
+      if (rawPo && !['PO PENDING', 'WITHOUT PO', 'N/A', '-'].includes(normalizedPo)) {
+        const [dupPoRows]: any = await db.query(
+          'SELECT id, orderNo, customerName FROM finished_goods_orders WHERE LOWER(TRIM(customerPoNo)) = LOWER(?) AND id != ? AND orderNo != ? LIMIT 1',
+          [rawPo, id, id]
+        );
+        if (dupPoRows && dupPoRows.length > 0) {
+          return res.status(400).json({
+            error: `Customer PO #${rawPo} is already assigned to Sales Order #${dupPoRows[0].orderNo} (${dupPoRows[0].customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.`
+          });
+        }
+      }
+    }
+
     // 1. Fetch existing order to detect differences
     const [existingRows]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
     const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
@@ -5628,13 +5913,36 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
     if (order.isDispatched || (prevDispatched >= totalOrderQty)) {
       return res.status(400).json({ error: 'Order is already fully dispatched' });
     }
-    const currentDispatchQty = Math.max(1, Math.min(
-      totalOrderQty - prevDispatched,
-      Number(dispatchDetails.dispatchQty || (totalOrderQty - prevDispatched))
-    ));
+
+    // Support item-level partial dispatch if provided by client (dispatchDetails.dispatchItems)
+    const customDispatchItems = Array.isArray(dispatchDetails.dispatchItems) && dispatchDetails.dispatchItems.length > 0
+      ? dispatchDetails.dispatchItems
+      : null;
+
+    let currentDispatchQty = 0;
+    if (customDispatchItems) {
+      currentDispatchQty = customDispatchItems.reduce((acc: number, it: any) => acc + Math.max(0, Number(it.dispatchQty || 0)), 0);
+    }
+    if (currentDispatchQty <= 0) {
+      currentDispatchQty = Math.max(1, Math.min(
+        totalOrderQty - prevDispatched,
+        Number(dispatchDetails.dispatchQty || (totalOrderQty - prevDispatched))
+      ));
+    }
+
+    if (currentDispatchQty <= 0) {
+      return res.status(400).json({ error: 'Please enter a valid dispatch quantity greater than 0.' });
+    }
+
+    if (prevDispatched + currentDispatchQty > totalOrderQty) {
+      return res.status(400).json({ 
+        error: `Cannot dispatch ${currentDispatchQty} pcs. Only ${Math.max(0, totalOrderQty - prevDispatched)} pcs remain to be dispatched for this order.` 
+      });
+    }
+
     const newCumulative = prevDispatched + currentDispatchQty;
     const remainingQty = Math.max(0, totalOrderQty - newCumulative);
-    const isFinal = remainingQty === 0;
+    const isFinal = remainingQty === 0 || newCumulative >= totalOrderQty;
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
@@ -5653,29 +5961,26 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       }
     }
 
-    // Support item-level partial dispatch if provided by client (dispatchDetails.dispatchItems)
-    const customDispatchItems = Array.isArray(dispatchDetails.dispatchItems) && dispatchDetails.dispatchItems.length > 0
-      ? dispatchDetails.dispatchItems
-      : null;
-
     const gatePassItemsList = customDispatchItems
       ? customDispatchItems
-          .filter((it: any) => Number(it.dispatchQty || it.qty || 0) > 0)
+          .filter((it: any) => Number(it.dispatchQty || 0) > 0)
           .map((it: any) => ({
+            id: it.id || null,
             productId: it.productId || it.inventoryId || null,
             inventoryId: it.inventoryId || it.productId || null,
             description: it.description || it.productName || order.productName,
-            qty: Number(it.dispatchQty || it.qty || 1),
+            qty: Number(it.dispatchQty || 1),
             unitPrice: Number(it.unitPrice || it.price || 0),
             unit: it.uom || it.unit || 'Nos',
-            remarks: `Order ${order.orderNo} (Partial Dispatch: ${it.dispatchQty || it.qty} ${it.uom || 'Nos'})`
+            remarks: `Order ${order.orderNo} (Partial Dispatch: ${it.dispatchQty} ${it.uom || it.unit || 'Nos'})`
           }))
       : (parsedItems.length > 0
           ? parsedItems.map(it => ({
+              id: it.id || null,
               productId: it.productId || it.inventoryId || null,
               inventoryId: it.inventoryId || it.productId || null,
               description: it.description || it.productName || order.productName,
-              qty: currentDispatchQty,
+              qty: parsedItems.length === 1 ? currentDispatchQty : Math.min(Number(it.qty || 1), currentDispatchQty),
               unitPrice: Number(it.unitPrice || it.price || 0),
               unit: it.uom || 'Nos',
               remarks: `Order ${order.orderNo} (Batch: ${newCumulative}/${totalOrderQty})`
@@ -5736,13 +6041,13 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
 
     // 3. Deduct stock for dispatched items
     const itemsToDeduct = customDispatchItems && customDispatchItems.length > 0
-      ? customDispatchItems.filter((it: any) => Number(it.dispatchQty || it.qty || 0) > 0)
+      ? customDispatchItems.filter((it: any) => Number(it.dispatchQty || 0) > 0)
       : (parsedItems.length > 0 ? parsedItems : []);
 
     if (itemsToDeduct.length > 0) {
       for (const it of itemsToDeduct) {
         const prodId = it.productId || it.inventoryId;
-        const itQty = Number(it.dispatchQty !== undefined ? it.dispatchQty : (it.qty || 1));
+        const itQty = Number(it.dispatchQty !== undefined ? it.dispatchQty : (parsedItems.length === 1 ? currentDispatchQty : (it.qty || 1)));
         if (prodId && itQty > 0) {
           const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [prodId]);
           if (invRows.length > 0) {
@@ -5764,7 +6069,7 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
         }
       }
     } else if (order.productId) {
-      const dispatchQty = currentDispatchQty || Number(order.qty) || 1;
+      const dispatchQty = currentDispatchQty || 1;
       const [invRows]: any = await db.query('SELECT quantity FROM inventory WHERE id = ?', [order.productId]);
       if (invRows.length > 0) {
         const currentQty = Number(invRows[0].quantity || 0);

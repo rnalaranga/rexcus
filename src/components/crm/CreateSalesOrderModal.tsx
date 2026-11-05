@@ -311,6 +311,25 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     });
   }, [quotationData, allOrders]);
 
+  const hasMultipleOrdersForQuote = existingQuoteOrders.length >= 1;
+
+  // Duplicate PO verification: Check if entered PO is already assigned to any other Sales Order
+  const duplicatePoOrder = useMemo(() => {
+    if (poMode !== 'received') return null;
+    const po = formData.customerPoNo.trim();
+    if (!po) return null;
+    const poUpper = po.toUpperCase();
+    if (poUpper === 'PO PENDING' || poUpper === 'WITHOUT PO' || poUpper === 'N/A' || poUpper === '-') return null;
+
+    return (allOrders || []).find((ord: any) => {
+      if (!ord.customerPoNo) return false;
+      const ordPo = String(ord.customerPoNo).trim();
+      const ordPoUpper = ordPo.toUpperCase();
+      if (ordPoUpper === 'PO PENDING' || ordPoUpper === 'WITHOUT PO' || ordPoUpper === 'N/A' || ordPoUpper === '-') return false;
+      return ordPo.toLowerCase() === po.toLowerCase();
+    });
+  }, [formData.customerPoNo, poMode, allOrders]);
+
   if (!isOpen || !quotationData) return null;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -355,6 +374,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         const ratio = prev.taxAmount / prevBase;
         taxAmount = Number((netBase * ratio).toFixed(2));
       }
+
+      let vatAmount = prev.vatAmount || 0;
+      let ssclAmount = prev.ssclAmount || 0;
+      if (vatAmount > 0 || ssclAmount > 0) {
+        const oldTotal = vatAmount + ssclAmount;
+        if (oldTotal > 0) {
+          const vatRatio = vatAmount / oldTotal;
+          vatAmount = Number((taxAmount * vatRatio).toFixed(2));
+          ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
+        }
+      }
+
       const totalPrice = netBase + taxAmount;
 
       return {
@@ -362,6 +393,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         items: newItems,
         subtotal: newSubtotal,
         taxAmount,
+        vatAmount,
+        ssclAmount,
         totalPrice
       };
     });
@@ -438,6 +471,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         const ratio = prev.taxAmount / prevBase;
         taxAmount = Number((netBase * ratio).toFixed(2));
       }
+
+      let vatAmount = prev.vatAmount || 0;
+      let ssclAmount = prev.ssclAmount || 0;
+      if (vatAmount > 0 || ssclAmount > 0) {
+        const oldTotal = vatAmount + ssclAmount;
+        if (oldTotal > 0) {
+          const vatRatio = vatAmount / oldTotal;
+          vatAmount = Number((taxAmount * vatRatio).toFixed(2));
+          ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
+        }
+      }
+
       const totalPrice = netBase + taxAmount;
 
       return {
@@ -445,6 +490,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         items: newItems,
         subtotal: newSubtotal,
         taxAmount,
+        vatAmount,
+        ssclAmount,
         totalPrice
       };
     });
@@ -462,11 +509,25 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         const ratio = prev.taxAmount / prevBase;
         taxAmount = Number((netBase * ratio).toFixed(2));
       }
+
+      let vatAmount = prev.vatAmount || 0;
+      let ssclAmount = prev.ssclAmount || 0;
+      if (vatAmount > 0 || ssclAmount > 0) {
+        const oldTotal = vatAmount + ssclAmount;
+        if (oldTotal > 0) {
+          const vatRatio = vatAmount / oldTotal;
+          vatAmount = Number((taxAmount * vatRatio).toFixed(2));
+          ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
+        }
+      }
+
       const totalPrice = netBase + taxAmount;
       return {
         ...prev,
         discount,
         taxAmount,
+        vatAmount,
+        ssclAmount,
         totalPrice
       };
     });
@@ -487,7 +548,12 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     );
 
     if (!isPoSatisfied) {
-      toast('Customer PO is required to create a Sales Order. Please enter the PO Number or select "PO Pending" / "Without PO".', 'error');
+      toast('Customer PO is mandatory for every Sales Order. Please enter a valid Customer PO Number, or choose "PO Pending" / "Without PO".', 'error');
+      return;
+    }
+
+    if (poMode === 'received' && duplicatePoOrder) {
+      toast(`Customer PO #${formData.customerPoNo.trim()} is already used on Sales Order #${duplicatePoOrder.orderNo} (${duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be assigned to multiple sales orders.`, 'error');
       return;
     }
 
@@ -538,6 +604,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         subtotal: Number(formData.subtotal) || 0,
         discount: Number(formData.discount) || 0,
         taxAmount: Number(formData.taxAmount) || 0,
+        vatAmount: Number(formData.vatAmount) || 0,
+        ssclAmount: Number(formData.ssclAmount) || 0,
         taxRate: Number(formData.taxRate) || 0,
         taxProfileId: formData.taxProfileId || null,
         totalPrice: Number(formData.totalPrice) || 0,
@@ -639,11 +707,21 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       Discount: -{formatCurrency(formData.discount)}
                     </div>
                   )}
-                  {Number(formData.taxAmount || 0) > 0 ? (
-                    <div className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
-                      Taxes (VAT / SSCL): +{formatCurrency(formData.taxAmount)}
+                  {Number(formData.ssclAmount || 0) > 0 && (
+                    <div className="text-amber-600 dark:text-amber-400 font-semibold text-[11px]">
+                      SSCL (2.5%): +{formatCurrency(formData.ssclAmount)}
                     </div>
-                  ) : null}
+                  )}
+                  {Number(formData.vatAmount || 0) > 0 && (
+                    <div className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                      VAT (18%): +{formatCurrency(formData.vatAmount)}
+                    </div>
+                  )}
+                  {Number(formData.taxAmount || 0) > 0 && !(Number(formData.ssclAmount || 0) > 0) && !(Number(formData.vatAmount || 0) > 0) && (
+                    <div className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                      Taxes ({formData.taxRate > 0 ? `${formData.taxRate}%` : 'VAT/SSCL'}): +{formatCurrency(formData.taxAmount)}
+                    </div>
+                  )}
                   <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
                     Total Order Value: {formatCurrency(formData.totalPrice)}
                   </div>
@@ -934,6 +1012,45 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
             </div>
           )}
 
+          {/* ── MULTIPLE SALES ORDERS REMINDER BANNER FOR THIS QUOTATION ── */}
+          {hasMultipleOrdersForQuote && (
+            <div className="p-3.5 bg-amber-500/15 border-2 border-amber-500/50 text-xs space-y-2 animate-fade-in shadow-sm">
+              <div className="flex items-start gap-2.5">
+                <div className="p-1.5 bg-amber-500/25 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5">
+                  <AlertTriangle size={18} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between flex-wrap gap-1">
+                    <span className="font-black text-amber-900 dark:text-amber-100 text-xs uppercase tracking-wide">
+                      ⚠️ Multiple Sales Orders Detected (Creating Order #{existingQuoteOrders.length + 1} for Quotation {formData.quotationNo})
+                    </span>
+                    <span className="font-mono text-[10px] px-2 py-0.5 bg-amber-500/30 text-amber-800 dark:text-amber-200 border border-amber-500/40 font-bold">
+                      Customer PO Mandatory for Every Order
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-900 dark:text-amber-200 mt-1 leading-relaxed">
+                    This Quotation already has <strong>{existingQuoteOrders.length}</strong> existing Sales Order(s). When multiple Sales Orders are generated from the same Quotation, <strong>Customer PO verification is strictly mandatory for every Sales Order!</strong>
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+                    <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">Existing Orders for this Quote:</span>
+                    {existingQuoteOrders.map((ord: any) => (
+                      <span key={ord.id || ord.orderNo} className="text-[11px] font-mono px-2 py-0.5 bg-surface/80 border border-amber-500/40 text-primary font-semibold flex items-center gap-1.5">
+                        <strong>{ord.orderNo}</strong>
+                        <span className="text-muted">PO:</span>
+                        <span className={ord.customerPoNo && ord.customerPoNo !== 'WITHOUT PO' && ord.customerPoNo !== 'PO PENDING' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-amber-600 dark:text-amber-400 font-bold'}>
+                          {ord.customerPoNo || 'None'}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-amber-800 dark:text-amber-300 mt-1.5 font-medium">
+                    📌 <strong>Rule:</strong> The same Customer PO Number cannot be assigned to multiple Sales Orders. You must enter a unique PO number, or select <strong>"PO Pending"</strong> or <strong>"Without PO"</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── CUSTOMER PURCHASE ORDER (PO) SECTION ── */}
           <div className="p-4 bg-surface2/60 border border-theme-subtle space-y-3">
             <div className="flex items-center justify-between border-b border-theme-subtle pb-2">
@@ -942,51 +1059,65 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 <span className="text-xs font-bold text-primary uppercase tracking-wider">
                   Customer Purchase Order (PO) <span className="text-rose-500">*</span>
                 </span>
+                {hasMultipleOrdersForQuote && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                    Order #{existingQuoteOrders.length + 1}
+                  </span>
+                )}
               </div>
-              <span className="text-[10px] text-muted font-mono">
-                Mandatory for Sales Order
+              <span className="text-[10px] text-muted font-mono font-bold">
+                {hasMultipleOrdersForQuote ? 'Mandatory for Every Order (Must be Unique)' : 'Mandatory for Sales Order'}
               </span>
             </div>
 
             {/* PO Mode Selector */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setPoMode('received')}
-                className={`p-2 text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                className={`p-2.5 text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all text-center ${
                   poMode === 'received'
-                    ? 'bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-sm ring-1 ring-emerald-500/50'
                     : 'bg-surface hover:bg-surface3 border-theme-subtle text-muted hover:text-primary'
                 }`}
               >
-                <CheckCircle2 size={13} className={poMode === 'received' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted'} />
-                <span>PO Received</span>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className={poMode === 'received' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted'} />
+                  <span>PO Received</span>
+                </div>
+                <span className="text-[10px] font-normal opacity-80">Official PO Number Supplied</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setPoMode('pending')}
-                className={`p-2 text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                className={`p-2.5 text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all text-center ${
                   poMode === 'pending'
-                    ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300'
+                    ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 shadow-sm ring-1 ring-amber-500/50'
                     : 'bg-surface hover:bg-surface3 border-theme-subtle text-muted hover:text-primary'
                 }`}
               >
-                <Clock size={13} className={poMode === 'pending' ? 'text-amber-600 dark:text-amber-400' : 'text-muted'} />
-                <span>PO Pending</span>
+                <div className="flex items-center gap-1.5">
+                  <Clock size={14} className={poMode === 'pending' ? 'text-amber-600 dark:text-amber-400' : 'text-muted'} />
+                  <span>PO Pending</span>
+                </div>
+                <span className="text-[10px] font-normal opacity-80">Customer PO Awaited</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setPoMode('without_po')}
-                className={`p-2 text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                className={`p-2.5 text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all text-center ${
                   poMode === 'without_po'
-                    ? 'bg-blue-500/15 border-blue-500 text-blue-700 dark:text-blue-300'
+                    ? 'bg-blue-500/15 border-blue-500 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-500/50'
                     : 'bg-surface hover:bg-surface3 border-theme-subtle text-muted hover:text-primary'
                 }`}
               >
-                <ShieldCheck size={13} className={poMode === 'without_po' ? 'text-blue-600 dark:text-blue-400' : 'text-muted'} />
-                <span>Without PO</span>
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck size={14} className={poMode === 'without_po' ? 'text-blue-600 dark:text-blue-400' : 'text-muted'} />
+                  <span>Without PO</span>
+                </div>
+                <span className="text-[10px] font-normal opacity-80">Verbal / Cash / Direct</span>
               </button>
             </div>
 
@@ -1003,8 +1134,22 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       value={formData.customerPoNo === 'PO PENDING' || formData.customerPoNo === 'WITHOUT PO' ? '' : formData.customerPoNo}
                       onChange={e => setFormData({ ...formData, customerPoNo: e.target.value })}
                       placeholder="e.g. PO/2026/0891 or CUST-PO-774"
-                      className="w-full input-base font-mono text-xs font-semibold focus:border-emerald-500"
+                      className={`w-full input-base font-mono text-xs font-semibold ${
+                        duplicatePoOrder ? 'border-rose-500 focus:border-rose-500 bg-rose-500/5' : 'focus:border-emerald-500'
+                      }`}
                     />
+                    {duplicatePoOrder && (
+                      <div className="mt-1.5 p-2 bg-rose-500/15 border border-rose-500/50 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-1.5 animate-fade-in">
+                        <AlertCircle size={15} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="block font-bold">Duplicate Customer PO Number!</strong>
+                          <span className="text-[11px] leading-tight block">
+                            Customer PO Number <strong>{formData.customerPoNo.trim()}</strong> is already assigned to Sales Order{' '}
+                            <strong className="font-mono text-primary">#{duplicatePoOrder.orderNo}</strong> ({duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
