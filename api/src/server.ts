@@ -1863,6 +1863,28 @@ async function runDatabaseSync() {
     await db.query("ALTER TABLE gate_passes MODIFY reason TEXT");
   } catch (err) {}
 
+  // High-performance database indexing for Sales Orders, Invoices, and Work Orders
+  const safeIndexes = [
+    { table: 'finished_goods_orders', name: 'idx_fgo_orderNo', col: 'orderNo' },
+    { table: 'finished_goods_orders', name: 'idx_fgo_createdAt', col: 'createdAt' },
+    { table: 'finished_goods_orders', name: 'idx_fgo_status', col: 'status' },
+    { table: 'finished_goods_orders', name: 'idx_fgo_customerId', col: 'customerId' },
+    { table: 'finished_goods_orders', name: 'idx_fgo_quoteId', col: 'quoteId' },
+    { table: 'work_orders', name: 'idx_wo_salesOrderNo', col: 'salesOrderNo' },
+    { table: 'work_orders', name: 'idx_wo_orderNo', col: 'orderNo' },
+    { table: 'work_orders', name: 'idx_wo_status', col: 'status' },
+    { table: 'invoices', name: 'idx_inv_orderNo', col: 'orderNo' },
+    { table: 'invoices', name: 'idx_inv_orderId', col: 'orderId' },
+    { table: 'invoices', name: 'idx_inv_status', col: 'status' },
+    { table: 'payment_receipts', name: 'idx_rec_orderNo', col: 'orderNo' },
+    { table: 'payment_receipts', name: 'idx_rec_orderId', col: 'orderId' }
+  ];
+  for (const idx of safeIndexes) {
+    try {
+      await db.query(`ALTER TABLE ${idx.table} ADD INDEX ${idx.name} (${idx.col})`);
+    } catch (err) {}
+  }
+
   // Auto-seed user_quotation_sequences for users with prefixes
   try {
     const [uRows]: any = await db.query("SELECT id, prefix FROM users WHERE prefix IS NOT NULL AND prefix != ''");

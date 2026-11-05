@@ -1668,6 +1668,55 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }, [orders, search, statusFilter])
 
   
+  // Pre-indexed lookup maps for ultra-fast O(1) row rendering
+  const inventoryProductMap = useMemo(() => {
+    const map = new Map<string, any>();
+    finishedProducts.forEach((p: any) => {
+      if (p.id) map.set(p.id, p);
+    });
+    return map;
+  }, [finishedProducts]);
+
+  const workOrdersByOrderNo = useMemo(() => {
+    const map = new Map<string, any>();
+    workOrdersList.forEach((w: any) => {
+      if (w.orderNo) map.set(w.orderNo, w);
+      if (w.salesOrderNo) map.set(w.salesOrderNo, w);
+      if (w.sourceQuoteId) map.set(String(w.sourceQuoteId), w);
+    });
+    return map;
+  }, [workOrdersList]);
+
+  const { proformaInvoicesMap, taxInvoicesMap } = useMemo(() => {
+    const proformas = new Map<string, any>();
+    const taxInvs = new Map<string, any>();
+
+    allInvoices.forEach((inv: any) => {
+      const isProf = Boolean(inv.isProforma || inv.invoiceType === 'proforma' || inv.status === 'proforma' || inv.invoiceNo?.startsWith('PI-') || inv.id?.startsWith('PI-'));
+      const targetMap = isProf ? proformas : taxInvs;
+
+      if (inv.orderNo) targetMap.set(String(inv.orderNo), inv);
+      if (inv.orderId) targetMap.set(String(inv.orderId), inv);
+      if (inv.quotationNo) targetMap.set(String(inv.quotationNo), inv);
+      if (inv.id) targetMap.set(String(inv.id), inv);
+      if (inv.invoiceNo) targetMap.set(String(inv.invoiceNo), inv);
+    });
+
+    return { proformaInvoicesMap: proformas, taxInvoicesMap: taxInvs };
+  }, [allInvoices]);
+
+  const receiptsByOrderNoMap = useMemo(() => {
+    const map = new Map<string, any[]>();
+    paymentReceiptsList.forEach((r: any) => {
+      const keys = [r.orderNo, r.quotationNo, r.orderId, r.quoteId].filter(Boolean).map(k => String(k).trim().toLowerCase());
+      keys.forEach(k => {
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(r);
+      });
+    });
+    return map;
+  }, [paymentReceiptsList]);
+
   // Sorted Orders for Excel-like Column Sorting
   const sortedOrders = useMemo(() => {
     return [...filteredOrders].sort((a: any, b: any) => {
@@ -2598,7 +2647,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </thead>
             <tbody className="divide-y divide-theme-subtle/30 text-xs">
               {sortedOrders.map((order, idx) => {
-                const prod = finishedProducts.find(p => p.id === order.productId)
+                const prod = inventoryProductMap.get(order.productId)
                 const inStockNow = Number(prod?.quantity || 0)
                 const isShort = inStockNow < Number(order.qty) && !order.isDispatched
 
@@ -2612,34 +2661,31 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   }
                 }
 
-                // Match linked Work Order if created
-                const existingWO = workOrdersList.find((w: any) =>
-                  (w.orderNo && (w.orderNo === order.orderNo || w.orderNo.includes(order.orderNo))) ||
-                  (w.sourceQuoteId && order.quoteId && String(w.sourceQuoteId) === String(order.quoteId)) ||
-                  (w.title && w.title.includes(order.orderNo))
-                )
+                // Match linked Work Order if created (O(1) fast lookup)
+                const existingWO = (order.orderNo && workOrdersByOrderNo.get(order.orderNo)) ||
+                  (order.quoteId && workOrdersByOrderNo.get(String(order.quoteId))) ||
+                  (order.id && workOrdersByOrderNo.get(order.id)) ||
+                  null;
 
-                const recs = getOrderReceipts(order);
+                const oNoKey = String(order.orderNo || '').trim().toLowerCase();
+                const qNoKey = String(order.quotationNo || '').trim().toLowerCase();
+                const oIdKey = String(order.id || '').trim().toLowerCase();
+                const recs = (oNoKey && receiptsByOrderNoMap.get(oNoKey)) ||
+                  (qNoKey && receiptsByOrderNoMap.get(qNoKey)) ||
+                  (oIdKey && receiptsByOrderNoMap.get(oIdKey)) ||
+                  [];
                 const totalAdv = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
                 const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
 
-                const linkedProforma = allInvoices.find((inv: any) =>
-                  (inv.isProforma || inv.invoiceType === 'proforma' || inv.status === 'proforma' || inv.invoiceNo?.startsWith('PI-') || inv.id?.startsWith('PI-')) &&
-                  (
-                    (order.orderNo && inv.orderNo && String(inv.orderNo) === String(order.orderNo)) ||
-                    (order.id && inv.orderId && String(inv.orderId) === String(order.id)) ||
-                    (order.quotationNo && inv.quotationNo && String(inv.quotationNo) === String(order.quotationNo))
-                  )
-                );
+                const linkedProforma = (order.orderNo && proformaInvoicesMap.get(order.orderNo)) ||
+                  (order.id && proformaInvoicesMap.get(order.id)) ||
+                  (order.quotationNo && proformaInvoicesMap.get(order.quotationNo)) ||
+                  null;
 
-                const linkedInvoice = allInvoices.find((inv: any) =>
-                  (!inv.isProforma && inv.invoiceType !== 'proforma' && !inv.invoiceNo?.startsWith('PI-') && !inv.id?.startsWith('PI-')) &&
-                  (
-                    (order.invoiceId && (String(inv.id) === String(order.invoiceId) || String(inv.invoiceNo) === String(order.invoiceId))) ||
-                    (order.invoiceNo && (String(inv.invoiceNo) === String(order.invoiceNo) || String(inv.id) === String(order.invoiceNo))) ||
-                    (inv.orderNo && order.orderNo && String(inv.orderNo) === String(order.orderNo))
-                  )
-                );
+                const linkedInvoice = (order.invoiceId && taxInvoicesMap.get(order.invoiceId)) ||
+                  (order.invoiceNo && taxInvoicesMap.get(order.invoiceNo)) ||
+                  (order.orderNo && taxInvoicesMap.get(order.orderNo)) ||
+                  null;
                 const isInvoicePaid = linkedInvoice?.status === 'paid' || order.paymentStatus === 'Paid';
                 const isInvoicePartPaid = linkedInvoice?.status === 'partially_paid' || order.paymentStatus === 'Partially Paid';
 
