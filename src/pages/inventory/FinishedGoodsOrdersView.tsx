@@ -810,17 +810,28 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       });
     }
 
+    const quoteBaseTotal = Number(parsed.custTotals?.subtotal || parsed.custTotals?.total || 0);
+    const quoteVat = Number(parsed.custVat || 0);
+    const quoteSscl = Number(parsed.custSscl || 0);
+    const totalTax = quoteVat + quoteSscl;
+    const grandTotal = Number(quote.totalAmount || quote.totalAmt || parsed.custTotals?.withSSCL || 0);
+    const fallbackBasePrice = quoteBaseTotal > 0
+      ? quoteBaseTotal
+      : (totalTax > 0 && grandTotal > totalTax ? (grandTotal - totalTax) : grandTotal);
+
     if (extractedItems.length === 0) {
       if (Array.isArray(parsed.jobItems) && parsed.jobItems.length > 0) {
         const jiText = parsed.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join(', ');
+        const qQty = Number(parsed.jobQty) || 1;
+        const resolvedUnitPrice = qQty > 0 ? Number((fallbackBasePrice / qQty).toFixed(2)) : fallbackBasePrice;
         extractedItems.push({
           productId: 'CUSTOM-JOB',
           productName: parsed.subject || `Quotation ${quote.displayNo}`,
           productSku: '',
           description: (parsed.subject ? `${parsed.subject} - ` : '') + (jiText || 'Custom Machining Job'),
-          qty: Number(parsed.jobQty) || 1,
-          unitPrice: Number(quote.totalAmt || 0),
-          amount: Number(quote.totalAmt || 0),
+          qty: qQty,
+          unitPrice: resolvedUnitPrice,
+          amount: fallbackBasePrice,
           uom: 'Lot'
         });
       } else {
@@ -830,15 +841,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           productSku: '',
           description: parsed.subject || `Quotation ${quote.displayNo}`,
           qty: 1,
-          unitPrice: Number(quote.totalAmt || 0),
-          amount: Number(quote.totalAmt || 0),
+          unitPrice: fallbackBasePrice,
+          amount: fallbackBasePrice,
           uom: 'Lot'
         });
       }
     }
 
     const primaryDesc = extractedItems[0]?.description || extractedItems[0]?.productName || parsed.subject || `Quotation ${quote.displayNo}`;
-    const primaryPrice = extractedItems.length === 1 ? extractedItems[0].unitPrice : quote.totalAmt;
+    const primaryPrice = extractedItems.length === 1 ? extractedItems[0].unitPrice : fallbackBasePrice;
     const primaryQty = extractedItems.length === 1 ? extractedItems[0].qty : 1;
 
     const itemsSum = extractedItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice || 0))), 0);
@@ -846,20 +857,24 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const quoteDiscount = Number(parsed.custTotals?.discount || parsed.custDiscountAmount || parsed.discountAmount || 0);
     const netBase = Number(parsed.custTotals?.total) || (quoteSubtotal - quoteDiscount);
 
-    let vatAmount = Number(parsed.custVat || 0);
-    let ssclAmount = Number(parsed.custSscl || 0);
-    let totalTax = vatAmount + ssclAmount;
-    let grandTotal = Number(quote.totalAmount || quote.totalAmt || parsed.custTotals?.withSSCL || 0);
-
-    if (totalTax === 0 && grandTotal > netBase) {
-      totalTax = Math.max(0, grandTotal - netBase);
+    let finalTotalTax = totalTax;
+    let finalGrandTotal = grandTotal;
+    if (finalTotalTax === 0 && finalGrandTotal > netBase) {
+      finalTotalTax = Math.max(0, finalGrandTotal - netBase);
     }
-    if (grandTotal === 0) {
-      grandTotal = netBase + totalTax;
+    if (finalGrandTotal === 0) {
+      finalGrandTotal = netBase + finalTotalTax;
     }
 
-    const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (totalTax > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
-    const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && totalTax > 0 ? Number(((totalTax / netBase) * 100).toFixed(2)) : 0));
+    const isQuoteTaxInclusive = Boolean(
+      quote.isProd ||
+      parsed.isProductQuotation ||
+      parsed.isTaxInclusive ||
+      String(quote.displayNo || '').startsWith('PQ')
+    );
+
+    const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
+    const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && finalTotalTax > 0 ? Number(((finalTotalTax / netBase) * 100).toFixed(2)) : 0));
 
     setFormData(prev => ({
       ...prev,
@@ -880,10 +895,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       items: extractedItems,
       subtotal: quoteSubtotal,
       discount: quoteDiscount,
-      taxAmount: totalTax,
+      isTaxInclusive: isQuoteTaxInclusive,
+      taxAmount: finalTotalTax,
       taxRate,
       taxProfileId,
-      totalPrice: grandTotal
+      totalPrice: finalGrandTotal
     }));
   };
 

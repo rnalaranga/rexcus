@@ -151,6 +151,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     taxAmount: 0,
     taxRate: 0,
     taxProfileId: '',
+    isTaxInclusive: false,
     vatAmount: 0,
     ssclAmount: 0,
     totalPrice: 0,
@@ -187,17 +188,28 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       uom: ci.uom || ci.unit || 'Nos'
     }));
 
+    const quoteBaseTotal = Number(quoteData.custTotals?.subtotal || quoteData.custTotals?.total || 0);
+    const quoteVat = Number(quoteData.custVat || 0);
+    const quoteSscl = Number(quoteData.custSscl || 0);
+    const initialTax = quoteVat + quoteSscl;
+    const initialGrand = Number(quotation.totalAmount || quoteData.custTotals?.withSSCL || 0);
+    const fallbackBasePrice = quoteBaseTotal > 0
+      ? quoteBaseTotal
+      : (initialTax > 0 && initialGrand > initialTax ? (initialGrand - initialTax) : initialGrand);
+
     if (itemsList.length === 0) {
       if (Array.isArray(quoteData.jobItems) && quoteData.jobItems.length > 0) {
         const jiText = quoteData.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join(', ');
+        const qQty = Number(quoteData.jobQty) || 1;
+        const resolvedUnitPrice = qQty > 0 ? Number((fallbackBasePrice / qQty).toFixed(2)) : fallbackBasePrice;
         itemsList = [{
           productId: 'CUSTOM-JOB',
           productName: quoteData.subject || quotation.subject || `Quotation ${group?.quoNo || ''} Job`,
           productSku: '',
           description: (quoteData.subject ? `${quoteData.subject} - ` : '') + (jiText || 'Custom Machining Job'),
-          qty: Number(quoteData.jobQty) || 1,
-          unitPrice: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
-          amount: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
+          qty: qQty,
+          unitPrice: resolvedUnitPrice,
+          amount: fallbackBasePrice,
           uom: 'Lot'
         }];
       } else {
@@ -207,8 +219,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
           productSku: '',
           description: quotation.subject || `Quotation ${group?.quoNo || ''} Production Order`,
           qty: 1,
-          unitPrice: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
-          amount: Number(quoteData.custTotals?.total || quotation.totalAmount || 0),
+          unitPrice: fallbackBasePrice,
+          amount: fallbackBasePrice,
           uom: 'Lot'
         }];
       }
@@ -231,6 +243,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     if (grandTotal === 0) {
       grandTotal = netBase + taxAmount;
     }
+
+    const isQuoteTaxInclusive = Boolean(
+      isProduct ||
+      quoteData.isProductQuotation ||
+      quoteData.isTaxInclusive ||
+      quotation.isProductQuotation ||
+      String(group?.quoNo || quotation.quotationNo || '').startsWith('PQ')
+    );
 
     const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
     const taxRate = Number(quoteData.selectedProfile?.tax2_rate || (netBase > 0 && taxAmount > 0 ? Number(((taxAmount / netBase) * 100).toFixed(2)) : 0));
@@ -286,6 +306,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       taxAmount,
       taxRate,
       taxProfileId,
+      isTaxInclusive: isQuoteTaxInclusive,
       vatAmount,
       ssclAmount,
       totalPrice: grandTotal,
@@ -630,6 +651,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         ssclAmount: Number(formData.ssclAmount) || 0,
         taxRate: Number(formData.taxRate) || 0,
         taxProfileId: formData.taxProfileId || null,
+        isTaxInclusive: formData.isTaxInclusive ? 1 : 0,
         totalPrice: Number(formData.totalPrice) || 0,
         customerPoNo: finalCustomerPoNo || null,
         customerPoDate: formData.customerPoDate || null,

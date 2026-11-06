@@ -263,13 +263,19 @@ export const InvoiceBuilder: React.FC = () => {
             if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
             setPlaceOfSupply('Negombo');
             if (ord.paymentTerms) setNotes(ord.paymentTerms);
-            if (ord.taxProfileId) setTaxProfileId(ord.taxProfileId);
-            if (Number(ord.taxAmount) > 0 || ord.taxProfileId) {
-              setTaxEnabled(true);
+
+            // Tax & Financial Configuration: Strictly respect Sales Order tax profile & prevent double taxation
+            const ordHasTax = Boolean(
+              Number(ord.taxAmount) > 0 ||
+              (ord.taxProfileId && ord.taxProfileId !== 'none' && ord.taxProfileId !== 'no_tax')
+            );
+            setTaxEnabled(ordHasTax);
+            if (ord.taxProfileId && ord.taxProfileId !== 'none' && ord.taxProfileId !== 'no_tax') {
+              setTaxProfileId(ord.taxProfileId);
+            } else if (!ordHasTax) {
+              setTaxProfileId('none');
             }
-            if (ord.isTaxInclusive !== undefined) {
-              setIsTaxInclusive(Boolean(ord.isTaxInclusive));
-            }
+
             if (ord.discount !== undefined && ord.discount !== null) {
               setDiscount(ord.discount);
             }
@@ -328,6 +334,43 @@ export const InvoiceBuilder: React.FC = () => {
                 taxRateId: ''
               });
             }
+
+            // Double Taxation Prevention & Inclusivity Resolution:
+            const ordTotal = Number(ord.totalPrice || 0);
+            const ordSub = Number(ord.subtotal || 0);
+            const ordQty = Number(ord.qty) || 1;
+            const lineItemsSum = lineItems.reduce((acc: number, it: any) => acc + (Number(it.qty || 1) * Number(it.unitPrice || 0)), 0);
+            const primaryUnitPrice = lineItems.length > 0 ? Number(lineItems[0].unitPrice || 0) : Number(ord.unitPrice || 0);
+
+            let resolvedIsTaxInclusive = false;
+            if (ord.isTaxInclusive !== undefined && ord.isTaxInclusive !== null) {
+              resolvedIsTaxInclusive = Boolean(Number(ord.isTaxInclusive));
+            } else if (String(ord.quotationNo || '').startsWith('PQ') || ord.orderSource === 'ready_made') {
+              resolvedIsTaxInclusive = true;
+            }
+
+            const expectedInclusiveUnitPrice = ordQty > 0 ? (ordTotal / ordQty) : 0;
+            const expectedExclusiveUnitPrice = ordQty > 0 ? (ordSub / ordQty) : 0;
+
+            if (ordHasTax) {
+              if (ordTotal > 0 && Math.abs(lineItemsSum - ordTotal) <= 1.0) {
+                // Loaded line items sum up to the total order amount that already has tax included
+                resolvedIsTaxInclusive = true;
+              } else if (ordSub > 0 && Math.abs(lineItemsSum - ordSub) <= 1.0) {
+                // Loaded line items sum up to pre-tax subtotal
+                resolvedIsTaxInclusive = false;
+              } else if (expectedInclusiveUnitPrice > 0 && Math.abs(primaryUnitPrice - expectedInclusiveUnitPrice) <= 0.05) {
+                // Unit price matches the tax-inclusive price per unit
+                resolvedIsTaxInclusive = true;
+              } else if (expectedExclusiveUnitPrice > 0 && Math.abs(primaryUnitPrice - expectedExclusiveUnitPrice) <= 0.05) {
+                // Unit price matches the tax-exclusive base price per unit
+                resolvedIsTaxInclusive = false;
+              }
+            } else {
+              resolvedIsTaxInclusive = false;
+            }
+
+            setIsTaxInclusive(resolvedIsTaxInclusive);
 
             if (lineItems.length > 0) {
               setItems(lineItems);
