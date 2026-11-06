@@ -1563,6 +1563,9 @@ export const PurchasingHub: React.FC = () => {
           columns={generateColumns()} 
           data={filtered} 
           keyExtractor={row => row.id} 
+          pagination
+          itemsPerPage={25}
+          itemLabel="purchasing records"
           onRowClick={row => {
             if (openActionId) return;
             if (activeTab === 'grn') {

@@ -4313,30 +4313,35 @@ export const Quotations: React.FC = () => {
       />
 
       {/* ── CREATE SALES ORDER MODAL WITH CUSTOMER PO ── */}
-      <CreateSalesOrderModal
-        isOpen={Boolean(salesOrderModalData)}
-        onClose={() => setSalesOrderModalData(null)}
-        quotationData={salesOrderModalData}
-      />
+      {salesOrderModalData && (
+        <CreateSalesOrderModal
+          isOpen={Boolean(salesOrderModalData)}
+          onClose={() => setSalesOrderModalData(null)}
+          quotationData={salesOrderModalData}
+        />
+      )}
 
       {/* ── VIEW CUSTOMER PO MODAL ── */}
-      <ViewCustomerPoModal
-        isOpen={Boolean(viewPoModalData)}
-        onClose={() => setViewPoModalData(null)}
-        quotationData={viewPoModalData}
-        onEditPo={(data) => {
-          setRecordPoModalData(data);
-        }}
-        onCreateSalesOrder={(group, quotation) => {
-          handleCreateSalesOrder(group, quotation);
-        }}
-      />
+      {viewPoModalData && (
+        <ViewCustomerPoModal
+          isOpen={Boolean(viewPoModalData)}
+          onClose={() => setViewPoModalData(null)}
+          quotationData={viewPoModalData}
+          onEditPo={(data) => {
+            setRecordPoModalData(data);
+          }}
+          onCreateSalesOrder={(group, quotation) => {
+            handleCreateSalesOrder(group, quotation);
+          }}
+        />
+      )}
 
       {/* ── RECORD CUSTOMER PO MODAL ── */}
-      <RecordCustomerPoModal
-        isOpen={Boolean(recordPoModalData)}
-        onClose={() => setRecordPoModalData(null)}
-        quotationData={recordPoModalData}
+      {recordPoModalData && (
+        <RecordCustomerPoModal
+          isOpen={Boolean(recordPoModalData)}
+          onClose={() => setRecordPoModalData(null)}
+          quotationData={recordPoModalData}
         onSuccess={(updatedQuote, proceedToSalesOrder) => {
           refetch();
           if (recordPoModalData && (proceedToSalesOrder || recordPoModalData.proceedToSalesOrder)) {
@@ -4356,6 +4361,7 @@ export const Quotations: React.FC = () => {
           }
         }}
       />
+      )}
       {/* ── CREATE ADVANCE PROFORMA INVOICE MODAL ── */}
       {advanceProformaModalOrder && (
         <CreateAdvanceProformaModal

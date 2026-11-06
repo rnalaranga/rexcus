@@ -440,7 +440,7 @@ export const Suppliers: React.FC = () => {
       </GlassCard>
 
       <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} onRowClick={(item) => navigate(`/inventory/suppliers/${item.id}`)} />
+        <DataTable columns={columns} data={filteredData} keyExtractor={(item: any) => item.id} onRowClick={(item) => navigate(`/inventory/suppliers/${item.id}`)} pagination itemsPerPage={25} itemLabel="suppliers" />
       </GlassCard>
 
       {toast && (

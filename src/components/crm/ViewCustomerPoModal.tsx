@@ -31,9 +31,6 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
 }) => {
   const [zoomImage, setZoomImage] = useState(false);
 
-  const isOrderMode = Boolean(orderData);
-  if (!isOpen || (!quotationData && !orderData)) return null;
-
   const group = quotationData?.group;
   const quotation = quotationData?.quotation;
   let quoteData: any = {};
@@ -48,6 +45,12 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
     }
   } catch (e) {}
 
+  const attachment = orderData?.customerPoAttachment || quotation?.customerPoAttachment || quoteData?.customerPoAttachment || '';
+  const previewUrl = useMemo(() => dataUriToBlobUrl(attachment), [attachment]);
+
+  const isOrderMode = Boolean(orderData);
+  if (!isOpen || (!quotationData && !orderData)) return null;
+
   const custName = orderData?.customerName || group?.clientName || group?.clientCompany || group?.leadCompany || group?.leadName || 'Customer';
   const qNo = orderData?.orderNo || group?.quoNo || quotation?.quotationNo || quotation?.docNo || quotation?.id;
   const quoteTotal = Number(orderData?.totalPrice || orderData?.subtotal || quotation?.totalAmount || quotation?.customAmount || 0);
@@ -60,8 +63,6 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
   const expectedDate = quoteData?.expectedPoDate || '';
   const withoutPoReason = quoteData?.withoutPoReason || '';
   const notes = rawNotes;
-  const attachment = orderData?.customerPoAttachment || quotation?.customerPoAttachment || quoteData?.customerPoAttachment || '';
-  const previewUrl = useMemo(() => dataUriToBlobUrl(attachment), [attachment]);
 
   const isImageAttachment = Boolean(
     attachment && (

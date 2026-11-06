@@ -18,6 +18,7 @@ import { useQuotations, useFinishedGoodsOrders, useInvoices } from '@/hooks/useD
 import { GatePassPrintModal } from '@/components/GatePassPrintModal';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner';
+import { Pagination } from '@/components/ui/Pagination';
 
 type SortField = 'id' | 'createdAt' | 'customer' | 'orderNo' | 'carrier' | 'type';
 type SortDir = 'asc' | 'desc';
@@ -187,6 +188,22 @@ export const GatePassesHub: React.FC = () => {
 
     return list;
   }, [gatePasses, typeFilter, dateFilter, search, sortField, sortDir]);
+
+  // Pagination State & Logic
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, typeFilter, dateFilter, sortField, sortDir]);
+
+  const totalGatePasses = filteredAndSortedGatePasses.length;
+  const totalPages = Math.max(1, Math.ceil(totalGatePasses / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const paginatedGatePasses = useMemo(() => {
+    return filteredAndSortedGatePasses.slice(startIndex, startIndex + pageSize);
+  }, [filteredAndSortedGatePasses, startIndex, pageSize]);
 
   // Build Traceability Nodes for a Gate Pass
   const getGatePassTraces = useCallback((gp: any): TraceNode[] => {
@@ -565,7 +582,7 @@ export const GatePassesHub: React.FC = () => {
               </thead>
 
               <tbody className="divide-y divide-theme-subtle/30 text-xs">
-                {filteredAndSortedGatePasses.map((gp: any) => {
+                {paginatedGatePasses.map((gp: any) => {
                   const isGoodsDelivery = gp.type === 'goods_delivery' || gp.type === 'sales_delivery';
                   const traces = getGatePassTraces(gp);
 
@@ -754,6 +771,23 @@ export const GatePassesHub: React.FC = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {totalGatePasses > 0 && (
+          <div className="p-3 border-t border-theme-subtle">
+            <Pagination
+              currentPage={safeCurrentPage}
+              pageSize={pageSize}
+              totalItems={totalGatePasses}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[15, 25, 50, 100]}
+              itemLabel="gate passes"
+            />
           </div>
         )}
       </GlassCard>

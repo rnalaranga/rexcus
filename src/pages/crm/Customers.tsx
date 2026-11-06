@@ -150,6 +150,9 @@ export const Customers: React.FC = () => {
           keyExtractor={(row) => row.id}
           onRowClick={(row) => navigate(`/crm/customers/${row.id}`)}
           emptyMessage="No customers match your search filters."
+          pagination
+          itemsPerPage={25}
+          itemLabel="customers"
         />
       </GlassCard>
 

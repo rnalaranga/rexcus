@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Pagination } from './Pagination'
 
 export interface Column<T> {
   key: keyof T | string
@@ -20,16 +21,27 @@ interface DataTableProps<T> {
   keyExtractor: (row: T) => string
   pagination?: boolean
   itemsPerPage?: number
+  pageSizeOptions?: number[]
+  itemLabel?: string
 }
 
 export function DataTable<T>({
   columns, data, onRowClick, className,
   emptyMessage = 'No data found', keyExtractor,
-  pagination = false, itemsPerPage = 50
+  pagination = false, itemsPerPage = 25,
+  pageSizeOptions = [15, 25, 50, 100],
+  itemLabel = 'items'
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(itemsPerPage || 25)
+
+  useEffect(() => {
+    if (itemsPerPage && itemsPerPage !== pageSize) {
+      setPageSize(itemsPerPage)
+    }
+  }, [itemsPerPage])
 
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -66,8 +78,9 @@ export function DataTable<T>({
     return sortDir === 'asc' ? cmp : -cmp
   })
 
-  const totalPages = Math.ceil(sorted.length / itemsPerPage)
-  const displayData = pagination ? sorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage) : sorted
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages)
+  const displayData = pagination ? sorted.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize) : sorted
 
   return (
     <div className={cn('flex flex-col', className)}>
@@ -160,26 +173,19 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {pagination && totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-theme-subtle text-xs text-muted">
-          <span>Page {currentPage} of {totalPages}</span>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-2.5 py-1 rounded border border-theme-subtle disabled:opacity-30 hover:bg-surface2"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-2.5 py-1 rounded border border-theme-subtle disabled:opacity-30 hover:bg-surface2"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+      {pagination && sorted.length > 0 && (
+        <Pagination
+          currentPage={safeCurrentPage}
+          pageSize={pageSize}
+          totalItems={sorted.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize)
+            setCurrentPage(1)
+          }}
+          pageSizeOptions={pageSizeOptions}
+          itemLabel={itemLabel}
+        />
       )}
     </div>
   )

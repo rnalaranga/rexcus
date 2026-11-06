@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { SearchBar } from '@/components/ui/SearchBar'
+import { Pagination } from '@/components/ui/Pagination'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations, useInvoices, invalidateDataCache } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -2365,6 +2366,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     });
   }, [filteredOrders, orderSortField, orderSortDir]);
 
+  // Pagination State & Logic
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, customerFilter, poFilter, dateRangePreset, customFromDate, customToDate, orderSortField, orderSortDir, activeViewTab]);
+
+  const totalOrders = sortedOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalOrders / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const paginatedOrders = useMemo(() => {
+    return sortedOrders.slice(startIndex, startIndex + pageSize);
+  }, [sortedOrders, startIndex, pageSize]);
+
   // Summary Metrics
   const metrics = useMemo(() => {
     const total = orders.length
@@ -3444,7 +3461,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <tr>
                 <th 
                   onClick={() => handleToggleOrderSort('orderNo')}
-                  className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  className="px-3 py-2 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
                 >
                   <div className="flex items-center">
                     <span>Order # & Date</span>
@@ -3453,7 +3470,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 </th>
                 <th 
                   onClick={() => handleToggleOrderSort('customer')}
-                  className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  className="px-3 py-2 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
                 >
                   <div className="flex items-center">
                     <span>Customer</span>
@@ -3462,7 +3479,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 </th>
                 <th 
                   onClick={() => handleToggleOrderSort('product')}
-                  className="px-3.5 py-3 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  className="px-3 py-2 cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
                 >
                   <div className="flex items-center">
                     <span>Product Ordered</span>
@@ -3471,7 +3488,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 </th>
                 <th 
                   onClick={() => handleToggleOrderSort('qty')}
-                  className="px-3 py-3 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  className="px-2.5 py-2 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
                 >
                   <div className="flex items-center justify-center">
                     <span>Qty & Stock</span>
@@ -3481,7 +3498,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 {!isStoreRole && (
                   <th 
                     onClick={() => handleToggleOrderSort('value')}
-                    className="px-3.5 py-3 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                    className="px-3 py-2 text-right cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
                   >
                     <div className="flex items-center justify-end">
                       <span>Value & Advance</span>
@@ -3489,21 +3506,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </div>
                   </th>
                 )}
-                <th className="px-3 py-3 text-center">Traceability</th>
+                <th className="px-2 py-2 text-center">Traceability</th>
                 <th 
                   onClick={() => handleToggleOrderSort('status')}
-                  className="px-3 py-3 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
+                  className="px-2.5 py-2 text-center cursor-pointer hover:bg-surface2 hover:text-primary transition-colors"
                 >
                   <div className="flex items-center justify-center">
                     <span>Status</span>
                     {renderOrderSortIndicator('status')}
                   </div>
                 </th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-theme-subtle/30 text-xs">
-              {sortedOrders.map((order, idx) => {
+              {paginatedOrders.map((order, idx) => {
                 const prod = inventoryProductMap.get(order.productId)
                 const inStockNow = Number(prod?.quantity || 0)
                 const isShort = inStockNow < Number(order.qty) && !order.isDispatched
@@ -3549,7 +3566,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 return (
                   <tr key={order.id} className={`hover:bg-surface2/40 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
                     {/* Order No & Dates */}
-                    <td className="px-3.5 py-2.5">
+                    <td className="px-3 py-1.5">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
@@ -3574,9 +3591,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                           if (isPoPending) {
                             return (
-                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1" title="Customer PO is Pending - Dispatch & Final Invoice Blocked">
-                                  <Clock size={10} /> PO Pending
+                              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                <span className="text-[9.5px] font-mono font-bold px-1 py-0.2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1" title="Customer PO is Pending - Dispatch & Final Invoice Blocked">
+                                  <Clock size={9} /> PO Pending
                                 </span>
                                 <button
                                   type="button"
@@ -3584,7 +3601,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                     e.stopPropagation();
                                     setRecordPoOrder(order);
                                   }}
-                                  className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-bold"
+                                  className="text-[9.5px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-bold"
                                   title="Record and attach customer PO"
                                 >
                                   + Attach PO
@@ -3596,8 +3613,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           if (hasPo) {
                             const hasAttachment = Boolean(order.customerPoAttachment);
                             return (
-                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                <span className="text-[10px] font-mono font-bold px-1 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" title={`Customer PO: ${order.customerPoNo}`}>
+                              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                <span className="text-[9.5px] font-mono font-bold px-1 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" title={`Customer PO: ${order.customerPoNo}`}>
                                   PO: {order.customerPoNo}
                                 </span>
                                 {hasAttachment ? (
@@ -3607,10 +3624,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                       e.stopPropagation();
                                       setViewPoOrder(order);
                                     }}
-                                    className="text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5 font-bold"
+                                    className="text-[9.5px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5 font-bold"
                                     title="Customer PO Document Attached - View Document & Details"
                                   >
-                                    <Paperclip size={10} className="text-emerald-500" /> View Doc
+                                    <Paperclip size={9} className="text-emerald-500" /> View Doc
                                   </button>
                                 ) : (
                                   <button
@@ -3619,7 +3636,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                       e.stopPropagation();
                                       setRecordPoOrder(order);
                                     }}
-                                    className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
+                                    className="text-[9.5px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
                                     title="Upload & Attach Customer PO Document"
                                   >
                                     + Attach Doc
@@ -3631,8 +3648,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                           if (isWithoutPo) {
                             return (
-                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                <span className="text-[10px] font-mono font-semibold px-1 py-0.2 bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30">
+                              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                <span className="text-[9.5px] font-mono font-semibold px-1 py-0.2 bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30">
                                   Without PO
                                 </span>
                                 <button
@@ -3641,7 +3658,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                     e.stopPropagation();
                                     setRecordPoOrder(order);
                                   }}
-                                  className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
+                                  className="text-[9.5px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
                                   title="Add Customer PO"
                                 >
                                   + Add PO
@@ -3658,7 +3675,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                   e.stopPropagation();
                                   setRecordPoOrder(order);
                                 }}
-                                className="text-[10px] text-muted hover:text-blue-600 hover:underline flex items-center gap-0.5"
+                                className="text-[9.5px] text-muted hover:text-blue-600 hover:underline flex items-center gap-0.5"
                                 title="Attach Customer Purchase Order"
                               >
                                 + Add PO
@@ -3666,7 +3683,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             </div>
                           );
                         })()}
-                        <div className="text-[11px] text-muted flex items-center gap-1 font-mono mt-0.5">
+                        <div className="text-[10px] text-muted flex items-center gap-1 font-mono mt-0.5">
                           <Calendar size={10} className="shrink-0" />
                           <span>{formatDate(order.orderDate)}</span>
                           {order.targetDeliveryDate && (
@@ -3677,18 +3694,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Customer */}
-                    <td className="px-3.5 py-2.5 max-w-[200px]">
+                    <td className="px-3 py-1.5 max-w-[200px]">
                       <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-primary truncate" title={order.customerName}>
+                        <span className="font-semibold text-xs text-primary truncate leading-tight" title={order.customerName}>
                           {order.customerName}
                         </span>
                         {order.attention && (
-                          <span className="text-[11px] text-muted truncate">
+                          <span className="text-[10.5px] text-muted truncate leading-tight">
                             Attn: {order.attention}
                           </span>
                         )}
                         {order.customerPhone && (
-                          <span className="text-[10px] text-muted font-mono flex items-center gap-1 mt-0.5">
+                          <span className="text-[9.5px] text-muted font-mono flex items-center gap-1 mt-0.5 leading-tight">
                             <Phone size={9} /> {order.customerPhone}
                           </span>
                         )}
@@ -3696,35 +3713,35 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Product & Line Items */}
-                    <td className="px-3.5 py-2.5">
+                    <td className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-none bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center shrink-0">
+                        <div className="w-6 h-6 rounded-none bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center shrink-0">
                           {prod?.imageUrl ? (
                             <img src={prod.imageUrl} alt="" className="w-full h-full object-cover rounded-none" />
                           ) : (
-                            <Package size={13} />
+                            <Package size={12} />
                           )}
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-primary truncate max-w-[180px]" title={order.productName}>
+                            <span className="font-semibold text-xs text-primary truncate max-w-[180px] leading-tight" title={order.productName}>
                               {order.productName || (orderItems.length > 0 ? orderItems[0].description : 'Finished Goods')}
                             </span>
                             {orderItems.length > 1 && (
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                              <span className="text-[9px] font-mono px-1 py-0 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
                                 +{orderItems.length - 1}
                               </span>
                             )}
                           </div>
                           {order.productSku && (
-                            <span className="text-[10px] font-mono text-muted block">{order.productSku}</span>
+                            <span className="text-[9.5px] font-mono text-muted block leading-tight">{order.productSku}</span>
                           )}
                         </div>
                       </div>
                     </td>
 
                     {/* Qty & Incremental Dispatch Progress */}
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-2.5 py-1.5 text-center">
                       {(() => {
                         const totalQty = Math.max(1, Number(order.qty || 1));
                         const dispatchedQty = Number(order.dispatchedQty || (order.isDispatched ? totalQty : 0));
@@ -3733,26 +3750,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         const isComplete = dispatchedQty >= totalQty;
 
                         return (
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="font-mono font-bold text-xs text-primary">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-mono font-bold text-xs text-primary leading-tight">
                               {order.qty} pcs
                             </span>
-                            <div className="w-20 h-1.5 bg-surface2 border border-theme-subtle overflow-hidden">
+                            <div className="w-16 h-1 bg-surface2 border border-theme-subtle overflow-hidden my-0.5">
                               <div
                                 className={`h-full transition-all duration-300 ${isComplete ? 'bg-emerald-500' : (isPartial ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700')}`}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
-                            <span className="text-[10px] font-mono text-muted">
+                            <span className="text-[9.5px] font-mono text-muted leading-tight">
                               {dispatchedQty} / {totalQty} dispatched
                             </span>
                             {isPartial && (
-                              <span className="text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/20">
+                              <span className="text-[8.5px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 py-0 rounded border border-amber-500/20">
                                 Partial ({pct}%)
                               </span>
                             )}
                             {isComplete && (
-                              <span className="text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded border border-emerald-500/20">
+                              <span className="text-[8.5px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1 py-0 rounded border border-emerald-500/20">
                                 Complete (100%)
                               </span>
                             )}
@@ -3763,7 +3780,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
                     {/* Value & Advance Proforma */}
                     {!isStoreRole && (
-                      <td className="px-3.5 py-2.5 text-right">
+                      <td className="px-3 py-1.5 text-right">
                         <div className="flex flex-col items-end gap-0.5">
                           <span className="font-mono font-bold text-xs text-primary">
                             {formatCurrency(order.totalPrice)}
@@ -3841,7 +3858,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     )}
 
                     {/* Traceability Dropdown with Glowing Lamp */}
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-2 py-1.5 text-center">
                       <TraceabilityDropdown
                         title={`Order #${order.orderNo}`}
                         traces={(() => {
@@ -3988,7 +4005,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Status */}
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-2.5 py-1.5 text-center">
                       <Badge
                         variant={
                           order.status === 'Cancelled' ? 'error' :
@@ -4002,10 +4019,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         {order.status}
                       </Badge>
                       {(order.materialStatus || existingWO?.materialStatus) && (
-                        <div className="mt-1">
+                        <div className="mt-0.5">
                           <span
                             title={order.materialAlert || existingWO?.materialAlert || 'Material status notice'}
-                            className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 border ${
+                            className={`inline-flex items-center gap-1 text-[8.5px] font-bold px-1 py-0 border ${
                               (order.materialStatus || existingWO?.materialStatus || '').includes('Shortage') || (order.materialStatus || existingWO?.materialStatus || '').includes('Pending')
                                 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                                 : (order.materialStatus || existingWO?.materialStatus || '').includes('MR')
@@ -4020,13 +4037,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </td>
 
                     {/* Compact Dropdown Actions */}
-                    <td className="px-4 py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="px-3 py-1.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
                         {isAdmin && (
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(order)}
-                            className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
+                            className="p-1 text-muted hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors"
                             title={`Delete Order ${order.orderNo}`}
                           >
                             <Trash2 size={13} />
@@ -4078,6 +4095,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </tbody>
           </table>
         </div>
+        )}
+
+        {activeViewTab === 'orders' && totalOrders > 0 && (
+          <div className="p-3 border-t border-theme-subtle">
+            <Pagination
+              currentPage={safeCurrentPage}
+              pageSize={pageSize}
+              totalItems={totalOrders}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[15, 25, 50, 100]}
+              itemLabel="sales orders"
+            />
+          </div>
         )}
       </GlassCard>
 

@@ -866,6 +866,9 @@ export const WorkOrders: React.FC = () => {
               keyExtractor={(row: any) => row.id}
               emptyMessage="No work orders matching your filters. Click '+ Create Work Order' to begin a new job."
               onRowClick={(row: any) => navigate(`/production/work-orders/${row.id}`)}
+              pagination
+              itemsPerPage={25}
+              itemLabel="work orders"
             />
           )}
         </GlassCard>

@@ -1051,7 +1051,7 @@ export const Invoices: React.FC = () => {
         {loading ? (
           <div className="p-8 text-center text-muted">Loading invoices...</div>
         ) : (
-          <DataTable columns={columns} data={filteredInvoices} keyExtractor={item => item.id} />
+          <DataTable columns={columns} data={filteredInvoices} keyExtractor={item => item.id} pagination itemsPerPage={25} itemLabel="invoices" />
         )}
       </GlassCard>
 
