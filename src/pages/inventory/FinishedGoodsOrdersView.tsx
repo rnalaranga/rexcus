@@ -5933,7 +5933,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </div>
 
             <div className="bg-surface2 border border-theme-subtle p-2 flex items-center justify-center min-h-[500px] max-h-[75vh] overflow-auto">
-              {viewingPoAttachment.url.startsWith('data:image/') ? (
+              {viewingPoAttachment.url.startsWith('data:image/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(viewingPoAttachment.url) ? (
                 <img
                   src={dataUriToBlobUrl(viewingPoAttachment.url)}
                   alt="Customer PO"

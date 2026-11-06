@@ -66,11 +66,37 @@ export function numberToWords(amount: number): string {
   return words + ' Only';
 }
 
+export function resolveFileUrl(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('data:')) return url;
+
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+  // If already relative /api/files/...
+  if (url.startsWith('/api/files/')) {
+    return `${apiBase.replace(/\/api$/, '')}${url}`;
+  }
+
+  // If it's an R2 direct API URL (e.g. *.r2.cloudflarestorage.com) which cannot be opened directly in browsers
+  const r2DirectMatch = url.match(/https?:\/\/[^\/]+\.r2\.cloudflarestorage\.com\/(.+)$/i);
+  if (r2DirectMatch && r2DirectMatch[1]) {
+    return `${apiBase}/files/${r2DirectMatch[1]}`;
+  }
+
+  // If it's a relative path starting with common storage folders
+  if (/^(quotations|sales_orders|attachments|branding)\//i.test(url)) {
+    return `${apiBase}/files/${url}`;
+  }
+
+  return url;
+}
+
 export function openDataUriOrUrl(url: string, title?: string): void {
   if (!url) return;
   try {
-    if (url.startsWith('data:')) {
-      const parts = url.split(',');
+    const targetUrl = resolveFileUrl(url);
+    if (targetUrl.startsWith('data:')) {
+      const parts = targetUrl.split(',');
       const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
       const bstr = atob(parts[1]);
       let n = bstr.length;
@@ -90,19 +116,20 @@ export function openDataUriOrUrl(url: string, title?: string): void {
         document.body.removeChild(a);
       }
     } else {
-      window.open(url, '_blank');
+      window.open(targetUrl, '_blank');
     }
   } catch (e) {
     console.error('Error opening document:', e);
-    window.open(url, '_blank');
+    window.open(resolveFileUrl(url), '_blank');
   }
 }
 
 export function downloadDataUriOrUrl(url: string, filename: string): void {
   if (!url) return;
   try {
-    if (url.startsWith('data:')) {
-      const parts = url.split(',');
+    const targetUrl = resolveFileUrl(url);
+    if (targetUrl.startsWith('data:')) {
+      const parts = targetUrl.split(',');
       const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
       const bstr = atob(parts[1]);
       let n = bstr.length;
@@ -121,7 +148,7 @@ export function downloadDataUriOrUrl(url: string, filename: string): void {
       setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
     } else {
       const a = document.createElement('a');
-      a.href = url;
+      a.href = targetUrl;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
@@ -133,7 +160,8 @@ export function downloadDataUriOrUrl(url: string, filename: string): void {
 }
 
 export function dataUriToBlobUrl(url: string): string {
-  if (!url || !url.startsWith('data:')) return url || '';
+  if (!url) return '';
+  if (!url.startsWith('data:')) return resolveFileUrl(url);
   try {
     const parts = url.split(',');
     const mimeMatch = parts[0].match(/:(.*?);/);
@@ -148,6 +176,6 @@ export function dataUriToBlobUrl(url: string): string {
     return URL.createObjectURL(blob);
   } catch (e) {
     console.error('Error creating Blob URL from data URI:', e);
-    return url;
+    return resolveFileUrl(url);
   }
 }

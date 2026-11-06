@@ -10,7 +10,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import db from './db';
 
 // Multi-path dotenv loader for local & VPS production environments
@@ -1982,6 +1982,25 @@ async function runDatabaseSync() {
     }
   } catch (e) {}
 
+  // 10. Auto-heal any raw R2 API storage URLs to direct /api/files/...
+  try {
+    await db.query(`
+      UPDATE quotations 
+      SET customerPoAttachment = CONCAT('/api/files/', SUBSTRING_INDEX(customerPoAttachment, 'r2.cloudflarestorage.com/', -1))
+      WHERE customerPoAttachment LIKE '%r2.cloudflarestorage.com/%'
+    `);
+    await db.query(`
+      UPDATE finished_goods_orders 
+      SET customerPoAttachment = CONCAT('/api/files/', SUBSTRING_INDEX(customerPoAttachment, 'r2.cloudflarestorage.com/', -1))
+      WHERE customerPoAttachment LIKE '%r2.cloudflarestorage.com/%'
+    `);
+    await db.query(`
+      UPDATE settings 
+      SET val = CONCAT('/api/files/', SUBSTRING_INDEX(val, 'r2.cloudflarestorage.com/', -1))
+      WHERE id = 'company_logo' AND val LIKE '%r2.cloudflarestorage.com/%'
+    `);
+  } catch (e) {}
+
   return { success: true, message: 'Database fixed and synchronized successfully. All tables and columns are up to date. No data was deleted.' };
 }
 
@@ -2245,7 +2264,7 @@ async function uploadToR2(buffer: Buffer, originalFilename: string, mimeType: st
     ContentType: mimeType || 'application/octet-stream',
   }));
 
-  const publicUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+  const publicUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
   return {
     url: publicUrl,
     key,
@@ -2253,6 +2272,60 @@ async function uploadToR2(buffer: Buffer, originalFilename: string, mimeType: st
     mimeType
   };
 }
+
+app.get('/api/files/{*splat}', async (req, res) => {
+  try {
+    const rawPath = Array.isArray(req.params.splat) 
+      ? req.params.splat.join('/') 
+      : (req.params.splat || req.path.replace(/^\/api\/files\/?/, ''));
+    if (!rawPath) return res.status(400).send('File key is required');
+
+    let key = rawPath;
+    try { key = decodeURIComponent(rawPath); } catch (_) {}
+
+    const cfg = await getR2Config();
+    if (!cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucketName) {
+      return res.status(404).send('Cloudflare R2 storage credentials are not configured');
+    }
+
+    const client = getR2Client(cfg);
+    if (!client) {
+      return res.status(500).send('Unable to initialize storage client');
+    }
+
+    const s3Res = await client.send(new GetObjectCommand({
+      Bucket: cfg.bucketName,
+      Key: key
+    }));
+
+    if (s3Res.ContentType) {
+      res.setHeader('Content-Type', s3Res.ContentType);
+    }
+    if (s3Res.ContentLength) {
+      res.setHeader('Content-Length', s3Res.ContentLength);
+    }
+
+    const filename = key.split('/').pop() || 'document';
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    if (s3Res.Body && typeof (s3Res.Body as any).pipe === 'function') {
+      (s3Res.Body as any).pipe(res);
+    } else if (s3Res.Body && typeof (s3Res.Body as any).transformToByteArray === 'function') {
+      const bytes = await (s3Res.Body as any).transformToByteArray();
+      res.send(Buffer.from(bytes));
+    } else {
+      res.status(500).send('Unable to stream file from storage');
+    }
+  } catch (err: any) {
+    console.error('File view error:', err);
+    if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+      return res.status(404).send('File not found in storage');
+    }
+    res.status(500).send('Error retrieving file: ' + err.message);
+  }
+});
 
 app.get('/api/settings/r2', async (req, res) => {
   try {
@@ -2416,6 +2489,25 @@ app.post('/api/settings/r2/migrate', async (req, res) => {
     let bytesFreed = 0;
     const errors: string[] = [];
 
+    // Self-healing: Update any previously migrated direct r2.cloudflarestorage.com URLs to direct /api/files/...
+    try {
+      await db.query(`
+        UPDATE quotations 
+        SET customerPoAttachment = CONCAT('/api/files/', SUBSTRING_INDEX(customerPoAttachment, 'r2.cloudflarestorage.com/', -1))
+        WHERE customerPoAttachment LIKE '%r2.cloudflarestorage.com/%'
+      `);
+      await db.query(`
+        UPDATE finished_goods_orders 
+        SET customerPoAttachment = CONCAT('/api/files/', SUBSTRING_INDEX(customerPoAttachment, 'r2.cloudflarestorage.com/', -1))
+        WHERE customerPoAttachment LIKE '%r2.cloudflarestorage.com/%'
+      `);
+      await db.query(`
+        UPDATE settings 
+        SET val = CONCAT('/api/files/', SUBSTRING_INDEX(val, 'r2.cloudflarestorage.com/', -1))
+        WHERE id = 'company_logo' AND val LIKE '%r2.cloudflarestorage.com/%'
+      `);
+    } catch (_) {}
+
     // 1. Migrate quotations.customerPoAttachment
     const [quotes]: any = await db.query("SELECT id, quotationNo, customerPoAttachment FROM quotations WHERE customerPoAttachment LIKE 'data:%'");
     for (const q of quotes) {
@@ -2434,7 +2526,7 @@ app.post('/api/settings/r2/migrate', async (req, res) => {
             ContentType: mime
           }));
 
-          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
           await db.query("UPDATE quotations SET customerPoAttachment = ? WHERE id = ?", [fileUrl, q.id]);
 
           bytesFreed += q.customerPoAttachment.length;
@@ -2463,7 +2555,7 @@ app.post('/api/settings/r2/migrate', async (req, res) => {
             ContentType: mime
           }));
 
-          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
           await db.query("UPDATE finished_goods_orders SET customerPoAttachment = ? WHERE id = ?", [fileUrl, o.id]);
 
           bytesFreed += o.customerPoAttachment.length;
@@ -2493,7 +2585,7 @@ app.post('/api/settings/r2/migrate', async (req, res) => {
             ContentType: mime
           }));
 
-          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
           await db.query("UPDATE settings SET val = ? WHERE id = 'company_logo'", [fileUrl]);
 
           bytesFreed += raw.length;
@@ -3260,7 +3352,7 @@ app.get('/api/customers', async (req, res) => {
           SUM(CASE WHEN (status IS NULL OR (status NOT IN ('paid', 'draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN (total - COALESCE(paidAmount, 0)) ELSE 0 END) as outstandingBalance
         FROM invoices
         GROUP BY COALESCE(customerId, leadId)
-      ) inv ON c.id = inv.partyId COLLATE utf8mb4_unicode_ci
+      ) inv ON BINARY c.id = BINARY inv.partyId
       ORDER BY c.joinDate DESC
     `) as any[];
     for (const r of rows) {
