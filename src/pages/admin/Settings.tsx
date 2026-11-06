@@ -2,19 +2,21 @@ import React, { useRef, useState, useEffect } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useSettings } from '@/contexts/SettingsContext';
-import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick, Wrench, Building2 } from 'lucide-react';
+import { Upload, Image as ImageIcon, Save, Trash2, Cpu, HardDrive, MemoryStick, Wrench, Building2, Download, Database, RefreshCw } from 'lucide-react';
 import { CurrencyManager } from '@/components/CurrencyManager';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
 import { BankDetailsManager } from '@/components/BankDetailsManager';
 import { TermsConditionsManager } from '@/components/TermsConditionsManager';
 import { EmailSettingsManager } from '@/components/EmailSettingsManager';
+import { R2StorageSettingsManager } from '@/components/R2StorageSettingsManager';
 export const Settings = () => {
   const { toast, showConfirm } = useDialog();
   const { settings, updateSettings } = useSettings();
   const [logo, setLogo] = useState<string | null>(settings.company_logo || null);
   const [saving, setSaving] = useState(false);
   const [fixingDb, setFixingDb] = useState(false);
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
 
   const [formData, setFormData] = useState({
     company_name: 'Rex Industries (Pvt) Ltd',
@@ -79,8 +81,29 @@ export const Settings = () => {
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogo(reader.result as string);
+      reader.onloadend = async () => {
+        const rawDataUri = reader.result as string;
+        setLogo(rawDataUri);
+
+        try {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUri: rawDataUri,
+              filename: file.name,
+              folder: 'branding'
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.url) {
+              setLogo(data.url);
+            }
+          }
+        } catch (err) {
+          console.warn('Upload to cloud error (keeping local preview):', err);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -106,6 +129,39 @@ export const Settings = () => {
       } finally {
         setFixingDb(false);
       }
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    setDownloadingBackup(true);
+    try {
+      toast('Preparing SQL database backup...', 'info');
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/backup-db`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to download backup');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const contentDisposition = res.headers.get('Content-Disposition');
+      let fileName = `rex_erp_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^";]+)"?/);
+        if (match && match[1]) fileName = match[1];
+      }
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast('SQL Database backup downloaded successfully!', 'success');
+    } catch (err: any) {
+      console.error(err);
+      toast(err.message || 'Error downloading database backup', 'error');
+    } finally {
+      setDownloadingBackup(false);
     }
   };
 
@@ -151,9 +207,20 @@ export const Settings = () => {
           <h1 className="text-2xl font-bold text-primary tracking-tight">System Settings</h1>
           <p className="text-sm text-secondary mt-1">Configure global application preferences, company profile, and invoice branding.</p>
         </div>
-        <Button variant="primary" icon={Save} onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Settings'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            icon={downloadingBackup ? RefreshCw : Database} 
+            onClick={handleDownloadBackup} 
+            disabled={downloadingBackup}
+            className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-semibold"
+          >
+            {downloadingBackup ? 'Exporting SQL...' : 'Download SQL Backup'}
+          </Button>
+          <Button variant="primary" icon={Save} onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
@@ -307,6 +374,7 @@ export const Settings = () => {
         </GlassCard>
 
         <div className="col-span-1 xl:col-span-12 space-y-6">
+          <R2StorageSettingsManager />
           <EmailSettingsManager />
           <TermsConditionsManager />
           <BankDetailsManager />
@@ -395,6 +463,25 @@ export const Settings = () => {
             >
               <Wrench className={`w-4 h-4 ${fixingDb ? 'animate-spin' : ''}`} />
               {fixingDb ? 'Fixing DB...' : 'Fix DB'}
+            </Button>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-primary flex items-center gap-2">
+                <Database className="w-4 h-4 text-emerald-500" />
+                Export Full Database Backup (.sql)
+              </p>
+              <p className="text-xs text-muted mt-1">Download a complete, single-file MySQL dump containing all 53+ tables, active data, work orders, invoices, and settings. Can be directly imported into MySQL Workbench, phpMyAdmin, or any MySQL 8+ server for instant disaster recovery or local archive.</p>
+            </div>
+            <Button 
+              variant="primary" 
+              onClick={handleDownloadBackup} 
+              disabled={downloadingBackup}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white whitespace-nowrap min-w-[180px] flex items-center justify-center gap-2 font-medium shadow-sm"
+            >
+              <Download className={`w-4 h-4 ${downloadingBackup ? 'animate-bounce' : ''}`} />
+              {downloadingBackup ? 'Generating SQL...' : 'Download SQL Backup'}
             </Button>
           </div>
         </GlassCard>

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFinishedGoodsOrders } from '@/hooks/useData';
+import { useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
 import { updateFinishedGoodsOrder } from '@/lib/api';
 
 export type PoEntryMode = 'received' | 'pending' | 'without_po';
@@ -177,9 +177,30 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
-      setCustomerPoAttachment(reader.result as string);
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setCustomerPoAttachment(rawDataUri);
       setCustomerPoAttachmentName(file.name);
+
+      try {
+        const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataUri: rawDataUri,
+            filename: file.name,
+            folder: 'customer_po'
+          })
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          if (uploadData && uploadData.url) {
+            setCustomerPoAttachment(uploadData.url);
+          }
+        }
+      } catch (err) {
+        console.warn('Upload to cloud storage error (keeping local data):', err);
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -192,13 +213,12 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     let finalStatus = 'PO Received';
 
     if (poMode === 'received') {
-      if (!finalPoNo) {
-        toast('Please enter the Customer PO Number', 'error');
+      if (!finalPoNo && !customerPoAttachment) {
+        toast('Please enter the Customer PO Number or upload the PO document', 'error');
         return;
       }
-      if (duplicatePoOrder) {
-        toast(`Customer PO #${finalPoNo} is already used on Sales Order #${duplicatePoOrder.orderNo} (${duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.`, 'error');
-        return;
+      if (!finalPoNo && customerPoAttachment) {
+        finalPoNo = customerPoAttachmentName ? customerPoAttachmentName.replace(/\.[^/.]+$/, '') : 'PO-ATTACHED';
       }
       finalStatus = 'PO Received';
     } else if (poMode === 'pending') {
@@ -240,6 +260,8 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
         });
 
         toast('Customer PO #' + finalPoNo + ' recorded for Order ' + orderData.orderNo + '!', 'success');
+        invalidateDataCache('fgo');
+        invalidateDataCache('quotations');
         onSuccess?.(data, false);
         onClose();
         return;
@@ -276,6 +298,8 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
           : ('Customer PO #' + finalPoNo + ' recorded successfully!');
 
         toast(successMsg, 'success');
+        invalidateDataCache('fgo');
+        invalidateDataCache('quotations');
         onSuccess?.(data, isProceedingToSo);
         onClose();
       }

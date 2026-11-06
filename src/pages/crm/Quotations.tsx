@@ -139,6 +139,14 @@ export const Quotations: React.FC = () => {
     );
   };
 
+  const navigate = useNavigate()
+  const { data: quotations, loading, refetch } = useQuotations()
+  const { data: taxProfiles } = useTaxProfiles()
+  const { data: leads = [] } = useLeads()
+  const { data: customers = [] } = useCustomers()
+  const { data: allInvoices = [] } = useInvoices()
+  const { data: allOrders = [] } = useFinishedGoodsOrders()
+
   const [workOrdersList, setWorkOrdersList] = useState<any[]>([])
 
   const loadWorkOrders = useCallback(async () => {
@@ -183,20 +191,33 @@ export const Quotations: React.FC = () => {
     loadPaymentReceipts()
   }, [loadPaymentReceipts])
 
-  const getQuoteReceipts = (group: any, latestMain: any) => {
-    if (!latestMain) return []
-    const qNo = String(group.quoNo || latestMain.quotationNo || latestMain.docNo || '').trim().toLowerCase()
-    const qId = String(latestMain.id || '').trim()
+  const quoteReceiptsMap = useMemo(() => {
+    const map = new Map<string, any[]>();
+    paymentReceiptsList.forEach((r: any) => {
+      const rQuoteId = String(r.quoteId || r.quotationId || '').trim();
+      const rQuoNo = String(r.quotationNo || '').trim().toLowerCase();
+      if (rQuoteId) {
+        const arr = map.get(rQuoteId) || [];
+        arr.push(r);
+        map.set(rQuoteId, arr);
+      }
+      if (rQuoNo) {
+        const arr = map.get(rQuoNo) || [];
+        if (!rQuoteId || arr.indexOf(r) === -1) arr.push(r);
+        map.set(rQuoNo, arr);
+      }
+    });
+    return map;
+  }, [paymentReceiptsList]);
 
-    return paymentReceiptsList.filter((r: any) => {
-      const rQuoteId = String(r.quoteId || r.quotationId || '').trim()
-      const rQuoNo = String(r.quotationNo || '').trim().toLowerCase()
-      return (
-        (qId && rQuoteId && rQuoteId === qId) ||
-        (qNo && rQuoNo && rQuoNo === qNo)
-      )
-    })
-  }
+  const getQuoteReceipts = useCallback((group: any, latestMain: any) => {
+    if (!latestMain) return [];
+    const qNo = String(group?.quoNo || latestMain?.quotationNo || latestMain?.docNo || '').trim().toLowerCase();
+    const qId = String(latestMain?.id || '').trim();
+    if (qId && quoteReceiptsMap.has(qId)) return quoteReceiptsMap.get(qId) || [];
+    if (qNo && quoteReceiptsMap.has(qNo)) return quoteReceiptsMap.get(qNo) || [];
+    return [];
+  }, [quoteReceiptsMap]);
 
   const handleOpenReceiptModal = (group: any, latestMain: any) => {
     setSelectedQuoteForReceipt({
@@ -207,25 +228,40 @@ export const Quotations: React.FC = () => {
     setReceiptModalOpen(true)
   }
 
-  const getExistingWO = (group: any, latestMain: any) => {
+  const existingWoMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!workOrdersList.length) return map;
+
+    const soToWoMap = new Map<string, any>();
+    workOrdersList.forEach((w: any) => {
+      if (w.orderNo) soToWoMap.set(String(w.orderNo).toLowerCase(), w);
+      if (w.salesOrderNo) soToWoMap.set(String(w.salesOrderNo).toLowerCase(), w);
+    });
+
+    workOrdersList.forEach((w: any) => {
+      if (w.sourceQuoteId) map.set(String(w.sourceQuoteId), w);
+      if (w.quoteId) map.set(String(w.quoteId), w);
+      if (w.quotationNo) map.set(String(w.quotationNo).toLowerCase(), w);
+    });
+
+    (allOrders || []).forEach((o: any) => {
+      const wo = soToWoMap.get(String(o.orderNo).toLowerCase());
+      if (wo) {
+        if (o.quoteId) map.set(String(o.quoteId), wo);
+        if (o.quotationNo) map.set(String(o.quotationNo).toLowerCase(), wo);
+      }
+    });
+
+    return map;
+  }, [workOrdersList, allOrders]);
+
+  const getExistingWO = useCallback((group: any, latestMain: any) => {
     const qId = latestMain?.id ? String(latestMain.id) : null;
     const qNo = group?.quoNo || latestMain?.quotationNo;
-    const orderNos = allOrders
-      .filter((o: any) => (qId && o.quoteId && String(o.quoteId) === qId) || (qNo && o.quotationNo === qNo))
-      .map((o: any) => o.orderNo);
-
-    return workOrdersList.find((w: any) => 
-      (qId && w.sourceQuoteId && String(w.sourceQuoteId) === qId) ||
-      (qId && w.quoteId && String(w.quoteId) === qId) ||
-      (qNo && w.quotationNo && String(w.quotationNo) === qNo) ||
-      (qNo && w.title && w.title.includes(qNo)) ||
-      (orderNos.length > 0 && orderNos.some((soNo: string) => 
-        (w.orderNo && w.orderNo === soNo) || 
-        (w.salesOrderNo && w.salesOrderNo === soNo) ||
-        (w.title && w.title.includes(soNo))
-      ))
-    ) || null;
-  }
+    if (qId && existingWoMap.has(qId)) return existingWoMap.get(qId);
+    if (qNo && existingWoMap.has(String(qNo).toLowerCase())) return existingWoMap.get(String(qNo).toLowerCase());
+    return null;
+  }, [existingWoMap]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -554,13 +590,7 @@ export const Quotations: React.FC = () => {
     }
   }
 
-  const navigate = useNavigate()
-  const { data: quotations, loading, refetch } = useQuotations()
-  const { data: taxProfiles } = useTaxProfiles()
-  const { data: leads = [] } = useLeads()
-  const { data: customers = [] } = useCustomers()
-  const { data: allInvoices = [] } = useInvoices()
-  const { data: allOrders = [] } = useFinishedGoodsOrders()
+
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null);
   const [openInfoId, setOpenInfoId] = useState<string | null>(null);
@@ -690,8 +720,16 @@ export const Quotations: React.FC = () => {
   const salesRepOptions = useMemo(() => {
     const reps = new Set<string>();
     quotations.forEach((q: any) => {
-      let parsed: any = {};
-      try { parsed = JSON.parse(q.data || '{}'); } catch(e){}
+      let parsed: any = q._parsed;
+      if (!parsed) {
+        try {
+          parsed = typeof q.data === 'string' ? JSON.parse(q.data || '{}') : (q.data || {});
+          if (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch (e) {}
+          }
+          q._parsed = parsed;
+        } catch(e) { parsed = {}; }
+      }
       const rep = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy;
       if (rep && typeof rep === 'string' && rep.trim()) {
         reps.add(rep.trim());
@@ -725,13 +763,16 @@ export const Quotations: React.FC = () => {
     }> = {};
     
     quotations.forEach(q => {
-      let parsed: any = {};
-      try {
-        parsed = typeof q.data === "string" ? JSON.parse(q.data || "{}") : (q.data || {});
-        if (typeof parsed === "string") {
-          try { parsed = JSON.parse(parsed); } catch (e) {}
-        }
-      } catch (e) {}
+      let parsed: any = (q as any)._parsed;
+      if (!parsed) {
+        try {
+          parsed = typeof q.data === "string" ? JSON.parse(q.data || "{}") : (q.data || {});
+          if (typeof parsed === "string") {
+            try { parsed = JSON.parse(parsed); } catch (e) {}
+          }
+          (q as any)._parsed = parsed;
+        } catch (e) { parsed = {}; }
+      }
 
       const isProd = Boolean(
         q.type === "product" || 
@@ -1124,7 +1165,7 @@ export const Quotations: React.FC = () => {
     return sortedQuotations.slice(startIndex, endIndex);
   }, [sortedQuotations, startIndex, endIndex]);
 
-  if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
+  if (loading && (!quotations || quotations.length === 0)) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
 
 
   const renderActionsDropdown = (

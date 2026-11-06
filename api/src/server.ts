@@ -1,7 +1,8 @@
 import puppeteer from 'puppeteer-core';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { resolveBuildId, Browser, detectBrowserPlatform, install } from '@puppeteer/browsers';
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -9,6 +10,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import db from './db';
 
 // Multi-path dotenv loader for local & VPS production environments
@@ -23,6 +25,7 @@ import db from './db';
 });
 
 const app = express();
+app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -1992,6 +1995,172 @@ app.post('/api/settings/fix-db', async (req, res) => {
   }
 });
 
+async function generateSqlBackupFallback(dbPool: any): Promise<string> {
+  let sql = `-- ========================================================\n`;
+  sql += `-- Rex Industries ERP - Database Backup\n`;
+  sql += `-- Generated: ${new Date().toISOString()}\n`;
+  sql += `-- Database: ${process.env.DB_NAME || 'rex_erp'}\n`;
+  sql += `-- Engine: Node.js Fail-safe Backup Engine\n`;
+  sql += `-- ========================================================\n\n`;
+  sql += `/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n`;
+  sql += `/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;\n`;
+  sql += `/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;\n`;
+  sql += `/*!50503 SET NAMES utf8mb4 */;\n`;
+  sql += `/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;\n`;
+  sql += `/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n`;
+  sql += `/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n`;
+  sql += `/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n`;
+
+  const [tables]: any = await dbPool.query('SHOW FULL TABLES WHERE Table_type = "BASE TABLE"');
+  for (const row of tables) {
+    const tableName = Object.values(row)[0] as string;
+    try {
+      const [createRes]: any = await dbPool.query(`SHOW CREATE TABLE \`${tableName}\``);
+      if (createRes && createRes[0] && createRes[0]['Create Table']) {
+        sql += `--\n-- Table structure for table \`${tableName}\`\n--\n\n`;
+        sql += `DROP TABLE IF EXISTS \`${tableName}\`;\n`;
+        sql += `/*!40101 SET @saved_cs_client     = @@character_set_client */;\n`;
+        sql += `/*!50503 SET character_set_client = utf8mb4 */;\n`;
+        sql += `${createRes[0]['Create Table']};\n`;
+        sql += `/*!40101 SET character_set_client = @saved_cs_client */;\n\n`;
+      }
+
+      const [rows]: any = await dbPool.query(`SELECT * FROM \`${tableName}\``);
+      if (rows && rows.length > 0) {
+        sql += `--\n-- Dumping data for table \`${tableName}\`\n--\n\n`;
+        sql += `LOCK TABLES \`${tableName}\` WRITE;\n`;
+        sql += `/*!40000 ALTER TABLE \`${tableName}\` DISABLE KEYS */;\n`;
+
+        const batchSize = 100;
+        for (let i = 0; i < rows.length; i += batchSize) {
+          const batch = rows.slice(i, i + batchSize);
+          const insertRows = batch.map((r: any) => {
+            const values = Object.values(r).map((v: any) => {
+              if (v === null || v === undefined) return 'NULL';
+              if (typeof v === 'number') return v;
+              if (typeof v === 'boolean') return v ? 1 : 0;
+              if (v instanceof Date) {
+                const pad = (n: number) => String(n).padStart(2, '0');
+                const dStr = `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}:${pad(v.getSeconds())}`;
+                return `'${dStr}'`;
+              }
+              if (typeof v === 'object') return dbPool.escape(JSON.stringify(v));
+              return dbPool.escape(String(v));
+            });
+            return `(${values.join(', ')})`;
+          });
+          sql += `INSERT INTO \`${tableName}\` VALUES \n  ${insertRows.join(',\n  ')};\n`;
+        }
+        sql += `/*!40000 ALTER TABLE \`${tableName}\` ENABLE KEYS */;\n`;
+        sql += `UNLOCK TABLES;\n\n`;
+      }
+    } catch (tblErr: any) {
+      console.warn(`Error dumping table ${tableName}:`, tblErr.message);
+    }
+  }
+
+  sql += `/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n`;
+  sql += `/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n`;
+  sql += `/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;\n`;
+  sql += `/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n`;
+  sql += `/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;\n`;
+  sql += `/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n`;
+  sql += `/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n\n`;
+  sql += `-- Dump completed at ${new Date().toISOString()}\n`;
+  return sql;
+}
+
+app.get(['/api/settings/backup-db', '/api/database/backup'], async (req, res) => {
+  try {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    const filename = `rex_erp_backup_${dateStr}.sql`;
+
+    res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Check mysqldump binary locations
+    const possiblePaths = [
+      process.env.MYSQLDUMP_PATH,
+      '/opt/homebrew/bin/mysqldump',
+      '/usr/local/bin/mysqldump',
+      '/usr/bin/mysqldump'
+    ].filter(Boolean) as string[];
+
+    let mysqldumpBin: string | null = null;
+    for (const p of possiblePaths) {
+      try {
+        if (fs.existsSync(p)) {
+          mysqldumpBin = p;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    const dbHost = process.env.DB_HOST || 'localhost';
+    const dbPort = process.env.DB_PORT || '3306';
+    const dbUser = process.env.DB_USER || 'root';
+    const dbPass = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '1234';
+    const dbName = process.env.DB_NAME || 'rex_erp';
+
+    if (mysqldumpBin) {
+      const args = [
+        `-h${dbHost}`,
+        `-P${dbPort}`,
+        `-u${dbUser}`,
+        `--password=${dbPass}`,
+        '--single-transaction',
+        '--quick',
+        '--set-gtid-purged=OFF',
+        '--default-character-set=utf8mb4',
+        '--add-drop-table',
+        '--create-options',
+        '--routines',
+        '--triggers',
+        dbName
+      ];
+
+      const dump = spawn(mysqldumpBin, args);
+
+      dump.stdout.pipe(res);
+
+      dump.on('error', async (err) => {
+        console.warn('mysqldump spawn failed, switching to JS fallback:', err.message);
+        try {
+          const fallbackSql = await generateSqlBackupFallback(db);
+          if (!res.headersSent) {
+            res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+          }
+          res.end(fallbackSql);
+        } catch (fbErr: any) {
+          if (!res.headersSent) res.status(500).json({ error: fbErr.message });
+          else res.end();
+        }
+      });
+
+      dump.stderr.on('data', (d) => {
+        const msg = d.toString();
+        if (!msg.includes('Using a password on the command line interface can be insecure')) {
+          console.error('mysqldump stderr:', msg);
+        }
+      });
+
+      return;
+    }
+
+    // Pure JS fallback if no binary exists
+    const fallbackSql = await generateSqlBackupFallback(db);
+    res.send(fallbackSql);
+  } catch (error: any) {
+    console.error('Backup error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Failed to generate database backup' });
+    }
+  }
+});
+
 app.post('/api/settings', async (req, res) => {
   try {
     const updates = req.body;
@@ -2002,6 +2171,352 @@ app.post('/api/settings', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+// ==========================================
+// CLOUDFLARE R2 / S3 OBJECT STORAGE ENGINE
+// ==========================================
+
+async function getR2Config() {
+  const [rows]: any = await db.query("SELECT id, val FROM settings WHERE id LIKE 'r2_%'");
+  const map: Record<string, string> = {};
+  if (Array.isArray(rows)) {
+    rows.forEach((r: any) => { map[r.id] = r.val; });
+  }
+
+  const accountId = map.r2_account_id || process.env.R2_ACCOUNT_ID || '';
+  const accessKeyId = map.r2_access_key_id || process.env.R2_ACCESS_KEY_ID || '';
+  const secretAccessKey = map.r2_secret_access_key || process.env.R2_SECRET_ACCESS_KEY || '';
+  const bucketName = map.r2_bucket_name || process.env.R2_BUCKET_NAME || '';
+  let publicUrl = map.r2_public_url || process.env.R2_PUBLIC_URL || '';
+  if (publicUrl && publicUrl.endsWith('/')) {
+    publicUrl = publicUrl.slice(0, -1);
+  }
+  const enabled = map.r2_enabled !== undefined ? map.r2_enabled === 'true' : Boolean(accountId && accessKeyId && secretAccessKey && bucketName);
+
+  return {
+    enabled,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucketName,
+    publicUrl
+  };
+}
+
+function getR2Client(cfg: { accountId: string; accessKeyId: string; secretAccessKey: string }) {
+  if (!cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    return null;
+  }
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${cfg.accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey,
+    },
+  });
+}
+
+async function uploadToR2(buffer: Buffer, originalFilename: string, mimeType: string, folder: string = 'attachments') {
+  const cfg = await getR2Config();
+  if (!cfg.enabled || !cfg.bucketName) {
+    throw new Error('Cloudflare R2 is not configured or disabled');
+  }
+
+  const client = getR2Client(cfg);
+  if (!client) {
+    throw new Error('Invalid Cloudflare R2 credentials');
+  }
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const cleanName = (originalFilename || 'document')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .toLowerCase();
+  const key = `${folder}/${year}/${month}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${cleanName}`;
+
+  await client.send(new PutObjectCommand({
+    Bucket: cfg.bucketName,
+    Key: key,
+    Body: buffer,
+    ContentType: mimeType || 'application/octet-stream',
+  }));
+
+  const publicUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+  return {
+    url: publicUrl,
+    key,
+    size: buffer.length,
+    mimeType
+  };
+}
+
+app.get('/api/settings/r2', async (req, res) => {
+  try {
+    const cfg = await getR2Config();
+    res.json({
+      enabled: cfg.enabled,
+      accountId: cfg.accountId,
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey ? '••••••••••••••••' : '',
+      hasSecret: Boolean(cfg.secretAccessKey),
+      bucketName: cfg.bucketName,
+      publicUrl: cfg.publicUrl
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/settings/r2', async (req, res) => {
+  try {
+    const { enabled, accountId, accessKeyId, secretAccessKey, bucketName, publicUrl } = req.body;
+    
+    const entries: [string, string][] = [
+      ['r2_enabled', enabled ? 'true' : 'false'],
+      ['r2_account_id', (accountId || '').trim()],
+      ['r2_access_key_id', (accessKeyId || '').trim()],
+      ['r2_bucket_name', (bucketName || '').trim()],
+      ['r2_public_url', (publicUrl || '').trim()]
+    ];
+
+    if (secretAccessKey && !secretAccessKey.includes('•')) {
+      entries.push(['r2_secret_access_key', secretAccessKey.trim()]);
+    }
+
+    for (const [id, val] of entries) {
+      await db.query('INSERT INTO settings (id, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val=?', [id, val, val]);
+    }
+
+    res.json({ success: true, message: 'Cloudflare R2 settings saved successfully!' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/settings/r2/test', async (req, res) => {
+  try {
+    let cfg = await getR2Config();
+    if (req.body && req.body.accountId) {
+      cfg = {
+        enabled: true,
+        accountId: (req.body.accountId || '').trim(),
+        accessKeyId: (req.body.accessKeyId || '').trim(),
+        secretAccessKey: req.body.secretAccessKey && !req.body.secretAccessKey.includes('•') ? req.body.secretAccessKey.trim() : cfg.secretAccessKey,
+        bucketName: (req.body.bucketName || '').trim(),
+        publicUrl: (req.body.publicUrl || '').trim()
+      };
+    }
+
+    if (!cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucketName) {
+      return res.status(400).json({ success: false, error: 'Please enter Account ID, Access Key ID, Secret Access Key, and Bucket Name.' });
+    }
+
+    const client = getR2Client(cfg);
+    if (!client) {
+      return res.status(400).json({ success: false, error: 'Failed to initialize R2 client with provided credentials.' });
+    }
+
+    const testKey = `_test_connection_${Date.now()}.txt`;
+    const testBody = `Rex ERP R2 connection test at ${new Date().toISOString()}`;
+
+    // Test Write
+    await client.send(new PutObjectCommand({
+      Bucket: cfg.bucketName,
+      Key: testKey,
+      Body: testBody,
+      ContentType: 'text/plain'
+    }));
+
+    // Test Clean Up
+    await client.send(new DeleteObjectCommand({
+      Bucket: cfg.bucketName,
+      Key: testKey
+    }));
+
+    res.json({
+      success: true,
+      message: `Connected to Cloudflare R2 bucket "${cfg.bucketName}" successfully! Write and delete permissions verified.`
+    });
+  } catch (error: any) {
+    console.error('R2 Test error:', error);
+    res.status(500).json({
+      success: false,
+      error: `R2 connection failed: ${error.message || 'Check your credentials and bucket permissions'}`
+    });
+  }
+});
+
+app.post('/api/upload', async (req, res) => {
+  try {
+    const { dataUri, filename, folder } = req.body;
+    if (!dataUri || typeof dataUri !== 'string') {
+      return res.status(400).json({ error: 'dataUri is required' });
+    }
+
+    // If it's already an HTTP/HTTPS URL, return it directly
+    if (dataUri.startsWith('http://') || dataUri.startsWith('https://')) {
+      return res.json({
+        success: true,
+        url: dataUri,
+        isR2: true
+      });
+    }
+
+    const cfg = await getR2Config();
+    if (!cfg.enabled || !cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucketName) {
+      // Graceful fallback: preserve dataUri if R2 is not configured
+      return res.json({
+        success: true,
+        url: dataUri,
+        isR2: false,
+        message: 'Saved locally as data URI (R2 not configured)'
+      });
+    }
+
+    const matches = dataUri.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ error: 'Invalid data URI format' });
+    }
+
+    const mimeType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    const result = await uploadToR2(buffer, filename || 'file', mimeType, folder || 'attachments');
+
+    res.json({
+      success: true,
+      url: result.url,
+      key: result.key,
+      size: result.size,
+      mimeType: result.mimeType,
+      isR2: true
+    });
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload file to R2' });
+  }
+});
+
+app.post('/api/settings/r2/migrate', async (req, res) => {
+  try {
+    const cfg = await getR2Config();
+    if (!cfg.enabled || !cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucketName) {
+      return res.status(400).json({ success: false, error: 'Cloudflare R2 is not fully configured. Please configure and test R2 settings first.' });
+    }
+
+    const client = getR2Client(cfg);
+    if (!client) {
+      return res.status(400).json({ success: false, error: 'Unable to initialize R2 client' });
+    }
+
+    let migratedCount = 0;
+    let bytesFreed = 0;
+    const errors: string[] = [];
+
+    // 1. Migrate quotations.customerPoAttachment
+    const [quotes]: any = await db.query("SELECT id, quotationNo, customerPoAttachment FROM quotations WHERE customerPoAttachment LIKE 'data:%'");
+    for (const q of quotes) {
+      try {
+        const matches = q.customerPoAttachment.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mime = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          const ext = mime.includes('pdf') ? 'pdf' : (mime.includes('png') ? 'png' : 'jpg');
+          const key = `quotations/po_${q.quotationNo || q.id}_${Date.now()}.${ext}`;
+
+          await client.send(new PutObjectCommand({
+            Bucket: cfg.bucketName,
+            Key: key,
+            Body: buffer,
+            ContentType: mime
+          }));
+
+          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+          await db.query("UPDATE quotations SET customerPoAttachment = ? WHERE id = ?", [fileUrl, q.id]);
+
+          bytesFreed += q.customerPoAttachment.length;
+          migratedCount++;
+        }
+      } catch (err: any) {
+        errors.push(`Quotation ${q.quotationNo || q.id}: ${err.message}`);
+      }
+    }
+
+    // 2. Migrate finished_goods_orders.customerPoAttachment
+    const [orders]: any = await db.query("SELECT id, orderNo, customerPoAttachment FROM finished_goods_orders WHERE customerPoAttachment LIKE 'data:%'");
+    for (const o of orders) {
+      try {
+        const matches = o.customerPoAttachment.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mime = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          const ext = mime.includes('pdf') ? 'pdf' : (mime.includes('png') ? 'png' : 'jpg');
+          const key = `sales_orders/po_${o.orderNo || o.id}_${Date.now()}.${ext}`;
+
+          await client.send(new PutObjectCommand({
+            Bucket: cfg.bucketName,
+            Key: key,
+            Body: buffer,
+            ContentType: mime
+          }));
+
+          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+          await db.query("UPDATE finished_goods_orders SET customerPoAttachment = ? WHERE id = ?", [fileUrl, o.id]);
+
+          bytesFreed += o.customerPoAttachment.length;
+          migratedCount++;
+        }
+      } catch (err: any) {
+        errors.push(`Order ${o.orderNo || o.id}: ${err.message}`);
+      }
+    }
+
+    // 3. Migrate settings company_logo if it's base64
+    const [logoRows]: any = await db.query("SELECT id, val FROM settings WHERE id = 'company_logo' AND val LIKE 'data:%'");
+    if (logoRows && logoRows.length > 0 && logoRows[0].val) {
+      try {
+        const raw = logoRows[0].val;
+        const matches = raw.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mime = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          const ext = mime.includes('png') ? 'png' : (mime.includes('svg') ? 'svg' : 'jpg');
+          const key = `branding/company_logo_${Date.now()}.${ext}`;
+
+          await client.send(new PutObjectCommand({
+            Bucket: cfg.bucketName,
+            Key: key,
+            Body: buffer,
+            ContentType: mime
+          }));
+
+          const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `https://${cfg.bucketName}.${cfg.accountId}.r2.cloudflarestorage.com/${key}`;
+          await db.query("UPDATE settings SET val = ? WHERE id = 'company_logo'", [fileUrl]);
+
+          bytesFreed += raw.length;
+          migratedCount++;
+        }
+      } catch (err: any) {
+        errors.push(`Company Logo: ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      migratedCount,
+      bytesFreed,
+      mbFreed: (bytesFreed / (1024 * 1024)).toFixed(2),
+      errors,
+      message: migratedCount > 0 
+        ? `Successfully migrated ${migratedCount} files to Cloudflare R2! Freed approx ${(bytesFreed / (1024 * 1024)).toFixed(2)} MB of database storage.`
+        : 'All files are already using cloud URLs or no base64 files were found in the database.'
+    });
+  } catch (error: any) {
+    console.error('Migration error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2745,7 +3260,7 @@ app.get('/api/customers', async (req, res) => {
           SUM(CASE WHEN (status IS NULL OR (status NOT IN ('paid', 'draft', 'void') AND (isProforma = 0 OR isProforma IS NULL))) THEN (total - COALESCE(paidAmount, 0)) ELSE 0 END) as outstandingBalance
         FROM invoices
         GROUP BY COALESCE(customerId, leadId)
-      ) inv ON c.id = inv.partyId
+      ) inv ON c.id = inv.partyId COLLATE utf8mb4_unicode_ci
       ORDER BY c.joinDate DESC
     `) as any[];
     for (const r of rows) {
@@ -3961,7 +4476,7 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
       return res.status(400).json({ error: 'Customer PO Number or PO Status (PO Pending / Without PO) is required' });
     }
 
-    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ?', [id]);
+    const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ? OR quotationNo = ? OR docNo = ? LIMIT 1', [id, id, id]);
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'Quotation not found' });
     }
@@ -4015,7 +4530,7 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
         customerPoAttachment ? String(customerPoAttachment) : null,
         newStatus,
         JSON.stringify(qData),
-        id
+        quote.id
       ]
     );
 
@@ -5359,20 +5874,8 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       orderNo = orderNo.replace(/^SO-20(\d{2})-/i, 'SO-$1-');
     }
 
-    // Duplicate Customer PO Check: Same PO cannot be used on multiple Sales Orders
+    // Optional Customer PO Notice (Allow shared blanket POs across multiple sales orders)
     const rawPo = String(data.customerPoNo || '').trim();
-    const normalizedPo = rawPo.toUpperCase();
-    if (rawPo && !['PO PENDING', 'WITHOUT PO', 'N/A', '-'].includes(normalizedPo)) {
-      const [dupPoRows]: any = await db.query(
-        'SELECT id, orderNo, customerName FROM finished_goods_orders WHERE LOWER(TRIM(customerPoNo)) = LOWER(?) LIMIT 1',
-        [rawPo]
-      );
-      if (dupPoRows && dupPoRows.length > 0) {
-        return res.status(400).json({
-          error: `Customer PO #${rawPo} is already assigned to Sales Order #${dupPoRows[0].orderNo} (${dupPoRows[0].customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.`
-        });
-      }
-    }
     
     // Parse items if provided
     let itemsList: any[] = [];
@@ -5757,22 +6260,7 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = nowStr;
 
-    // Duplicate Customer PO Check on Update: Same PO cannot be used on multiple Sales Orders
-    if (data.customerPoNo !== undefined && data.customerPoNo !== null) {
-      const rawPo = String(data.customerPoNo || '').trim();
-      const normalizedPo = rawPo.toUpperCase();
-      if (rawPo && !['PO PENDING', 'WITHOUT PO', 'N/A', '-'].includes(normalizedPo)) {
-        const [dupPoRows]: any = await db.query(
-          'SELECT id, orderNo, customerName FROM finished_goods_orders WHERE LOWER(TRIM(customerPoNo)) = LOWER(?) AND id != ? AND orderNo != ? LIMIT 1',
-          [rawPo, id, id]
-        );
-        if (dupPoRows && dupPoRows.length > 0) {
-          return res.status(400).json({
-            error: `Customer PO #${rawPo} is already assigned to Sales Order #${dupPoRows[0].orderNo} (${dupPoRows[0].customerName || 'Customer'}). Same PO number cannot be used on multiple sales orders.`
-          });
-        }
-      }
-    }
+    // Customer PO update (Allow shared blanket POs)
 
     // 1. Fetch existing order to detect differences
     const [existingRows]: any = await db.query('SELECT * FROM finished_goods_orders WHERE id = ? OR orderNo = ?', [id, id]);
@@ -10982,7 +11470,7 @@ app.get('/api/production/work-orders', async (req, res) => {
         `SELECT sl.*, i.name as itemName, i.sku as itemSku, i.uom as itemUom, i.unitCost as itemUnitCost 
          FROM stock_ledger sl 
          LEFT JOIN inventory i ON sl.inventoryId = i.id 
-         WHERE sl.type = 'OUT' AND (sl.reference LIKE 'WO-%' OR sl.reference IS NOT NULL)`
+         WHERE sl.type = 'OUT' AND (sl.reference LIKE 'WO-%' OR sl.reference LIKE '%WO%')`
       );
       ledgerRows = ledgers || [];
     } catch (e) {
@@ -11211,12 +11699,18 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
     const enrichedOps = ops.map((o: any) => {
       const emp = empRows.find((e: any) => e.id === o.employeeId);
       const mac = machRows.find((m: any) => m.id === o.machineId);
+      const laborRate = Number(o.hourlyLaborRate || emp?.hourlyRate || 750);
+      const machineRate = Number(o.hourlyMachineRate || mac?.hourlyCost || 1200);
+      const actHrs = Number(o.actualHours || 0);
+
       return {
         ...o,
         employeeName: emp?.name || null,
-        machineName: mac?.name || null,
-        machineHourlyCost: mac?.hourlyCost || 1200,
-        employeeHourlyRate: emp?.hourlyRate || 750
+        machineName: mac ? `${mac.name} (${mac.type || ''})` : null,
+        machineHourlyCost: machineRate,
+        employeeHourlyRate: laborRate,
+        actualLaborCost: actHrs * laborRate,
+        actualMachineCost: actHrs * machineRate
       };
     });
 
@@ -11680,10 +12174,11 @@ app.post('/api/production/work-orders/:id/report-shortage', async (req, res) => 
     }
 
     // Update Sales Order (finished_goods_orders) if linked
-    if (wo.orderNo) {
+    const soRef = wo.salesOrderNo || (String(wo.orderNo || '').startsWith('SO-') ? wo.orderNo : null);
+    if (soRef || wo.quoteId) {
       await db.query(
-        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
-        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?)',
+        [materialStatus, alertText, soRef || 'NONE', soRef || 'NONE', wo.quoteId || 'NONE']
       ).catch(() => {});
     }
 
@@ -11790,10 +12285,11 @@ app.post('/api/production/work-orders/:id/approve-substitute', async (req, res) 
     }
 
     // Update Sales Order if linked
-    if (wo.orderNo) {
+    const soRef = wo.salesOrderNo || (String(wo.orderNo || '').startsWith('SO-') ? wo.orderNo : null);
+    if (soRef || wo.quoteId) {
       await db.query(
-        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
-        [newMatStatus, alertText, wo.orderNo, wo.orderNo]
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?)',
+        [newMatStatus, alertText, soRef || 'NONE', soRef || 'NONE', wo.quoteId || 'NONE']
       ).catch(() => {});
     }
 
@@ -11882,10 +12378,11 @@ app.post('/api/production/work-orders/:id/reject-substitute', async (req, res) =
     }
 
     // Update Sales Order if linked
-    if (wo.orderNo) {
+    const soRef = wo.salesOrderNo || (String(wo.orderNo || '').startsWith('SO-') ? wo.orderNo : null);
+    if (soRef || wo.quoteId) {
       await db.query(
-        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
-        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?)',
+        [materialStatus, alertText, soRef || 'NONE', soRef || 'NONE', wo.quoteId || 'NONE']
       ).catch(() => {});
     }
 
@@ -11988,10 +12485,11 @@ app.post('/api/production/work-orders/:id/change-bom-material', async (req, res)
     }
 
     // Update Sales Order if linked
-    if (wo.orderNo) {
+    const soRef = wo.salesOrderNo || (String(wo.orderNo || '').startsWith('SO-') ? wo.orderNo : null);
+    if (soRef || wo.quoteId) {
       await db.query(
-        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
-        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?)',
+        [materialStatus, alertText, soRef || 'NONE', soRef || 'NONE', wo.quoteId || 'NONE']
       ).catch(() => {});
     }
 
@@ -12329,10 +12827,11 @@ app.post('/api/production/work-orders/:id/create-mr-shortage', async (req, res) 
     }
 
     // Update Sales Order if linked
-    if (wo.orderNo) {
+    const soRef = wo.salesOrderNo || (String(wo.orderNo || '').startsWith('SO-') ? wo.orderNo : null);
+    if (soRef || wo.quoteId) {
       await db.query(
-        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ?',
-        [materialStatus, alertText, wo.orderNo, wo.orderNo]
+        'UPDATE finished_goods_orders SET materialStatus = ?, materialAlert = ? WHERE orderNo = ? OR id = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?)',
+        [materialStatus, alertText, soRef || 'NONE', soRef || 'NONE', wo.quoteId || 'NONE']
       ).catch(() => {});
     }
 
@@ -13303,8 +13802,12 @@ app.post('/api/production/work-orders/:id/partial-dispatch', async (req, res) =>
     );
 
     // 4. Sync with linked finished_goods_orders if exists
-    if (wo.orderNo) {
-      const [fgoRows]: any = await db.query('SELECT * FROM finished_goods_orders WHERE orderNo = ? OR id = ?', [wo.orderNo, wo.orderNo]);
+    const targetSo = wo.salesOrderNo || (String(wo.orderNo || '').startsWith('SO-') ? wo.orderNo : null);
+    if (targetSo || wo.quoteId) {
+      const [fgoRows]: any = await db.query(
+        'SELECT * FROM finished_goods_orders WHERE orderNo = ? OR id = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?) LIMIT 1',
+        [targetSo || 'NONE', targetSo || 'NONE', wo.quoteId || 'NONE']
+      );
       if (fgoRows.length > 0) {
         const fgo = fgoRows[0];
         let fgoDispatches: any[] = [];
@@ -13352,7 +13855,7 @@ app.post('/api/production/work-orders/:id/complete', async (req, res) => {
     await db.query("UPDATE work_order_operations SET status = 'Completed', endTime = IFNULL(endTime, NOW()) WHERE workOrderId = ? AND status != 'Completed'", [id]);
 
     // Final financial rollup calculation
-    const [ledger]: any = await db.query("SELECT SUM(totalCost) as matCost FROM stock_ledger WHERE type='OUT' AND reference = ?", [id]);
+    const [ledger]: any = await db.query("SELECT SUM(totalCost) as matCost FROM stock_ledger WHERE type='OUT' AND (reference = ? OR reference = ?)", [id, wo.orderNo || id]);
     const matCost = Number(ledger[0]?.matCost || 0);
 
     const [ops]: any = await db.query(

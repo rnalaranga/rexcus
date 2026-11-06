@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { createFinishedGoodsOrder, fetchNextDocumentNumber } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders } from '@/hooks/useData';
+import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface CreateSalesOrderModalProps {
@@ -450,12 +450,36 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
       setFormData(prev => ({
         ...prev,
-        customerPoAttachment: reader.result as string,
+        customerPoAttachment: rawDataUri,
         customerPoAttachmentName: file.name
       }));
+
+      try {
+        const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataUri: rawDataUri,
+            filename: file.name,
+            folder: 'customer_po'
+          })
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          if (uploadData && uploadData.url) {
+            setFormData(prev => ({
+              ...prev,
+              customerPoAttachment: uploadData.url
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Upload to cloud storage error (keeping local data):', err);
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -670,24 +694,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }
 
     // PO Validation Check: Customer PO or explicit PO Pending / Without PO status is required
+    const hasPoAttachment = Boolean(formData.customerPoAttachment);
     const isPoSatisfied = Boolean(
-      (poMode === 'received' && formData.customerPoNo.trim()) ||
+      (poMode === 'received' && (formData.customerPoNo.trim() || hasPoAttachment)) ||
       poMode === 'pending' ||
-      poMode === 'without_po'
+      poMode === 'without_po' ||
+      formData.customerPoNo.trim() ||
+      hasPoAttachment
     );
 
     if (!isPoSatisfied) {
-      toast('Customer PO is mandatory for every Sales Order. Please enter a valid Customer PO Number, or choose "PO Pending" / "Without PO".', 'error');
-      return;
-    }
-
-    if (poMode === 'received' && duplicatePoOrder) {
-      toast(`Customer PO #${formData.customerPoNo.trim()} is already used on Sales Order #${duplicatePoOrder.orderNo} (${duplicatePoOrder.customerName || 'Customer'}). Same PO number cannot be assigned to multiple sales orders.`, 'error');
-      return;
-    }
-
-    if (isAdvanceMissing && !adminOverrideWaiver && !advanceWaiverReason.trim()) {
-      toast('Please enter a reason for bypassing the customer advance payment requirement.', 'warning');
+      toast('Please enter a Customer PO Number or attach PO document, or choose "PO Pending" / "Without PO".', 'error');
       return;
     }
 
@@ -696,18 +713,23 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       const orderStatus = (isAdvanceMissing && !adminOverrideWaiver) ? 'Pending Approval' : 'Confirmed';
 
       let finalCustomerPoNo = formData.customerPoNo.trim();
+      if (!finalCustomerPoNo && hasPoAttachment) {
+        finalCustomerPoNo = formData.customerPoAttachmentName ? formData.customerPoAttachmentName.replace(/\.[^/.]+$/, "") : 'PO-ATTACHED';
+      }
       if (poMode === 'pending' && (!finalCustomerPoNo || finalCustomerPoNo === 'PO PENDING')) {
         finalCustomerPoNo = 'PO PENDING';
       } else if (poMode === 'without_po' && (!finalCustomerPoNo || finalCustomerPoNo === 'WITHOUT PO')) {
         finalCustomerPoNo = 'WITHOUT PO';
       }
 
+      const effectiveWaiverReason = advanceWaiverReason.trim() || 'Commercial credit / direct order authorization';
+
       let waiverNote = '';
       if (isAdvanceMissing) {
         if (adminOverrideWaiver) {
-          waiverNote = `\n[Advance Waived by Admin ${user?.name || user?.username || 'Authorized Approver'}: ${advanceWaiverReason || 'Admin Override'}]`;
+          waiverNote = `\n[Advance Waived by Admin ${user?.name || user?.username || 'Authorized Approver'}: ${effectiveWaiverReason}]`;
         } else {
-          waiverNote = `\n[Advance Waiver Requested: ${advanceWaiverReason || 'Pending Management Authorization'}]`;
+          waiverNote = `\n[Advance Waiver Requested: ${effectiveWaiverReason}]`;
         }
       } else if (!isAdvanceRequiredByCustomer) {
         waiverNote = `\n[Terms: Direct Order - No Advance Required as per Customer Registration Conditions]`;
@@ -743,13 +765,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         totalPrice: Number(formData.totalPrice) || 0,
         customerPoNo: finalCustomerPoNo || null,
         customerPoDate: formData.customerPoDate || null,
-        customerPoAttachment: poMode === 'received' ? (formData.customerPoAttachment || null) : null,
+        customerPoAttachment: formData.customerPoAttachment || null,
         items: formData.items,
         notes: `${formData.notes || ''}${waiverNote}${poMode === 'pending' ? ' [PO Pending]' : poMode === 'without_po' ? ` [Without PO: ${withoutPoReason}]` : ''}`.trim()
       };
 
       const res = await createFinishedGoodsOrder(payload);
       if (res && res.error) throw new Error(res.error);
+
+      // Invalidate frontend cache so sales order and quotations lists refresh instantly
+      invalidateDataCache('fgo');
+      invalidateDataCache('quotations');
 
       // Sync PO status back to quotation
       if (quotationData?.quotation?.id) {
@@ -761,7 +787,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               customerPoNo: finalCustomerPoNo,
               poStatus: poMode === 'pending' ? 'PO Pending' : poMode === 'without_po' ? 'Without PO' : 'PO Received',
               customerPoDate: formData.customerPoDate || null,
-              customerPoAttachment: poMode === 'received' ? (formData.customerPoAttachment || null) : null,
+              customerPoAttachment: formData.customerPoAttachment || null,
               notes: poMode === 'without_po' ? `Without PO: ${withoutPoReason}` : (poMode === 'pending' ? 'PO Pending' : null),
               receivedBy: user?.name || (user as any)?.email || 'Sales Team'
             })
@@ -1095,7 +1121,6 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    required={isAdvanceMissing && !adminOverrideWaiver}
                     value={advanceWaiverReason}
                     onChange={(e) => setAdvanceWaiverReason(e.target.value)}
                     placeholder="e.g. Cheque received awaiting deposit, or corporate credit authorized by Finance Manager"
@@ -1150,7 +1175,6 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    required={isAdvanceMissing && !adminOverrideWaiver}
                     value={advanceWaiverReason}
                     onChange={(e) => setAdvanceWaiverReason(e.target.value)}
                     placeholder="e.g. Corporate PO credit term approved by Director, urgent production dispatch"

@@ -83,17 +83,17 @@ export const WorkOrders: React.FC = () => {
 
   const handlePrintSalesOrder = (row: any) => {
     const linkedOrder = orders.find((o: any) => 
-      (row.orderNo && o.orderNo === row.orderNo) ||
-      (row.id && o.id === row.orderNo) ||
-      (row.sourceQuoteId && o.quoteId === row.sourceQuoteId) ||
-      (row.quotationNo && o.quotationNo === row.quotationNo)
+      (row.salesOrderNo && (o.orderNo === row.salesOrderNo || o.id === row.salesOrderNo)) ||
+      (row.orderNo && (o.orderNo === row.orderNo || o.id === row.orderNo)) ||
+      (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId)) ||
+      (row.quotationNo && o.quotationNo && String(o.quotationNo) === String(row.quotationNo))
     );
     if (linkedOrder) {
       setPrintSalesOrder(linkedOrder);
     } else {
       const previewSO = {
-        id: `SO-${row.orderNo || row.id}`,
-        orderNo: row.orderNo || row.id,
+        id: `SO-${row.salesOrderNo || row.orderNo || row.id}`,
+        orderNo: row.salesOrderNo || row.orderNo || row.id,
         quotationNo: row.quotationNo || row.sourceQuoteNo || null,
         quoteId: row.sourceQuoteId || row.quotationId || null,
         customerId: row.customerId,
@@ -118,10 +118,10 @@ export const WorkOrders: React.FC = () => {
 
   const handlePrintGatePass = async (row: any) => {
     const linkedOrder = orders.find((o: any) => 
-      (row.orderNo && o.orderNo === row.orderNo) ||
-      (row.id && o.id === row.orderNo) ||
-      (row.sourceQuoteId && o.quoteId === row.sourceQuoteId) ||
-      (row.quotationNo && o.quotationNo === row.quotationNo)
+      (row.salesOrderNo && (o.orderNo === row.salesOrderNo || o.id === row.salesOrderNo)) ||
+      (row.orderNo && (o.orderNo === row.orderNo || o.id === row.orderNo)) ||
+      (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId)) ||
+      (row.quotationNo && o.quotationNo && String(row.quotationNo) === String(row.quotationNo))
     );
     if (linkedOrder?.gatePassId || linkedOrder?.gatePassNo) {
       const gpId = linkedOrder.gatePassId || linkedOrder.gatePassNo;
@@ -298,6 +298,7 @@ export const WorkOrders: React.FC = () => {
 
     // 2. Linked Customer / Sales Order
     const linkedOrder = orders.find((o: any) => 
+      (row.salesOrderNo && (o.orderNo === row.salesOrderNo || o.id === row.salesOrderNo)) ||
       (o.orderNo && (o.orderNo === row.orderNo || (row.title && row.title.includes(o.orderNo)))) ||
       (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId))
     )

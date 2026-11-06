@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations, useInvoices } from '@/hooks/useData'
+import { useFinishedGoodsOrders, useInventory, useCustomers, useLeads, useQuotations, useInvoices, invalidateDataCache } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useAuth } from '@/contexts/AuthContext'
@@ -1505,8 +1505,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       return;
     }
     if (duplicatePoOrder) {
-      toast(`Customer PO #${formData.customerPoNo?.trim()} is already assigned to Sales Order #${duplicatePoOrder.orderNo}. Same PO number cannot be used on multiple sales orders.`, 'error');
-      return;
+      toast(`Note: Customer PO #${formData.customerPoNo?.trim()} is also linked to Sales Order #${duplicatePoOrder.orderNo}.`, 'info');
     }
     setSubmitting(true)
 
@@ -1626,7 +1625,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       quoteId: formData.quoteId || null,
       quotationNo: formData.quotationNo || null,
       deliveryAddress: formData.deliveryAddress || null,
-      customerPoNo: formData.customerPoNo?.trim() || null,
+      customerPoNo: formData.customerPoNo?.trim() || (formData.customerPoAttachment ? 'PO-ATTACHED' : null),
       customerPoDate: formData.customerPoDate || null,
       customerPoAttachment: formData.customerPoAttachment || null,
       updatedBy: user?.name || user?.username || 'Sales Executive'
@@ -1638,6 +1637,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       } else {
         await createFinishedGoodsOrder(payload)
       }
+      invalidateDataCache('fgo');
+      invalidateDataCache('quotations');
       refetch()
       setShowOrderModal(false)
       toast(editingOrder ? 'Sales order updated successfully!' : (orderStatus === 'Pending Approval' ? 'Sales order submitted! Status set to Pending Approval.' : 'Sales order created successfully!'), 'success')
@@ -1855,24 +1856,34 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }, [loadWorkOrders])
 
   const resolveOrderLineItems = (order: any, rawOrderItems: any[]) => {
+    const orderTotalQty = Math.max(1, Number(order?.qty || 0));
+
     // 1. From passed rawOrderItems
     if (Array.isArray(rawOrderItems) && rawOrderItems.length > 0) {
-      return rawOrderItems.map((it: any) => ({
+      const mapped = rawOrderItems.map((it: any) => ({
         description: it.description || it.productName || it.name || order.productName || 'Order Item',
         qty: Number(it.qty) || 1,
         uom: it.uom || 'Nos'
       }));
+      if (mapped.length === 1 && orderTotalQty > 1) {
+        mapped[0].qty = orderTotalQty;
+      }
+      return mapped;
     }
     // 2. From order.items (the exact items stored on the Sales Order)
     if (order.items) {
       let oItems: any[] = [];
       try { oItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items; } catch {}
       if (Array.isArray(oItems) && oItems.length > 0) {
-        return oItems.map((it: any) => ({
+        const mapped = oItems.map((it: any) => ({
           description: it.description || it.productName || it.name || order.productName || 'Order Item',
           qty: Number(it.qty) || 1,
           uom: it.uom || 'Nos'
         }));
+        if (mapped.length === 1 && orderTotalQty > 1) {
+          mapped[0].qty = orderTotalQty;
+        }
+        return mapped;
       }
     }
     // 3. Fallback ONLY if order has no items at all and is linked to quotation
@@ -1885,16 +1896,20 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       let parsed: any = {};
       try { parsed = typeof linkedQ.data === 'string' ? JSON.parse(linkedQ.data) : (linkedQ.data || {}) } catch {}
       if (Array.isArray(parsed.custItems) && parsed.custItems.length > 0) {
-        return parsed.custItems.map((ci: any) => ({
+        const mapped = parsed.custItems.map((ci: any) => ({
           description: ci.desc || ci.description || ci.name || 'Quoted Item',
           qty: Number(ci.qty) || 1,
           uom: 'Nos'
         }));
+        if (mapped.length === 1 && orderTotalQty > 1) {
+          mapped[0].qty = orderTotalQty;
+        }
+        return mapped;
       }
     }
     return [{
       description: order.productName || 'Precision Machined Component as per given instruction',
-      qty: Math.max(1, Number(order.qty) || 1),
+      qty: orderTotalQty || 1,
       uom: 'Nos'
     }];
   };
@@ -2065,7 +2080,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         ],
         bom: (orderItems && orderItems.length > 0) ? orderItems.map((it: any) => ({
           material: it.description || it.productName || order.productName,
-          qty: Number(it.qty) || 1,
+          qty: (orderItems.length === 1 && jobQty > 1 ? jobQty : (Number(it.qty) || 1)),
           unit: it.uom || 'pcs',
           unitCost: Number(it.unitPrice) || 0,
           notes: `Line item for ${order.orderNo}`
@@ -2565,7 +2580,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   type="button"
                   onClick={() => {
                     setOpenActionOrderId(null)
-                    setPrintWorkOrderTarget(existingWO)
+                    setPrintWorkOrderTarget({
+                      ...existingWO,
+                      jobQty: Math.max(1, Number(order.qty || existingWO?.jobQty || 1)),
+                      salesOrderNo: order.orderNo,
+                      customerName: order.customerName || existingWO?.customerName,
+                      customer: order.customerName || existingWO?.customer
+                    })
                   }}
                   className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-blue-600 dark:text-blue-400 font-medium"
                 >

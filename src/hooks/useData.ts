@@ -1,22 +1,36 @@
-import {
-  useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as api from '@/lib/api';
 
+// Global in-memory cache store for high-performance SWR (Stale-While-Revalidate)
+const dataCache: Record<string, { data: any[]; timestamp: number }> = {};
+
+export function invalidateDataCache(key?: string) {
+  if (key) {
+    Object.keys(dataCache).forEach(k => {
+      if (k === key || k.startsWith(key)) {
+        delete dataCache[k];
+      }
+    });
+  } else {
+    Object.keys(dataCache).forEach(k => delete dataCache[k]);
+  }
+}
+
 export function useCustomers() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['customers']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['customers']);
 
   const refetch = useCallback(() => {
     return api.fetchCustomers().then(d => {
       const arr = Array.isArray(d) ? d : [];
+      dataCache['customers'] = { data: arr, timestamp: Date.now() };
       setData(arr);
       setLoading(false);
       return arr;
     }).catch(err => {
       console.error('Failed to fetch customers:', err);
-      setData([]);
       setLoading(false);
-      return [];
+      return dataCache['customers']?.data || [];
     });
   }, []);
 
@@ -26,13 +40,20 @@ export function useCustomers() {
 }
 
 export function useLeads() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['leads']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['leads']);
 
   const refetch = useCallback(() => {
-    api.fetchLeads().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchLeads().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['leads'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch leads:', err);
+      setLoading(false);
+      return dataCache['leads']?.data || [];
     });
   }, []);
 
@@ -42,13 +63,20 @@ export function useLeads() {
 }
 
 export function useDeals() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['deals']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['deals']);
 
   const refetch = useCallback(() => {
-    api.fetchDeals().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchDeals().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['deals'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch deals:', err);
+      setLoading(false);
+      return dataCache['deals']?.data || [];
     });
   }, []);
 
@@ -58,13 +86,20 @@ export function useDeals() {
 }
 
 export function useInventory() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['inventory']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['inventory']);
 
   const refetch = useCallback(() => {
-    api.fetchInventory().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchInventory().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['inventory'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch inventory:', err);
+      setLoading(false);
+      return dataCache['inventory']?.data || [];
     });
   }, []);
 
@@ -74,16 +109,23 @@ export function useInventory() {
 }
 
 export function useStockLedger(inventoryId: string) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `stock_ledger_${inventoryId}`;
+  const [data, setData] = useState<any[]>(() => dataCache[cacheKey]?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache[cacheKey]);
 
   const refetch = useCallback(() => {
-    if (!inventoryId) return;
-    api.fetchStockLedger(inventoryId).then(d => {
-      setData(Array.isArray(d) ? d : []);
+    if (!inventoryId) return Promise.resolve([]);
+    return api.fetchStockLedger(inventoryId).then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache[cacheKey] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
-    }).catch(() => { setData([]); setLoading(false); });
-  }, [inventoryId]);
+      return arr;
+    }).catch(() => {
+      setLoading(false);
+      return dataCache[cacheKey]?.data || [];
+    });
+  }, [inventoryId, cacheKey]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -91,13 +133,20 @@ export function useStockLedger(inventoryId: string) {
 }
 
 export function useSuppliers() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['suppliers']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['suppliers']);
 
   const refetch = useCallback(() => {
-    api.fetchSuppliers().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchSuppliers().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['suppliers'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch suppliers:', err);
+      setLoading(false);
+      return dataCache['suppliers']?.data || [];
     });
   }, []);
 
@@ -107,22 +156,23 @@ export function useSuppliers() {
 }
 
 export function useSupplierLedger(supplierId: string) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `supplier_ledger_${supplierId}`;
+  const [data, setData] = useState<any[]>(() => dataCache[cacheKey]?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache[cacheKey]);
 
   const refetch = useCallback(() => {
     if (!supplierId) return Promise.resolve([]);
     return api.fetchSupplierLedger(supplierId).then(d => {
       const arr = Array.isArray(d) ? d : [];
+      dataCache[cacheKey] = { data: arr, timestamp: Date.now() };
       setData(arr);
       setLoading(false);
       return arr;
     }).catch(() => {
-      setData([]);
       setLoading(false);
-      return [];
+      return dataCache[cacheKey]?.data || [];
     });
-  }, [supplierId]);
+  }, [supplierId, cacheKey]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -130,30 +180,64 @@ export function useSupplierLedger(supplierId: string) {
 }
 
 export function useFollowups() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['followups']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['followups']);
 
   const refetch = useCallback(() => {
-    api.fetchFollowups().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchFollowups().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['followups'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
-    }).catch(() => { setData([]); setLoading(false); });
+      return arr;
+    }).catch(() => {
+      setLoading(false);
+      return dataCache['followups']?.data || [];
+    });
   }, []);
 
   useEffect(() => { refetch(); }, [refetch]);
 
   return { data, loading, refetch };
 }
-export function useInvoices() { const [data, setData] = useState<any[]>([]); const [loading, setLoading] = useState(true); const refetch = useCallback(() => { api.fetchInvoices().then(d => { setData(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => { setData([]); setLoading(false); }); }, []); useEffect(() => { refetch(); }, [refetch]); return { data, loading, refetch }; }
 
-export function useQuotations() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useInvoices() {
+  const [data, setData] = useState<any[]>(() => dataCache['invoices']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['invoices']);
 
   const refetch = useCallback(() => {
-    api.fetchQuotations().then(d => {
-      setData(Array.isArray(d) ? d : []);
+    return api.fetchInvoices().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['invoices'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
       setLoading(false);
+      return arr;
+    }).catch(() => {
+      setLoading(false);
+      return dataCache['invoices']?.data || [];
+    });
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, loading, refetch };
+}
+
+export function useQuotations() {
+  const [data, setData] = useState<any[]>(() => dataCache['quotations']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['quotations']);
+
+  const refetch = useCallback(() => {
+    return api.fetchQuotations().then(d => {
+      const arr = Array.isArray(d) ? d : [];
+      dataCache['quotations'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
+      setLoading(false);
+      return arr;
+    }).catch(err => {
+      console.error('Failed to fetch quotations:', err);
+      setLoading(false);
+      return dataCache['quotations']?.data || [];
     });
   }, []);
 
@@ -163,34 +247,47 @@ export function useQuotations() {
 }
 
 export const useMachiningOperations = () => {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['machining_operations']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['machining_operations']);
   const [error, setError] = useState<Error|null>(null);
-  const fetch = async () => {
-    try { setLoading(true); const res = await api.fetchMachiningOperations(); setData(Array.isArray(res) ? res : []); }
-    catch(e:any) { setError(e); } finally { setLoading(false); }
-  }
-  useEffect(() => { fetch() }, []);
+
+  const fetch = useCallback(async () => {
+    try {
+      if (!dataCache['machining_operations']) setLoading(true);
+      const res = await api.fetchMachiningOperations();
+      const arr = Array.isArray(res) ? res : [];
+      dataCache['machining_operations'] = { data: arr, timestamp: Date.now() };
+      setData(arr);
+    } catch(e: any) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetch(); }, [fetch]);
+
   return { data, loading, error, refetch: fetch };
-}
+};
 
 export function useFinishedGoodsOrders(params?: { productId?: string; status?: string }) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `fgo_${params?.productId || ''}_${params?.status || ''}`;
+  const [data, setData] = useState<any[]>(() => dataCache[cacheKey]?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache[cacheKey]);
 
   const refetch = useCallback(() => {
     return api.fetchFinishedGoodsOrders(params).then(d => {
       const arr = Array.isArray(d) ? d : [];
+      dataCache[cacheKey] = { data: arr, timestamp: Date.now() };
       setData(arr);
       setLoading(false);
       return arr;
     }).catch(err => {
       console.error('Failed to fetch finished goods orders:', err);
-      setData([]);
       setLoading(false);
-      return [];
+      return dataCache[cacheKey]?.data || [];
     });
-  }, [params?.productId, params?.status]);
+  }, [params?.productId, params?.status, cacheKey]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -198,22 +295,23 @@ export function useFinishedGoodsOrders(params?: { productId?: string; status?: s
 }
 
 export function useStockRemnants(params?: { materialName?: string; status?: string }) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `remnants_${params?.materialName || ''}_${params?.status || ''}`;
+  const [data, setData] = useState<any[]>(() => dataCache[cacheKey]?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache[cacheKey]);
 
   const refetch = useCallback(() => {
     return api.fetchStockRemnants(params).then(d => {
       const arr = Array.isArray(d) ? d : [];
+      dataCache[cacheKey] = { data: arr, timestamp: Date.now() };
       setData(arr);
       setLoading(false);
       return arr;
     }).catch(err => {
       console.error('Failed to fetch stock remnants:', err);
-      setData([]);
       setLoading(false);
-      return [];
+      return dataCache[cacheKey]?.data || [];
     });
-  }, [params?.materialName, params?.status]);
+  }, [params?.materialName, params?.status, cacheKey]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -221,21 +319,24 @@ export function useStockRemnants(params?: { materialName?: string; status?: stri
 }
 
 export function useWorkOrders() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any[]>(() => dataCache['work_orders']?.data || []);
+  const [loading, setLoading] = useState(() => !dataCache['work_orders']);
+
   const refetch = useCallback(() => {
     return api.fetchWorkOrders().then(d => {
       const arr = Array.isArray(d) ? d : [];
+      dataCache['work_orders'] = { data: arr, timestamp: Date.now() };
       setData(arr);
       setLoading(false);
       return arr;
     }).catch(err => {
       console.error("Failed to fetch work orders:", err);
-      setData([]);
       setLoading(false);
-      return [];
+      return dataCache['work_orders']?.data || [];
     });
   }, []);
+
   useEffect(() => { refetch(); }, [refetch]);
+
   return { data, setData, loading, refetch };
 }

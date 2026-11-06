@@ -1811,7 +1811,7 @@ export const QuotationBuilder: React.FC = () => {
     }
   }, [editTemplateId, templateIdParam])
 
-  if (loading) return <div className="p-8 text-center animate-pulse text-muted">Loading...</div>
+  if (loading && (!leads || leads.length === 0)) return <div className="p-8 text-center animate-pulse text-muted">Loading...</div>
   if (leadId && !lead) return <div className="p-8 text-center text-red-500">Lead not found.</div>
 
   const mainVersions = savedVersions.filter(v => v.type === 'main')
