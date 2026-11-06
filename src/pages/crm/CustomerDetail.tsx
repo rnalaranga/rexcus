@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useCustomers, useDeals, useFollowups, useLeads, useQuotations } from '@/hooks/useData'
 import { updateCustomer, fetchCustomer, fetchAllCustomerGRNs, addInvoicePayment, deleteInvoice } from '@/lib/api'
-import { formatCurrency, formatDate, relativeTime } from '@/lib/utils'
+import { formatCurrency, formatDate, relativeTime, openDataUriOrUrl } from '@/lib/utils'
 import { useAccounts } from '@/hooks/useFinance'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { useAuth } from '@/contexts/AuthContext'
@@ -1228,12 +1228,7 @@ export const CustomerDetail: React.FC = () => {
                         {po.customerPoAttachment ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              const w = window.open();
-                              if (w) {
-                                w.document.write(`<iframe src="${po.customerPoAttachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                              }
-                            }}
+                            onClick={() => openDataUriOrUrl(po.customerPoAttachment, `Customer PO - ${po.customerPoNo || 'Document'}`)}
                             className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 border border-blue-500/30 transition-colors"
                           >
                             <Eye size={12} /> View Document
@@ -1281,12 +1276,7 @@ export const CustomerDetail: React.FC = () => {
                         {po.customerPoAttachment ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              const w = window.open();
-                              if (w) {
-                                w.document.write(`<iframe src="${po.customerPoAttachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                              }
-                            }}
+                            onClick={() => openDataUriOrUrl(po.customerPoAttachment, `Customer PO - ${po.customerPoNo || 'Document'}`)}
                             className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 border border-blue-500/30 transition-colors"
                           >
                             <Eye size={12} /> View Document

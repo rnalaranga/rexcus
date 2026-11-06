@@ -133,45 +133,48 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const rawDate = workOrder.createdAt || workOrder.orderDate || linkedOrder?.createdAt || new Date();
   const orderDate = formatDate(rawDate);
 
-  // 2. Extract item descriptions (EXACT quotation description!)
+  // Target Work Order Batch Quantity (Authoritative from linked Sales Order or Work Order)
+  const targetWoQty = Math.max(1, Number(linkedOrder?.qty || workOrder.jobQty || workOrder.quantity || workOrder.qty || 0));
+
+  // 2. Extract item descriptions (Sales Order is primary authoritative commercial contract!)
   let displayItems: Array<{ sNo: number; desc: string; qty: number | string; uom?: string }> = [];
 
-  // Priority 1: From linked quotation custItems (direct commercial quote scope)
-  if (Array.isArray(quoteData?.custItems) && quoteData.custItems.length > 0) {
-    displayItems = quoteData.custItems.map((ci: any, idx: number) => ({
+  // Priority 1: From linked Sales Order items (Directly maps to the confirmed/edited sales order scope)
+  let oItems: any[] = [];
+  if (linkedOrder?.items) {
+    try { oItems = typeof linkedOrder.items === 'string' ? JSON.parse(linkedOrder.items) : linkedOrder.items; } catch {}
+  }
+  if (Array.isArray(oItems) && oItems.length > 0) {
+    displayItems = oItems.map((it: any, idx: number) => ({
       sNo: idx + 1,
-      desc: ci.desc || ci.description || ci.name || `Item ${idx + 1}`,
-      qty: ci.qty || 1,
-      uom: ci.unit || 'Nos'
+      desc: it.description || it.productName || it.name || `Item ${idx + 1}`,
+      qty: (Number(it.qty) > 1 ? Number(it.qty) : (oItems.length === 1 && targetWoQty > 1 ? targetWoQty : (it.qty || 1))),
+      uom: it.uom || it.unit || 'Nos'
     }));
   }
-  // Priority 2: From linked order items
-  else if (linkedOrder?.items) {
-    let oItems: any[] = [];
-    try { oItems = typeof linkedOrder.items === 'string' ? JSON.parse(linkedOrder.items) : linkedOrder.items; } catch {}
-    if (Array.isArray(oItems) && oItems.length > 0) {
-      displayItems = oItems.map((it: any, idx: number) => ({
-        sNo: idx + 1,
-        desc: it.description || it.productName || it.name || `Item ${idx + 1}`,
-        qty: it.qty || 1,
-        uom: it.uom || it.unit || 'Nos'
-      }));
-    }
-  }
-  // Priority 3: From workOrder.items or workOrder.bom
+  // Priority 2: From workOrder.items or workOrder.bom
   else if (Array.isArray(workOrder.items) && workOrder.items.length > 0) {
     displayItems = workOrder.items.map((it: any, idx: number) => ({
       sNo: idx + 1,
       desc: it.description || it.productName || it.name || `Item ${idx + 1}`,
-      qty: it.qty || 1,
+      qty: (Number(it.qty) > 1 ? Number(it.qty) : (workOrder.items.length === 1 && targetWoQty > 1 ? targetWoQty : (it.qty || 1))),
       uom: it.uom || it.unit || 'Nos'
     }));
   } else if (Array.isArray(workOrder.bom) && workOrder.bom.length > 0) {
     displayItems = workOrder.bom.map((b: any, idx: number) => ({
       sNo: idx + 1,
       desc: b.material || b.description || b.name || `Item ${idx + 1}`,
-      qty: b.qty || 1,
+      qty: (Number(b.qty) > 1 ? Number(b.qty) : (workOrder.bom.length === 1 && targetWoQty > 1 ? targetWoQty : (b.qty || 1))),
       uom: b.unit || 'Nos'
+    }));
+  }
+  // Priority 3: Fallback from linked quotation custItems ONLY if no Sales Order exists
+  else if (Array.isArray(quoteData?.custItems) && quoteData.custItems.length > 0) {
+    displayItems = quoteData.custItems.map((ci: any, idx: number) => ({
+      sNo: idx + 1,
+      desc: ci.desc || ci.description || ci.name || `Item ${idx + 1}`,
+      qty: (Number(ci.qty) > 1 ? Number(ci.qty) : (quoteData.custItems.length === 1 && targetWoQty > 1 ? targetWoQty : (ci.qty || 1))),
+      uom: ci.unit || 'Nos'
     }));
   }
 
@@ -180,9 +183,14 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
     displayItems = [{
       sNo: 1,
       desc: workOrder.productName || workOrder.partName || workOrder.title || 'Precision Machined Component as per given technical drawings',
-      qty: workOrder.jobQty || workOrder.quantity || workOrder.qty || 1,
+      qty: targetWoQty || 1,
       uom: workOrder.uom || 'Nos'
     }];
+  }
+
+  // Strict batch quantity guarantee: if single component scope on the traveler, ensure it reflects target batch quantity
+  if (displayItems.length === 1 && targetWoQty > 1) {
+    displayItems[0].qty = targetWoQty;
   }
 
   // Operations

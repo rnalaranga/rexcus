@@ -131,3 +131,23 @@ export function downloadDataUriOrUrl(url: string, filename: string): void {
     console.error('Error downloading document:', e);
   }
 }
+
+export function dataUriToBlobUrl(url: string): string {
+  if (!url || !url.startsWith('data:')) return url || '';
+  try {
+    const parts = url.split(',');
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    const blob = new Blob([u8arr], { type: mime });
+    return URL.createObjectURL(blob);
+  } catch (e) {
+    console.error('Error creating Blob URL from data URI:', e);
+    return url;
+  }
+}

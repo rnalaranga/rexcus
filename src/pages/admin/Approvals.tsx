@@ -15,7 +15,7 @@ import {
   fetchApprovalLogs, fetchSubstituteRequests, approveMaterialSubstitute, 
   rejectMaterialSubstitute, createMRForShortage 
 } from '@/lib/api'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
@@ -738,16 +738,7 @@ export default function Approvals() {
                             {ord.customerPoAttachment && (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const win = window.open();
-                                  if (win) {
-                                    if (ord.customerPoAttachment.startsWith('data:')) {
-                                      win.document.write(`<iframe src="${ord.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                                    } else {
-                                      win.location.href = ord.customerPoAttachment;
-                                    }
-                                  }
-                                }}
+                                onClick={() => openDataUriOrUrl(ord.customerPoAttachment, `Customer PO - ${ord.customerPoNo || ord.orderNo}`)}
                                 className="inline-flex items-center gap-1 text-[11px] underline text-blue-600 hover:text-blue-500 ml-1"
                               >
                                 View PO Document

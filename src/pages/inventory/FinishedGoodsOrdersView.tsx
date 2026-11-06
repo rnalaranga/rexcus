@@ -38,7 +38,7 @@ import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
-import { openDataUriOrUrl, downloadDataUriOrUrl } from '@/lib/utils'
+import { openDataUriOrUrl, downloadDataUriOrUrl, dataUriToBlobUrl } from '@/lib/utils'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -544,6 +544,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }))
     }
     reader.readAsDataURL(file)
+    e.target.value = ''
   }
 
   const handleOpenCreateModal = (preselectedProduct?: any) => {
@@ -924,6 +925,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
     const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && finalTotalTax > 0 ? Number(((finalTotalTax / netBase) * 100).toFixed(2)) : 0));
 
+    const quotePoNo = quote.customerPoNo || parsed.customerPoNo || '';
+    const quotePoDate = quote.customerPoDate || parsed.customerPoDate || '';
+    const quotePoAtt = quote.customerPoAttachment || parsed.customerPoAttachment || '';
+
     setFormData(prev => ({
       ...prev,
       quoteId: quote.id,
@@ -934,6 +939,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       customerPhone: custPhone || prev.customerPhone,
       customerEmail: custEmail || prev.customerEmail,
       deliveryAddress: deliveryAddr || prev.deliveryAddress,
+      customerPoNo: quotePoNo || prev.customerPoNo,
+      customerPoDate: quotePoDate ? String(quotePoDate).slice(0, 10) : prev.customerPoDate,
+      customerPoAttachment: quotePoAtt || prev.customerPoAttachment,
+      customerPoAttachmentName: quotePoAtt ? (quotePoNo ? `Customer_PO_${quotePoNo}` : 'Customer_PO_Document') : prev.customerPoAttachmentName,
       notes: `Sales Order created from ${quote.quoteTypeLabel} ${quote.displayNo}. Terms: ${terms}`,
       productName: primaryDesc,
       productSku: extractedItems[0]?.productSku || '',
@@ -1846,6 +1855,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }, [loadWorkOrders])
 
   const resolveOrderLineItems = (order: any, rawOrderItems: any[]) => {
+    // 1. From passed rawOrderItems
     if (Array.isArray(rawOrderItems) && rawOrderItems.length > 0) {
       return rawOrderItems.map((it: any) => ({
         description: it.description || it.productName || it.name || order.productName || 'Order Item',
@@ -1853,6 +1863,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         uom: it.uom || 'Nos'
       }));
     }
+    // 2. From order.items (the exact items stored on the Sales Order)
+    if (order.items) {
+      let oItems: any[] = [];
+      try { oItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items; } catch {}
+      if (Array.isArray(oItems) && oItems.length > 0) {
+        return oItems.map((it: any) => ({
+          description: it.description || it.productName || it.name || order.productName || 'Order Item',
+          qty: Number(it.qty) || 1,
+          uom: it.uom || 'Nos'
+        }));
+      }
+    }
+    // 3. Fallback ONLY if order has no items at all and is linked to quotation
     const quoteRef = order.quoteId || order.quotationNo;
     const linkedQ = (rawQuotations || []).find((q: any) =>
       (quoteRef && (String(q.id) === String(quoteRef) || String(q.quotationNo) === String(quoteRef))) ||
@@ -3550,31 +3573,59 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                           }
 
                           if (hasPo) {
+                            const hasAttachment = Boolean(order.customerPoAttachment);
                             return (
                               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                 <span className="text-[10px] font-mono font-bold px-1 py-0.2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" title={`Customer PO: ${order.customerPoNo}`}>
                                   PO: {order.customerPoNo}
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setViewPoOrder(order);
-                                  }}
-                                  className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
-                                  title="View Customer PO Document & Details"
-                                >
-                                  <Paperclip size={10} /> View PO
-                                </button>
+                                {hasAttachment ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setViewPoOrder(order);
+                                    }}
+                                    className="text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5 font-bold"
+                                    title="Customer PO Document Attached - View Document & Details"
+                                  >
+                                    <Paperclip size={10} className="text-emerald-500" /> View Doc
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setRecordPoOrder(order);
+                                    }}
+                                    className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
+                                    title="Upload & Attach Customer PO Document"
+                                  >
+                                    + Attach Doc
+                                  </button>
+                                )}
                               </div>
                             );
                           }
 
                           if (isWithoutPo) {
                             return (
-                              <span className="text-[10px] font-mono font-semibold px-1 py-0.2 bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30 mt-0.5">
-                                Without PO
-                              </span>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="text-[10px] font-mono font-semibold px-1 py-0.2 bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30">
+                                  Without PO
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRecordPoOrder(order);
+                                  }}
+                                  className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5 font-medium"
+                                  title="Add Customer PO"
+                                >
+                                  + Add PO
+                                </button>
+                              </div>
                             );
                           }
 
@@ -5084,12 +5135,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              const win = window.open();
-                              if (win) {
-                                win.document.write(`<iframe src="${formData.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                              }
-                            }}
+                            onClick={() => openDataUriOrUrl(formData.customerPoAttachment, 'Customer PO Document')}
                             className="text-xs text-blue-600 hover:text-blue-700 p-1.5 h-auto flex items-center gap-1"
                             title="View Document"
                           >
@@ -5099,7 +5145,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => setFormData({ ...formData, customerPoAttachment: '', customerPoAttachmentName: '' })}
+                            onClick={() => setFormData(prev => ({ ...prev, customerPoAttachment: '', customerPoAttachmentName: '' }))}
                             className="text-xs text-rose-600 hover:text-rose-700 p-1.5 h-auto flex items-center gap-1"
                             title="Remove Attachment"
                           >
@@ -5844,26 +5890,37 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 Official Customer Purchase Order uploaded for order <strong className="text-primary">{viewingPoAttachment.orderNo}</strong>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={viewingPoAttachment.url}
-                  download={`Customer_PO_${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadDataUriOrUrl(viewingPoAttachment.url, `Customer_PO_${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`)}
+                  className="text-xs flex items-center gap-1.5"
                 >
                   <Download size={13} /> Download File
-                </a>
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => openDataUriOrUrl(viewingPoAttachment.url, `Customer PO - ${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`)}
+                  className="text-xs flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                >
+                  <ExternalLink size={13} /> Open in Tab
+                </Button>
               </div>
             </div>
 
             <div className="bg-surface2 border border-theme-subtle p-2 flex items-center justify-center min-h-[500px] max-h-[75vh] overflow-auto">
               {viewingPoAttachment.url.startsWith('data:image/') ? (
                 <img
-                  src={viewingPoAttachment.url}
+                  src={dataUriToBlobUrl(viewingPoAttachment.url)}
                   alt="Customer PO"
                   className="max-w-full max-h-[70vh] object-contain shadow-md"
                 />
               ) : (
                 <iframe
-                  src={viewingPoAttachment.url}
+                  src={dataUriToBlobUrl(viewingPoAttachment.url)}
                   title="Customer PO Document"
                   className="w-full h-[70vh] border-none"
                 />

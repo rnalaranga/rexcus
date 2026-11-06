@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, FileCheck, Calendar, Building2, Eye, Download, ExternalLink, 
   Clock, AlertCircle, CheckCircle2, Edit3, ShoppingBag, DollarSign,
-  FileText, ShieldCheck, ArrowUpRight
+  FileText, ShieldCheck, ArrowUpRight, UploadCloud, Paperclip
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { formatCurrency, formatDate, openDataUriOrUrl, downloadDataUriOrUrl } from '@/lib/utils';
+import { formatCurrency, formatDate, openDataUriOrUrl, downloadDataUriOrUrl, dataUriToBlobUrl } from '@/lib/utils';
 
 export interface ViewCustomerPoModalProps {
   isOpen: boolean;
@@ -61,6 +61,7 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
   const withoutPoReason = quoteData?.withoutPoReason || '';
   const notes = rawNotes;
   const attachment = orderData?.customerPoAttachment || quotation?.customerPoAttachment || quoteData?.customerPoAttachment || '';
+  const previewUrl = useMemo(() => dataUriToBlobUrl(attachment), [attachment]);
 
   const isImageAttachment = Boolean(
     attachment && (
@@ -214,7 +215,7 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
               <div className="bg-surface2/60 border border-theme-subtle p-2 flex items-center justify-center min-h-[300px] max-h-[450px] overflow-auto">
                 {isImageAttachment ? (
                   <img
-                    src={attachment}
+                    src={previewUrl || attachment}
                     alt="Customer PO Document"
                     className="max-w-full max-h-[420px] object-contain shadow cursor-zoom-in"
                     onClick={() => openDataUriOrUrl(attachment, ('Customer PO - ' + (poNo || qNo)))}
@@ -222,7 +223,7 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
                   />
                 ) : (
                   <iframe
-                    src={attachment}
+                    src={previewUrl || attachment}
                     title="Customer PO PDF Document"
                     className="w-full h-[400px] border-none"
                   />
@@ -230,8 +231,25 @@ export const ViewCustomerPoModal: React.FC<ViewCustomerPoModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className="p-4 border border-dashed border-theme-subtle text-center text-muted text-xs">
-              No physical PO document or PDF file has been attached yet.
+            <div className="p-5 border border-dashed border-theme-subtle text-center text-muted text-xs space-y-2.5">
+              <div className="w-10 h-10 mx-auto rounded-full bg-surface2 flex items-center justify-center text-muted">
+                <Paperclip size={18} />
+              </div>
+              <div>
+                <p className="font-semibold text-primary">No PO Document Attached</p>
+                <p className="text-[11px] text-muted">No physical PO scan, PDF, or image file has been uploaded for this record yet.</p>
+              </div>
+              {onEditPo && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onEditPo(quotationData || orderData)}
+                  className="text-xs inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white mt-1"
+                >
+                  <UploadCloud size={13} /> Attach PO Document Now
+                </Button>
+              )}
             </div>
           )}
         </div>

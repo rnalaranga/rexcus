@@ -9,6 +9,7 @@ import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFinishedGoodsOrders } from '@/hooks/useData';
+import { updateFinishedGoodsOrder } from '@/lib/api';
 
 export type PoEntryMode = 'received' | 'pending' | 'without_po';
 
@@ -181,6 +182,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
       setCustomerPoAttachmentName(file.name);
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -229,24 +231,14 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
           orderNotes = (orderNotes + ' ' + compositeNotes).trim();
         }
 
-        const res = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:3000/api') + '/finished-goods-orders/' + orderData.id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerPoNo: finalPoNo,
-            customerPoDate,
-            customerPoAttachment: customerPoAttachment || null,
-            notes: orderNotes || null,
-            updatedBy: user?.name || (user as any)?.email || 'Sales Team'
-          })
+        const data = await updateFinishedGoodsOrder(orderData.id, {
+          customerPoNo: finalPoNo,
+          customerPoDate,
+          customerPoAttachment: customerPoAttachment || null,
+          notes: orderNotes || null,
+          updatedBy: user?.name || (user as any)?.email || 'Sales Team'
         });
 
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          throw new Error(errJson.error || 'Failed to update order PO');
-        }
-
-        const data = await res.json();
         toast('Customer PO #' + finalPoNo + ' recorded for Order ' + orderData.orderNo + '!', 'success');
         onSuccess?.(data, false);
         onClose();

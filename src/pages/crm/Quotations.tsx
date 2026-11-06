@@ -4302,7 +4302,10 @@ export const Quotations: React.FC = () => {
             const enrichedQuote = {
               ...recordPoModalData.quotation,
               ...(updatedQuote || {}),
-              customerPoNo: updatedQuote?.customerPoNo || recordPoModalData.quotation?.customerPoNo
+              customerPoNo: updatedQuote?.customerPoNo || recordPoModalData.quotation?.customerPoNo,
+              customerPoDate: updatedQuote?.customerPoDate || recordPoModalData.quotation?.customerPoDate,
+              customerPoAttachment: updatedQuote?.customerPoAttachment || updatedQuote?.data?.customerPoAttachment || recordPoModalData.quotation?.customerPoAttachment || recordPoModalData.quotation?.data?.customerPoAttachment,
+              customerPoAttachmentName: updatedQuote?.customerPoAttachmentName || (updatedQuote?.customerPoNo ? `PO_${updatedQuote.customerPoNo}.pdf` : 'Customer_PO.pdf')
             };
             setSalesOrderModalData({
               group: recordPoModalData.group,

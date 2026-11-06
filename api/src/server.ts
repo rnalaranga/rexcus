@@ -1898,7 +1898,7 @@ async function runDatabaseSync() {
     await db.query("ALTER TABLE gate_passes MODIFY reason TEXT");
   } catch (err) {}
 
-  // High-performance database indexing for Sales Orders, Invoices, and Work Orders
+  // High-performance database indexing for Sales Orders, Invoices, Work Orders, and Gate Passes
   const safeIndexes = [
     { table: 'finished_goods_orders', name: 'idx_fgo_orderNo', col: 'orderNo' },
     { table: 'finished_goods_orders', name: 'idx_fgo_createdAt', col: 'createdAt' },
@@ -1908,9 +1908,23 @@ async function runDatabaseSync() {
     { table: 'work_orders', name: 'idx_wo_salesOrderNo', col: 'salesOrderNo' },
     { table: 'work_orders', name: 'idx_wo_orderNo', col: 'orderNo' },
     { table: 'work_orders', name: 'idx_wo_status', col: 'status' },
+    { table: 'work_orders', name: 'idx_wo_createdAt', col: 'createdAt' },
+    { table: 'work_orders', name: 'idx_wo_quoteId', col: 'quoteId' },
+    { table: 'work_orders', name: 'idx_wo_customerId', col: 'customerId' },
     { table: 'invoices', name: 'idx_inv_orderNo', col: 'orderNo' },
     { table: 'invoices', name: 'idx_inv_orderId', col: 'orderId' },
     { table: 'invoices', name: 'idx_inv_status', col: 'status' },
+    { table: 'invoices', name: 'idx_inv_date', col: 'date' },
+    { table: 'invoices', name: 'idx_inv_customerId', col: 'customerId' },
+    { table: 'invoices', name: 'idx_inv_leadId', col: 'leadId' },
+    { table: 'invoices', name: 'idx_inv_invoiceNo', col: 'invoiceNo' },
+    { table: 'invoices', name: 'idx_inv_quotationId', col: 'quotationId' },
+    { table: 'gate_passes', name: 'idx_gp_createdAt', col: 'createdAt' },
+    { table: 'gate_passes', name: 'idx_gp_grnId', col: 'grnId' },
+    { table: 'gate_passes', name: 'idx_gp_quoteId', col: 'quoteId' },
+    { table: 'gate_passes', name: 'idx_gp_orderId', col: 'orderId' },
+    { table: 'gate_passes', name: 'idx_gp_orderNo', col: 'orderNo' },
+    { table: 'gate_passes', name: 'idx_gp_status', col: 'status' },
     { table: 'payment_receipts', name: 'idx_rec_orderNo', col: 'orderNo' },
     { table: 'payment_receipts', name: 'idx_rec_orderId', col: 'orderId' }
   ];
@@ -3182,14 +3196,15 @@ app.post('/api/deals', async (req, res) => {
 app.get('/api/quotations', async (req, res) => {
     try {
       const [rows] = await db.query(`SELECT q.*, 
-        COALESCE(c.name, l.name, '') as leadName, 
-        COALESCE(c.company, l.company, '') as leadCompany,
+        COALESCE(c.name, l.name, l2.name, '') as leadName, 
+        COALESCE(c.company, l.company, l2.company, '') as leadCompany,
         COALESCE(c.address, '') as leadAddress,
-        COALESCE(c.vat, l.vat, '') as leadVat,
-        COALESCE(c.svat, l.svat, '') as leadSvat
+        COALESCE(c.vat, l.vat, l2.vat, '') as leadVat,
+        COALESCE(c.svat, l.svat, l2.svat, '') as leadSvat
       FROM quotations q 
       LEFT JOIN customers c ON q.leadId = c.id
-      LEFT JOIN leads l ON (q.leadId = l.id OR q.leadId = l.customerId)
+      LEFT JOIN leads l ON q.leadId = l.id
+      LEFT JOIN leads l2 ON q.leadId = l2.customerId
       ORDER BY q.date DESC`);
       res.json(rows);
     } catch (error) {
@@ -4075,6 +4090,7 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
       quotationId: id,
       status: newStatus,
       customerPoNo, 
+      customerPoAttachment: customerPoAttachment || null,
       poStatus,
       customerPoDate: customerPoDate || new Date().toISOString().slice(0, 10),
       data: qData
@@ -5267,14 +5283,15 @@ app.post('/api/inventory/cut-issue', async (req, res) => {
 // -- FINISHED GOODS ORDERS --
 app.get('/api/finished-goods-orders', async (req, res) => {
   try {
-    // Automatically self-heal any orphaned dispatches (e.g. from deleted gate passes)
-    try {
-      await reconcileOrderDispatches();
-    } catch (recErr) {
-      console.error('Auto-reconcile error on GET /finished-goods-orders:', recErr);
+    const { productId, status, reconcile } = req.query;
+    if (reconcile === 'true') {
+      try {
+        await reconcileOrderDispatches();
+      } catch (recErr) {
+        console.error('Reconcile error on GET /finished-goods-orders:', recErr);
+      }
     }
 
-    const { productId, status } = req.query;
     let query = 'SELECT * FROM finished_goods_orders WHERE 1=1';
     const params: any[] = [];
     if (productId) {
@@ -5862,9 +5879,15 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
               parsed.soChangeInfo = changeRecord;
               parsed.soChanged = true;
 
-              if (data.customerPoNo !== undefined) {
-                const poStr = String(data.customerPoNo || '').trim();
-                parsed.customerPoNo = poStr || null;
+              if (data.customerPoAttachment !== undefined) {
+                parsed.customerPoAttachment = data.customerPoAttachment || null;
+              }
+
+              if (data.customerPoNo !== undefined || data.customerPoAttachment !== undefined) {
+                const poStr = data.customerPoNo !== undefined ? String(data.customerPoNo || '').trim() : (parsed.customerPoNo || null);
+                if (data.customerPoNo !== undefined) {
+                  parsed.customerPoNo = poStr || null;
+                }
                 let newQuoteStatus = qRow.status;
                 if (poStr && poStr !== 'PO PENDING' && poStr !== 'WITHOUT PO') {
                   parsed.poStatus = 'PO Received';
@@ -5873,8 +5896,8 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
                   }
                 }
                 await db.query(
-                  `UPDATE quotations SET customerPoNo = ?, customerPoDate = COALESCE(?, customerPoDate), status = ?, soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
-                  [poStr || null, data.customerPoDate || null, newQuoteStatus, JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
+                  `UPDATE quotations SET customerPoNo = COALESCE(?, customerPoNo), customerPoDate = COALESCE(?, customerPoDate), customerPoAttachment = COALESCE(?, customerPoAttachment), status = ?, soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
+                  [poStr || null, data.customerPoDate || null, data.customerPoAttachment ? String(data.customerPoAttachment) : null, newQuoteStatus, JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
                 ).catch(console.error);
               } else {
                 await db.query(
@@ -5902,6 +5925,65 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     delete safeData.id;
 
     await db.query('UPDATE finished_goods_orders SET ? WHERE id = ? OR orderNo = ?', [safeData, id, id]);
+
+    // Synchronize linked Work Order (BOM, batch quantity, and title) if the Sales Order was changed
+    try {
+      const orderIdentifier = existing?.orderNo || id;
+      const [linkedWos]: any = await db.query(
+        'SELECT id, bom, jobQty FROM work_orders WHERE salesOrderNo = ? OR orderNo = ? OR (quoteId IS NOT NULL AND quoteId != "" AND quoteId = ?)',
+        [orderIdentifier, orderIdentifier, existing?.quoteId || 'NONE']
+      );
+
+      if (linkedWos && linkedWos.length > 0) {
+        let syncedBom: any[] | null = null;
+        if (data.items) {
+          let parsedOrderItems: any[] = [];
+          try {
+            parsedOrderItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
+          } catch {}
+          if (Array.isArray(parsedOrderItems) && parsedOrderItems.length > 0) {
+            syncedBom = parsedOrderItems.map((it: any) => ({
+              material: it.description || it.productName || data.productName || existing?.productName || 'Manufactured Item',
+              qty: Number(it.qty) || 1,
+              unit: it.uom || 'Nos',
+              unitCost: Number(it.unitPrice) || 0,
+              notes: it.description || `Line item for ${orderIdentifier}`
+            }));
+          }
+        }
+
+        const newWoQty = data.qty !== undefined ? Math.max(1, Number(data.qty)) : undefined;
+
+        for (const wo of linkedWos) {
+          const woFields: string[] = ['updatedAt = NOW()'];
+          const woValues: any[] = [];
+
+          if (syncedBom) {
+            woFields.push('bom = ?');
+            woValues.push(JSON.stringify(syncedBom));
+          }
+          if (newWoQty !== undefined) {
+            woFields.push('jobQty = ?');
+            woValues.push(newWoQty);
+          }
+          if (data.customerName) {
+            woFields.push('customer = ?');
+            woValues.push(data.customerName);
+          }
+          if (data.productName || data.customerName) {
+            const resolvedCustName = data.customerName || existing?.customerName || 'Customer';
+            woFields.push('title = ?');
+            woValues.push(`WO: ${orderIdentifier} - ${resolvedCustName}`);
+          }
+
+          woValues.push(wo.id);
+          await db.query(`UPDATE work_orders SET ${woFields.join(', ')} WHERE id = ?`, woValues);
+        }
+      }
+    } catch (woSyncErr) {
+      console.error('Error syncing work order from updated sales order:', woSyncErr);
+    }
+
     res.json({ success: true, id, soChangeInfo: data.soChangeInfo });
   } catch (error) {
     console.error(error);
@@ -7704,14 +7786,16 @@ app.get('/api/invoices', async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT i.*, 
-             COALESCE(NULLIF(i.customerName, ''), c.name, l.name) AS customerName, 
-             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, i.customerName) AS customerCompany,
-             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address) AS customerAddress,
-             COALESCE(NULLIF(i.customerEmail, ''), c.email) AS customerEmail,
-             COALESCE(NULLIF(i.customerPhone, ''), c.phone) AS customerPhone
+             COALESCE(NULLIF(i.customerName, ''), c.name, l.name, c2.name, l2.name) AS customerName, 
+             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, l2.company, i.customerName) AS customerCompany,
+             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address, l2.address) AS customerAddress,
+             COALESCE(NULLIF(i.customerEmail, ''), c.email, c2.email) AS customerEmail,
+             COALESCE(NULLIF(i.customerPhone, ''), c.phone, c2.phone) AS customerPhone
       FROM invoices i
-      LEFT JOIN customers c ON (i.customerId = c.id OR (i.customerId IS NULL AND i.leadId = c.id))
-      LEFT JOIN leads l ON (i.leadId = l.id OR (i.leadId IS NULL AND i.customerId = l.id))
+      LEFT JOIN customers c ON i.customerId = c.id
+      LEFT JOIN leads l ON i.leadId = l.id
+      LEFT JOIN customers c2 ON (i.customerId IS NULL AND i.leadId = c2.id)
+      LEFT JOIN leads l2 ON (i.leadId IS NULL AND i.customerId = l2.id)
       ORDER BY i.date DESC
     `);
     res.json(rows);
@@ -11067,7 +11151,7 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
     if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
     const wo = wos[0];
 
-    // Validate Customer PO: If PO is pending, dispatch gate pass cannot be issued!
+    // Check Customer PO status for UI awareness (dispatch prevention is enforced on dispatch endpoints)
     const woNotes = String(wo.notes || '');
     let isWoPoPending = /\[PO Pending\]/i.test(woNotes) || String(wo.customerPoNo || '').trim().toUpperCase() === 'PO PENDING';
     if (!isWoPoPending && wo.quoteId) {
@@ -11089,9 +11173,6 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
           }
         }
       } catch (e) {}
-    }
-    if (isWoPoPending) {
-      return res.status(400).json({ error: 'Cannot dispatch goods: Customer Purchase Order (PO) is pending for this order. Please attach customer PO first.' });
     }
 
     const [ops]: any = await db.query('SELECT * FROM work_order_operations WHERE workOrderId = ? ORDER BY stepNumber ASC', [id]);

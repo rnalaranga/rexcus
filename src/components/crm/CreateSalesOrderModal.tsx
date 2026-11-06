@@ -8,7 +8,7 @@ import {
   Plus, Edit3
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { createFinishedGoodsOrder, fetchNextDocumentNumber } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders } from '@/hooks/useData';
@@ -458,6 +458,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       }));
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const recalculateFinancials = (
@@ -1357,12 +1358,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            const win = window.open();
-                            if (win) {
-                              win.document.write(`<iframe src="${formData.customerPoAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                            }
-                          }}
+                          onClick={() => openDataUriOrUrl(formData.customerPoAttachment, 'Customer PO Document')}
                           className="text-xs text-blue-600 hover:text-blue-700 p-1.5 h-auto flex items-center gap-1"
                         >
                           <Eye size={13} /> View
@@ -1371,7 +1367,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => setFormData({ ...formData, customerPoAttachment: '', customerPoAttachmentName: '' })}
+                          onClick={() => setFormData(prev => ({ ...prev, customerPoAttachment: '', customerPoAttachmentName: '' }))}
                           className="text-xs text-rose-600 hover:text-rose-700 p-1.5 h-auto flex items-center gap-1"
                         >
                           <Trash2 size={13} /> Remove
