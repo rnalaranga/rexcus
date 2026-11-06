@@ -244,6 +244,25 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const custName = group.clientName || group.clientCompany || group.leadCompany || group.leadName || 'Customer';
     const attn = quoteData.attention || quotation.attention || group.clientContact || group.leadContact || (cust as any)?.name || '';
 
+    // Check if any existing sales order already exists for this quotation
+    const qId = String(quotation.id || '');
+    const qNo = String(group.quoNo || quotation.quotationNo || quotation.docNo || '').trim().toLowerCase();
+    const existingOrdersForQuote = (allOrders || []).filter((o: any) => {
+      const matchId = qId && String(o.quoteId) === qId;
+      const oQNo = String(o.quotationNo || '').trim().toLowerCase();
+      const matchNo = qNo && oQNo && oQNo === qNo;
+      return matchId || matchNo;
+    });
+    const isSubsequentOrder = existingOrdersForQuote.length > 0;
+
+    // For subsequent sales orders on the same quotation, DO NOT reload the previous order's PO details!
+    const initPoNo = isSubsequentOrder ? '' : (quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '');
+    const initPoDate = isSubsequentOrder ? '' : (quotation.customerPoDate || quoteData.customerPoDate || '');
+    const initPoAttachment = isSubsequentOrder ? '' : (quotation.customerPoAttachment || quoteData.customerPoAttachment || '');
+    const initPoAttachmentName = (!isSubsequentOrder && initPoAttachment)
+      ? `PO_${initPoNo || 'Attachment'}.pdf`
+      : '';
+
     setFormData({
       orderNo: fallbackOrderNo,
       quoteId: quotation.id,
@@ -255,12 +274,10 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       customerEmail: group.clientEmail || group.leadEmail || '',
       deliveryAddress: group.clientAddress || group.leadAddress || quoteData.customerAddress || quoteData.deliveryAddress || '',
       paymentTerms: quoteData.custTerms || quoteData.terms || quoteData.paymentTerms || 'Standard Terms',
-      customerPoNo: quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '',
-      customerPoDate: quotation.customerPoDate || quoteData.customerPoDate || '',
-      customerPoAttachment: quotation.customerPoAttachment || quoteData.customerPoAttachment || '',
-      customerPoAttachmentName: (quotation.customerPoAttachment || quoteData.customerPoAttachment)
-        ? `PO_${quotation.customerPoNo || quoteData.customerPoNo || 'Attachment'}.pdf`
-        : '',
+      customerPoNo: initPoNo,
+      customerPoDate: initPoDate,
+      customerPoAttachment: initPoAttachment,
+      customerPoAttachmentName: initPoAttachmentName,
       orderDate: new Date().toISOString().slice(0, 10),
       targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
       items: itemsList,
@@ -284,19 +301,24 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       console.warn('Failed to fetch next sales order sequence number:', err);
     });
 
-    const existingPo = quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '';
-    const existingStatus = quotation.poStatus || quoteData.poStatus || quotation.status;
-
-    if (existingPo === 'PO PENDING' || existingStatus === 'PO Pending') {
-      setPoMode('pending');
-    } else if (existingPo === 'WITHOUT PO' || existingStatus === 'Without PO') {
-      setPoMode('without_po');
-    } else if (existingPo) {
+    if (isSubsequentOrder) {
       setPoMode('received');
+      setWithoutPoReason('');
     } else {
-      setPoMode('received');
+      const existingPo = quotation.customerPoNo || quoteData.customerPoNo || quoteData.poNo || '';
+      const existingStatus = quotation.poStatus || quoteData.poStatus || quotation.status;
+
+      if (existingPo === 'PO PENDING' || existingStatus === 'PO Pending') {
+        setPoMode('pending');
+      } else if (existingPo === 'WITHOUT PO' || existingStatus === 'Without PO') {
+        setPoMode('without_po');
+      } else if (existingPo) {
+        setPoMode('received');
+      } else {
+        setPoMode('received');
+      }
     }
-  }, [isOpen, quotationData, customers, leads]);
+  }, [isOpen, quotationData, customers, leads, allOrders]);
 
   // All existing sales orders linked to this quotation
   const existingQuoteOrders = useMemo(() => {

@@ -9,6 +9,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { useCashbook, useAccounts } from '@/hooks/useFinance';
 import { createCashbookEntry, deleteCashbookEntry, setCashbookFloat, CashbookEntry } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -902,49 +903,13 @@ export const DailyCashbook: React.FC = () => {
               <label className="block text-xs font-medium text-secondary mb-1">
                 Target Chart of Account * <span className="text-muted font-normal">(Mapping)</span>
               </label>
-              <select
-                required
+              <AccountAutocomplete
                 value={targetAccountId}
-                onChange={e => setTargetAccountId(e.target.value)}
-                className="w-full bg-surface border border-theme rounded-lg px-3 py-2 text-xs text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
-              >
-                <option value="">-- Select Target Account --</option>
-                <optgroup label="Expenses">
-                  {accountsByType.Expense.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.code} - {acc.name} ({acc.subtype || 'Expense'})
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Revenues / Income">
-                  {accountsByType.Revenue.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Liabilities (Supplier/Loan/Advance)">
-                  {accountsByType.Liability.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Assets (Equipment/Receivable/Bank)">
-                  {accountsByType.Asset.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Equity">
-                  {accountsByType.Equity.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+                onChange={val => setTargetAccountId(val)}
+                accounts={allAccounts}
+                placeholder="Type account code or name to search..."
+                required
+              />
             </div>
           </div>
 
