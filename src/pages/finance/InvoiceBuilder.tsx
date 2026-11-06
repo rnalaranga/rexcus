@@ -4,7 +4,7 @@ import {
   ArrowLeft, Save, Plus, Trash2, Building2, Calendar, FileText,
   Calculator, AlertCircle, Printer, Eye, Palette, ChevronDown,
   CheckCircle2, Phone, Mail, Hash, X, Landmark, Receipt, FileDown,
-  RefreshCw, Truck
+  RefreshCw, Truck, Info
 } from 'lucide-react';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
@@ -283,9 +283,30 @@ export const InvoiceBuilder: React.FC = () => {
             const ordNetBase = ordTotalPrice > 0 ? Math.max(0, ordTotalPrice - ordTaxAmount) : ordSubtotal;
             const expectedDiscountAmount = ordSubtotal > ordNetBase ? Number((ordSubtotal - ordNetBase).toFixed(2)) : 0;
 
-            const rawOrdDiscount = Number(ord.discount || 0);
-            const rawOrdDiscountAmount = Number(ord.discountAmount || 0);
-            const rawOrdDiscountType = String(ord.discountType || '').toLowerCase();
+            let rawOrdDiscount = Number(ord.discount || 0);
+            let rawOrdDiscountAmount = Number(ord.discountAmount || 0);
+            let rawOrdDiscountType = String(ord.discountType || '').toLowerCase();
+
+            // If order has no discount recorded, check its linked quotation
+            if (rawOrdDiscount === 0 && rawOrdDiscountAmount === 0 && (ord.quoteId || ord.quotationNo)) {
+              try {
+                const qRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations`);
+                if (qRes.ok) {
+                  const allQ = await qRes.json();
+                  const matchedQ = (allQ || []).find((qItem: any) => 
+                    (ord.quoteId && String(qItem.id) === String(ord.quoteId)) ||
+                    (ord.quotationNo && (qItem.quotationNo === ord.quotationNo || qItem.docNo === ord.quotationNo))
+                  );
+                  if (matchedQ) {
+                    let parsedQ: any = {};
+                    try { parsedQ = typeof matchedQ.data === 'string' ? JSON.parse(matchedQ.data) : (matchedQ.data || {}); } catch(e){}
+                    rawOrdDiscountType = (parsedQ.custDiscountType || parsedQ.discountType) === 'amount' ? 'amount' : 'percent';
+                    rawOrdDiscount = Number(parsedQ.custDiscount || parsedQ.discount || 0);
+                    rawOrdDiscountAmount = Number(parsedQ.custDiscountAmount || parsedQ.custTotals?.discount || parsedQ.discountAmount || 0);
+                  }
+                }
+              } catch(e) {}
+            }
 
             let resolvedDiscountType: 'percent' | 'amount' = 'amount';
             let resolvedDiscount: number | string = 0;
@@ -1030,8 +1051,8 @@ export const InvoiceBuilder: React.FC = () => {
   const grossAmount = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0), 0);
   
   const discountAmt = discountType === 'amount'
-    ? Math.min(grossAmount, Math.max(0, Number(discountAmount) || 0))
-    : grossAmount * (Math.max(0, Number(discount) || 0) / 100);
+    ? Math.min(grossAmount, Math.max(0, Number(discountAmount || discount) || 0))
+    : (grossAmount > 0 ? Number(((grossAmount * Math.max(0, Number(discount) || 0)) / 100).toFixed(2)) : 0);
 
   const netGross = Math.max(0, grossAmount - discountAmt);
 
@@ -1415,24 +1436,19 @@ export const InvoiceBuilder: React.FC = () => {
               </span>
             </div>
           ) : (orderNo || quotationNo) ? (
-            <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs">
+            <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
-                <AlertCircle size={16} className="text-amber-600 shrink-0" />
-                <div>
-                  <span className="font-bold text-amber-900 dark:text-amber-200">
-                    No Advance Payment Receipt Linked:
-                  </span>{' '}
-                  <span className="text-muted">
-                    No advance payment receipt is recorded for {orderNo ? `Sales Order ${orderNo}` : `Quotation ${quotationNo}`}.
-                  </span>
-                </div>
+                <Info size={15} className="text-muted shrink-0" />
+                <span className="text-muted text-[11px]">
+                  No advance payment linked (Direct Delivery / Standard Billing for {orderNo ? `Sales Order ${orderNo}` : `Quotation ${quotationNo}`}).
+                </span>
               </div>
               <button
                 type="button"
                 onClick={() => setReceiptModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shrink-0 shadow-sm"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold border border-theme-subtle text-secondary hover:text-primary hover:bg-surface3 transition-colors shrink-0"
               >
-                <Receipt size={14} /> Create Payment Receipt First
+                <Receipt size={13} /> + Record Advance Receipt
               </button>
             </div>
           ) : null}

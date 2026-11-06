@@ -167,9 +167,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const parsedDiscountAmount = Number(discountAmount || 0);
   const rawItemsTotal = items.reduce((sum: number, it: any) => sum + (Number(it.qty || 0) * Number(it.unitPrice || 0)), 0);
   const effectiveGrossAmount = Number(propGrossAmount) > 0 ? Number(propGrossAmount) : rawItemsTotal;
+  const isFixedDiscount = discountType === 'amount' || (parsedDiscountAmount === 0 && Number(discount) > 100);
   const effectiveDiscountAmt = parsedDiscountAmount > 0 
     ? parsedDiscountAmount 
-    : (Number(discount || 0) > 0 && effectiveGrossAmount > 0 ? (effectiveGrossAmount * (Number(discount) / 100)) : 0);
+    : (isFixedDiscount
+        ? Number(discount || 0)
+        : (Number(discount || 0) > 0 && effectiveGrossAmount > 0 ? Number(((effectiveGrossAmount * Number(discount)) / 100).toFixed(2)) : 0));
 
   const purchaserAddress = customer?.address || customerAddress || customer?.deliveryAddress || customer?.billingAddress || '-';
   const purchaserPhone = customer?.phone || customerPhone || customer?.mobile || '-';
@@ -709,7 +712,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           ))}
 
           {/* GROSS ITEMS TOTAL & DISCOUNT (if discount applied) */}
-          {!isProforma && effectiveDiscountAmt > 0 && (
+          {effectiveDiscountAmt > 0 && (
             <>
               <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
                 <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', borderRight: tableBorder }}>

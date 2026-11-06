@@ -1118,9 +1118,20 @@ export const Invoices: React.FC = () => {
                 })()}
                 advanceDeducted={Number(viewInvoice.advanceDeducted || 0)}
                 receiptNos={viewInvoice.receiptNos || ''}
-                discount={Number(viewInvoice.discount || 0)}
-                discountType={viewInvoice.discountType || 'percent'}
-                discountAmount={Number(viewInvoice.discountAmount || 0)}
+                {...(() => {
+                  const linkedOrder = (allOrders || []).find((o: any) => 
+                    (viewInvoice.orderNo && o.orderNo === viewInvoice.orderNo) ||
+                    (viewInvoice.orderId && (String(o.id) === String(viewInvoice.orderId) || String(o.orderNo) === String(viewInvoice.orderId)))
+                  );
+                  const rawDisc = Number(viewInvoice.discount ?? linkedOrder?.discount ?? 0);
+                  const rawDiscType = (viewInvoice.discountType || linkedOrder?.discountType || 'percent') as 'percent' | 'amount';
+                  const rawDiscAmt = Number(viewInvoice.discountAmount ?? linkedOrder?.discountAmount ?? (rawDiscType === 'amount' ? rawDisc : 0));
+                  return {
+                    discount: rawDisc,
+                    discountType: rawDiscType,
+                    discountAmount: rawDiscAmt
+                  };
+                })()}
               />
               </div>
             </div>
