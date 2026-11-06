@@ -956,9 +956,19 @@ export const QuotationBuilder: React.FC = () => {
     jobTaxAmount = jobSscl + jobVat;
     
     // Cust Taxes
-    custSscl = custTotal * t1;
-    custVat = (selectedProfile.tax2_compound && t1 > 0) ? (custTotal + custSscl) * t2 : custTotal * t2;
-    custTaxAmount = custSscl + custVat;
+    const isOpt4Included = selectedProfile.id === 'tp_opt4_sscl_included_vat_sep' || selectedProfile.name?.toLowerCase().includes('sscl included');
+
+    if (isOpt4Included && t1 > 0) {
+      // Option 4: SSCL is INCLUDED in the entered value (custTotal). Extract SSCL from custTotal (hidden) without adding it on top!
+      const netBaseBeforeSscl = custTotal / (1 + t1);
+      custSscl = custTotal - netBaseBeforeSscl; // extracted hidden SSCL
+      custVat = custTotal * t2; // VAT is separate on the full supply value
+      custTaxAmount = custVat; // Only VAT is added on top
+    } else {
+      custSscl = custTotal * t1;
+      custVat = (selectedProfile.tax2_compound && t1 > 0) ? (custTotal + custSscl) * t2 : custTotal * t2;
+      custTaxAmount = custSscl + custVat;
+    }
   }
   
   const jobWithSSCL = jobTotalCost + jobTaxAmount;
@@ -3273,6 +3283,18 @@ export const QuotationBuilder: React.FC = () => {
                           title="VAT Only (18% Separate) - No SSCL"
                         >
                           VAT Only (18% Sep)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfileId('tp_opt4_sscl_included_vat_sep')}
+                          className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight col-span-2 ${
+                            selectedProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedProfile?.name?.toLowerCase().includes('sscl included')
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                          title="SSCL Included in Value + VAT Separate"
+                        >
+                          SSCL Included + VAT Separate
                         </button>
                       </div>
                       <select

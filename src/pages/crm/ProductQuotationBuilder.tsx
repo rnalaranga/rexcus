@@ -1140,8 +1140,15 @@ export const ProductQuotationBuilder: React.FC = () => {
     }
     const isSsclSep = !isVatOnly && selectedProfile.tax1_show_separately === 1;
     const isVatSep = isVatOnly || selectedProfile.tax2_show_separately === 1 || (selectedProfile.tax1_show_separately === 1 && /vat/i.test(selectedProfile.tax1_name || ''));
+    const isOpt4Included = selectedProfile.id === 'tp_opt4_sscl_included_vat_sep' || selectedProfile.name?.toLowerCase().includes('sscl included');
 
-    if (isSsclSep && isVatSep) {
+    if (isOpt4Included && t1 > 0) {
+      // Option 4: Prices entered include SSCL, VAT separate
+      unitPriceDivisor = 1 + t2;
+      const netBaseBeforeSscl = custBaseSupplyValue / (1 + t1);
+      custSscl = custBaseSupplyValue - netBaseBeforeSscl; // SSCL separated out (hidden)
+      custVat = custBaseSupplyValue * t2;
+    } else if (isSsclSep && isVatSep) {
       custSscl = custBaseSupplyValue * t1;
       custVat = selectedProfile.tax2_compound ? ((custBaseSupplyValue + custSscl) * t2) : (custBaseSupplyValue * t2);
     } else if (!isSsclSep && isVatSep) {
@@ -2764,6 +2771,18 @@ export const ProductQuotationBuilder: React.FC = () => {
                         title="VAT Only (18% Separate) - No SSCL"
                       >
                         VAT Only (18% Sep)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileId('tp_opt4_sscl_included_vat_sep')}
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight col-span-2 ${
+                          selectedProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedProfile?.name?.toLowerCase().includes('sscl included')
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
+                        }`}
+                        title="SSCL Included in Value + VAT Separate"
+                      >
+                        SSCL Included + VAT Separate
                       </button>
                     </div>
                     <select

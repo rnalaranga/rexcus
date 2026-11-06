@@ -374,8 +374,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       // Option 1: Both SSCL & VAT absorbed into unit prices & supply value
       itemMultiplier = taxProfile?.tax2_compound ? ((1 + t1Rate/100) * (1 + t2Rate/100)) : (1 + (t1Rate + t2Rate)/100);
     } else if (isSsclHidden && !isVatHidden) {
-      // Option 2: SSCL absorbed into prices & supply value, VAT separate
-      itemMultiplier = 1 + t1Rate/100;
+      // Option 2 or Option 4: If SSCL is included in the base or absorbed, item multiplier for base price
+      const isOpt4Included = taxProfile?.id === 'tp_opt4_sscl_included_vat_sep' || taxProfile?.name?.toLowerCase().includes('sscl included');
+      // For Option 4: prices entered ALREADY include SSCL, so do NOT multiply prices again!
+      itemMultiplier = isOpt4Included ? 1 : (1 + t1Rate/100);
     } else {
       // Option 3: Base unit prices, both taxes separate
       itemMultiplier = 1;

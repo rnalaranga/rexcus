@@ -57,7 +57,9 @@ jobs:
             echo "Installing root dependencies..."
             npm install --prefer-offline --no-audit
             echo "Building frontend..."
-            npm run build
+            export NODE_OPTIONS="--max-old-space-size=2048"
+            npx vite build
+            echo "Frontend build completed successfully!"
 
             # 5. Backend Dependencies Update කිරීම
             if [ -d "api" ]; then

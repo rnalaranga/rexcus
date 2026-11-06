@@ -998,13 +998,21 @@ export const InvoiceBuilder: React.FC = () => {
     const isVatSeparate = Boolean(Number(selectedTaxProfile.tax2_rate) > 0 ? selectedTaxProfile.tax2_show_separately === 1 : true);
     const isSsclSeparate = Boolean(Number(selectedTaxProfile.tax1_rate) > 0 && selectedTaxProfile.tax1_show_separately === 1);
 
+    const isOpt4Included = selectedTaxProfile.id === 'tp_opt4_sscl_included_vat_sep' || selectedTaxProfile.name?.toLowerCase().includes('sscl included');
+
     if (isTaxInclusive) {
       // Prices already include taxes: back out base and taxes from netGross
       let baseSubtotal = netGross;
       let t1Amount = 0;
       let t2Amount = 0;
 
-      if (isSsclHidden && isVatSeparate) {
+      if (isOpt4Included && t1 > 0) {
+        // Option 4: SSCL included in entered price, VAT separate
+        baseSubtotal = netGross / (1 + t2);
+        t2Amount = netGross - baseSubtotal;
+        const netBeforeSscl = baseSubtotal / (1 + t1);
+        t1Amount = baseSubtotal - netBeforeSscl; // extracted hidden SSCL
+      } else if (isSsclHidden && isVatSeparate) {
         // Option 2: VAT separate, SSCL absorbed into supply value
         baseSubtotal = netGross / (1 + t2);
         t2Amount = netGross - baseSubtotal;
@@ -1029,13 +1037,22 @@ export const InvoiceBuilder: React.FC = () => {
       taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
       taxAmount = t1Amount + t2Amount;
     } else {
-      // Standard: tax added on top of discounted subtotal
-      const t1Amount = subtotal * t1;
-      const baseForT2 = selectedTaxProfile.tax2_compound ? (subtotal + t1Amount) : subtotal;
-      const t2Amount = baseForT2 * t2;
-      
-      taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
-      taxAmount = t1Amount + t2Amount;
+      // Standard: values entered are the supply value
+      if (isOpt4Included && t1 > 0) {
+        // Option 4: Entered subtotal includes SSCL; separate SSCL out internally (hidden) without adding it on top!
+        const netBeforeSscl = subtotal / (1 + t1);
+        const t1Amount = subtotal - netBeforeSscl;
+        const t2Amount = subtotal * t2; // VAT separate on supply value
+        taxBreakdown = { tax1Amount: Math.round(t1Amount * 100) / 100, tax2Amount: Math.round(t2Amount * 100) / 100 };
+        taxAmount = taxBreakdown.tax2Amount; // Only VAT added to invoice total!
+      } else {
+        const t1Amount = subtotal * t1;
+        const baseForT2 = selectedTaxProfile.tax2_compound ? (subtotal + t1Amount) : subtotal;
+        const t2Amount = baseForT2 * t2;
+        
+        taxBreakdown = { tax1Amount: t1Amount, tax2Amount: t2Amount };
+        taxAmount = t1Amount + t2Amount;
+      }
     }
   }
   
@@ -1959,6 +1976,17 @@ export const InvoiceBuilder: React.FC = () => {
                           }`}
                         >
                           VAT Only<br/><span className="text-[9px] font-normal opacity-80">18% Separate (No SSCL)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_opt4_sscl_included_vat_sep')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight col-span-2 ${
+                            taxProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedTaxProfile?.name?.toLowerCase().includes('sscl included')
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          Option 4: SSCL Included + VAT Separate<br/><span className="text-[9px] font-normal opacity-80">SSCL extracted from value (hidden)</span>
                         </button>
                       </div>
                       <select value={taxProfileId} onChange={e => setTaxProfileId(e.target.value)} className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs outline-none focus:border-blue-500/50">

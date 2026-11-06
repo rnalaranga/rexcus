@@ -152,8 +152,10 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
       // Option 1: Both SSCL & VAT absorbed into unit prices & total supply value
       multiplier = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
     } else if (isSsclHidden && !isVatHidden) {
-      // Option 2: SSCL absorbed into unit prices & supply value, VAT separate
-      multiplier = 1 + t1Rate;
+      // Option 2 or Option 4: SSCL absorbed or included
+      const isOpt4Included = data.selectedProfile?.id === 'tp_opt4_sscl_included_vat_sep' || data.selectedProfile?.name?.toLowerCase().includes('sscl included');
+      // For Option 4: prices already include SSCL, so multiplier is strictly 1 (do NOT add SSCL again)
+      multiplier = isOpt4Included ? 1 : (1 + t1Rate);
     } else {
       // Option 3: Base unit prices, both taxes separate
       multiplier = 1;
