@@ -56,6 +56,10 @@ jobs:
             # 4. Frontend Build කිරීම
             echo "Installing root dependencies..."
             npm install --prefer-offline --no-audit
+
+            echo "Temporarily stopping backend PM2 process to free RAM for frontend build..."
+            pm2 stop rexnw-backend || true
+
             echo "Building frontend..."
             export NODE_OPTIONS="--max-old-space-size=2048"
             npx vite build

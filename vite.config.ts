@@ -14,8 +14,12 @@ export default defineConfig({
     open: true,
   },
   build: {
+    target: 'es2020',
+    sourcemap: false,
+    minify: 'esbuild',
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
+      maxParallelFileOps: 2,
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
