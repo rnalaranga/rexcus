@@ -276,15 +276,59 @@ export const InvoiceBuilder: React.FC = () => {
               setTaxProfileId('none');
             }
 
-            if (ord.discount !== undefined && ord.discount !== null) {
-              setDiscount(ord.discount);
+            // Discount resolution: Strictly preserve Sales Order discount value, type & prevent percent/amount confusion
+            const ordSubtotal = Number(ord.subtotal || 0);
+            const ordTotalPrice = Number(ord.totalPrice || 0);
+            const ordTaxAmount = Number(ord.taxAmount || 0);
+            const ordNetBase = ordTotalPrice > 0 ? Math.max(0, ordTotalPrice - ordTaxAmount) : ordSubtotal;
+            const expectedDiscountAmount = ordSubtotal > ordNetBase ? Number((ordSubtotal - ordNetBase).toFixed(2)) : 0;
+
+            const rawOrdDiscount = Number(ord.discount || 0);
+            const rawOrdDiscountAmount = Number(ord.discountAmount || 0);
+            const rawOrdDiscountType = String(ord.discountType || '').toLowerCase();
+
+            let resolvedDiscountType: 'percent' | 'amount' = 'amount';
+            let resolvedDiscount: number | string = 0;
+            let resolvedDiscountAmount: number | string = 0;
+
+            if (rawOrdDiscountType === 'percent' && rawOrdDiscount <= 100 && rawOrdDiscount > 0) {
+              resolvedDiscountType = 'percent';
+              resolvedDiscount = rawOrdDiscount;
+              resolvedDiscountAmount = rawOrdDiscountAmount > 0 
+                ? rawOrdDiscountAmount 
+                : (expectedDiscountAmount > 0 ? expectedDiscountAmount : (ordSubtotal > 0 ? Number(((ordSubtotal * rawOrdDiscount) / 100).toFixed(2)) : 0));
+            } else if (rawOrdDiscountAmount > 0) {
+              resolvedDiscountType = 'amount';
+              resolvedDiscountAmount = rawOrdDiscountAmount;
+              resolvedDiscount = ordSubtotal > 0 ? Number(((rawOrdDiscountAmount / ordSubtotal) * 100).toFixed(2)) : 0;
+            } else if (rawOrdDiscount > 0) {
+              // If rawOrdDiscount > 100 or matches expectedDiscountAmount, it is strictly an LKR Amount!
+              if (rawOrdDiscount > 100 || Math.abs(rawOrdDiscount - expectedDiscountAmount) <= 1.0) {
+                resolvedDiscountType = 'amount';
+                resolvedDiscountAmount = rawOrdDiscount;
+                resolvedDiscount = ordSubtotal > 0 ? Number(((rawOrdDiscount / ordSubtotal) * 100).toFixed(2)) : 0;
+              } else {
+                resolvedDiscountType = 'percent';
+                resolvedDiscount = rawOrdDiscount;
+                resolvedDiscountAmount = ordSubtotal > 0 ? Number(((ordSubtotal * rawOrdDiscount) / 100).toFixed(2)) : 0;
+              }
+            } else if (expectedDiscountAmount > 0) {
+              resolvedDiscountType = 'amount';
+              resolvedDiscountAmount = expectedDiscountAmount;
+              resolvedDiscount = ordSubtotal > 0 ? Number(((expectedDiscountAmount / ordSubtotal) * 100).toFixed(2)) : 0;
             }
-            if (ord.discountType) {
-              setDiscountType(ord.discountType);
+
+            // In case of a partial dispatch note, proportion the discount amount accordingly
+            if (activeDp && Number(ord.qty || 1) > 0 && resolvedDiscountType === 'amount' && Number(resolvedDiscountAmount) > 0) {
+              const ordQ = Math.max(1, Number(ord.qty || 1));
+              const dpQ = Number(activeDp.dispatchedQty || 1);
+              const ratio = Math.min(1, dpQ / ordQ);
+              resolvedDiscountAmount = Number((Number(resolvedDiscountAmount) * ratio).toFixed(2));
             }
-            if (ord.discountAmount !== undefined && ord.discountAmount !== null) {
-              setDiscountAmount(ord.discountAmount);
-            }
+
+            setDiscountType(resolvedDiscountType);
+            setDiscount(resolvedDiscount);
+            setDiscountAmount(resolvedDiscountAmount);
 
             // Parse items — If specific partial dispatch is chosen, load its exact items/quantities!
             let parsedItems: any[] = [];

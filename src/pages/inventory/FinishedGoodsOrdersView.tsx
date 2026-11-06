@@ -790,39 +790,65 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const terms = parsed.custTerms || parsed.paymentTerms || parsed.terms || 'Standard Terms';
 
     // Extract Line items
-    const rawItems = parsed.custItems || parsed.items || [];
+    const rawItems = parsed.custItems || parsed.items || parsed.jobItems || [];
     const extractedItems: any[] = [];
 
     if (Array.isArray(rawItems) && rawItems.length > 0) {
       rawItems.forEach((it: any) => {
         const desc = it.desc || it.description || it.name || it.text || '';
-        if (!desc && !it.unitPrice && !it.amount) return;
+        const q = Math.max(0, Number(it.qty) || 1);
+        const rawPrice = it.unitPrice !== undefined ? it.unitPrice : (it.price !== undefined ? it.price : null);
+        const up = Number(rawPrice !== null ? rawPrice : (q > 0 && (it.total || it.amount) ? (Number(it.total || it.amount) / q) : 0)) || 0;
+        const amt = Number(it.amount ?? it.total ?? (q * up)) || (q * up);
+        if (!desc && up === 0 && amt === 0) return;
         extractedItems.push({
           productId: it.productId || it.inventoryId || (quote.isProd ? 'PRODUCT-ITEM' : 'CUSTOM-JOB'),
-          productName: it.name || desc,
+          productName: it.name || desc || 'Quoted Item',
           productSku: it.sku || '',
-          description: desc,
-          qty: Number(it.qty) || 1,
-          unitPrice: Number(it.unitPrice ?? it.price ?? 0),
-          amount: Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice ?? it.price ?? 0)),
+          description: desc || it.name || '',
+          qty: q,
+          unitPrice: up,
+          amount: amt,
           uom: it.uom || it.unit || 'Nos'
         });
       });
     }
 
-    const quoteBaseTotal = Number(parsed.custTotals?.subtotal || parsed.custTotals?.total || 0);
-    const quoteVat = Number(parsed.custVat || 0);
-    const quoteSscl = Number(parsed.custSscl || 0);
-    const totalTax = quoteVat + quoteSscl;
-    const grandTotal = Number(quote.totalAmount || quote.totalAmt || parsed.custTotals?.withSSCL || 0);
+    const quoteBaseTotal = Number(
+      parsed.custTotals?.subtotal ||
+      parsed.custTotals?.total ||
+      parsed.totals?.subtotal ||
+      parsed.totals?.total ||
+      parsed.subtotal ||
+      parsed.total ||
+      parsed.grandTotal ||
+      0
+    );
+    const quoteVat = Number(parsed.custVat || parsed.vatAmount || parsed.custTotals?.vat || parsed.vat || 0);
+    const quoteSscl = Number(parsed.custSscl || parsed.ssclAmount || parsed.custTotals?.sscl || parsed.sscl || 0);
+    const totalTax = Number(parsed.taxAmount || parsed.custTaxAmount || (quoteVat + quoteSscl) || 0);
+    const grandTotal = Number(
+      quote.totalAmount ||
+      quote.totalAmt ||
+      parsed.custTotals?.withSSCL ||
+      parsed.custTotals?.total ||
+      parsed.total ||
+      parsed.grandTotal ||
+      0
+    );
     const fallbackBasePrice = quoteBaseTotal > 0
       ? quoteBaseTotal
       : (totalTax > 0 && grandTotal > totalTax ? (grandTotal - totalTax) : grandTotal);
 
+    if (extractedItems.length === 1 && extractedItems[0].unitPrice === 0 && fallbackBasePrice > 0) {
+      extractedItems[0].unitPrice = Number((fallbackBasePrice / extractedItems[0].qty).toFixed(2));
+      extractedItems[0].amount = fallbackBasePrice;
+    }
+
     if (extractedItems.length === 0) {
       if (Array.isArray(parsed.jobItems) && parsed.jobItems.length > 0) {
         const jiText = parsed.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join(', ');
-        const qQty = Number(parsed.jobQty) || 1;
+        const qQty = Math.max(1, Number(parsed.jobQty) || 1);
         const resolvedUnitPrice = qQty > 0 ? Number((fallbackBasePrice / qQty).toFixed(2)) : fallbackBasePrice;
         extractedItems.push({
           productId: 'CUSTOM-JOB',
@@ -853,18 +879,30 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     const primaryQty = extractedItems.length === 1 ? extractedItems[0].qty : 1;
 
     const itemsSum = extractedItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice || 0))), 0);
-    const quoteSubtotal = Number(parsed.custTotals?.subtotal) || itemsSum;
-    const quoteDiscount = Number(parsed.custTotals?.discount || parsed.custDiscountAmount || parsed.discountAmount || 0);
-    const netBase = Number(parsed.custTotals?.total) || (quoteSubtotal - quoteDiscount);
+    const quoteSubtotal = Number(parsed.custTotals?.subtotal || parsed.totals?.subtotal || parsed.subtotal) || (itemsSum > 0 ? itemsSum : fallbackBasePrice);
 
-    let finalTotalTax = totalTax;
-    let finalGrandTotal = grandTotal;
-    if (finalTotalTax === 0 && finalGrandTotal > netBase) {
-      finalTotalTax = Math.max(0, finalGrandTotal - netBase);
+    const rawDiscountType: 'percent' | 'amount' = (parsed.custDiscountType || parsed.discountType) === 'percent' ? 'percent' : 'amount';
+    let quoteDiscount = Number(parsed.custDiscount || parsed.discount || 0);
+    let quoteDiscountAmount = Number(parsed.custDiscountAmount || parsed.custTotals?.discount || parsed.totals?.discount || parsed.discountAmount || 0);
+
+    if (rawDiscountType === 'percent') {
+      if (!quoteDiscount && quoteDiscountAmount > 0 && quoteSubtotal > 0) {
+        quoteDiscount = Number(((quoteDiscountAmount / quoteSubtotal) * 100).toFixed(2));
+      }
+      if (!quoteDiscountAmount && quoteDiscount > 0 && quoteSubtotal > 0) {
+        quoteDiscountAmount = Number(((quoteSubtotal * (quoteDiscount / 100))).toFixed(2));
+      }
+    } else {
+      if (!quoteDiscountAmount && quoteDiscount > 0) {
+        quoteDiscountAmount = quoteDiscount;
+      }
+      if (!quoteDiscount && quoteDiscountAmount > 0) {
+        quoteDiscount = quoteDiscountAmount;
+      }
     }
-    if (finalGrandTotal === 0) {
-      finalGrandTotal = netBase + finalTotalTax;
-    }
+
+    const discountVal = rawDiscountType === 'percent' ? quoteDiscount : quoteDiscountAmount;
+    const netBase = Number(parsed.custTotals?.total) || Math.max(0, quoteSubtotal - quoteDiscountAmount);
 
     const isQuoteTaxInclusive = Boolean(
       quote.isProd ||
@@ -872,6 +910,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       parsed.isTaxInclusive ||
       String(quote.displayNo || '').startsWith('PQ')
     );
+
+    let finalTotalTax = totalTax;
+    let finalGrandTotal = grandTotal;
+    const hasTaxConfig = Boolean(parsed.selectedProfileId || parsed.taxProfileId || parsed.taxEnabled || quoteVat > 0 || quoteSscl > 0);
+    if (finalTotalTax === 0 && finalGrandTotal > netBase && hasTaxConfig) {
+      finalTotalTax = Math.max(0, Number((finalGrandTotal - netBase).toFixed(2)));
+    }
+    if (finalGrandTotal === 0) {
+      finalGrandTotal = isQuoteTaxInclusive ? netBase : (netBase + finalTotalTax);
+    }
 
     const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
     const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && finalTotalTax > 0 ? Number(((finalTotalTax / netBase) * 100).toFixed(2)) : 0));
@@ -894,7 +942,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       unitPrice: String(primaryPrice),
       items: extractedItems,
       subtotal: quoteSubtotal,
-      discount: quoteDiscount,
+      discount: discountVal,
+      discountType: rawDiscountType,
+      discountAmount: quoteDiscountAmount,
       isTaxInclusive: isQuoteTaxInclusive,
       taxAmount: finalTotalTax,
       taxRate,

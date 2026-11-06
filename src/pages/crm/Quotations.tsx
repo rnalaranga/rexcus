@@ -537,7 +537,7 @@ export const Quotations: React.FC = () => {
       return;
     }
 
-    setSalesOrderModalData({ group, quotation: latestMain, type: 'custom' });
+    setSalesOrderModalData({ group, quotation: latestMain, type: group.isProduct ? 'product' : 'custom' });
   };
 
   const handleStatusChange = async (id: string, status: string, currentStatus?: string) => {

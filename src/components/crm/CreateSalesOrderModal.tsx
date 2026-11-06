@@ -148,6 +148,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     items: [] as any[],
     subtotal: 0,
     discount: 0,
+    discountType: 'percent' as 'percent' | 'amount',
+    discountAmount: 0,
     taxAmount: 0,
     taxRate: 0,
     taxProfileId: '',
@@ -163,7 +165,6 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     if (!isOpen || !quotationData) return;
 
     const { group, quotation, type } = quotationData;
-    const isProduct = type === 'product';
 
     let quoteData: any = {};
     if (quotation.parsed && typeof quotation.parsed === 'object' && Object.keys(quotation.parsed).length > 0) {
@@ -175,32 +176,71 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         quoteData = {};
       }
     }
+    if (typeof quoteData === 'string') {
+      try { quoteData = JSON.parse(quoteData); } catch (e) {}
+    }
 
-    const rawItems = quoteData.custItems || quoteData.items || [];
-    let itemsList = rawItems.map((ci: any) => ({
-      productId: ci.productId || ci.inventoryId || (isProduct ? 'CUSTOM-PRODUCT' : 'CUSTOM-JOB'),
-      productName: ci.name || ci.desc || ci.description || 'Quoted Item',
-      productSku: ci.sku || '',
-      description: ci.description || ci.desc || ci.name || '',
-      qty: Number(ci.qty) || 1,
-      unitPrice: Number(ci.unitPrice) || 0,
-      amount: Number(ci.amount) || ((Number(ci.qty) || 1) * Number(ci.unitPrice || 0)),
-      uom: ci.uom || ci.unit || 'Nos'
-    }));
+    const isProduct = Boolean(
+      type === 'product' ||
+      group?.isProduct ||
+      quoteData.isProductQuotation === true ||
+      quotation.isProductQuotation === true ||
+      quoteData.quotationCategory === 'product' ||
+      String(group?.quoNo || quotation.quotationNo || quotation.docNo || '').startsWith('PQ')
+    );
 
-    const quoteBaseTotal = Number(quoteData.custTotals?.subtotal || quoteData.custTotals?.total || 0);
-    const quoteVat = Number(quoteData.custVat || 0);
-    const quoteSscl = Number(quoteData.custSscl || 0);
-    const initialTax = quoteVat + quoteSscl;
-    const initialGrand = Number(quotation.totalAmount || quoteData.custTotals?.withSSCL || 0);
+    const rawItems = quoteData.custItems || quoteData.items || quoteData.jobItems || [];
+    let itemsList = (Array.isArray(rawItems) ? rawItems : []).map((ci: any) => {
+      const q = Math.max(0, Number(ci.qty) || 1);
+      const rawPrice = ci.unitPrice !== undefined ? ci.unitPrice : (ci.price !== undefined ? ci.price : null);
+      const up = Number(rawPrice !== null ? rawPrice : (q > 0 && (ci.total || ci.amount) ? (Number(ci.total || ci.amount) / q) : 0)) || 0;
+      const amt = Number(ci.amount ?? ci.total ?? (q * up)) || (q * up);
+      return {
+        productId: ci.productId || ci.inventoryId || (isProduct ? 'CUSTOM-PRODUCT' : 'CUSTOM-JOB'),
+        productName: ci.name || ci.desc || ci.description || 'Quoted Item',
+        productSku: ci.sku || '',
+        description: ci.description || ci.desc || ci.name || '',
+        qty: q,
+        unitPrice: up,
+        amount: amt,
+        uom: ci.uom || ci.unit || 'Nos'
+      };
+    });
+
+    const quoteBaseTotal = Number(
+      quoteData.custTotals?.subtotal ||
+      quoteData.custTotals?.total ||
+      quoteData.totals?.subtotal ||
+      quoteData.totals?.total ||
+      quoteData.subtotal ||
+      quoteData.total ||
+      quoteData.grandTotal ||
+      0
+    );
+    const quoteVat = Number(quoteData.custVat || quoteData.vatAmount || quoteData.custTotals?.vat || quoteData.vat || 0);
+    const quoteSscl = Number(quoteData.custSscl || quoteData.ssclAmount || quoteData.custTotals?.sscl || quoteData.sscl || 0);
+    const initialTax = Number(quoteData.taxAmount || quoteData.custTaxAmount || (quoteVat + quoteSscl) || 0);
+    const initialGrand = Number(
+      quotation.totalAmount ||
+      quoteData.custTotals?.withSSCL ||
+      quoteData.custTotals?.total ||
+      quoteData.total ||
+      quoteData.grandTotal ||
+      0
+    );
     const fallbackBasePrice = quoteBaseTotal > 0
       ? quoteBaseTotal
       : (initialTax > 0 && initialGrand > initialTax ? (initialGrand - initialTax) : initialGrand);
 
+    if (itemsList.length === 1 && itemsList[0].unitPrice === 0 && fallbackBasePrice > 0) {
+      itemsList[0].unitPrice = Number((fallbackBasePrice / itemsList[0].qty).toFixed(2));
+      itemsList[0].amount = fallbackBasePrice;
+    }
+
     if (itemsList.length === 0) {
       if (Array.isArray(quoteData.jobItems) && quoteData.jobItems.length > 0) {
         const jiText = quoteData.jobItems.map((j: any) => j.text || j.desc || '').filter(Boolean).join(', ');
-        const qQty = Number(quoteData.jobQty) || 1;
+        const qQty = Math.max(1, Number(quoteData.jobQty) || 1);
         const resolvedUnitPrice = qQty > 0 ? Number((fallbackBasePrice / qQty).toFixed(2)) : fallbackBasePrice;
         itemsList = [{
           productId: 'CUSTOM-JOB',
@@ -215,9 +255,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       } else {
         itemsList = [{
           productId: isProduct ? 'CUSTOM-PRODUCT' : 'CUSTOM-JOB',
-          productName: quotation.subject || `Quotation ${group?.quoNo || ''} Job`,
+          productName: quotation.subject || quoteData.subject || `Quotation ${group?.quoNo || ''} Job`,
           productSku: '',
-          description: quotation.subject || `Quotation ${group?.quoNo || ''} Production Order`,
+          description: quotation.subject || quoteData.subject || `Quotation ${group?.quoNo || ''} Production Order`,
           qty: 1,
           unitPrice: fallbackBasePrice,
           amount: fallbackBasePrice,
@@ -227,22 +267,34 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }
 
     const itemsSum = itemsList.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice || 0))), 0);
-    const subtotal = Number(quoteData.custTotals?.subtotal) || itemsSum;
-    const discount = Number(quoteData.custTotals?.discount || quoteData.custDiscountAmount || quoteData.discountAmount || 0);
-    const netBase = Number(quoteData.custTotals?.total) || (subtotal - discount);
+    const subtotal = Number(quoteData.custTotals?.subtotal || quoteData.totals?.subtotal || quoteData.subtotal) || (itemsSum > 0 ? itemsSum : fallbackBasePrice);
 
-    let vatAmount = Number(quoteData.custVat || 0);
-    let ssclAmount = Number(quoteData.custSscl || 0);
-    let taxAmount = vatAmount + ssclAmount;
+    const rawDiscountType: 'percent' | 'amount' = (quoteData.custDiscountType || quoteData.discountType) === 'percent' ? 'percent' : 'amount';
+    let quoteDiscount = Number(quoteData.custDiscount || quoteData.discount || 0);
+    let quoteDiscountAmount = Number(quoteData.custDiscountAmount || quoteData.custTotals?.discount || quoteData.totals?.discount || quoteData.discountAmount || 0);
 
-    let grandTotal = Number(quotation.totalAmount) || Number(quoteData.custTotals?.withSSCL) || 0;
-
-    if (taxAmount === 0 && grandTotal > netBase) {
-      taxAmount = Math.max(0, grandTotal - netBase);
+    if (rawDiscountType === 'percent') {
+      if (!quoteDiscount && quoteDiscountAmount > 0 && subtotal > 0) {
+        quoteDiscount = Number(((quoteDiscountAmount / subtotal) * 100).toFixed(2));
+      }
+      if (!quoteDiscountAmount && quoteDiscount > 0 && subtotal > 0) {
+        quoteDiscountAmount = Number(((subtotal * (quoteDiscount / 100))).toFixed(2));
+      }
+    } else {
+      if (!quoteDiscountAmount && quoteDiscount > 0) {
+        quoteDiscountAmount = quoteDiscount;
+      }
+      if (!quoteDiscount && quoteDiscountAmount > 0) {
+        quoteDiscount = quoteDiscountAmount;
+      }
     }
-    if (grandTotal === 0) {
-      grandTotal = netBase + taxAmount;
-    }
+
+    const discountVal = rawDiscountType === 'percent' ? quoteDiscount : quoteDiscountAmount;
+    const netBase = Number(quoteData.custTotals?.total) || Math.max(0, subtotal - quoteDiscountAmount);
+
+    let vatAmount = quoteVat;
+    let ssclAmount = quoteSscl;
+    let taxAmount = initialTax;
 
     const isQuoteTaxInclusive = Boolean(
       isProduct ||
@@ -251,6 +303,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       quotation.isProductQuotation ||
       String(group?.quoNo || quotation.quotationNo || '').startsWith('PQ')
     );
+
+    let grandTotal = Number(quotation.totalAmount) || Number(quoteData.custTotals?.withSSCL) || Number(quoteData.custTotals?.total) || Number(quoteData.total) || 0;
+
+    const hasTaxConfig = Boolean(quoteData.selectedProfileId || quoteData.taxProfileId || quoteData.taxEnabled || vatAmount > 0 || ssclAmount > 0);
+    if (taxAmount === 0 && grandTotal > netBase && hasTaxConfig) {
+      taxAmount = Math.max(0, Number((grandTotal - netBase).toFixed(2)));
+    }
+
+    if (grandTotal === 0) {
+      grandTotal = isQuoteTaxInclusive ? netBase : (netBase + taxAmount);
+    }
 
     const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
     const taxRate = Number(quoteData.selectedProfile?.tax2_rate || (netBase > 0 && taxAmount > 0 ? Number(((taxAmount / netBase) * 100).toFixed(2)) : 0));
@@ -302,7 +365,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       targetDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
       items: itemsList,
       subtotal,
-      discount,
+      discount: discountVal,
+      discountType: rawDiscountType,
+      discountAmount: quoteDiscountAmount,
       taxAmount,
       taxRate,
       taxProfileId,
@@ -395,6 +460,60 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const recalculateFinancials = (
+    currentItems: any[],
+    discountVal: number,
+    discountType: 'percent' | 'amount',
+    taxRate: number,
+    isTaxInclusive: boolean,
+    prevVat: number,
+    prevSscl: number
+  ) => {
+    const newSubtotal = currentItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))), 0);
+    const discNum = Math.max(0, Number(discountVal) || 0);
+    const discountAmt = discountType === 'percent'
+      ? Number(((newSubtotal * discNum) / 100).toFixed(2))
+      : Math.min(newSubtotal, discNum);
+    const netBase = Math.max(0, newSubtotal - discountAmt);
+
+    let taxAmount = 0;
+    if (taxRate > 0) {
+      if (isTaxInclusive) {
+        const base = netBase / (1 + (taxRate / 100));
+        taxAmount = Number((netBase - base).toFixed(2));
+      } else {
+        taxAmount = Number(((netBase * taxRate) / 100).toFixed(2));
+      }
+    } else if (newSubtotal > 0 && (prevVat > 0 || prevSscl > 0)) {
+      const oldTax = prevVat + prevSscl;
+      taxAmount = oldTax;
+    }
+
+    let vatAmount = prevVat;
+    let ssclAmount = prevSscl;
+    if (prevVat > 0 || prevSscl > 0) {
+      const oldTotal = prevVat + prevSscl;
+      if (oldTotal > 0 && taxAmount > 0) {
+        const vatRatio = prevVat / oldTotal;
+        vatAmount = Number((taxAmount * vatRatio).toFixed(2));
+        ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
+      }
+    }
+
+    const totalPrice = isTaxInclusive ? netBase : Number((netBase + taxAmount).toFixed(2));
+
+    return {
+      subtotal: newSubtotal,
+      discount: discNum,
+      discountType,
+      discountAmount: discountAmt,
+      taxAmount,
+      vatAmount,
+      ssclAmount,
+      totalPrice
+    };
+  };
+
   const handleItemChange = (index: number, field: string, value: any) => {
     setFormData(prev => {
       const newItems = [...prev.items];
@@ -405,40 +524,20 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       item.amount = q * up;
       newItems[index] = item;
 
-      const newSubtotal = newItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))), 0);
-      const discount = Number(prev.discount || 0);
-      const netBase = Math.max(0, newSubtotal - discount);
-
-      let taxAmount = prev.taxAmount;
-      if (prev.taxRate > 0) {
-        taxAmount = Number(((netBase * prev.taxRate) / 100).toFixed(2));
-      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
-        const prevBase = Math.max(1, prev.subtotal - discount);
-        const ratio = prev.taxAmount / prevBase;
-        taxAmount = Number((netBase * ratio).toFixed(2));
-      }
-
-      let vatAmount = prev.vatAmount || 0;
-      let ssclAmount = prev.ssclAmount || 0;
-      if (vatAmount > 0 || ssclAmount > 0) {
-        const oldTotal = vatAmount + ssclAmount;
-        if (oldTotal > 0) {
-          const vatRatio = vatAmount / oldTotal;
-          vatAmount = Number((taxAmount * vatRatio).toFixed(2));
-          ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
-        }
-      }
-
-      const totalPrice = netBase + taxAmount;
+      const fin = recalculateFinancials(
+        newItems,
+        prev.discount,
+        prev.discountType,
+        prev.taxRate,
+        prev.isTaxInclusive,
+        prev.vatAmount,
+        prev.ssclAmount
+      );
 
       return {
         ...prev,
         items: newItems,
-        subtotal: newSubtotal,
-        taxAmount,
-        vatAmount,
-        ssclAmount,
-        totalPrice
+        ...fin
       };
     });
   };
@@ -502,76 +601,62 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     setFormData(prev => {
       if (prev.items.length <= 1) return prev;
       const newItems = prev.items.filter((_, idx) => idx !== index);
-      const newSubtotal = newItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))), 0);
-      const discount = Number(prev.discount || 0);
-      const netBase = Math.max(0, newSubtotal - discount);
-
-      let taxAmount = prev.taxAmount;
-      if (prev.taxRate > 0) {
-        taxAmount = Number(((netBase * prev.taxRate) / 100).toFixed(2));
-      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
-        const prevBase = Math.max(1, prev.subtotal - discount);
-        const ratio = prev.taxAmount / prevBase;
-        taxAmount = Number((netBase * ratio).toFixed(2));
-      }
-
-      let vatAmount = prev.vatAmount || 0;
-      let ssclAmount = prev.ssclAmount || 0;
-      if (vatAmount > 0 || ssclAmount > 0) {
-        const oldTotal = vatAmount + ssclAmount;
-        if (oldTotal > 0) {
-          const vatRatio = vatAmount / oldTotal;
-          vatAmount = Number((taxAmount * vatRatio).toFixed(2));
-          ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
-        }
-      }
-
-      const totalPrice = netBase + taxAmount;
+      const fin = recalculateFinancials(
+        newItems,
+        prev.discount,
+        prev.discountType,
+        prev.taxRate,
+        prev.isTaxInclusive,
+        prev.vatAmount,
+        prev.ssclAmount
+      );
 
       return {
         ...prev,
         items: newItems,
-        subtotal: newSubtotal,
-        taxAmount,
-        vatAmount,
-        ssclAmount,
-        totalPrice
+        ...fin
       };
     });
   };
 
-  const handleDiscountChange = (val: number) => {
+  const handleDiscountValueChange = (val: number) => {
     setFormData(prev => {
-      const discount = Math.max(0, val);
-      const netBase = Math.max(0, prev.subtotal - discount);
-      let taxAmount = prev.taxAmount;
-      if (prev.taxRate > 0) {
-        taxAmount = Number(((netBase * prev.taxRate) / 100).toFixed(2));
-      } else if (prev.subtotal > 0 && prev.taxAmount > 0) {
-        const prevBase = Math.max(1, prev.subtotal);
-        const ratio = prev.taxAmount / prevBase;
-        taxAmount = Number((netBase * ratio).toFixed(2));
-      }
-
-      let vatAmount = prev.vatAmount || 0;
-      let ssclAmount = prev.ssclAmount || 0;
-      if (vatAmount > 0 || ssclAmount > 0) {
-        const oldTotal = vatAmount + ssclAmount;
-        if (oldTotal > 0) {
-          const vatRatio = vatAmount / oldTotal;
-          vatAmount = Number((taxAmount * vatRatio).toFixed(2));
-          ssclAmount = Number((taxAmount - vatAmount).toFixed(2));
-        }
-      }
-
-      const totalPrice = netBase + taxAmount;
+      const fin = recalculateFinancials(
+        prev.items,
+        val,
+        prev.discountType,
+        prev.taxRate,
+        prev.isTaxInclusive,
+        prev.vatAmount,
+        prev.ssclAmount
+      );
       return {
         ...prev,
-        discount,
-        taxAmount,
-        vatAmount,
-        ssclAmount,
-        totalPrice
+        ...fin
+      };
+    });
+  };
+
+  const handleDiscountTypeChange = (type: 'percent' | 'amount') => {
+    setFormData(prev => {
+      let newDiscVal = prev.discount;
+      if (type === 'percent' && prev.discountType === 'amount' && prev.subtotal > 0) {
+        newDiscVal = Number(((prev.discountAmount / prev.subtotal) * 100).toFixed(2));
+      } else if (type === 'amount' && prev.discountType === 'percent') {
+        newDiscVal = prev.discountAmount;
+      }
+      const fin = recalculateFinancials(
+        prev.items,
+        newDiscVal,
+        type,
+        prev.taxRate,
+        prev.isTaxInclusive,
+        prev.vatAmount,
+        prev.ssclAmount
+      );
+      return {
+        ...prev,
+        ...fin
       };
     });
   };
@@ -646,6 +731,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         status: orderStatus,
         subtotal: Number(formData.subtotal) || 0,
         discount: Number(formData.discount) || 0,
+        discountType: formData.discountType || 'percent',
+        discountAmount: Number(formData.discountAmount) || 0,
         taxAmount: Number(formData.taxAmount) || 0,
         vatAmount: Number(formData.vatAmount) || 0,
         ssclAmount: Number(formData.ssclAmount) || 0,
@@ -746,9 +833,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                   <div className="text-secondary text-[11px]">
                     Subtotal: <span className="font-semibold text-primary">{formatCurrency(formData.subtotal)}</span>
                   </div>
-                  {Number(formData.discount || 0) > 0 && (
+                  {Number(formData.discountAmount || 0) > 0 && (
                     <div className="text-rose-500 text-[11px]">
-                      Discount: -{formatCurrency(formData.discount)}
+                      Discount ({formData.discountType === 'percent' ? `${formData.discount}%` : 'Fixed'}): -{formatCurrency(formData.discountAmount)}
                     </div>
                   )}
                   {Number(formData.ssclAmount || 0) > 0 && (
@@ -879,22 +966,53 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               {/* Financial Adjustments Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-muted uppercase">Commercial Discount (Rs):</span>
+                  <span className="text-[11px] font-semibold text-muted uppercase">Commercial Discount:</span>
+                  <div className="flex border border-theme-subtle rounded-none overflow-hidden h-7">
+                    <button
+                      type="button"
+                      onClick={() => handleDiscountTypeChange('percent')}
+                      className={`px-2 py-0.5 text-[10px] font-bold transition-all ${
+                        formData.discountType === 'percent'
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-surface text-secondary hover:text-primary'
+                      }`}
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDiscountTypeChange('amount')}
+                      className={`px-2 py-0.5 text-[10px] font-bold transition-all ${
+                        formData.discountType === 'amount'
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-surface text-secondary hover:text-primary'
+                      }`}
+                    >
+                      Rs
+                    </button>
+                  </div>
                   <input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step={formData.discountType === 'percent' ? '0.1' : '0.01'}
                     value={formData.discount || ''}
-                    onChange={e => handleDiscountChange(Number(e.target.value) || 0)}
+                    onChange={e => handleDiscountValueChange(Number(e.target.value) || 0)}
                     placeholder="0.00"
-                    className="w-28 h-7 px-2 font-mono text-xs text-right bg-surface border border-theme-subtle font-bold"
+                    className="w-24 h-7 px-2 font-mono text-xs text-right bg-surface border border-theme-subtle font-bold"
                   />
+                  {formData.discountType === 'percent' && Number(formData.discountAmount || 0) > 0 && (
+                    <span className="text-[11px] font-mono text-rose-500 font-semibold">
+                      (-{formatCurrency(formData.discountAmount)})
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-mono">
                   <span className="text-secondary">Subtotal: <strong>{formatCurrency(formData.subtotal)}</strong></span>
                   {formData.taxAmount > 0 && (
-                    <span className="text-indigo-600 dark:text-indigo-400">Tax: <strong>+{formatCurrency(formData.taxAmount)}</strong></span>
+                    <span className="text-indigo-600 dark:text-indigo-400">
+                      Tax{formData.isTaxInclusive ? ' (Incl.)' : ''}: <strong>+{formatCurrency(formData.taxAmount)}</strong>
+                    </span>
                   )}
                   <span className="text-emerald-600 dark:text-emerald-400 font-bold">Total: {formatCurrency(formData.totalPrice)}</span>
                 </div>
