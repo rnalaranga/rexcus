@@ -2458,6 +2458,8 @@ export const ProductQuotations: React.FC = () => {
               <QuotationPrintView
                 data={{
                   ...previewData.quotation.parsed,
+                  currency: previewData.quotation?.currency || previewData.quotation.parsed?.currency || previewData.lead?.currency || (previewData.lead?.isForeign ? 'USD' : 'LKR'),
+                  exchangeRate: previewData.quotation?.exchangeRate || previewData.quotation.parsed?.exchangeRate || 1,
                   status: previewData.quotation?.status || previewData.quotation.parsed?.status || 'Draft',
                   approvedBy: previewData.quotation?.approvedBy || previewData.quotation.parsed?.approvedBy,
                   isDeleted: Boolean(previewData.quotation?.deletedAt || previewData.quotation?.isDeleted || previewData.quotation.parsed?.isDeleted),
@@ -2509,6 +2511,8 @@ export const ProductQuotations: React.FC = () => {
               <QuotationPrintView
                 data={{
                   ...emailModalData.quotation?.parsed,
+                  currency: emailModalData.quotation?.currency || emailModalData.quotation?.parsed?.currency || emailModalData.lead?.currency || (emailModalData.lead?.isForeign ? 'USD' : 'LKR'),
+                  exchangeRate: emailModalData.quotation?.exchangeRate || emailModalData.quotation?.parsed?.exchangeRate || 1,
                   status: emailModalData.quotation?.status || emailModalData.quotation?.parsed?.status || 'Draft',
                   approvedBy: emailModalData.quotation?.approvedBy || emailModalData.quotation?.parsed?.approvedBy,
                   isDeleted: Boolean(emailModalData.quotation?.deletedAt || emailModalData.quotation?.isDeleted || emailModalData.quotation?.parsed?.isDeleted),

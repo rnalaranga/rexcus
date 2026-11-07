@@ -34,7 +34,7 @@ interface SalesOrderPrintViewProps {
 }
 
 export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order, customer, settings }) => {
-  const orderCurrency = String(order.currency || customer?.currency || 'LKR').trim().toUpperCase();
+  const orderCurrency = String(order.currency || customer?.currency || (customer?.isForeign ? 'USD' : 'LKR')).trim().toUpperCase();
   const isUSD = orderCurrency === 'USD' || orderCurrency === '$';
   const currSymbol = isUSD ? '$' : 'Rs';
 

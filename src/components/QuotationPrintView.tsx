@@ -87,7 +87,17 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   const custTotals = data.custTotals || { subtotal: 0, discount: 0, total: 0, withSSCL: 0 }
   
   const jobTotals = data.jobTotals || { totalMaterialCost: 0, totalMachiningCost: 0, totalCost: 0, withSSCL: 0 };
-    const isVatOnly = Boolean(
+  const quoteCurrency = String(
+    data?.currency || 
+    data?.snapshot?.currency || 
+    data?.currencyCode || 
+    lead?.currency || 
+    (lead?.isForeign ? 'USD' : '') || 
+    'LKR'
+  ).trim().toUpperCase();
+  const isUSD = quoteCurrency === 'USD' || quoteCurrency === '$';
+  const displayCurrency = isUSD ? 'USD' : 'LKR';
+  const isVatOnly = Boolean(
     data.selectedProfile?.id === 'tp_vat18' || 
     data.selectedProfile?.name?.toLowerCase().includes('vat only') ||
     (data.selectedProfile?.tax1_name && /vat/i.test(data.selectedProfile.tax1_name) && (!data.selectedProfile.tax2_name || Number(data.selectedProfile.tax2_rate || 0) === 0))
@@ -661,8 +671,8 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               <tr className="font-bold border-b border-black text-center bg-gray-50 print-no-break">
                 <th className="p-1.5 border-r border-black font-bold text-center">DESCRIPTION</th>
                 <th className="p-1.5 border-r border-black font-bold text-center">QTY</th>
-                <th className="p-1.5 border-r border-black font-bold text-center leading-tight">UNIT PRICE<br/>({data.currency || 'LKR'})</th>
-                <th className="p-1.5 font-bold text-center leading-tight">AMOUNT<br/>({data.currency || 'LKR'})</th>
+                <th className="p-1.5 border-r border-black font-bold text-center leading-tight">UNIT PRICE<br/>({displayCurrency})</th>
+                <th className="p-1.5 font-bold text-center leading-tight">AMOUNT<br/>({displayCurrency})</th>
               </tr>
             </thead>
             <tbody>
@@ -718,7 +728,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     : 'Sub Total'}
                 </td>
                 <td className="font-bold text-center border-l border-black">
-                  {data.currency || 'LKR'}
+                  {displayCurrency}
                 </td>
                 <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
                   {Number(quotationType === 'job' ? jobTotals.totalCost : (isProductQuote ? displaySubtotal : (custTotals.subtotal || 0) * multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
@@ -731,7 +741,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   <td colSpan={2} className="text-right pr-6">Discount</td>
                   <td className="text-center border-l border-black">
                     {custDiscountType === 'amount'
-                      ? (data.currency || 'LKR')
+                      ? displayCurrency
                       : `${Number(custDiscount || 0)} %`}
                   </td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
@@ -765,7 +775,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               {/* Grand Total */}
               <tr className="border-b border-black print-no-break h-7 bg-gray-100 text-[11.5px]">
                 <td colSpan={2} className="text-right font-bold pr-6">Grand Total</td>
-                <td className="font-bold text-center border-l border-black">{data.currency || 'LKR'}</td>
+                <td className="font-bold text-center border-l border-black">{displayCurrency}</td>
                 <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
                   {Number(displayGrandTotal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </td>
@@ -775,7 +785,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
 
           {/* Value in words */}
           <div className="py-1.5 px-3 border-b border-black text-[10.5px] font-bold print-no-break bg-gray-50/30">
-            <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(displayGrandTotal), data.currency || 'LKR')}</span>
+            <span className="uppercase">VALUE : {displayCurrency} {toWords(Math.round(displayGrandTotal), displayCurrency)}</span>
           </div>
 
           {/* Footer Notes & Bank */}

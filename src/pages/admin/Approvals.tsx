@@ -1291,6 +1291,8 @@ export default function Approvals() {
                   if (!merged.customerName && (previewQuote.lead?.company || previewQuote.lead?.name || previewQuote.quote.leadCompany || previewQuote.quote.leadName)) {
                     merged.customerName = previewQuote.lead?.company || previewQuote.lead?.name || previewQuote.quote.leadCompany || previewQuote.quote.leadName;
                   }
+                  merged.currency = merged.currency || previewQuote.quote?.currency || previewQuote.lead?.currency || (previewQuote.lead?.isForeign ? 'USD' : 'LKR');
+                  merged.exchangeRate = merged.exchangeRate || previewQuote.quote?.exchangeRate || 1;
                   return merged;
                 })()}
                 type={previewQuote.quote.type === 'job' ? 'job' : 'main'}

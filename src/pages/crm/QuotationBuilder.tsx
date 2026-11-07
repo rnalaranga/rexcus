@@ -3376,6 +3376,8 @@ export const QuotationBuilder: React.FC = () => {
                            jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
                            custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
                            bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+                           currency: currency || 'LKR',
+                           exchangeRate: Number((currencies.find(c => c.code === currency) || {}).exchangeRate || 1),
                            status: currentQuote?.status || 'Draft'
                         }}
                         type="main"
@@ -3434,6 +3436,8 @@ export const QuotationBuilder: React.FC = () => {
                jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL }, taxEnabled, selectedProfileId,
                custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat, customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
                bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+               currency: currency || 'LKR',
+               exchangeRate: Number((currencies.find(c => c.code === currency) || {}).exchangeRate || 1),
                status: currentQuote?.status || 'Draft'
             }}
             type="main"

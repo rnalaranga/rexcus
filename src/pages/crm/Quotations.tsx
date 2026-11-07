@@ -3384,6 +3384,8 @@ export const Quotations: React.FC = () => {
                   if (!parsed.customerName && (previewData.lead?.company || previewData.lead?.name)) {
                     parsed.customerName = previewData.lead.company || previewData.lead.name;
                   }
+                  parsed.currency = parsed.currency || previewData.quotation?.currency || previewData.lead?.currency || (previewData.lead?.isForeign ? 'USD' : 'LKR');
+                  parsed.exchangeRate = parsed.exchangeRate || previewData.quotation?.exchangeRate || 1;
                   return parsed;
                })()} 
                type={previewData.type}

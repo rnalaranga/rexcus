@@ -2933,6 +2933,8 @@ export const Leads: React.FC = () => {
                 if (!parsed.customerName && (previewQuoteData.lead?.company || previewQuoteData.lead?.name)) {
                   parsed.customerName = previewQuoteData.lead.company || previewQuoteData.lead.name;
                 }
+                parsed.currency = parsed.currency || previewQuoteData.quotation?.currency || previewQuoteData.lead?.currency || (previewQuoteData.lead?.isForeign ? 'USD' : 'LKR');
+                parsed.exchangeRate = parsed.exchangeRate || previewQuoteData.quotation?.exchangeRate || 1;
                 return parsed;
               })()} 
               type={previewQuoteData.type}

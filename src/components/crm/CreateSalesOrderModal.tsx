@@ -842,35 +842,64 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 {formData.attention && (
                   <span className="text-[11px] text-muted block">Attn: {formData.attention}</span>
                 )}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] font-bold text-muted uppercase">Currency:</span>
+                  <div className="inline-flex rounded-lg border border-theme-subtle p-0.5 bg-surface">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({
+                        ...prev,
+                        currency: 'LKR',
+                        exchangeRate: 1,
+                        taxProfileId: prev.taxProfileId === 'tp_export_zero_rated' ? 'tp_opt2_sscl_absorbed_vat_sep' : prev.taxProfileId
+                      }))}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${formData.currency === 'LKR' ? 'bg-primary text-surface' : 'text-muted hover:text-primary'}`}
+                    >
+                      LKR (Rs.)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({
+                        ...prev,
+                        currency: 'USD',
+                        exchangeRate: prev.exchangeRate > 1 ? prev.exchangeRate : 310,
+                        taxProfileId: 'tp_export_zero_rated'
+                      }))}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${formData.currency === 'USD' ? 'bg-emerald-600 text-white' : 'text-muted hover:text-primary'}`}
+                    >
+                      USD ($)
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="text-left sm:text-right space-y-0.5">
-                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Commercial Value Summary</span>
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Commercial Value Summary ({formData.currency || 'LKR'})</span>
                 <div className="flex flex-col items-start sm:items-end font-mono text-xs">
                   <div className="text-secondary text-[11px]">
-                    Subtotal: <span className="font-semibold text-primary">{formatCurrency(formData.subtotal)}</span>
+                    Subtotal: <span className="font-semibold text-primary">{formatCurrency(formData.subtotal, false, formData.currency || 'LKR')}</span>
                   </div>
                   {Number(formData.discountAmount || 0) > 0 && (
                     <div className="text-rose-500 text-[11px]">
-                      Discount ({formData.discountType === 'percent' ? `${formData.discount}%` : 'Fixed'}): -{formatCurrency(formData.discountAmount)}
+                      Discount ({formData.discountType === 'percent' ? `${formData.discount}%` : 'Fixed'}): -{formatCurrency(formData.discountAmount, false, formData.currency || 'LKR')}
                     </div>
                   )}
                   {Number(formData.ssclAmount || 0) > 0 && (
                     <div className="text-amber-600 dark:text-amber-400 font-semibold text-[11px]">
-                      SSCL (2.5%): +{formatCurrency(formData.ssclAmount)}
+                      SSCL (2.5%): +{formatCurrency(formData.ssclAmount, false, formData.currency || 'LKR')}
                     </div>
                   )}
                   {Number(formData.vatAmount || 0) > 0 && (
                     <div className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
-                      VAT (18%): +{formatCurrency(formData.vatAmount)}
+                      VAT (18%): +{formatCurrency(formData.vatAmount, false, formData.currency || 'LKR')}
                     </div>
                   )}
                   {Number(formData.taxAmount || 0) > 0 && !(Number(formData.ssclAmount || 0) > 0) && !(Number(formData.vatAmount || 0) > 0) && (
                     <div className="text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
-                      Taxes ({formData.taxRate > 0 ? `${formData.taxRate}%` : 'VAT/SSCL'}): +{formatCurrency(formData.taxAmount)}
+                      Taxes ({formData.taxRate > 0 ? `${formData.taxRate}%` : 'VAT/SSCL'}): +{formatCurrency(formData.taxAmount, false, formData.currency || 'LKR')}
                     </div>
                   )}
                   <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    Total Order Value: {formatCurrency(formData.totalPrice)}
+                    Total Order Value: {formatCurrency(formData.totalPrice, false, formData.currency || 'LKR')}
                   </div>
                 </div>
               </div>
@@ -958,7 +987,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                             />
                           </td>
                           <td className="p-2 text-right font-mono font-bold text-primary">
-                            {formatCurrency(lineTotal)}
+                            {formatCurrency(lineTotal, false, formData.currency || 'LKR')}
                           </td>
                           <td className="p-2 text-center">
                             {formData.items.length > 1 && (
@@ -1004,7 +1033,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                           : 'bg-surface text-secondary hover:text-primary'
                       }`}
                     >
-                      Rs
+                      {formData.currency === 'USD' ? '$' : 'Rs'}
                     </button>
                   </div>
                   <input
@@ -1018,19 +1047,19 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                   />
                   {formData.discountType === 'percent' && Number(formData.discountAmount || 0) > 0 && (
                     <span className="text-[11px] font-mono text-rose-500 font-semibold">
-                      (-{formatCurrency(formData.discountAmount)})
+                      (-{formatCurrency(formData.discountAmount, false, formData.currency || 'LKR')})
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-mono">
-                  <span className="text-secondary">Subtotal: <strong>{formatCurrency(formData.subtotal)}</strong></span>
+                  <span className="text-secondary">Subtotal: <strong>{formatCurrency(formData.subtotal, false, formData.currency || 'LKR')}</strong></span>
                   {formData.taxAmount > 0 && (
                     <span className="text-indigo-600 dark:text-indigo-400">
-                      Tax{formData.isTaxInclusive ? ' (Incl.)' : ''}: <strong>+{formatCurrency(formData.taxAmount)}</strong>
+                      Tax{formData.isTaxInclusive ? ' (Incl.)' : ''}: <strong>+{formatCurrency(formData.taxAmount, false, formData.currency || 'LKR')}</strong>
                     </span>
                   )}
-                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Total: {formatCurrency(formData.totalPrice)}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Total: {formatCurrency(formData.totalPrice, false, formData.currency || 'LKR')}</span>
                 </div>
               </div>
             </div>

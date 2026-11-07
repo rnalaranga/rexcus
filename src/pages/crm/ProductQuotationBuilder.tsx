@@ -2891,7 +2891,9 @@ export const ProductQuotationBuilder: React.FC = () => {
                            taxEnabled, selectedProfileId,
                            custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat,
                            customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
-                           bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+                           bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+                           currency: currency || 'LKR',
+                           exchangeRate: Number((currencies.find((c: any) => c.code === currency) || {}).exchangeRate || 1)
                         }}
                         type="main"
                         lead={currentEntity || lead}
@@ -2949,7 +2951,9 @@ export const ProductQuotationBuilder: React.FC = () => {
                  taxEnabled, selectedProfileId,
                  custTerms, custValidity, custDelivery, selectedProfile, custSscl, custVat, jobSscl, jobVat,
                  customerAddress, customerName, customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
-                 bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null)
+                 bankDetailId, bankDetails: selectedBank ? selectedBank : (bankDetailId === 'none' ? 'none' : null),
+                 currency: currency || 'LKR',
+                 exchangeRate: Number((currencies.find((c: any) => c.code === currency) || {}).exchangeRate || 1)
               }}
               type="main"
               lead={currentEntity || lead}
