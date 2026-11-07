@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, Wallet, ArrowDownLeft, ArrowUpRight, CheckSquare, 
   PackageCheck, AlertTriangle, ArrowRight, ShieldCheck, Clock,
-  DollarSign, FileText, Plus, RefreshCw, ChevronRight, Activity
+  DollarSign, FileText, Plus, RefreshCw, ChevronRight, Activity,
+  ShoppingBag, Building2, Package
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFinanceDashboard, useCashbook } from '@/hooks/useFinance';
@@ -18,9 +19,9 @@ export const MobileDashboard: React.FC = () => {
   const { data: finData, loading: finLoading, refetch: refetchFin } = useFinanceDashboard();
   const { data: cashbookData, loading: cashLoading, refetch: refetchCash } = useCashbook(todayStr);
 
-  const { data: quotations = [] } = useQuotations();
+  const { data: quotations = [], refetch: refetchQuotes } = useQuotations();
   const { data: customers = [] } = useCustomers();
-  const { data: orders = [] } = useFinishedGoodsOrders();
+  const { data: orders = [], refetch: refetchOrders } = useFinishedGoodsOrders();
 
   // Pending Approvals Calculation
   const pendingQuotes = (quotations || []).filter((q: any) => 
@@ -47,6 +48,8 @@ export const MobileDashboard: React.FC = () => {
   const handleRefresh = () => {
     refetchFin();
     refetchCash();
+    refetchQuotes();
+    refetchOrders();
   };
 
   return (
@@ -185,6 +188,60 @@ export const MobileDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Key ERP Hubs: Quotations & Sales Orders ── */}
+      <div className="space-y-2">
+        <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">
+          Sales & Commercial Operations
+        </h3>
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Quotations Hub Card */}
+          <div
+            onClick={() => navigate('/mobile/quotations')}
+            className="p-3.5 rounded-xl bg-surface border border-theme hover:border-rex-500/40 active:scale-[0.99] transition-all cursor-pointer shadow-xs flex flex-col justify-between"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-rex-600/10 text-rex-600 dark:text-rex-400 border border-rex-600/20 flex items-center justify-center">
+                <FileText size={16} />
+              </div>
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-surface2 text-muted border border-theme-subtle font-mono">
+                {quotations.length}
+              </span>
+            </div>
+            <div>
+              <span className="text-xs font-bold block text-primary">All Quotations</span>
+              <span className="text-[10px] text-muted mt-0.5 block">
+                {pendingQuotes > 0 ? (
+                  <span className="text-amber-600 dark:text-amber-400 font-semibold">{pendingQuotes} Pending Approval</span>
+                ) : (
+                  'Browse quotes & specs'
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Sales Orders Hub Card */}
+          <div
+            onClick={() => navigate('/mobile/orders')}
+            className="p-3.5 rounded-xl bg-surface border border-theme hover:border-blue-500/40 active:scale-[0.99] transition-all cursor-pointer shadow-xs flex flex-col justify-between"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center">
+                <ShoppingBag size={16} />
+              </div>
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-surface2 text-muted border border-theme-subtle font-mono">
+                {orders.length}
+              </span>
+            </div>
+            <div>
+              <span className="text-xs font-bold block text-primary">All Sales Orders</span>
+              <span className="text-[10px] text-muted mt-0.5 block">
+                Live factory production
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Quick Action Buttons */}
       <div className="space-y-2">
         <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">
@@ -201,7 +258,7 @@ export const MobileDashboard: React.FC = () => {
             </div>
             <div>
               <span className="text-xs font-bold block text-primary">Add Cash Entry</span>
-              <span className="text-[10px] text-muted">Payment or Receipt</span>
+              <span className="text-[10px] text-muted">Voucher expense</span>
             </div>
           </button>
 
@@ -215,7 +272,7 @@ export const MobileDashboard: React.FC = () => {
             </div>
             <div>
               <span className="text-xs font-bold block text-primary">Request Material</span>
-              <span className="text-[10px] text-muted">Material Requisition</span>
+              <span className="text-[10px] text-muted">Material MR Hub</span>
             </div>
           </button>
         </div>
@@ -273,6 +330,54 @@ export const MobileDashboard: React.FC = () => {
         ) : (
           <div className="p-4 rounded-xl bg-surface border border-theme text-center text-xs text-muted shadow-xs">
             No cash transactions recorded yet today.
+          </div>
+        )}
+      </div>
+
+      {/* Recent Sales Orders Snapshot */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">
+            Recent Sales Orders
+          </h3>
+          <button
+            type="button"
+            onClick={() => navigate('/mobile/orders')}
+            className="text-[11px] text-rex-600 dark:text-rex-400 font-semibold hover:underline flex items-center gap-0.5"
+          >
+            View All ({orders.length})
+            <ChevronRight size={12} />
+          </button>
+        </div>
+
+        {orders.length > 0 ? (
+          <div className="space-y-1.5">
+            {orders.slice(0, 3).map((order: any) => {
+              const isUSD = order.currency === 'USD' || order.currency === '$';
+              return (
+                <div
+                  key={order.id}
+                  onClick={() => navigate('/mobile/orders')}
+                  className="p-2.5 rounded-lg bg-surface border border-theme flex items-center justify-between shadow-xs active:scale-[0.99] transition-all cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      {isUSD && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                      <span className="font-mono text-xs font-bold text-primary">{order.orderNo || order.id}</span>
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-surface2 text-muted font-semibold">{order.status || 'Active'}</span>
+                    </div>
+                    <p className="text-[11px] text-muted truncate">{order.customerName || 'Customer'}</p>
+                  </div>
+                  <div className="text-right shrink-0 ml-2 font-mono text-xs font-bold text-primary">
+                    {formatCurrency(Number(order.totalPrice || 0), false, order.currency || 'LKR')}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl bg-surface border border-theme text-center text-xs text-muted shadow-xs">
+            No active sales orders found.
           </div>
         )}
       </div>

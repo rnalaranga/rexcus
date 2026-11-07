@@ -2608,7 +2608,30 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 type="button"
                 onClick={() => {
                   setOpenActionOrderId(null)
-                  setProformaModalOrder(order)
+                  const lq = rawQuotations.find((q: any) => 
+                    (order.quoteId && String(q.id) === String(order.quoteId)) ||
+                    (order.quotationNo && (String(q.quotationNo) === String(order.quotationNo) || String(q.docNo) === String(order.quotationNo)))
+                  );
+                  let lqData: any = {};
+                  if (lq?.data) {
+                    try { lqData = typeof lq.data === 'string' ? JSON.parse(lq.data) : lq.data; } catch {}
+                  }
+                  const lc = customers.find((c: any) => c.id === order.customerId || c.company === order.customerName || c.name === order.customerName);
+                  const isOrdUSD = Boolean(
+                    order.currency === 'USD' || 
+                    order.currency === '$' ||
+                    order.taxProfileId === 'tp_export_zero_rated' || 
+                    order.isForeign || 
+                    lq?.currency === 'USD' || 
+                    lqData?.currency === 'USD' ||
+                    lc?.currency === 'USD' || 
+                    lc?.isForeign
+                  );
+                  setProformaModalOrder({
+                    ...order,
+                    currency: isOrdUSD ? 'USD' : (order.currency || 'LKR'),
+                    isForeign: isOrdUSD || Boolean(order.isForeign)
+                  });
                 }}
                 className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface2 transition-colors text-primary font-medium"
               >

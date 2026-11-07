@@ -85,9 +85,9 @@ export const MobileLayout: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-base text-primary flex flex-col font-sans select-none pb-24">
+    <div className="fixed inset-0 flex flex-col bg-base text-primary font-sans overflow-hidden">
       {/* Top App Header with Rex Red Crown (Flows from Phone Notification/Status Bar) */}
-      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-rex-700 via-rex-600 to-rex-700 text-white shadow-md border-b border-rex-800/40 px-3.5 pt-[env(safe-area-inset-top,0px)]">
+      <header className="shrink-0 z-40 bg-gradient-to-r from-rex-700 via-rex-600 to-rex-700 text-white shadow-md border-b border-rex-800/40 px-3.5 pt-[env(safe-area-inset-top,0px)]">
         <div className="h-16 flex items-center justify-between">
           {/* Left: Enhanced Rex Logo on crisp white rounded card & Brand Tag */}
           <div className="flex items-center gap-2.5 min-w-0">
@@ -131,13 +131,13 @@ export const MobileLayout: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Scrollable View */}
-      <main className="flex-1 pt-[calc(4.5rem+env(safe-area-inset-top,0px))] px-3.5 max-w-lg mx-auto w-full animate-fade-in">
+      {/* Main Scrollable View with Momentum Scrolling */}
+      <main className="flex-1 overflow-y-auto overscroll-y-contain px-3.5 pt-3 pb-6 max-w-lg mx-auto w-full animate-fade-in [-webkit-overflow-scrolling:touch]">
         <Outlet />
       </main>
 
       {/* Bottom Thumb Navigation Bar styled in Desktop Sidebar Theme (#0f0f10) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f10] border-t border-white/[0.08] px-2 py-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))] flex justify-around items-center max-w-lg mx-auto shadow-[0_-4px_24px_rgba(0,0,0,0.6)]">
+      <nav className="shrink-0 z-30 bg-[#0f0f10] border-t border-white/[0.08] px-2 py-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))] flex justify-around items-center max-w-lg mx-auto shadow-[0_-4px_24px_rgba(0,0,0,0.6)]">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.to || 

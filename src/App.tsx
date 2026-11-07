@@ -65,6 +65,8 @@ import { MobileApprovals } from '@/pages/mobile/MobileApprovals'
 import { MobileCashbook } from '@/pages/mobile/MobileCashbook'
 import { MobileMRHub } from '@/pages/mobile/MobileMRHub'
 import { MobileMore } from '@/pages/mobile/MobileMore'
+import { MobileQuotations } from '@/pages/mobile/MobileQuotations'
+import { MobileSalesOrders } from '@/pages/mobile/MobileSalesOrders'
 
 const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-64">
@@ -110,6 +112,8 @@ function AppRoutes() {
         <Route index element={<Navigate to="/mobile/dashboard" replace />} />
         <Route path="dashboard" element={<MobileDashboard />} />
         <Route path="approvals" element={<MobileApprovals />} />
+        <Route path="quotations" element={<MobileQuotations />} />
+        <Route path="orders" element={<MobileSalesOrders />} />
         <Route path="cashbook" element={<MobileCashbook />} />
         <Route path="mr" element={<MobileMRHub />} />
         <Route path="more" element={<MobileMore />} />

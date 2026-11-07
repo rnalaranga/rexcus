@@ -103,16 +103,20 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const customerVat = order?.customerVat || order?.vatNo || matchedCustomer?.vat || matchedCustomer?.tin || '';
   const customerAttention = order?.attention || '';
 
-  const isCustomerForeign = Boolean(
+  const isOrderOriginallyUSD = Boolean(
+    order?.currency === 'USD' ||
+    order?.currency === '$' ||
+    order?.taxProfileId === 'tp_export_zero_rated' ||
+    order?.isForeign ||
     matchedCustomer?.isForeign ||
     matchedCustomer?.currency === 'USD' ||
-    order?.isForeign ||
-    order?.currency === 'USD' ||
     linkedQuotation?.currency === 'USD' ||
     (linkedQuotation?.data && typeof linkedQuotation.data === 'string' && linkedQuotation.data.includes('"currency":"USD"'))
   );
 
-  const detectedCurrency = isCustomerForeign 
+  const isCustomerForeign = isOrderOriginallyUSD;
+
+  const detectedCurrency = isOrderOriginallyUSD 
     ? 'USD' 
     : String(order?.currency || matchedCustomer?.currency || 'LKR').trim().toUpperCase();
   const detectedExchangeRate = Number(order?.exchangeRate || (detectedCurrency === 'USD' ? 310 : 1));
@@ -134,13 +138,20 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
   // Effective Order total adjusted for selected currency
   const effectiveOrderTotal = useMemo(() => {
-    if (currency === 'USD' && order?.currency !== 'USD') {
-      return Number((rawOrderTotal / (exchangeRate || 310)).toFixed(2));
-    } else if (currency === 'LKR' && order?.currency === 'USD') {
-      return Number((rawOrderTotal * (order?.exchangeRate || 310)).toFixed(2));
+    if (isOrderOriginallyUSD) {
+      if (currency === 'USD') {
+        return rawOrderTotal; // Strictly USD 1:1, never divide by 310
+      } else {
+        return Number((rawOrderTotal * (order?.exchangeRate || exchangeRate || 310)).toFixed(2));
+      }
+    } else {
+      if (currency === 'USD') {
+        return Number((rawOrderTotal / (exchangeRate || 310)).toFixed(2));
+      } else {
+        return rawOrderTotal;
+      }
     }
-    return rawOrderTotal;
-  }, [currency, rawOrderTotal, order?.currency, order?.exchangeRate, exchangeRate]);
+  }, [currency, rawOrderTotal, isOrderOriginallyUSD, order?.exchangeRate, exchangeRate]);
 
   // Form State
   const [proformaNo, setProformaNo] = useState('');
@@ -269,7 +280,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
       } catch(e) {}
     }
 
-    const isOrderInUSD = Boolean(order?.currency === 'USD' || linkedQuotation?.currency === 'USD');
+    const isOrderInUSD = isOrderOriginallyUSD;
     const isTargetUSD = detectedCurrency === 'USD';
 
     let extractedLines: ProformaLineItem[] = [];

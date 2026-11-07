@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   User, Monitor, Download, Shield, LogOut, Moon, Sun, 
-  ExternalLink, Smartphone, Server, CheckCircle2, ChevronRight, HelpCircle
+  ExternalLink, Smartphone, Server, CheckCircle2, ChevronRight, HelpCircle,
+  FileText, ShoppingBag, CheckSquare, Wallet, PackageCheck
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -101,6 +102,75 @@ export const MobileMore: React.FC = () => {
               {settings.company_name || 'Rex Industries (Pvt) Ltd'}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Operational Modules Navigation */}
+      <div className="space-y-2">
+        <span className="text-[10px] font-semibold text-muted uppercase tracking-wider block px-1">
+          Operations & Commercial Records
+        </span>
+
+        <div className="grid grid-cols-2 gap-2">
+          {/* Quotations */}
+          <button
+            type="button"
+            onClick={() => navigate('/mobile/quotations')}
+            className="p-3 rounded-xl bg-surface border border-theme hover:bg-surface2 flex items-center gap-2.5 active:scale-95 transition-all text-left shadow-xs"
+          >
+            <div className="w-8 h-8 rounded-lg bg-rex-600/10 text-rex-600 flex items-center justify-center shrink-0">
+              <FileText size={16} />
+            </div>
+            <div>
+              <span className="text-xs font-bold block text-primary">Quotations</span>
+              <span className="text-[10px] text-muted">All Quotes</span>
+            </div>
+          </button>
+
+          {/* Sales Orders */}
+          <button
+            type="button"
+            onClick={() => navigate('/mobile/orders')}
+            className="p-3 rounded-xl bg-surface border border-theme hover:bg-surface2 flex items-center gap-2.5 active:scale-95 transition-all text-left shadow-xs"
+          >
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+              <ShoppingBag size={16} />
+            </div>
+            <div>
+              <span className="text-xs font-bold block text-primary">Sales Orders</span>
+              <span className="text-[10px] text-muted">Factory Orders</span>
+            </div>
+          </button>
+
+          {/* Approvals */}
+          <button
+            type="button"
+            onClick={() => navigate('/mobile/approvals')}
+            className="p-3 rounded-xl bg-surface border border-theme hover:bg-surface2 flex items-center gap-2.5 active:scale-95 transition-all text-left shadow-xs"
+          >
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+              <CheckSquare size={16} />
+            </div>
+            <div>
+              <span className="text-xs font-bold block text-primary">Approvals</span>
+              <span className="text-[10px] text-muted">Sign-off Hub</span>
+            </div>
+          </button>
+
+          {/* Cashbook */}
+          <button
+            type="button"
+            onClick={() => navigate('/mobile/cashbook')}
+            className="p-3 rounded-xl bg-surface border border-theme hover:bg-surface2 flex items-center gap-2.5 active:scale-95 transition-all text-left shadow-xs"
+          >
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+              <Wallet size={16} />
+            </div>
+            <div>
+              <span className="text-xs font-bold block text-primary">Cashbook</span>
+              <span className="text-[10px] text-muted">Cash Vouchers</span>
+            </div>
+          </button>
         </div>
       </div>
 
