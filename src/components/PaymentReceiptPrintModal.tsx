@@ -307,7 +307,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                     <tr className="bg-slate-900 text-white font-bold text-[10.5px] uppercase">
                       <th className="p-2 border-r border-slate-700 w-12 text-center">#</th>
                       <th className="p-2 border-r border-slate-700 text-left">Description / Particulars</th>
-                      <th className="p-2 text-right w-48">Amount (LKR)</th>
+                      <th className="p-2 text-right w-48">Amount ({receiptCurrency})</th>
                     </tr>
                   </thead>
                   <tbody>

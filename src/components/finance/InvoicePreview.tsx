@@ -652,7 +652,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               Unit<br/>Price
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
-              {isSsclHidden && isVatHidden
+              {isProforma || (isSsclHidden && isVatHidden)
                 ? <>Amount<br/>({currSymbol})</>
                 : <>Amount<br/>Excluding VAT<br/>({currSymbol})</>}
             </th>
@@ -766,7 +766,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           {/* TOTAL CONSIDERATION */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isProforma ? 'Total Amount Payable (LKR):' : 'Total Amount/consideration including VAT:'}
+              {isProforma ? `Total Amount Payable (${invoiceCurrency}):` : 'Total Amount/consideration including VAT:'}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
               {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
