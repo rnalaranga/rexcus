@@ -1,0 +1,23 @@
+{
+  "short_name": "Rex ERP",
+  "name": "Rex Industries ERP",
+  "description": "Executive & Field Mobile Portal for Rex Industries ERP",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/rex-logo.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/rex-logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "categories": ["business", "productivity", "finance"]
+}

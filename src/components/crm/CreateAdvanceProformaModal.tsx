@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, FileText, CheckCircle, Percent, DollarSign, Calendar, 
-  Building2, User, Receipt, ShieldCheck, CreditCard, Sparkles, AlertCircle 
+  Building2, User, Receipt, ShieldCheck, CreditCard, Sparkles, AlertCircle,
+  Plus, Trash2, Package
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
@@ -18,6 +19,17 @@ interface Props {
   order: any;
   onSuccess: (invoice: any) => void;
   settings?: any;
+}
+
+export interface ProformaLineItem {
+  id: string;
+  reference: string;
+  description: string;
+  specifications: string;
+  qty: number;
+  uom: string;
+  unitPrice: number;
+  amount: number;
 }
 
 const toDateOnly = (val: any): string | null => {
@@ -138,6 +150,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   );
   const [advancePercent, setAdvancePercent] = useState<number>(30);
   const [advanceBaseAmount, setAdvanceBaseAmount] = useState<number>(0);
+  const [proformaLines, setProformaLines] = useState<ProformaLineItem[]>([]);
   
   // Tax Options: 'none' (Advance Deposit - No extra tax) | 'opt1' (Absorbed) | 'opt2' (SSCL Absorbed + VAT 18% Extracted) | 'opt3' (SSCL + VAT Extracted)
   const [taxOption, setTaxOption] = useState<'opt1' | 'opt2' | 'opt3' | 'none'>('none');
@@ -149,47 +162,99 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Compute live lines total
+  const currentLinesTotal = useMemo(() => {
+    if (proformaLines.length > 0) {
+      return proformaLines.reduce((acc, l) => acc + (Number(l.amount) || ((Number(l.qty) || 1) * Number(l.unitPrice || 0))), 0);
+    }
+    return effectiveOrderTotal;
+  }, [proformaLines, effectiveOrderTotal]);
+
   // Currency switcher handler
   const handleCurrencyChange = (newCur: string, newRate: number) => {
     if (newCur === currency) return;
+    const oldCur = currency;
+    const oldRate = exchangeRate;
     setCurrency(newCur);
     setExchangeRate(newRate);
-    let targetOrdTotal = rawOrderTotal;
-    if (newCur === 'USD' && order?.currency !== 'USD') {
-      targetOrdTotal = Number((rawOrderTotal / newRate).toFixed(2));
-    } else if (newCur === 'LKR' && order?.currency === 'USD') {
-      targetOrdTotal = Number((rawOrderTotal * (order?.exchangeRate || 310)).toFixed(2));
+
+    // Convert existing line items
+    setProformaLines(prevLines => {
+      const converted = prevLines.map(line => {
+        let uPrice = line.unitPrice;
+        if (newCur === 'USD' && oldCur === 'LKR') {
+          uPrice = Number((line.unitPrice / (newRate || 310)).toFixed(2));
+        } else if (newCur === 'LKR' && oldCur === 'USD') {
+          uPrice = Number((line.unitPrice * (oldRate || 310)).toFixed(2));
+        }
+        const amt = Number((Number(line.qty) * uPrice).toFixed(2));
+        return {
+          ...line,
+          unitPrice: uPrice,
+          amount: amt
+        };
+      });
+
+      const newTot = converted.reduce((sum, l) => sum + l.amount, 0);
+      const newAdv = Math.round((newTot * (advancePercent / 100)) * 100) / 100;
+      setAdvanceBaseAmount(newAdv);
+
+      return converted;
+    });
+  };
+
+  // Line item handlers
+  const handleUpdateLine = (index: number, field: keyof ProformaLineItem, value: any) => {
+    setProformaLines(prev => {
+      const next = [...prev];
+      const cur = { ...next[index], [field]: value };
+      if (field === 'qty' || field === 'unitPrice') {
+        const q = field === 'qty' ? (Number(value) || 0) : (Number(cur.qty) || 0);
+        const u = field === 'unitPrice' ? (Number(value) || 0) : (Number(cur.unitPrice) || 0);
+        cur.amount = Number((q * u).toFixed(2));
+      }
+      next[index] = cur;
+
+      const newTot = next.reduce((sum, l) => sum + (Number(l.amount) || ((Number(l.qty) || 1) * Number(l.unitPrice || 0))), 0);
+      const newAdv = Math.round((newTot * (advancePercent / 100)) * 100) / 100;
+      setAdvanceBaseAmount(newAdv);
+      return next;
+    });
+  };
+
+  const handleAddLine = () => {
+    setProformaLines(prev => {
+      const next: ProformaLineItem = {
+        id: `line-${Date.now()}`,
+        reference: String(prev.length + 1),
+        description: 'New Machining Item / Part',
+        specifications: '',
+        qty: 1,
+        uom: 'Nos',
+        unitPrice: 0,
+        amount: 0
+      };
+      return [...prev, next];
+    });
+  };
+
+  const handleRemoveLine = (index: number) => {
+    if (proformaLines.length <= 1) {
+      toast('At least one item is required on the proforma invoice', 'warning');
+      return;
     }
-    const newAdv = Math.round((targetOrdTotal * (advancePercent / 100)) * 100) / 100;
-    setAdvanceBaseAmount(newAdv);
+    setProformaLines(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      const newTot = next.reduce((sum, l) => sum + (Number(l.amount) || ((Number(l.qty) || 1) * Number(l.unitPrice || 0))), 0);
+      const newAdv = Math.round((newTot * (advancePercent / 100)) * 100) / 100;
+      setAdvanceBaseAmount(newAdv);
+      return next;
+    });
   };
 
   // Initialize advance base amount, proforma number, and tax option from order
   useEffect(() => {
-    if (effectiveOrderTotal > 0) {
-      const initAdv = Math.round((effectiveOrderTotal * 0.3) * 100) / 100;
-      setAdvanceBaseAmount(initAdv);
-      setAdvancePercent(30);
-    }
-
-    // Default Proforma Invoice number: PI-<YEAR><MONTH>-<CLEAN_ORD>
-    const now = new Date();
-    const yy = now.getFullYear().toString().slice(-2);
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const mmm = months[now.getMonth()];
-    const cleanOrd = orderNo ? orderNo.replace(/[^A-Za-z0-9]/g, '') : Date.now().toString().slice(-4);
-    setProformaNo(`PI-${yy}${mmm}-${cleanOrd.slice(-5)}`);
-
-    // Advance Proforma Invoice is non-taxable advance deposit (tax is settled on final tax invoice)
-    setTaxOption('none');
-
-    // Default notes
-    setNotes(
-      `Proforma Invoice for advance payment against Sales Order #${orderNo}. ` +
-      `Kindly arrange payment to the bank account stated below to commence manufacturing.`
-    );
-
-    // Auto-extract item description and technical specifications from order or linked quotation
+    // Auto-extract item lines from order or linked quotation
     let itemsList: any[] = [];
     if (order?.items) {
       try {
@@ -204,38 +269,87 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
       } catch(e) {}
     }
 
+    const isOrderInUSD = Boolean(order?.currency === 'USD' || linkedQuotation?.currency === 'USD');
+    const isTargetUSD = detectedCurrency === 'USD';
+
+    let extractedLines: ProformaLineItem[] = [];
     if (Array.isArray(itemsList) && itemsList.length > 0) {
-      if (itemsList.length === 1) {
-        const single = itemsList[0];
-        const name = single.desc || single.description || single.productName || single.name || order?.productName || 'Quoted Product';
-        const spec = single.specs || single.specifications || single.details || single.sku || single.productSku || order?.productSku || '';
-        const qtyStr = `Qty: ${single.qty || order?.qty || 1} ${single.uom || single.unit || 'Nos'}`;
-        setItemDescription(name);
-        setItemSpecification([spec, qtyStr].filter(Boolean).join(' | '));
-      } else {
-        const mainTitle = order?.productName || (linkedQuotation?.data ? (typeof linkedQuotation.data === 'string' ? JSON.parse(linkedQuotation.data).subject : linkedQuotation.data.subject) : '') || `Order Items (${itemsList.length} Products / Parts)`;
-        setItemDescription(mainTitle);
-        const specLines = itemsList.map((it: any, idx: number) => {
-          const itName = it.desc || it.description || it.productName || it.name || `Item #${idx+1}`;
-          const itQty = `${it.qty || 1} ${it.uom || it.unit || 'Nos'}`;
-          const itSpec = it.specs || it.specifications || it.details || it.sku || '';
-          return `${idx + 1}. ${itName} - ${itQty}${itSpec ? ` (${itSpec})` : ''}`;
-        }).join('\n');
-        setItemSpecification(specLines);
-      }
-    } else if (order?.productName) {
-      setItemDescription(order.productName);
-      const specs = [
-        order.productSku ? `SKU: ${order.productSku}` : '',
-        order.qty ? `Order Qty: ${order.qty} ${order.uom || 'Nos'}` : '',
-        order.notes ? `Scope: ${order.notes}` : ''
-      ].filter(Boolean).join(' | ');
-      setItemSpecification(specs);
+      extractedLines = itemsList.map((it: any, idx: number) => {
+        let uPrice = Number(it.unitPrice || 0);
+        let amt = Number(it.amount || 0);
+        const q = Number(it.qty) || 1;
+
+        if (isTargetUSD && !isOrderInUSD) {
+          uPrice = Number((uPrice / (detectedExchangeRate || 310)).toFixed(2));
+          amt = Number((amt / (detectedExchangeRate || 310)).toFixed(2));
+        } else if (!isTargetUSD && isOrderInUSD) {
+          uPrice = Number((uPrice * (order?.exchangeRate || 310)).toFixed(2));
+          amt = Number((amt * (order?.exchangeRate || 310)).toFixed(2));
+        }
+
+        if (amt === 0 && uPrice > 0) {
+          amt = Number((q * uPrice).toFixed(2));
+        } else if (uPrice === 0 && amt > 0 && q > 0) {
+          uPrice = Number((amt / q).toFixed(2));
+        }
+
+        return {
+          id: it.id || `line-${idx + 1}`,
+          reference: it.reference || String(idx + 1),
+          description: it.desc || it.description || it.productName || it.name || `Item #${idx + 1}`,
+          specifications: it.specs || it.specifications || it.details || it.sku || it.productSku || '',
+          qty: q,
+          uom: it.uom || it.unit || 'Nos',
+          unitPrice: uPrice,
+          amount: amt
+        };
+      });
     } else {
-      setItemDescription(`Sales Order #${orderNo} Goods & Manufacturing Services`);
-      setItemSpecification(order?.notes || 'Custom engineering fabrication and machining as per agreed specifications.');
+      const q = Number(order?.qty) || 1;
+      let tot = effectiveOrderTotal;
+      let uPrice = Number((tot / q).toFixed(2));
+      extractedLines = [{
+        id: 'line-1',
+        reference: '1',
+        description: order?.productName || `Sales Order #${orderNo} Goods & Manufacturing`,
+        specifications: [
+          order?.productSku ? `SKU: ${order.productSku}` : '',
+          order?.notes ? `Scope: ${order.notes}` : ''
+        ].filter(Boolean).join(' | '),
+        qty: q,
+        uom: order?.uom || 'Nos',
+        unitPrice: uPrice,
+        amount: tot
+      }];
     }
-  }, [order, effectiveOrderTotal, orderNo, linkedQuotation]);
+    setProformaLines(extractedLines);
+
+    // Initial percentage: 100% for foreign / USD orders, 30% for domestic
+    const initialPct = (detectedCurrency === 'USD' || isCustomerForeign) ? 100 : 30;
+    setAdvancePercent(initialPct);
+
+    const linesSum = extractedLines.reduce((acc, l) => acc + (Number(l.amount) || ((Number(l.qty) || 1) * Number(l.unitPrice || 0))), 0);
+    const targetTotal = linesSum > 0 ? linesSum : effectiveOrderTotal;
+    const initAdv = Math.round((targetTotal * (initialPct / 100)) * 100) / 100;
+    setAdvanceBaseAmount(initAdv);
+
+    // Default Proforma Invoice number: PI-<YEAR><MONTH>-<CLEAN_ORD>
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const mmm = months[now.getMonth()];
+    const cleanOrd = orderNo ? orderNo.replace(/[^A-Za-z0-9]/g, '') : Date.now().toString().slice(-4);
+    setProformaNo(`PI-${yy}${mmm}-${cleanOrd.slice(-5)}`);
+
+    // Advance Proforma Invoice is non-taxable advance deposit (tax is settled on final tax invoice)
+    setTaxOption('none');
+
+    // Default notes
+    setNotes(
+      `Proforma Invoice for ${initialPct}% payment against Sales Order #${orderNo}. ` +
+      `Kindly arrange payment to the bank account stated below to commence manufacturing.`
+    );
+  }, [order, effectiveOrderTotal, orderNo, linkedQuotation, detectedCurrency, detectedExchangeRate, isCustomerForeign]);
 
   // Handle bank accounts filter
   // Handle bank accounts filter (Settings Company Bank Details + GL Bank Accounts)
@@ -324,14 +438,14 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   // Quick percent buttons
   const handlePercentSelect = (pct: number) => {
     setAdvancePercent(pct);
-    const val = Math.round((effectiveOrderTotal * (pct / 100)) * 100) / 100;
+    const val = Math.round((currentLinesTotal * (pct / 100)) * 100) / 100;
     setAdvanceBaseAmount(val);
   };
 
   const handleAmountChange = (amt: number) => {
     setAdvanceBaseAmount(amt);
-    if (effectiveOrderTotal > 0) {
-      const pct = Math.round((amt / effectiveOrderTotal) * 100);
+    if (currentLinesTotal > 0) {
+      const pct = Math.round((amt / currentLinesTotal) * 100);
       setAdvancePercent(pct);
     }
   };
@@ -405,23 +519,32 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     try {
       const cleanDocNo = proformaNo.trim();
 
-      // Build line item for proforma invoice with explicit Item Description & Specifications
-      const finalItemDesc = itemDescription.trim() || order?.productName || `Sales Order #${orderNo} Products`;
-      const finalItemSpecs = itemSpecification.trim();
-      
-      const proformaItems = [
-        {
-          id: `item-${Date.now()}`,
-          reference: 'ADV-1',
-          description: `Advance Payment Deposit (${advancePercent}%) - ${finalItemDesc}`,
-          details: finalItemSpecs ? `Item Specification & Scope:\n${finalItemSpecs}` : (order?.productName ? `Item: ${order.productName} (Total Order: ${formatCurrency(effectiveOrderTotal, false, currency)})` : `Sales Order #${orderNo}`),
-          specifications: finalItemSpecs,
-          qty: 1,
-          unitPrice: calculation.subtotal,
-          amount: calculation.subtotal,
+      // Build multi-line items for proforma invoice preserving individual Sales Order lines
+      const factor = advancePercent / 100;
+      const proformaItems = proformaLines.map((line, idx) => {
+        const lineUnitPrice = advancePercent === 100 
+          ? Number(line.unitPrice) 
+          : Number((Number(line.unitPrice) * factor).toFixed(2));
+        const lineAmount = advancePercent === 100 
+          ? Number(line.amount) 
+          : Number((Number(line.amount) * factor).toFixed(2));
+
+        return {
+          id: line.id || `item-${Date.now()}-${idx}`,
+          reference: line.reference || String(idx + 1),
+          description: line.description,
+          details: [
+            line.specifications,
+            advancePercent < 100 ? `Advance Deposit (${advancePercent}%) | Original Item Value: ${formatCurrency(line.amount, false, currency)}` : ''
+          ].filter(Boolean).join('\n'),
+          specifications: line.specifications || '',
+          qty: Number(line.qty) || 1,
+          uom: line.uom || 'Nos',
+          unitPrice: lineUnitPrice,
+          amount: lineAmount,
           taxRate: (taxOption === 'opt2' || taxOption === 'opt3') ? 18 : 0
-        }
-      ];
+        };
+      });
 
       const payload: any = {
         id: cleanDocNo,
@@ -526,7 +649,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-y-auto">
       <div 
-        className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-xl overflow-hidden flex flex-col my-6"
+        className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col my-6"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -566,7 +689,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <span className="text-muted block text-[10px] uppercase">Order Value</span>
-                <span className="font-bold text-primary text-xs">{formatCurrency(effectiveOrderTotal, false, currency)}</span>
+                <span className="font-bold text-primary text-xs">{formatCurrency(currentLinesTotal, false, currency)}</span>
               </div>
               <div>
                 <span className="text-muted block text-[10px] uppercase">Ref Quotation</span>
@@ -664,42 +787,122 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Section 2: Item Description & Technical Specifications */}
-          <div className="p-3 bg-surface2/50 border border-theme-subtle rounded-none space-y-2.5">
+          {/* Section 2: Order Line Items (All items preserved from Sales Order) */}
+          <div className="p-3 bg-surface2/50 border border-theme-subtle rounded-none space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
-                <FileText size={13} className="text-amber-500" /> Item Description & Specifications
-              </span>
-              <span className="text-[10px] text-muted">
-                Will be printed in the goods description column
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
+                  <Package size={13} className="text-amber-500" /> Order Line Items ({proformaLines.length})
+                </span>
+                <span className="text-[10px] text-muted">
+                  Individual products & technical specifications from Sales Order #{orderNo}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddLine}
+                className="px-2 py-0.5 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 flex items-center gap-1 transition-colors"
+              >
+                <Plus size={12} /> Add Item
+              </button>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
-                Item / Product Description *
-              </label>
-              <input
-                type="text"
-                required
-                value={itemDescription}
-                onChange={(e) => setItemDescription(e.target.value)}
-                placeholder="e.g. Rex Heavy-Duty Hydraulic Cylinder 50x300mm"
-                className="w-full h-8 px-2.5 font-semibold bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
-                Technical Specifications & Scope of Work
-              </label>
-              <textarea
-                rows={2}
-                value={itemSpecification}
-                onChange={(e) => setItemSpecification(e.target.value)}
-                placeholder="e.g. SKU: REX-CYL-50300 | Material: Hardened Steel C45 | Bore 50mm, Stroke 300mm | Working Pressure: 250 Bar"
-                className="w-full p-2 text-xs font-mono bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 custom-scrollbar"
-              />
+            <div className="border border-theme-subtle overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-surface2 text-muted font-bold uppercase text-[10px] border-b border-theme-subtle">
+                  <tr>
+                    <th className="p-2 w-10 text-center">#</th>
+                    <th className="p-2">Product Description & Technical Specifications</th>
+                    <th className="p-2 w-28 text-center">Qty & UoM</th>
+                    <th className="p-2 w-28 text-right">Unit Price ({currency === 'USD' ? '$' : 'Rs.'})</th>
+                    <th className="p-2 w-28 text-right">Total ({currency === 'USD' ? '$' : 'Rs.'})</th>
+                    <th className="p-2 w-10 text-center"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle bg-surface">
+                  {proformaLines.map((line, idx) => (
+                    <tr key={line.id || idx} className="hover:bg-surface2/30 transition-colors">
+                      <td className="p-2 text-center font-mono font-bold text-muted align-top pt-3">
+                        {line.reference || idx + 1}
+                      </td>
+                      <td className="p-2 space-y-1">
+                        <input
+                          type="text"
+                          required
+                          value={line.description}
+                          onChange={(e) => handleUpdateLine(idx, 'description', e.target.value)}
+                          placeholder="Item / Product Description"
+                          className="w-full h-7 px-2 font-semibold text-xs bg-surface2/70 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                        />
+                        <textarea
+                          rows={1}
+                          value={line.specifications}
+                          onChange={(e) => handleUpdateLine(idx, 'specifications', e.target.value)}
+                          placeholder="Technical specifications, dimensions, material grade..."
+                          className="w-full p-1.5 text-[11px] font-mono bg-surface2/50 border border-theme-subtle rounded-none text-secondary focus:outline-none focus:border-rex-500 resize-none"
+                        />
+                      </td>
+                      <td className="p-2 align-top pt-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            required
+                            value={line.qty}
+                            onChange={(e) => handleUpdateLine(idx, 'qty', e.target.value)}
+                            className="w-16 h-7 px-1.5 font-mono text-center font-bold bg-surface2/70 border border-theme-subtle text-primary focus:outline-none focus:border-rex-500"
+                          />
+                          <input
+                            type="text"
+                            value={line.uom}
+                            onChange={(e) => handleUpdateLine(idx, 'uom', e.target.value)}
+                            placeholder="Nos"
+                            className="w-10 h-7 px-1 text-center text-[10px] font-mono bg-surface2/50 border border-theme-subtle text-muted"
+                          />
+                        </div>
+                      </td>
+                      <td className="p-2 align-top pt-2 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={line.unitPrice}
+                          onChange={(e) => handleUpdateLine(idx, 'unitPrice', e.target.value)}
+                          className="w-24 h-7 px-2 font-mono text-right font-bold bg-surface2/70 border border-theme-subtle text-primary focus:outline-none focus:border-rex-500"
+                        />
+                      </td>
+                      <td className="p-2 align-top pt-3 text-right font-mono font-bold text-xs text-primary">
+                        {formatCurrency(line.amount, false, currency)}
+                      </td>
+                      <td className="p-2 align-top pt-2.5 text-center">
+                        {proformaLines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLine(idx)}
+                            className="p-1 text-muted hover:text-rose-500 transition-colors"
+                            title="Remove item"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-surface2/60 border-t border-theme-subtle font-mono text-xs">
+                  <tr>
+                    <td colSpan={4} className="p-2 text-right font-bold text-muted uppercase text-[10px]">
+                      Gross Sales Order Lines Total:
+                    </td>
+                    <td className="p-2 text-right font-bold text-xs text-primary">
+                      {formatCurrency(currentLinesTotal, false, currency)}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
 
@@ -710,7 +913,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 <Percent size={13} className="text-blue-500" /> Advance Deposit Amount
               </span>
               <span className="text-[11px] font-mono text-muted">
-                Order: {formatCurrency(effectiveOrderTotal, false, currency)}
+                Order: {formatCurrency(currentLinesTotal, false, currency)}
               </span>
             </div>
 

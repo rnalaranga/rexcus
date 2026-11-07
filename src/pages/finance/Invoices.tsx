@@ -868,12 +868,13 @@ export const Invoices: React.FC = () => {
 
         // 6. Payment Status
         const pay = getInvoicePaymentInfo(item);
+        const invCurr = item.currency || linkedOrder?.currency || (item.isForeign ? 'USD' : 'LKR');
         if (pay.paid > 0) {
           traces.push({
             type: 'receipt',
             title: pay.isSettled ? 'Settled Payment' : 'Partial Payment',
-            reference: `${formatCurrency(pay.paid)} Paid`,
-            subtitle: pay.isSettled ? 'Paid in Full' : `Remaining Due: ${formatCurrency(pay.due)}`,
+            reference: `${formatCurrency(pay.paid, false, invCurr)} Paid`,
+            subtitle: pay.isSettled ? 'Paid in Full' : `Remaining Due: ${formatCurrency(pay.due, false, invCurr)}`,
             statusBadge: { 
               label: pay.isSettled ? 'Settled' : 'Part Paid', 
               variant: pay.isSettled ? 'success' : 'warning' 

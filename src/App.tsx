@@ -59,6 +59,12 @@ import { Settings } from '@/pages/admin/Settings'
 import { VariableSettings } from '@/pages/admin/VariableSettings'
 import Approvals from '@/pages/admin/Approvals'
 import { RexAIAssistant } from '@/components/ai/RexAIAssistant'
+import { MobileLayout } from '@/components/mobile/MobileLayout'
+import { MobileDashboard } from '@/pages/mobile/MobileDashboard'
+import { MobileApprovals } from '@/pages/mobile/MobileApprovals'
+import { MobileCashbook } from '@/pages/mobile/MobileCashbook'
+import { MobileMRHub } from '@/pages/mobile/MobileMRHub'
+import { MobileMore } from '@/pages/mobile/MobileMore'
 
 const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-64">
@@ -69,6 +75,19 @@ const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
     </div>
   </div>
 )
+
+const RootRedirect = () => {
+  const isMobile = typeof window !== 'undefined' && (
+    window.innerWidth <= 768 || 
+    /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  );
+  const pref = typeof window !== 'undefined' ? localStorage.getItem('rex_pref_view') : null;
+
+  if (isMobile && pref !== 'desktop') {
+    return <Navigate to="/mobile/dashboard" replace />;
+  }
+  return <Navigate to="/crm/leads" replace />;
+};
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
@@ -84,7 +103,18 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
       
-      <Route path="/" element={<Navigate to="/crm/leads" replace />} />
+      <Route path="/" element={<RootRedirect />} />
+
+      {/* Dedicated Mobile Portal Routes */}
+      <Route path="/mobile" element={<ProtectedRoute><MobileLayout /></ProtectedRoute>}>
+        <Route index element={<Navigate to="/mobile/dashboard" replace />} />
+        <Route path="dashboard" element={<MobileDashboard />} />
+        <Route path="approvals" element={<MobileApprovals />} />
+        <Route path="cashbook" element={<MobileCashbook />} />
+        <Route path="mr" element={<MobileMRHub />} />
+        <Route path="more" element={<MobileMore />} />
+      </Route>
+
       <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           {/* CRM */}
           <Route path="/crm" element={<CRMDashboard />} />

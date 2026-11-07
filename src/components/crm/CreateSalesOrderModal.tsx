@@ -348,6 +348,19 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       ? `PO_${initPoNo || 'Attachment'}.pdf`
       : '';
 
+    const isQuoteUSD = Boolean(
+      quotation.currency === 'USD' ||
+      quoteData.currency === 'USD' ||
+      cust?.currency === 'USD' ||
+      cust?.isForeign ||
+      (lead as any)?.currency === 'USD' ||
+      (lead as any)?.isForeign ||
+      quotation.selectedProfileId === 'tp_export_zero_rated' ||
+      quoteData.selectedProfileId === 'tp_export_zero_rated'
+    );
+    const resolvedOrderCur = isQuoteUSD ? 'USD' : (quoteData.currency || quotation.currency || cust?.currency || (lead as any)?.currency || 'LKR');
+    const resolvedOrderRate = Number(quoteData.exchangeRate || quotation.exchangeRate || (resolvedOrderCur === 'USD' ? 310 : 1));
+
     setFormData({
       orderNo: fallbackOrderNo,
       quoteId: quotation.id,
@@ -372,14 +385,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       discountAmount: quoteDiscountAmount,
       taxAmount,
       taxRate,
-      taxProfileId,
+      taxProfileId: isQuoteUSD ? 'tp_export_zero_rated' : taxProfileId,
       isTaxInclusive: isQuoteTaxInclusive,
       vatAmount,
       ssclAmount,
       totalPrice: grandTotal,
       status: 'Confirmed',
-      currency: quoteData.currency || quotation.currency || cust?.currency || (lead as any)?.currency || (cust?.isForeign ? 'USD' : 'LKR'),
-      exchangeRate: Number(quoteData.exchangeRate || quotation.exchangeRate || 1),
+      currency: resolvedOrderCur,
+      exchangeRate: resolvedOrderRate,
       notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
     });
 
@@ -737,6 +750,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       const payload = {
         ...formData,
         orderNo: cleanOrderNo,
+        currency: formData.currency || 'LKR',
+        exchangeRate: Number(formData.exchangeRate) || (formData.currency === 'USD' ? 310 : 1),
         productName: itemsSummaryTitle,
         qty: totalItemsQty,
         unitPrice: formData.items.length === 1 ? Number(formData.items[0].unitPrice || 0) : (totalItemsQty > 0 ? (formData.subtotal / totalItemsQty) : formData.subtotal),

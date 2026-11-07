@@ -1561,6 +1561,10 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
     "ALTER TABLE leads CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
     "ALTER TABLE customers CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    "SET FOREIGN_KEY_CHECKS = 0",
+    "ALTER TABLE journal_entries CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    "ALTER TABLE journal_lines CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    "SET FOREIGN_KEY_CHECKS = 1",
     "ALTER TABLE quotations ADD INDEX idx_quo_date (date)",
     "ALTER TABLE quotations ADD INDEX idx_quo_leadId (leadId)",
     "ALTER TABLE quotations ADD INDEX idx_quo_no (quotationNo)",
@@ -1849,7 +1853,17 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN soChanged TINYINT(1) DEFAULT 0",
     "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''",
     "ALTER TABLE invoices MODIFY COLUMN deliveryDate DATE DEFAULT NULL",
-    "UPDATE journal_lines SET partyId = NULL, partyType = NULL WHERE accountId IN (SELECT id FROM chart_of_accounts WHERE type IN ('Revenue', 'Equity', 'Liability')) AND partyId IS NOT NULL"
+    "UPDATE journal_lines SET partyId = NULL, partyType = NULL WHERE accountId IN (SELECT id FROM chart_of_accounts WHERE type IN ('Revenue', 'Equity', 'Liability')) AND partyId IS NOT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'approved'",
+    "ALTER TABLE cashbook_entries ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'desktop'",
+    "ALTER TABLE cashbook_entries ADD COLUMN createdById VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN createdByName VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN approvedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN approvedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN rejectedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN rejectedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN rejectionReason TEXT DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN receiptPhoto MEDIUMTEXT DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -6282,6 +6296,8 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       vatAmount: Number(data.vatAmount) || 0,
       ssclAmount: Number(data.ssclAmount) || 0,
       totalPrice,
+      currency: data.currency || (data.taxProfileId === 'tp_export_zero_rated' ? 'USD' : 'LKR'),
+      exchangeRate: Number(data.exchangeRate) || (data.currency === 'USD' ? 310 : 1),
       status: data.status || 'Pending',
       stockStatus: String(data.stockStatus || stockStatus || 'In Stock').slice(0, 250),
       isDispatched: data.isDispatched ? 1 : 0,
@@ -10333,7 +10349,7 @@ app.get('/api/finance/cashbook', async (req, res) => {
       openingBalance = priorBal;
     }
 
-    // Fetch cashbook entries on requested date for this cash account
+    // Fetch approved cashbook entries on requested date for this cash account
     const [entries]: any = await db.query(
       `SELECT 
          cb.*,
@@ -10346,9 +10362,26 @@ app.get('/api/finance/cashbook', async (req, res) => {
        FROM cashbook_entries cb
        LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
        LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
-       WHERE cb.cashAccountId = ? AND cb.date = ?
+       WHERE cb.cashAccountId = ? AND cb.date = ? AND (cb.status = 'approved' OR cb.status IS NULL)
        ORDER BY cb.time ASC, cb.createdAt ASC, cb.id ASC`,
       [selectedCashAccountId, requestedDate]
+    );
+
+    // Fetch all pending cashbook entries for review / approval
+    const [pendingEntries]: any = await db.query(
+      `SELECT 
+         cb.*,
+         targetAcc.code AS accountCode,
+         targetAcc.name AS accountName,
+         targetAcc.type AS accountType,
+         targetAcc.subtype AS accountSubtype,
+         cashAcc.code AS cashAccountCode,
+         cashAcc.name AS cashAccountName
+       FROM cashbook_entries cb
+       LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
+       LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
+       WHERE cb.status = 'pending'
+       ORDER BY cb.date DESC, cb.time DESC, cb.createdAt DESC`
     );
 
     // Also include external journal entries affecting this cash account on requestedDate not in cashbook_entries (e.g. Banking transfers TRF-...)
@@ -10366,8 +10399,8 @@ app.get('/api/finance/cashbook', async (req, res) => {
        JOIN journal_entries je ON jl.entryId = je.id
        WHERE jl.accountId = ? 
          AND DATE(je.date) = ?
-         AND je.id NOT IN (SELECT COALESCE(journalEntryId, '') FROM cashbook_entries WHERE cashAccountId = ?)
-         AND je.reference NOT IN (SELECT id FROM cashbook_entries WHERE cashAccountId = ?)`,
+         AND je.id NOT IN (SELECT COALESCE(journalEntryId, '') COLLATE utf8mb4_unicode_ci FROM cashbook_entries WHERE cashAccountId = ?)
+         AND je.reference NOT IN (SELECT id COLLATE utf8mb4_unicode_ci FROM cashbook_entries WHERE cashAccountId = ?)`,
       [selectedCashAccountId, requestedDate, selectedCashAccountId, selectedCashAccountId]
     );
 
@@ -10430,6 +10463,10 @@ app.get('/api/finance/cashbook', async (req, res) => {
 
     const closingBalance = currentRunning;
 
+    const dayPendingEntries = pendingEntries.filter(
+      (p: any) => String(p.date).slice(0, 10) === requestedDate && p.cashAccountId === selectedCashAccountId
+    );
+
     res.json({
       date: requestedDate,
       cashAccount: currentCashAccount,
@@ -10439,7 +10476,9 @@ app.get('/api/finance/cashbook', async (req, res) => {
       totalOut,
       netMovement: totalIn - totalOut,
       closingBalance,
-      entries: processedEntries
+      entries: processedEntries,
+      pendingEntries: pendingEntries,
+      dayPendingEntries: dayPendingEntries
     });
   } catch (error: any) {
     console.error('Error fetching cashbook:', error);
@@ -10452,21 +10491,30 @@ app.post('/api/finance/cashbook', async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const {
+    let {
       date,
       time,
       entryType,
       amount,
       particulars,
       accountId,
+      targetAccountId,
       cashAccountId,
       referenceNo,
       partyName,
       createdBy,
-      notes
+      createdById,
+      createdByName,
+      recordedBy,
+      notes,
+      source,
+      status,
+      receiptPhoto
     } = req.body;
 
     if (!date) return res.status(400).json({ error: 'Date is required.' });
+    if (entryType === 'RECEIPT') entryType = 'IN';
+    if (entryType === 'PAYMENT') entryType = 'OUT';
     if (!entryType || !['IN', 'OUT'].includes(entryType)) {
       return res.status(400).json({ error: 'Valid entryType (IN or OUT) is required.' });
     }
@@ -10477,7 +10525,8 @@ app.post('/api/finance/cashbook', async (req, res) => {
     if (!particulars || !particulars.trim()) {
       return res.status(400).json({ error: 'Particulars / Description is required.' });
     }
-    if (!accountId) {
+    const finalAccountId = accountId || targetAccountId;
+    if (!finalAccountId) {
       return res.status(400).json({ error: 'Target Chart of Account is required.' });
     }
     if (!cashAccountId) {
@@ -10485,7 +10534,7 @@ app.post('/api/finance/cashbook', async (req, res) => {
     }
 
     // Verify both accounts exist
-    const [targetAccRows]: any = await conn.query('SELECT id, code, name, type, balance FROM chart_of_accounts WHERE id = ?', [accountId]);
+    const [targetAccRows]: any = await conn.query('SELECT id, code, name, type, balance FROM chart_of_accounts WHERE id = ?', [finalAccountId]);
     if (targetAccRows.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Target Chart of Account not found.' });
@@ -10501,12 +10550,48 @@ app.post('/api/finance/cashbook', async (req, res) => {
 
     const formattedDate = String(date).slice(0, 10);
     const entryTime = time ? String(time).slice(0, 8) : new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const submitterName = createdByName || recordedBy || createdBy || 'Staff';
+    const entrySource = source || (req.headers['x-rex-client'] === 'mobile' ? 'mobile' : 'desktop');
+    const isMobileOrPending = entrySource === 'mobile' || status === 'pending';
+
+    if (isMobileOrPending) {
+      // Mobile entry: saved as pending for Finance approval. Does not post to GL yet.
+      const cashbookId = `CB-M-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      await conn.query('INSERT INTO cashbook_entries SET ?', {
+        id: cashbookId,
+        date: formattedDate,
+        time: entryTime,
+        entryType,
+        amount: numAmount,
+        particulars: particulars.trim(),
+        accountId: targetAcc.id,
+        cashAccountId: cashAcc.id,
+        referenceNo: referenceNo ? referenceNo.trim() : null,
+        partyName: partyName ? partyName.trim() : null,
+        journalEntryId: null,
+        createdBy: submitterName,
+        createdById: createdById || null,
+        createdByName: submitterName,
+        source: 'mobile',
+        status: 'pending',
+        receiptPhoto: receiptPhoto || null,
+        notes: notes ? notes.trim() : null
+      });
+
+      await conn.commit();
+      return res.json({
+        success: true,
+        id: cashbookId,
+        status: 'pending',
+        source: 'mobile',
+        message: 'Cashbook voucher submitted for Finance approval'
+      });
+    }
+
+    // Direct desktop posting by Finance
     const cashbookId = `CB-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
     const journalId = `JE-${cashbookId}`;
 
-    // LKAS Double Entry lines
-    // Cash In: Debit Cash, Credit Target Account
-    // Cash Out: Debit Target Account, Credit Cash
     let cashDebit = 0;
     let cashCredit = 0;
     let targetDebit = 0;
@@ -10529,7 +10614,7 @@ app.post('/api/finance/cashbook', async (req, res) => {
       reference: referenceNo || cashbookId,
       description: journalDescription,
       totalAmount: numAmount,
-      createdBy: createdBy || 'Cashier',
+      createdBy: submitterName,
       status: 'posted',
       createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
     });
@@ -10547,7 +10632,6 @@ app.post('/api/finance/cashbook', async (req, res) => {
       partyId: partyName || null
     });
 
-    // Update Target Account Balance
     const targetBalanceChange = targetDebit - targetCredit;
     const targetIsDebitNormal = (targetAcc.type || '').toLowerCase().includes('asset') || (targetAcc.type || '').toLowerCase().includes('expense');
     let newTargetBal = Number(targetAcc.balance || 0);
@@ -10571,7 +10655,6 @@ app.post('/api/finance/cashbook', async (req, res) => {
       partyId: partyName || null
     });
 
-    // Update Cash Account Balance (Cash is Asset -> Debit Normal)
     const cashBalanceChange = cashDebit - cashCredit;
     const cashIsDebitNormal = (cashAcc.type || '').toLowerCase().includes('asset') || (cashAcc.type || '').toLowerCase().includes('expense');
     let newCashBal = Number(cashAcc.balance || 0);
@@ -10595,16 +10678,211 @@ app.post('/api/finance/cashbook', async (req, res) => {
       referenceNo: referenceNo ? referenceNo.trim() : null,
       partyName: partyName ? partyName.trim() : null,
       journalEntryId: journalId,
-      createdBy: createdBy || 'Cashier',
+      createdBy: submitterName,
+      createdById: createdById || null,
+      createdByName: submitterName,
+      source: 'desktop',
+      status: 'approved',
+      approvedBy: submitterName,
+      approvedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      receiptPhoto: receiptPhoto || null,
       notes: notes ? notes.trim() : null
     });
 
     await conn.commit();
-    res.json({ success: true, id: cashbookId, journalEntryId: journalId });
+    res.json({ success: true, id: cashbookId, journalEntryId: journalId, status: 'approved' });
   } catch (error: any) {
     await conn.rollback();
     console.error('Error recording cashbook entry:', error);
     res.status(500).json({ error: error.message || 'Failed to record cashbook entry' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.get('/api/finance/cashbook/pending', async (req, res) => {
+  try {
+    const [rows]: any = await db.query(
+      `SELECT 
+         cb.*,
+         targetAcc.code AS accountCode,
+         targetAcc.name AS accountName,
+         targetAcc.type AS accountType,
+         targetAcc.subtype AS accountSubtype,
+         cashAcc.code AS cashAccountCode,
+         cashAcc.name AS cashAccountName
+       FROM cashbook_entries cb
+       LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
+       LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
+       WHERE cb.status = 'pending'
+       ORDER BY cb.date DESC, cb.time DESC, cb.createdAt DESC`
+    );
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Error fetching pending cashbook entries:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch pending cashbook entries' });
+  }
+});
+
+app.post('/api/finance/cashbook/:id/approve', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const entryId = req.params.id;
+    const { approvedBy } = req.body;
+
+    await conn.beginTransaction();
+
+    const [entries]: any = await conn.query('SELECT * FROM cashbook_entries WHERE id = ? FOR UPDATE', [entryId]);
+    if (entries.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Cashbook entry not found' });
+    }
+
+    const entry = entries[0];
+    if (entry.status === 'approved') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'This cashbook entry is already approved.' });
+    }
+
+    const [targetAccRows]: any = await conn.query('SELECT id, code, name, type, balance FROM chart_of_accounts WHERE id = ?', [entry.accountId]);
+    const [cashAccRows]: any = await conn.query('SELECT id, code, name, type, balance FROM chart_of_accounts WHERE id = ?', [entry.cashAccountId]);
+
+    if (targetAccRows.length === 0 || cashAccRows.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Target or Cash Account not found in Chart of Accounts.' });
+    }
+
+    const targetAcc = targetAccRows[0];
+    const cashAcc = cashAccRows[0];
+    const numAmount = Number(entry.amount);
+
+    const journalId = `JE-${entry.id}`;
+    let cashDebit = 0, cashCredit = 0, targetDebit = 0, targetCredit = 0;
+
+    if (entry.entryType === 'IN') {
+      cashDebit = numAmount;
+      targetCredit = numAmount;
+    } else {
+      targetDebit = numAmount;
+      cashCredit = numAmount;
+    }
+
+    const journalDescription = `[Cashbook ${entry.entryType === 'IN' ? 'Receipt' : 'Payment'}] ${entry.particulars}${entry.partyName ? ' (' + entry.partyName + ')' : ''} [Approved Mobile Entry - Submitted by ${entry.createdByName || entry.createdBy}]`;
+
+    // 1. Create Journal Entry
+    const d = new Date(entry.date);
+    const formattedDate = !isNaN(d.getTime())
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : String(entry.date).slice(0, 10);
+    const rawTime = entry.time ? String(entry.time).trim() : '12:00:00';
+    const cleanTime = rawTime.length === 5 ? `${rawTime}:00` : (rawTime.length >= 8 ? rawTime.slice(0, 8) : '12:00:00');
+
+    await conn.query('INSERT INTO journal_entries SET ?', {
+      id: journalId,
+      date: `${formattedDate} ${cleanTime}`,
+      reference: entry.referenceNo || entry.id,
+      description: journalDescription,
+      totalAmount: numAmount,
+      createdBy: approvedBy || 'Finance Approver',
+      status: 'posted',
+      createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    });
+
+    // 2. Target Account Line
+    const targetLineId = `JL-${journalId}-1`;
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: targetLineId,
+      entryId: journalId,
+      accountId: targetAcc.id,
+      debit: targetDebit,
+      credit: targetCredit,
+      description: entry.particulars,
+      partyType: entry.partyName ? 'Party' : null,
+      partyId: entry.partyName || null
+    });
+
+    const targetBalanceChange = targetDebit - targetCredit;
+    const targetIsDebitNormal = (targetAcc.type || '').toLowerCase().includes('asset') || (targetAcc.type || '').toLowerCase().includes('expense');
+    let newTargetBal = Number(targetAcc.balance || 0);
+    if (targetIsDebitNormal) {
+      newTargetBal += targetBalanceChange;
+    } else {
+      newTargetBal -= targetBalanceChange;
+    }
+    await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [newTargetBal, targetAcc.id]);
+
+    // 3. Cash Account Line
+    const cashLineId = `JL-${journalId}-2`;
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: cashLineId,
+      entryId: journalId,
+      accountId: cashAcc.id,
+      debit: cashDebit,
+      credit: cashCredit,
+      description: entry.particulars,
+      partyType: entry.partyName ? 'Party' : null,
+      partyId: entry.partyName || null
+    });
+
+    const cashBalanceChange = cashDebit - cashCredit;
+    const cashIsDebitNormal = (cashAcc.type || '').toLowerCase().includes('asset') || (cashAcc.type || '').toLowerCase().includes('expense');
+    let newCashBal = Number(cashAcc.balance || 0);
+    if (cashIsDebitNormal) {
+      newCashBal += cashBalanceChange;
+    } else {
+      newCashBal -= cashBalanceChange;
+    }
+    await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [newCashBal, cashAcc.id]);
+
+    // 4. Update Cashbook Entry status
+    await conn.query(`
+      UPDATE cashbook_entries 
+      SET status = 'approved',
+          journalEntryId = ?,
+          approvedBy = ?,
+          approvedAt = NOW()
+      WHERE id = ?
+    `, [journalId, approvedBy || 'Finance', entry.id]);
+
+    await conn.commit();
+    res.json({ success: true, id: entry.id, journalEntryId: journalId, status: 'approved' });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error approving cashbook entry:', error);
+    res.status(500).json({ error: error.message || 'Failed to approve cashbook entry' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/finance/cashbook/:id/reject', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const entryId = req.params.id;
+    const { rejectedBy, reason } = req.body;
+
+    const [entries]: any = await conn.query('SELECT * FROM cashbook_entries WHERE id = ?', [entryId]);
+    if (entries.length === 0) {
+      return res.status(404).json({ error: 'Cashbook entry not found' });
+    }
+    const entry = entries[0];
+    if (entry.status === 'approved') {
+      return res.status(400).json({ error: 'Cannot reject an already approved cashbook entry. Please delete it instead to revert GL.' });
+    }
+
+    await conn.query(`
+      UPDATE cashbook_entries 
+      SET status = 'rejected',
+          rejectedBy = ?,
+          rejectedAt = NOW(),
+          rejectionReason = ?
+      WHERE id = ?
+    `, [rejectedBy || 'Finance', reason || 'Rejected by Finance', entryId]);
+
+    res.json({ success: true, id: entryId, status: 'rejected' });
+  } catch (error: any) {
+    console.error('Error rejecting cashbook entry:', error);
+    res.status(500).json({ error: error.message || 'Failed to reject cashbook entry' });
   } finally {
     conn.release();
   }

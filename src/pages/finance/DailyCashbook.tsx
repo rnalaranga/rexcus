@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   Wallet, ArrowDownLeft, ArrowUpRight, Plus, Printer, Calendar,
   ChevronLeft, ChevronRight, Search, Trash2, ArrowRightLeft,
-  DollarSign, CheckCircle2, Clock, FileText, User, Tag, BookOpen, AlertCircle, Coins
+  DollarSign, CheckCircle2, Clock, FileText, User, Tag, BookOpen, AlertCircle, Coins,
+  Check, X, Camera, ShieldCheck, Smartphone
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +12,10 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { useCashbook, useAccounts } from '@/hooks/useFinance';
-import { createCashbookEntry, deleteCashbookEntry, setCashbookFloat, CashbookEntry } from '@/lib/api';
+import { 
+  createCashbookEntry, deleteCashbookEntry, approveCashbookEntry, 
+  rejectCashbookEntry, setCashbookFloat, CashbookEntry 
+} from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +40,9 @@ export const DailyCashbook: React.FC = () => {
   const [isFloatModalOpen, setIsFloatModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittingFloat, setIsSubmittingFloat] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [viewReceiptModal, setViewReceiptModal] = useState<string | null>(null);
 
   // Float modal state
   const [floatAmount, setFloatAmount] = useState('');
@@ -229,6 +236,44 @@ export const DailyCashbook: React.FC = () => {
       refetch();
     } catch (err: any) {
       showError(err.message || 'Failed to delete entry', 'Error');
+    }
+  };
+
+  // Handle Approve Pending Mobile Entry
+  const handleApprovePendingEntry = async (entry: CashbookEntry) => {
+    const ok = await showConfirm(
+      `Approve cash voucher #${entry.id} of ${formatCurrency(entry.amount)} (${entry.particulars})?\n\n• Submitted By: ${entry.createdByName || entry.createdBy || 'Staff'}\n• Target Account: ${entry.accountName || entry.accountId}\n\nThis will post the double-entry journal to General Ledger and update the Cash balance.`,
+      'Approve Cash Voucher',
+      { confirmLabel: 'Approve & Post to GL', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
+    setApprovingId(entry.id);
+    try {
+      await approveCashbookEntry(entry.id, user?.name || user?.username || 'Finance Approver');
+      toast(`Voucher #${entry.id} approved and posted to General Ledger!`, 'success');
+      refetch();
+    } catch (err: any) {
+      showError(err.message || 'Failed to approve voucher', 'Error');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  // Handle Reject Pending Mobile Entry
+  const handleRejectPendingEntry = async (entry: CashbookEntry) => {
+    const reason = window.prompt(`Please enter the rejection reason for voucher #${entry.id}:`, 'Invalid particulars / receipt missing');
+    if (reason === null) return;
+
+    setRejectingId(entry.id);
+    try {
+      await rejectCashbookEntry(entry.id, user?.name || user?.username || 'Finance Approver', reason);
+      toast(`Voucher #${entry.id} rejected.`, 'info');
+      refetch();
+    } catch (err: any) {
+      showError(err.message || 'Failed to reject voucher', 'Error');
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -502,6 +547,134 @@ export const DailyCashbook: React.FC = () => {
         </GlassCard>
       </div>
 
+      {/* Mobile Submissions Pending Finance Approval */}
+      {cashbookData?.pendingEntries && cashbookData.pendingEntries.length > 0 && (
+        <GlassCard className="p-4 border-l-4 border-l-amber-500 bg-amber-500/5 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Smartphone size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+                  Mobile Cashbook Submissions Awaiting Approval
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                    {cashbookData.pendingEntries.length} Pending
+                  </span>
+                </h3>
+                <p className="text-xs text-muted">
+                  Review and verify mobile vouchers submitted by staff before posting to General Ledger.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-theme bg-surface">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-surface-secondary/70 border-b border-theme text-muted uppercase tracking-wider text-[11px]">
+                  <th className="py-2.5 px-3 font-semibold">Date & Time</th>
+                  <th className="py-2.5 px-3 font-semibold">Type</th>
+                  <th className="py-2.5 px-3 font-semibold">Submitted By</th>
+                  <th className="py-2.5 px-4 font-semibold">Particulars / Party</th>
+                  <th className="py-2.5 px-4 font-semibold">Target Account</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Amount</th>
+                  <th className="py-2.5 px-3 font-semibold text-center">Receipt</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-theme">
+                {cashbookData.pendingEntries.map((pEntry) => {
+                  const isReceipt = pEntry.entryType === 'IN';
+                  return (
+                    <tr key={pEntry.id} className="hover:bg-amber-500/5 transition-colors">
+                      <td className="py-2.5 px-3 font-mono">
+                        <span className="font-semibold text-primary">{String(pEntry.date).slice(0, 10)}</span>
+                        <span className="text-[10px] text-muted block">{pEntry.time || '12:00'} • {pEntry.id}</span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          isReceipt
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                        }`}>
+                          {isReceipt ? <ArrowDownLeft size={10} /> : <ArrowUpRight size={10} />}
+                          {isReceipt ? 'Cash In' : 'Cash Out'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1.5 font-semibold text-primary">
+                          <User size={13} className="text-rex-600" />
+                          <span>{pEntry.createdByName || pEntry.createdBy || 'Mobile Staff'}</span>
+                        </div>
+                        <span className="text-[10px] text-muted font-mono flex items-center gap-1">
+                          <Smartphone size={10} /> Rex Mobile
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="font-medium text-primary">{pEntry.particulars}</div>
+                        {pEntry.partyName && (
+                          <div className="text-[11px] text-secondary">Party: {pEntry.partyName}</div>
+                        )}
+                        {pEntry.referenceNo && (
+                          <div className="text-[10px] text-muted font-mono">Ref: {pEntry.referenceNo}</div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="font-semibold text-primary font-mono">{pEntry.accountCode || 'COA'}</div>
+                        <div className="text-secondary truncate max-w-[180px]">{pEntry.accountName || pEntry.accountId}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-sm">
+                        <span className={isReceipt ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                          {isReceipt ? '+' : '-'}{formatCurrency(pEntry.amount)}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        {pEntry.receiptPhoto ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewReceiptModal(pEntry.receiptPhoto!)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-xs font-medium transition-colors"
+                          >
+                            <Camera size={12} /> View Bill
+                          </button>
+                        ) : (
+                          <span className="text-muted text-[11px]">No Photo</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={Check}
+                            disabled={approvingId === pEntry.id}
+                            onClick={() => handleApprovePendingEntry(pEntry)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-1 px-2.5"
+                          >
+                            {approvingId === pEntry.id ? 'Posting...' : 'Approve'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={X}
+                            disabled={rejectingId === pEntry.id}
+                            onClick={() => handleRejectPendingEntry(pEntry)}
+                            className="border border-rose-500/30 text-rose-600 hover:bg-rose-500/10 text-xs py-1 px-2"
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
+      )}
+
       {/* Transactions Section */}
       <GlassCard className="p-0 overflow-hidden">
         {/* Table Toolbar */}
@@ -693,7 +866,7 @@ export const DailyCashbook: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Party / Reference */}
+                    {/* Party / Reference / Created By */}
                     <td className="py-3 px-3">
                       {entry.partyName ? (
                         <div className="flex items-center gap-1 text-primary text-xs">
@@ -707,6 +880,24 @@ export const DailyCashbook: React.FC = () => {
                         <div className="text-[10px] text-muted font-mono mt-0.5">
                           Ref: {entry.referenceNo}
                         </div>
+                      )}
+                      <div className="text-[10px] text-muted font-mono mt-1 flex items-center gap-1 flex-wrap">
+                        {entry.source === 'mobile' && <Smartphone size={10} className="text-rex-600" />}
+                        <span>By: {entry.createdByName || entry.createdBy || 'Cashier'}</span>
+                        {entry.approvedBy && (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold" title={`Approved by ${entry.approvedBy}`}>
+                            (✓ {entry.approvedBy})
+                          </span>
+                        )}
+                      </div>
+                      {entry.receiptPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setViewReceiptModal(entry.receiptPhoto!)}
+                          className="text-[10px] text-blue-500 hover:text-blue-600 underline flex items-center gap-0.5 mt-0.5"
+                        >
+                          <Camera size={10} /> Bill Photo
+                        </button>
                       )}
                     </td>
 
@@ -1242,6 +1433,26 @@ export const DailyCashbook: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Bill / Receipt Photo Preview Modal */}
+      {viewReceiptModal && (
+        <Modal
+          isOpen={!!viewReceiptModal}
+          onClose={() => setViewReceiptModal(null)}
+          title="Attached Voucher Bill / Receipt Photo"
+        >
+          <div className="space-y-3">
+            <div className="max-h-[70vh] overflow-hidden rounded-xl bg-black/70 flex items-center justify-center p-2 border border-theme">
+              <img src={viewReceiptModal} alt="Voucher Bill Attachment" className="w-full h-auto object-contain max-h-[65vh]" />
+            </div>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => setViewReceiptModal(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

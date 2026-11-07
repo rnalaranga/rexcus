@@ -811,6 +811,16 @@ export interface CashbookEntry {
   partyName?: string;
   journalEntryId?: string;
   createdBy?: string;
+  createdById?: string;
+  createdByName?: string;
+  source?: 'mobile' | 'desktop';
+  status?: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  receiptPhoto?: string;
   notes?: string;
   createdAt?: string;
   accountCode?: string;
@@ -843,6 +853,8 @@ export interface CashbookData {
   netMovement: number;
   closingBalance: number;
   entries: CashbookEntry[];
+  pendingEntries?: CashbookEntry[];
+  dayPendingEntries?: CashbookEntry[];
 }
 
 export const fetchCashbook = async (date?: string, cashAccountId?: string): Promise<CashbookData> => {
@@ -873,6 +885,35 @@ export const deleteCashbookEntry = async (id: string) => {
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || 'Failed to delete cashbook entry');
+  return json;
+};
+
+export const approveCashbookEntry = async (id: string, approvedBy?: string) => {
+  const res = await fetch(`${API_URL}/finance/cashbook/${id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvedBy })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to approve cashbook entry');
+  return json;
+};
+
+export const rejectCashbookEntry = async (id: string, rejectedBy?: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/finance/cashbook/${id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rejectedBy, reason })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to reject cashbook entry');
+  return json;
+};
+
+export const fetchPendingCashbookEntries = async (): Promise<CashbookEntry[]> => {
+  const res = await fetch(`${API_URL}/finance/cashbook/pending`);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to fetch pending cashbook entries');
   return json;
 };
 

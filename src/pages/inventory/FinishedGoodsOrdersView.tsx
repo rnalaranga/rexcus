@@ -3610,7 +3610,27 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   null;
                 const isInvoicePaid = linkedInvoice?.status === 'paid' || order.paymentStatus === 'Paid';
                 const isInvoicePartPaid = linkedInvoice?.status === 'partially_paid' || order.paymentStatus === 'Partially Paid';
-                const isOrderUSD = order.currency === 'USD' || order.isForeign;
+                
+                const linkedCust = customers.find((c: any) => c.id === order.customerId || c.company === order.customerName || c.name === order.customerName) ||
+                                   leads.find((l: any) => l.id === order.customerId || l.companyName === order.customerName || l.name === order.customerName);
+                const linkedQ = (rawQuotations || []).find((q: any) => 
+                  (q.quotationNo && (q.quotationNo === order.quotationNo || q.quotationNo === order.quoteId)) ||
+                  (q.id && (String(q.id) === String(order.quoteId) || String(q.id) === String(order.quotationNo)))
+                );
+                let linkedQData: any = {};
+                if (linkedQ?.data) {
+                  try { linkedQData = typeof linkedQ.data === 'string' ? JSON.parse(linkedQ.data) : linkedQ.data; } catch {}
+                }
+                const isOrderUSD = Boolean(
+                  order.currency === 'USD' || 
+                  order.taxProfileId === 'tp_export_zero_rated' || 
+                  order.isForeign || 
+                  linkedQ?.currency === 'USD' || 
+                  linkedQData?.currency === 'USD' ||
+                  linkedCust?.currency === 'USD' || 
+                  linkedCust?.isForeign
+                );
+                const orderCurrency = isOrderUSD ? 'USD' : (order.currency || 'LKR');
 
                 return (
                   <tr key={order.id} className={`hover:bg-surface2/40 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
@@ -3835,7 +3855,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       <td className="px-3 py-1.5 text-right">
                         <div className="flex flex-col items-end gap-0.5">
                           <span className="font-mono font-bold text-xs text-primary">
-                            {formatCurrency(order.totalPrice, false, order.currency || 'LKR')}
+                            {formatCurrency(order.totalPrice, false, orderCurrency)}
                           </span>
                           {(() => {
                             let vat = Number(order.vatAmount || 0);
@@ -3865,12 +3885,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                   <div className="flex items-center gap-1 text-[9.5px] font-mono font-medium">
                                     {sscl > 0 && (
                                       <span className="text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/20" title="Social Security Contribution Levy (2.5%)">
-                                        SSCL: {formatCurrency(sscl, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}
+                                        SSCL: {formatCurrency(sscl, false, orderCurrency)}
                                       </span>
                                     )}
                                     {vat > 0 && (
                                       <span className="text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20" title="Value Added Tax (18%)">
-                                        VAT: {formatCurrency(vat, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}
+                                        VAT: {formatCurrency(vat, false, orderCurrency)}
                                       </span>
                                     )}
                                   </div>
@@ -3885,7 +3905,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             if (totalTax > 0) {
                               return (
                                 <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
-                                  Tax: {formatCurrency(totalTax, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}
+                                  Tax: {formatCurrency(totalTax, false, orderCurrency)}
                                 </span>
                               );
                             }
@@ -3902,7 +3922,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors mt-0.5"
                               title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
                             >
-                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || order.currency || (order.isForeign ? 'USD' : 'LKR'))}
+                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || orderCurrency)}
                             </button>
                           )}
                         </div>
@@ -3952,7 +3972,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               type: 'proforma',
                               title: 'Advance Proforma Invoice',
                               reference: linkedProforma.invoiceNo || linkedProforma.id,
-                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || order.currency || (order.isForeign ? 'USD' : 'LKR'))}`,
+                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || orderCurrency)}`,
                               statusBadge: { label: 'Proforma', variant: 'info' },
                               onClick: () => handleOpenPrintProforma(linkedProforma, order)
                             });
@@ -4012,7 +4032,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                 type: 'invoice',
                                 title: invItem.dispatchNo ? `Tax Inv (${invItem.dispatchNo})` : 'Tax Invoice',
                                 reference: invItem.invoiceNo || invItem.id,
-                                subtitle: isPaid ? 'Paid in Full' : (isPartPaid ? `Part Paid: ${formatCurrency(invItem.paidAmount || 0)}` : 'Awaiting Payment'),
+                                subtitle: isPaid ? 'Paid in Full' : (isPartPaid ? `Part Paid: ${formatCurrency(invItem.paidAmount || 0, false, invItem.currency || orderCurrency)}` : 'Awaiting Payment'),
                                 statusBadge: {
                                   label: isPaid ? 'Paid' : isPartPaid ? 'Part Paid' : 'Unpaid',
                                   variant: isPaid ? 'success' : isPartPaid ? 'warning' : 'danger'
@@ -4026,7 +4046,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               type: 'invoice',
                               title: 'Tax Invoice',
                               reference: invNo,
-                              subtitle: isInvoicePaid ? 'Payment Confirmed in Full' : (isInvoicePartPaid ? `Partially Paid: ${formatCurrency(linkedInvoice?.paidAmount || 0)}` : 'Awaiting Payment'),
+                              subtitle: isInvoicePaid ? 'Payment Confirmed in Full' : (isInvoicePartPaid ? `Partially Paid: ${formatCurrency(linkedInvoice?.paidAmount || 0, false, linkedInvoice?.currency || orderCurrency)}` : 'Awaiting Payment'),
                               statusBadge: { 
                                 label: isInvoicePaid ? 'Paid' : isInvoicePartPaid ? 'Part Paid' : 'Unpaid', 
                                 variant: isInvoicePaid ? 'success' : isInvoicePartPaid ? 'warning' : 'danger' 
@@ -4039,7 +4059,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               type: 'receipt',
                               title: 'Advance Payment',
                               reference: latestRec.receiptNo || 'Payment Receipt',
-                              subtitle: `Advance Paid: ${formatCurrency(totalAdv, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}`,
+                              subtitle: `Advance Paid: ${formatCurrency(totalAdv, false, orderCurrency)}`,
                               statusBadge: { label: 'Advance Paid', variant: 'success' },
                               onClick: () => {
                                 setActivePrintReceipt({

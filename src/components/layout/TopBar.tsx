@@ -4,7 +4,8 @@ import {
   Bell, Search, ChevronRight, Sun, Moon, X,
   CheckCircle2, TrendingUp, AlertCircle, AlertTriangle, Star, Banknote,
   Users, FileText, Package, Wrench, Truck, Building2, CheckCheck, Clock,
-  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck, HelpCircle, ShoppingBag
+  ArrowRight, ShieldAlert, Sparkles, Loader2, Check, Shield, Contact2, PackageCheck, HelpCircle, ShoppingBag,
+  Smartphone
 } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import { HelpGuideModal } from '@/components/help/HelpGuideModal'
@@ -793,6 +794,22 @@ export const TopBar: React.FC = () => {
 
         {/* Divider */}
         <div className="w-px h-5 bg-theme-subtle mx-1" />
+
+        {/* Mobile Portal Shortcut */}
+        <button
+          onClick={() => {
+            localStorage.removeItem('rex_pref_view');
+            navigate('/mobile/dashboard');
+          }}
+          title="Switch to Dedicated Mobile Portal (/mobile)"
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 h-8 rounded-md border transition-all duration-150 text-xs font-semibold',
+            'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50'
+          )}
+        >
+          <Smartphone size={14} />
+          <span className="hidden md:inline">Mobile App</span>
+        </button>
 
         {/* Dark / Light toggle */}
         <button
