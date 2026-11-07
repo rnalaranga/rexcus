@@ -1,5 +1,5 @@
 import React from 'react'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, resolveFileUrl } from '@/lib/utils'
 
 function toWords(num: number): string {
   if (num === 0) return 'Zero';
@@ -515,9 +515,12 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           {/* Header */}
           <div className="flex p-3 border-b border-black items-center print-no-break">
             <div className="w-[32%] flex justify-center items-center">
-              {settings?.company_logo
-                ? <img src={settings.company_logo} alt="Logo" className="max-h-20 object-contain" />
-                : <div className="text-4xl font-black text-red-600 tracking-tighter" style={{fontFamily: 'Impact, sans-serif'}}>REX</div>}
+              <img 
+                src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'} 
+                alt="Logo" 
+                className="max-h-20 max-w-full object-contain" 
+                crossOrigin="anonymous"
+              />
             </div>
             <div className="w-[68%] pl-3">
               <h1 className="text-[19px] font-black mb-1 leading-tight" style={{fontFamily: 'Arial Black, Impact, sans-serif'}}>

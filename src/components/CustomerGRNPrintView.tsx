@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveFileUrl } from '@/lib/utils';
 
 export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: any }> = ({ grn, group, settings }) => {
   // Try to parse items string if it's JSON
@@ -62,13 +62,12 @@ export const CustomerGRNPrintView: React.FC<{ grn: any, group: any, settings: an
       {/* Header Row */}
       <div className="flex border-b border-black">
         <div className="w-[30%] flex items-center justify-center p-4 border-r border-black">
-          {settings?.company_logo ? (
-            <img src={settings.company_logo} alt="Logo" className="w-full object-contain" style={{ maxHeight: '80px' }} />
-          ) : (
-            <div className="text-3xl text-red-600 font-bold flex items-center gap-2 tracking-tighter">
-               <span className="text-5xl">⚙️</span> REX
-            </div>
-          )}
+          <img 
+            src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'} 
+            alt="Logo" 
+            className="w-full max-h-20 object-contain" 
+            crossOrigin="anonymous" 
+          />
         </div>
         <div className="w-[70%] p-4 pl-6 text-[13px] leading-tight">
           <h1 className="text-[20px] font-black uppercase text-black mb-1">

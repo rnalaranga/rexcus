@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2, ChevronDown, Eye, ShoppingCart, PackageCheck, Printer } from 'lucide-react';
+import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2, ChevronDown, Eye, ShoppingCart, PackageCheck, Printer, Paperclip } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
 import { POPrintView } from '@/components/purchasing/POPrintView';
@@ -20,7 +20,7 @@ import { useMaterialRequests, usePurchaseOrders, useGRNs, useBills } from '@/hoo
 import { useSuppliers } from '@/hooks/useData';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { fetchAllCustomerGRNs, fetchGatePasses, deleteGatePass, deleteGRN, deleteCustomerGRN, deleteBill, deletePO, deleteMR } from '@/lib/api';
-import { formatCurrency, relativeTime, formatDate } from '@/lib/utils';
+import { formatCurrency, relativeTime, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
@@ -641,6 +641,23 @@ export const PurchasingHub: React.FC = () => {
                       <span>Create Vendor Bill</span>
                     </button>
 
+                    {row.billAttachment && (
+                      <button
+                        type="button"
+                        data-no-row-click="true"
+                        onClick={(e) => { 
+                          e.preventDefault(); 
+                          e.stopPropagation(); 
+                          closeDropdown(); 
+                          openDataUriOrUrl(row.billAttachment, `Vendor Document - ${row.id}`); 
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                      >
+                        <Paperclip size={13} className="text-emerald-500" />
+                        <span>View Attached Vendor Doc</span>
+                      </button>
+                    )}
+
                     {isAdmin && (
                       <>
                         <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
@@ -708,6 +725,33 @@ export const PurchasingHub: React.FC = () => {
                 <div className="px-3.5 py-1 text-[10.5px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
                   Bill Actions (#{row.id})
                 </div>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/bill-builder?id=${row.id}`); }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <Eye size={13} className="text-blue-500" />
+                  <span>View / Edit Bill Details</span>
+                </button>
+
+                {row.billAttachment && (
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => { 
+                      e.preventDefault(); 
+                      e.stopPropagation(); 
+                      closeDropdown(); 
+                      openDataUriOrUrl(row.billAttachment, `Vendor Bill - ${row.invoiceNo || row.id}`); 
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                  >
+                    <Paperclip size={13} className="text-emerald-500" />
+                    <span>View Attached Vendor Bill</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1058,6 +1102,20 @@ export const PurchasingHub: React.FC = () => {
                             {pNum}
                           </span>
                         )) : <span className="text-xs bg-surface2 text-secondary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle font-bold">Direct Receipt</span>}
+
+                        {row.billAttachment && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDataUriOrUrl(row.billAttachment, `Vendor Document - ${row.id}`);
+                            }}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold font-mono transition-colors cursor-pointer"
+                            title={`View Attached Vendor Document (${row.billAttachmentName || 'Document'})`}
+                          >
+                            <Paperclip size={10} /> Vendor Doc
+                          </button>
+                        )}
                       </div>
                     );
                   })()}
@@ -1172,6 +1230,19 @@ export const PurchasingHub: React.FC = () => {
               <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 <span className="text-xs text-muted font-mono font-bold">INV: {row.invoiceNo || '-'}</span>
+                {row.billAttachment && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDataUriOrUrl(row.billAttachment, `Vendor Bill - ${row.invoiceNo || row.id}`);
+                    }}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold font-mono transition-colors cursor-pointer"
+                    title={`View Attached Vendor Bill Document (${row.billAttachmentName || 'Document'})`}
+                  >
+                    <Paperclip size={10} /> Bill Doc
+                  </button>
+                )}
                 {row.poId && (
                   <span 
                     onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
@@ -1582,7 +1653,7 @@ export const PurchasingHub: React.FC = () => {
             } else if (activeTab === 'mr') {
               navigate(`/purchasing/mr-builder/${row.id}`);
             } else if (activeTab === 'bill') {
-              navigate(`/purchasing/bill-builder?grn=${row.grnId || row.id}`);
+              navigate(`/purchasing/bill-builder?id=${row.id}`);
             } else if (activeTab === 'gate_pass') {
               setPrintGatePassData(row);
             }

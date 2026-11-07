@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getApiBaseUrl } from '@/lib/utils';
 
 type SettingsContextType = {
   settings: Record<string, string>;
@@ -13,7 +14,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
+    const apiBase = getApiBaseUrl();
+    fetch(`${apiBase}/settings`)
       .then(async res => {
         if (!res.ok) return {};
         return res.json().catch(() => ({}));
@@ -29,7 +31,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   }, []);
 
   const updateSettings = async (updates: Record<string, string>) => {
-    await fetch(`${import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`}/settings`, {
+    const apiBase = getApiBaseUrl();
+    await fetch(`${apiBase}/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)

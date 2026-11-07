@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveFileUrl } from '@/lib/utils';
 
 interface GatePassPrintProps {
   gatePass: any;
@@ -124,13 +124,12 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
           {/* Header Row (Compact Letterhead matching Quotation & Invoice) */}
           <div className="flex border-b border-black items-center p-2.5 print-no-break">
             <div className="w-[28%] flex items-center justify-center p-1.5 border-r border-black bg-white">
-              {settings?.company_logo ? (
-                <img src={settings.company_logo} alt="Logo" className="max-h-12 object-contain" />
-              ) : (
-                <div className="text-3xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>
-                  REX
-                </div>
-              )}
+              <img 
+                src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'} 
+                alt="Logo" 
+                className="max-h-12 max-w-full object-contain" 
+                crossOrigin="anonymous" 
+              />
             </div>
             <div className="w-[72%] pl-3 text-[10px] leading-tight bg-white">
               <h1 className="text-[16px] font-black uppercase text-black mb-0.5 leading-tight" style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}>

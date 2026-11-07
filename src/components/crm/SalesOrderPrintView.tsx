@@ -1,5 +1,5 @@
 import React from 'react'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, resolveFileUrl } from '@/lib/utils'
 
 function toWords(num: number): string {
   if (num === 0) return 'Zero Rupees Only';
@@ -179,13 +179,12 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
         {/* Top Letterhead Header (matching QuotationPrintView) */}
         <div className="flex border-b border-black items-center p-3 print-no-break">
           <div className="w-[30%] flex items-center justify-center p-2 border-r border-black bg-white">
-            {settings?.company_logo ? (
-              <img src={settings.company_logo} alt="Company Logo" className="max-h-20 object-contain" />
-            ) : (
-              <div className="text-4xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>
-                REX
-              </div>
-            )}
+            <img 
+              src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'} 
+              alt="Company Logo" 
+              className="max-h-20 max-w-full object-contain" 
+              crossOrigin="anonymous" 
+            />
           </div>
           <div className="w-[70%] pl-3 text-[11px] leading-tight bg-white">
             <h1 className="text-[19px] font-black uppercase text-black mb-1 leading-tight" style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}>

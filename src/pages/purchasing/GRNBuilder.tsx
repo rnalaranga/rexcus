@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Truck, PackageCheck, FileSignature, MapPin, 
   ShieldCheck, Printer, FileText, Calendar, Building2, UserCheck, 
-  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2, X, Plus, Scissors
+  Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2, X, Plus, Scissors,
+  Paperclip, UploadCloud, Eye
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -16,8 +17,8 @@ import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
-import { createGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN, fetchNextDocumentNumber } from '@/lib/api';
-import { formatDate, formatCurrency } from '@/lib/utils';
+import { createGRN, updateGRN, updatePO, fetchGRNById, fetchGRNs, deleteGRN, fetchNextDocumentNumber, uploadFileToStorage } from '@/lib/api';
+import { formatDate, formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 
 export const GRNBuilder: React.FC = () => {
   const navigate = useNavigate();
@@ -81,6 +82,9 @@ export const GRNBuilder: React.FC = () => {
   const [heatNo, setHeatNo] = useState<string>('');
   const [batchNo, setBatchNo] = useState<string>('');
   const [mtrCertNo, setMtrCertNo] = useState<string>('');
+  const [billAttachment, setBillAttachment] = useState<string>('');
+  const [billAttachmentName, setBillAttachmentName] = useState<string>('');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
   
   // Receipt mode: 'po' for PO Fulfillment, 'direct' for Direct Receipt (No PO)
   const [receiptMode, setReceiptMode] = useState<'po' | 'direct'>(poParam ? 'po' : 'po');
@@ -182,6 +186,8 @@ export const GRNBuilder: React.FC = () => {
           setHeatNo(grn.heatNo || '');
           setBatchNo(grn.batchNo || '');
           setMtrCertNo(grn.mtrCertNo || '');
+          setBillAttachment(grn.billAttachment || '');
+          setBillAttachmentName(grn.billAttachmentName || '');
 
           const cleanNotes = rawNotes.replace(/Vehicle:[^|]+\|\s*Location:[^|]+\|\s*/, '').trim();
           setNotes(cleanNotes || rawNotes || 'All items inspected and received in good condition.');
@@ -478,15 +484,74 @@ export const GRNBuilder: React.FC = () => {
       items,
       updateInventoryCosts,
       status: 'received',
+      billAttachment: billAttachment || null,
+      billAttachmentName: billAttachmentName || null,
       notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${notes}`
     };
 
     try {
-      await createGRN(payload);
-      navigate('/purchasing');
+      if (isViewMode && targetId) {
+        await updateGRN(targetId, payload);
+      } else {
+        await createGRN(payload);
+      }
+      navigate('/purchasing?tab=grn');
     } catch (e: any) {
       console.error(e);
       alert(e?.message || 'Failed to save GRN');
+    }
+  };
+
+  const handleUpdateAttachmentOnly = async (newUrl: string | null, newName: string | null) => {
+    if (!targetId) return;
+    try {
+      await updateGRN(targetId, {
+        billAttachment: newUrl,
+        billAttachmentName: newName
+      });
+    } catch (err) {
+      console.error('Failed to update GRN attachment:', err);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File size exceeds 25MB limit.');
+      return;
+    }
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setBillAttachment(rawDataUri);
+      setBillAttachmentName(file.name);
+
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'grns');
+        const finalUrl = (uploaded && uploaded.url) ? uploaded.url : rawDataUri;
+        if (uploaded && uploaded.url) {
+          setBillAttachment(uploaded.url);
+        }
+        if (isViewMode && targetId) {
+          await handleUpdateAttachmentOnly(finalUrl, file.name);
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRemoveAttachment = async () => {
+    setBillAttachment('');
+    setBillAttachmentName('');
+    if (isViewMode && targetId) {
+      await handleUpdateAttachmentOnly(null, null);
     }
   };
 
@@ -896,6 +961,77 @@ export const GRNBuilder: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Vendor Bill / Delivery Note Attachment */}
+              <div className="mt-4 pt-4 border-t border-theme-subtle">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[11px] font-bold text-muted uppercase flex items-center gap-1.5">
+                    <Paperclip size={13} className="text-emerald-500" /> Vendor Delivery Note / Bill Attachment
+                  </label>
+                  <span className="text-[10px] text-muted font-mono">PDF, PNG, JPG (Max 25MB)</span>
+                </div>
+
+                {billAttachment ? (
+                  <div className="flex items-center justify-between p-3 bg-surface border border-theme-subtle rounded-lg">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 rounded">
+                        {billAttachment.startsWith('data:image/') || billAttachment.match(/\.(jpeg|jpg|png|webp)($|\?)/i) ? (
+                          <img src={billAttachment} alt="Vendor Doc" className="w-full h-full object-cover rounded" />
+                        ) : (
+                          <FileText size={16} />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-primary block truncate">
+                          {billAttachmentName || `Vendor_Doc_${docNo}`}
+                        </span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                          <CheckCircle2 size={11} /> Document attached {isViewMode && '• Stored'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openDataUriOrUrl(billAttachment, `Vendor Document - ${docNo}`)}
+                        className="text-xs text-blue-600 hover:text-blue-700 px-2.5 py-1.5 h-auto flex items-center gap-1"
+                        title="View Document"
+                      >
+                        <Eye size={13} /> View
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRemoveAttachment}
+                        className="text-xs text-rose-600 hover:text-rose-700 px-2 py-1.5 h-auto flex items-center gap-1"
+                        title="Remove Attachment"
+                      >
+                        <Trash2 size={13} /> Remove
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <label className="flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-theme-subtle hover:border-emerald-500 bg-surface2/30 hover:bg-surface2/60 cursor-pointer transition-colors text-center rounded-lg">
+                      <UploadCloud size={20} className="text-emerald-500 mb-1" />
+                      <span className="text-xs font-semibold text-primary">Click to attach Vendor's Delivery Note / Invoice Copy</span>
+                      <span className="text-[10px] text-muted mt-0.5">Scanned paper bill, delivery note, supplier invoice (PDF, Images)</span>
+                      <input 
+                        type="file" 
+                        accept="application/pdf,image/*" 
+                        onChange={handleFileUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+                    {isUploading && (
+                      <p className="text-[10px] text-amber-500 mt-1 font-mono text-center">Uploading document to storage...</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </GlassCard>
 
             {/* Progress Card */}

@@ -30,6 +30,19 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Serve public static assets (e.g. /rex-logo.png, etc.)
+const publicCandidates = [
+  path.resolve(process.cwd(), 'public'),
+  path.resolve(process.cwd(), '../public'),
+  path.resolve(__dirname, '../../public'),
+  path.resolve(__dirname, '../public')
+];
+for (const p of publicCandidates) {
+  if (fs.existsSync(p)) {
+    app.use(express.static(p));
+  }
+}
+
 function findBinaryRecursively(dir: string, binaryName: string): string | null {
   if (!fs.existsSync(dir)) return null;
   try {
@@ -237,12 +250,17 @@ app.post('/api/export-pdf', async (req, res) => {
       ? styles.map((s: any) => (typeof s === 'string' && s.trim().startsWith('<')) ? s : `<style>${s}</style>`).join('\n')
       : (styles ? `<style>${styles}</style>` : '');
 
+    const host = req.get('host') || 'localhost:3000';
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+    const origin = req.get('origin') || `${proto}://${host}`;
+
     const fullHtml = `
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <base href="${origin}/">
           <style>
             @page {
               size: A4 ${orientation};
@@ -895,6 +913,8 @@ async function runDatabaseSync() {
       items TEXT,
       status VARCHAR(20) DEFAULT 'received',
       notes TEXT,
+      billAttachment LONGTEXT DEFAULT NULL,
+      billAttachmentName VARCHAR(255) DEFAULT NULL,
       createdAt DATETIME,
       updatedAt DATETIME
     )`,
@@ -912,6 +932,8 @@ async function runDatabaseSync() {
       items TEXT DEFAULT NULL,
       status VARCHAR(20) DEFAULT 'unpaid',
       notes TEXT,
+      billAttachment LONGTEXT DEFAULT NULL,
+      billAttachmentName VARCHAR(255) DEFAULT NULL,
       createdAt DATETIME,
       updatedAt DATETIME
     )`,
@@ -1658,6 +1680,10 @@ async function runDatabaseSync() {
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL",
     "ALTER TABLE work_order_operations ADD COLUMN stepNumber INT DEFAULT 1",
     "ALTER TABLE work_order_operations ADD COLUMN machineId VARCHAR(50) DEFAULT NULL",
@@ -2722,6 +2748,70 @@ app.post('/api/settings/r2/migrate', async (req, res) => {
           }
         } catch (err: any) {
           errors.push(`Product ${p.name || p.id}: ${err.message}`);
+        }
+      }
+    } catch (_) {}
+
+    // 7. Migrate supplier_bills.billAttachment
+    try {
+      const [billRows]: any = await db.query("SELECT id, invoiceNo, billAttachment FROM supplier_bills WHERE billAttachment LIKE 'data:%'");
+      for (const b of billRows) {
+        try {
+          const raw = b.billAttachment;
+          const matches = raw.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+          if (matches && matches.length === 3) {
+            const mime = matches[1];
+            const buffer = Buffer.from(matches[2], 'base64');
+            const ext = mime.includes('pdf') ? 'pdf' : (mime.includes('png') ? 'png' : 'jpg');
+            const key = `bills/bill_${b.id}_${Date.now()}.${ext}`;
+
+            await client.send(new PutObjectCommand({
+              Bucket: cfg.bucketName,
+              Key: key,
+              Body: buffer,
+              ContentType: mime
+            }));
+
+            const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
+            await db.query("UPDATE supplier_bills SET billAttachment = ? WHERE id = ?", [fileUrl, b.id]);
+
+            bytesFreed += raw.length;
+            migratedCount++;
+          }
+        } catch (err: any) {
+          errors.push(`Supplier Bill ${b.id}: ${err.message}`);
+        }
+      }
+    } catch (_) {}
+
+    // 8. Migrate grns.billAttachment
+    try {
+      const [grnAttachRows]: any = await db.query("SELECT id, billAttachment FROM grns WHERE billAttachment LIKE 'data:%'");
+      for (const g of grnAttachRows) {
+        try {
+          const raw = g.billAttachment;
+          const matches = raw.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+          if (matches && matches.length === 3) {
+            const mime = matches[1];
+            const buffer = Buffer.from(matches[2], 'base64');
+            const ext = mime.includes('pdf') ? 'pdf' : (mime.includes('png') ? 'png' : 'jpg');
+            const key = `grns/grn_${g.id}_${Date.now()}.${ext}`;
+
+            await client.send(new PutObjectCommand({
+              Bucket: cfg.bucketName,
+              Key: key,
+              Body: buffer,
+              ContentType: mime
+            }));
+
+            const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
+            await db.query("UPDATE grns SET billAttachment = ? WHERE id = ?", [fileUrl, g.id]);
+
+            bytesFreed += raw.length;
+            migratedCount++;
+          }
+        } catch (err: any) {
+          errors.push(`GRN ${g.id} attachment: ${err.message}`);
         }
       }
     } catch (_) {}

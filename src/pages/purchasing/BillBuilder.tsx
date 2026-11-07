@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, CreditCard, Building2, Calendar, 
   FileText, CheckCircle2, AlertTriangle, Layers, DollarSign, 
-  History, ExternalLink, Hash, Receipt
+  History, ExternalLink, Hash, Receipt, Paperclip, UploadCloud, Eye, Trash2
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -11,11 +11,12 @@ import { Badge } from '@/components/ui/Badge';
 import { useGRNs, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
-import { createBill } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { createBill, updateBill, uploadFileToStorage } from '@/lib/api';
+import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 
 export const BillBuilder: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const idParam = searchParams.get('id') || searchParams.get('bill');
   const grnIdParam = searchParams.get('grn');
   const poIdParam = searchParams.get('po');
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ export const BillBuilder: React.FC = () => {
   const { data: bills, refetch: refetchBills } = useBills();
   const { data: suppliers } = useSuppliers();
 
-  const [docNo] = useState('BILL-' + Date.now().toString().slice(-4));
+  const [docNo, setDocNo] = useState(idParam || ('BILL-' + Date.now().toString().slice(-4)));
   const [invoiceNo, setInvoiceNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
@@ -35,26 +36,53 @@ export const BillBuilder: React.FC = () => {
   const [grnId, setGrnId] = useState(grnIdParam || '');
   const [amount, setAmount] = useState<number>(0);
   const [notes, setNotes] = useState('');
+  const [billAttachment, setBillAttachment] = useState<string>('');
+  const [billAttachmentName, setBillAttachmentName] = useState<string>('');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [saving, setSaving] = useState(false);
+
+  // If opened with ?id=, load existing bill data
+  useEffect(() => {
+    if (idParam && bills.length > 0) {
+      const existing = bills.find((b: any) => b.id === idParam);
+      if (existing) {
+        setDocNo(existing.id);
+        setInvoiceNo(existing.invoiceNo || '');
+        setSupplierId(existing.supplierId || '');
+        setPoId(existing.poId || '');
+        setGrnId(existing.grnId || '');
+        setAmount(Number(existing.amount || 0));
+        if (existing.date) setDate(existing.date.split('T')[0]);
+        if (existing.dueDate) setDueDate(existing.dueDate.split('T')[0]);
+        setNotes(existing.notes || '');
+        setBillAttachment(existing.billAttachment || '');
+        setBillAttachmentName(existing.billAttachmentName || '');
+      }
+    }
+  }, [idParam, bills]);
 
   // If opened with ?po=, set PO immediately
   useEffect(() => {
-    if (poIdParam) {
+    if (!idParam && poIdParam) {
       setPoId(poIdParam);
     }
-  }, [poIdParam]);
+  }, [idParam, poIdParam]);
 
-  // If opened with ?grn=, set GRN and PO
+  // If opened with ?grn=, set GRN and PO and inherit bill attachment if present
   useEffect(() => {
-    if (grnIdParam && grns.length > 0) {
+    if (!idParam && grnIdParam && grns.length > 0) {
       const grn = grns.find((g: any) => g.id === grnIdParam);
       if (grn) {
         setGrnId(grn.id);
         if (grn.poId) setPoId(grn.poId);
         if (grn.supplierId) setSupplierId(grn.supplierId);
+        if (grn.billAttachment && !billAttachment) {
+          setBillAttachment(grn.billAttachment);
+          setBillAttachmentName(grn.billAttachmentName || (grn.id ? `Vendor_Doc_${grn.id}` : 'Vendor_Document'));
+        }
       }
     }
-  }, [grnIdParam, grns]);
+  }, [idParam, grnIdParam, grns]);
 
   // When PO changes, sync supplier and compute default amount
   const selectedPO = useMemo(() => {
@@ -139,6 +167,35 @@ export const BillBuilder: React.FC = () => {
     return pos.filter((p: any) => p.supplierId === supplierId);
   }, [supplierId, pos]);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File size exceeds 25MB limit.');
+      return;
+    }
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setBillAttachment(rawDataUri);
+      setBillAttachmentName(file.name);
+
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'bills');
+        if (uploaded && uploaded.url) {
+          setBillAttachment(uploaded.url);
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleSave = async () => {
     if (!invoiceNo.trim()) {
       alert('Please enter the Vendor Invoice / Bill Number.');
@@ -155,7 +212,7 @@ export const BillBuilder: React.FC = () => {
 
     setSaving(true);
     try {
-      await createBill({ 
+      const payload: any = { 
         id: docNo, 
         supplierId, 
         poId: poId || null, 
@@ -165,9 +222,18 @@ export const BillBuilder: React.FC = () => {
         dueDate: dueDate || null, 
         amount, 
         notes, 
-        status: 'unpaid' 
-      });
-      navigate('/purchasing');
+        billAttachment: billAttachment || null,
+        billAttachmentName: billAttachmentName || null
+      };
+
+      if (idParam) {
+        await updateBill(docNo, payload);
+      } else {
+        payload.status = 'unpaid';
+        await createBill(payload);
+      }
+      await refetchBills();
+      navigate('/purchasing?tab=bill');
     } catch (e: any) {
       alert('Failed to save supplier bill: ' + (e.message || 'Unknown error'));
       setSaving(false);
@@ -188,9 +254,11 @@ export const BillBuilder: React.FC = () => {
           </button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-black text-primary tracking-tight">Record Supplier Bill / Invoice</h1>
+              <h1 className="text-lg font-black text-primary tracking-tight">
+                {idParam ? 'Edit Supplier Bill / Invoice' : 'Record Supplier Bill / Invoice'}
+              </h1>
               <span className="text-[10px] bg-amber-500/10 text-amber-500 font-bold px-2 py-0.5 rounded border border-amber-500/20">
-                {poBills.length > 0 ? `Invoice #${poBills.length + 1} for PO` : 'New Bill'}
+                {idParam ? 'Editing Existing Bill' : (poBills.length > 0 ? `Invoice #${poBills.length + 1} for PO` : 'New Bill')}
               </span>
             </div>
             <p className="text-[11px] text-muted mt-0.5">{docNo} • UNPAID STATUS</p>
@@ -201,7 +269,7 @@ export const BillBuilder: React.FC = () => {
             Cancel
           </Button>
           <Button variant="primary" size="sm" icon={Save} onClick={handleSave} disabled={saving}>
-            {saving ? 'Posting...' : 'Post to Ledger'}
+            {saving ? 'Saving...' : (idParam ? 'Save Changes' : 'Post to Ledger')}
           </Button>
         </div>
       </div>
@@ -409,6 +477,77 @@ export const BillBuilder: React.FC = () => {
               </div>
             </GlassCard>
           </div>
+
+          {/* Vendor Bill / Invoice Document Attachment */}
+          <GlassCard className="p-5 border-t-2 border-t-emerald-500 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[12px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                <Paperclip size={16} /> Vendor Invoice / Bill Attachment
+              </h2>
+              <span className="text-[10px] text-muted font-mono">PDF, PNG, JPG (Max 25MB)</span>
+            </div>
+
+            {billAttachment ? (
+              <div className="flex items-center justify-between p-3 bg-surface border border-theme-subtle rounded-lg">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 rounded">
+                    {billAttachment.startsWith('data:image/') || billAttachment.match(/\.(jpeg|jpg|png|webp)($|\?)/i) ? (
+                      <img src={billAttachment} alt="Bill Preview" className="w-full h-full object-cover rounded" />
+                    ) : (
+                      <FileText size={18} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-primary block truncate">
+                      {billAttachmentName || (invoiceNo ? `Vendor_Invoice_${invoiceNo}` : 'Vendor_Bill_Document')}
+                    </span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                      <CheckCircle2 size={11} /> Document attached • Ready to save
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openDataUriOrUrl(billAttachment, `Vendor Invoice - ${invoiceNo || docNo}`)}
+                    className="text-xs text-blue-600 hover:text-blue-700 px-2.5 py-1.5 h-auto flex items-center gap-1"
+                    title="View Document"
+                  >
+                    <Eye size={14} /> View
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setBillAttachment(''); setBillAttachmentName(''); }}
+                    className="text-xs text-rose-600 hover:text-rose-700 px-2 py-1.5 h-auto flex items-center gap-1"
+                    title="Remove Attachment"
+                  >
+                    <Trash2 size={14} /> Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-theme-subtle hover:border-emerald-500 bg-surface2/30 hover:bg-surface2/60 cursor-pointer transition-colors text-center rounded-lg">
+                  <UploadCloud size={24} className="text-emerald-500 mb-1" />
+                  <span className="text-xs font-semibold text-primary">Click or drag & drop to upload Vendor's Bill / Invoice Copy</span>
+                  <span className="text-[10px] text-muted mt-0.5">Supports scanned physical bills, supplier invoices, PDFs, JPG, PNG</span>
+                  <input 
+                    type="file" 
+                    accept="application/pdf,image/*" 
+                    onChange={handleFileUpload} 
+                    className="hidden" 
+                  />
+                </label>
+                {isUploading && (
+                  <p className="text-[10px] text-amber-500 mt-1 font-mono text-center">Uploading document to storage...</p>
+                )}
+              </div>
+            )}
+          </GlassCard>
 
           {/* Previous Invoices Table for This PO (If any exist) */}
           {poBills.length > 0 && (
