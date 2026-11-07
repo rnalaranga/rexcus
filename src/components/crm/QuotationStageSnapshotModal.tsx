@@ -57,6 +57,12 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
   const customerName = group?.leadCompany || group?.leadName || quotation.customer || 'Customer';
   const totalAmount = Number(quotation.totalAmount || quotation.customAmount || 0);
 
+  let quoteParsedData: any = {};
+  try {
+    quoteParsedData = typeof quotation.data === 'string' ? JSON.parse(quotation.data) : (quotation.data || {});
+  } catch(e) {}
+  const currency = quotation.currency || quoteParsedData.currency || linkedOrder?.currency || (quotation.isForeign ? 'USD' : 'LKR');
+
   // Material Change / Alert check
   const materialAlert = 
     linkedWorkOrder?.materialAlert || 
@@ -157,7 +163,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
               </Badge>
             </div>
             <p className="text-xs text-secondary">
-              Client: <strong className="text-primary">{customerName}</strong> • Quoted Value: <strong className="text-emerald-600 font-mono">{formatCurrency(totalAmount)}</strong> • Date: <span className="font-mono text-muted">{new Date(quotation.createdAt || Date.now()).toLocaleDateString()}</span>
+              Client: <strong className="text-primary">{customerName}</strong> • Quoted Value: <strong className="text-emerald-600 font-mono">{formatCurrency(totalAmount, false, currency)}</strong> • Date: <span className="font-mono text-muted">{new Date(quotation.createdAt || Date.now()).toLocaleDateString()}</span>
             </p>
           </div>
 
@@ -247,7 +253,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
                     </Badge>
                   </h4>
                   <span className="text-[11px] text-muted">
-                    Quotation No: <strong className="font-mono text-primary">{quoNo}</strong> • Value: <strong className="font-mono text-emerald-600">{formatCurrency(totalAmount)}</strong>
+                    Quotation No: <strong className="font-mono text-primary">{quoNo}</strong> • Value: <strong className="font-mono text-emerald-600">{formatCurrency(totalAmount, false, currency)}</strong>
                   </span>
                 </div>
               </div>
@@ -456,7 +462,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
                     Stage 3: Advance Proforma (Advance)
                     {isStage3Complete ? (
                       <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-500/30 font-mono">
-                        Received ({formatCurrency(totalAdvance)})
+                        Received ({formatCurrency(totalAdvance, false, currency)})
                       </Badge>
                     ) : (
                       <span className="text-[10px] text-muted uppercase font-mono">Advance Pending</span>
@@ -464,7 +470,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
                   </h4>
                   <span className="text-[11px] text-muted">
                     {isStage3Complete ? (
-                      <>Receipt Ref: <strong className="font-mono text-primary">{latestReceipt?.receiptNo || 'Payment Receipt'}</strong> • Total Advance: <strong className="font-mono text-emerald-600">{formatCurrency(totalAdvance)}</strong></>
+                      <>Receipt Ref: <strong className="font-mono text-primary">{latestReceipt?.receiptNo || 'Payment Receipt'}</strong> • Total Advance: <strong className="font-mono text-emerald-600">{formatCurrency(totalAdvance, false, currency)}</strong></>
                     ) : (
                       'Advance payment receipt not yet logged against this quotation.'
                     )}
@@ -681,7 +687,7 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
                   </h4>
                   <span className="text-[11px] text-muted">
                     {isStage6Exists ? (
-                      <>Invoice No: <strong className="font-mono text-primary">{linkedInvoice.invoiceNo || linkedInvoice.id}</strong> • Total: <strong className="font-mono text-emerald-600">{formatCurrency(linkedInvoice.totalAmount || linkedInvoice.amount || totalAmount)}</strong></>
+                      <>Invoice No: <strong className="font-mono text-primary">{linkedInvoice.invoiceNo || linkedInvoice.id}</strong> • Total: <strong className="font-mono text-emerald-600">{formatCurrency(linkedInvoice.totalAmount || linkedInvoice.amount || totalAmount, false, linkedInvoice.currency || currency)}</strong></>
                     ) : (
                       'Final Tax Invoice will be generated upon dispatch completion.'
                     )}

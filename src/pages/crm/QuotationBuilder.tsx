@@ -266,11 +266,16 @@ export const QuotationBuilder: React.FC = () => {
 
   const initProcState = useCallback(() => {
     const init: any = {}
+    const isUSD = currency === 'USD' || currency === '$';
+    const exRate = Number((currencies?.find(c => c.code === currency) || {}).exchangeRate || (isUSD ? 310 : 1));
+    const factor = isUSD && exRate > 0 ? (1 / exRate) : 1;
     EXCEL_PROCESSES.forEach(g => g.items.forEach(i => {
-      init[i.name] = { estHr: '', setTime: '', quoHr: '', hrRate: i.hrRate, setTimeRate: i.setTimeRate, rate: i.hrRate }
+      const hr = Number((Number(i.hrRate || 0) * factor).toFixed(2));
+      const st = Number((Number(i.setTimeRate || 0) * factor).toFixed(2));
+      init[i.name] = { estHr: '', setTime: '', quoHr: '', hrRate: hr, setTimeRate: st, rate: hr }
     }))
     return init
-  }, [EXCEL_PROCESSES])
+  }, [EXCEL_PROCESSES, currency, currencies])
 
 
   const [savedVersions, setSavedVersions] = useState<any[]>([])
@@ -495,15 +500,41 @@ export const QuotationBuilder: React.FC = () => {
   }, [selectedCustomer, selectedLead]);
 
   const handleCurrencyChange = (newCurrencyCode: string) => {
-     if (!currencies || currencies.length === 0) return;
-     const oldCur = currencies.find(c => c.code === currency) || { exchangeRate: 1 };
-     const newCur = currencies.find(c => c.code === newCurrencyCode) || { exchangeRate: 1 };
+     if (newCurrencyCode === currency) return;
+     const oldCur = (currencies && currencies.length > 0 ? currencies.find(c => c.code === currency) : null) || { exchangeRate: currency === 'USD' ? 310 : 1 };
+     const newCur = (currencies && currencies.length > 0 ? currencies.find(c => c.code === newCurrencyCode) : null) || { exchangeRate: newCurrencyCode === 'USD' ? 310 : 1 };
 
-     const multiplier = newCur.exchangeRate / oldCur.exchangeRate;
+     const oldRate = Number(oldCur.exchangeRate) || (currency === 'USD' ? 310 : 1);
+     const newRate = Number(newCur.exchangeRate) || (newCurrencyCode === 'USD' ? 310 : 1);
+     const factor = oldRate / newRate;
      
      setCustItems(items => items.map(i => ({
         ...i,
-        unitPrice: Number((i.unitPrice * multiplier).toFixed(2))
+        unitPrice: Number((Number(i.unitPrice || 0) * factor).toFixed(2))
+     })));
+
+     setBoms(prevBoms => prevBoms.map(b => ({
+       ...b,
+       autoMats: (b.autoMats || []).map((m: any) => ({
+         ...m,
+         unitPrice: Number((Number(m.unitPrice || 0) * factor).toFixed(4)),
+         platePrice: Number((Number(m.platePrice || 0) * factor).toFixed(2)),
+         shaftPrice: Number((Number(m.shaftPrice || 0) * factor).toFixed(2)),
+       })),
+       manualMats: (b.manualMats || []).map((m: any) => ({
+         ...m,
+         unitPrice: Number((Number(m.unitPrice || 0) * factor).toFixed(4)),
+       })),
+       procState: b.procState ? Object.fromEntries(
+         Object.entries(b.procState).map(([k, v]: [string, any]) => [
+           k,
+           {
+             ...v,
+             hrRate: v.hrRate !== undefined ? Number((Number(v.hrRate || 0) * factor).toFixed(2)) : v.hrRate,
+             setTimeRate: v.setTimeRate !== undefined ? Number((Number(v.setTimeRate || 0) * factor).toFixed(2)) : v.setTimeRate
+           }
+         ])
+       ) : b.procState
      })));
 
      setCurrency(newCurrencyCode);
@@ -544,7 +575,9 @@ export const QuotationBuilder: React.FC = () => {
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
       if (cust.isForeign || cust.currency === 'USD') {
-        setCurrency('USD');
+        handleCurrencyChange('USD');
+      } else if (currency === 'USD') {
+        handleCurrencyChange('LKR');
       }
 
       fetchNextDocumentNumber('quotation', {
@@ -581,7 +614,9 @@ export const QuotationBuilder: React.FC = () => {
         }
         if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
       if (cust.isForeign || cust.currency === 'USD') {
-        setCurrency('USD');
+        handleCurrencyChange('USD');
+      } else if (currency === 'USD') {
+        handleCurrencyChange('LKR');
       }
 
         fetchNextDocumentNumber('quotation', {
@@ -1357,7 +1392,7 @@ export const QuotationBuilder: React.FC = () => {
         setShowMarginModal(false);
         const effectivePct = totalValidBomCost > 0 ? ((profitVal / totalValidBomCost) * 100).toFixed(1) : '0';
         const actualGrandTotal = targetSellingPrice * getTaxMultiplier();
-        showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling Rs. ${Math.round(actualGrandTotal).toLocaleString()} (Pre-tax: Rs. ${targetSellingPrice.toLocaleString()})${useAiPolish ? ' with AI descriptions' : ''}!`);
+        showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling ${formatCurrency(actualGrandTotal, false, currency)} (Pre-tax: ${formatCurrency(targetSellingPrice, false, currency)})${useAiPolish ? ' with AI descriptions' : ''}!`);
       } else {
         // --- AUTO-GENERATE WITHOUT BOM (Direct from Job Scope, BOM titles, or Subject) ---
         let itemsSource: Array<{ title: string; description: string; rawDimensions: string }> = [];
@@ -1436,7 +1471,7 @@ export const QuotationBuilder: React.FC = () => {
         setCustItems(newCustItems);
         setShowMarginModal(false);
         const actualGrandTotal = targetSellingPrice * getTaxMultiplier();
-        showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling Rs. ${Math.round(actualGrandTotal).toLocaleString()} (Pre-tax: Rs. ${targetSellingPrice.toLocaleString()})${useAiPolish ? ' with AI descriptions' : ''}!`);
+        showToast('success', `✨ Generated ${newCustItems.length} quote item(s) totalling ${formatCurrency(actualGrandTotal, false, currency)} (Pre-tax: ${formatCurrency(targetSellingPrice, false, currency)})${useAiPolish ? ' with AI descriptions' : ''}!`);
       }
     } catch (err: any) {
       showToast('error', err.message || 'Failed generating quote');
@@ -2731,8 +2766,8 @@ export const QuotationBuilder: React.FC = () => {
                               <th className="px-3 py-2.5">Dia Ø</th>
                               <th className="px-3 py-2.5 w-16">Qty</th>
                               <th className="px-3 py-2.5 w-24">Unit Price</th>
-                              <th className="px-4 py-2.5 text-right">Plate Rs</th>
-                              <th className="px-4 py-2.5 text-right">Shaft Rs</th>
+                              <th className="px-4 py-2.5 text-right">Plate ({currency === 'USD' ? '$' : 'Rs'})</th>
+                              <th className="px-4 py-2.5 text-right">Shaft ({currency === 'USD' ? '$' : 'Rs'})</th>
                               <th className="px-3 py-2.5 w-10"></th>
                             </tr>
                           </thead>
@@ -2743,7 +2778,15 @@ export const QuotationBuilder: React.FC = () => {
                                   <MatSearchInput
                                     value={mat.material}
                                     onChange={v => updateAutoMat(bom.id, mat.id, 'material', v)}
-                                    onSelect={(name, price) => { updateAutoMat(bom.id, mat.id, 'material', name); if (price) updateAutoMat(bom.id, mat.id, 'unitPrice', price) }}
+                                    onSelect={(name, price) => {
+                                      updateAutoMat(bom.id, mat.id, 'material', name);
+                                      if (price) {
+                                        const isUSD = currency === 'USD' || currency === '$';
+                                        const exRate = Number((currencies?.find(c => c.code === currency) || {}).exchangeRate || (isUSD ? 310 : 1));
+                                        const resolvedPrice = isUSD && exRate > 0 ? Number((price / exRate).toFixed(4)) : price;
+                                        updateAutoMat(bom.id, mat.id, 'unitPrice', resolvedPrice);
+                                      }
+                                    }}
                                     inventory={inventory}
                                     className="w-full min-w-[120px]"
                                   />
@@ -2755,8 +2798,8 @@ export const QuotationBuilder: React.FC = () => {
                                 <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " group-hover:bg-transparent"} value={mat.dia} onChange={e => updateAutoMat(bom.id, mat.id, 'dia', e.target.value)} /></td>
                                 <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " group-hover:bg-transparent"} value={mat.qty} onChange={e => updateAutoMat(bom.id, mat.id, 'qty', e.target.value)} /></td>
                                 <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " group-hover:bg-transparent"} value={mat.unitPrice} onChange={e => updateAutoMat(bom.id, mat.id, 'unitPrice', e.target.value)} /></td>
-                                <td className="px-4 py-2.5 text-right font-mono text-[11px] font-semibold text-primary">{mat.platePrice > 0 ? formatCurrency(mat.platePrice) : <span className="text-muted/30">-</span>}</td>
-                                <td className="px-4 py-2.5 text-right font-mono text-[11px] font-semibold text-primary">{mat.shaftPrice > 0 ? formatCurrency(mat.shaftPrice) : <span className="text-muted/30">-</span>}</td>
+                                <td className="px-4 py-2.5 text-right font-mono text-[11px] font-semibold text-primary">{mat.platePrice > 0 ? formatCurrency(mat.platePrice, false, currency) : <span className="text-muted/30">-</span>}</td>
+                                <td className="px-4 py-2.5 text-right font-mono text-[11px] font-semibold text-primary">{mat.shaftPrice > 0 ? formatCurrency(mat.shaftPrice, false, currency) : <span className="text-muted/30">-</span>}</td>
                                 <td className="px-3 py-2.5 text-center"><button onClick={() => removeAutoMat(bom.id, mat.id)} className="text-muted/50 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button></td>
                               </tr>
                             ))}
@@ -2789,7 +2832,7 @@ export const QuotationBuilder: React.FC = () => {
                               <th className="px-3 py-2.5">Price Mode</th>
                               <th className="px-3 py-2.5 w-24">Unit Price</th>
                               <th className="px-3 py-2.5 w-20">Qty</th>
-                              <th className="px-4 py-2.5 text-right">Price</th>
+                              <th className="px-4 py-2.5 text-right">Price ({currency === 'USD' ? '$' : 'Rs'})</th>
                               <th className="px-3 py-2.5 w-10"></th>
                             </tr>
                           </thead>
@@ -2800,7 +2843,15 @@ export const QuotationBuilder: React.FC = () => {
                                   <MatSearchInput
                                     value={mat.material}
                                     onChange={v => updateManualMat(bom.id, mat.id, 'material', v)}
-                                    onSelect={(name, price) => { updateManualMat(bom.id, mat.id, 'material', name); if (price) updateManualMat(bom.id, mat.id, 'unitPrice', price) }}
+                                    onSelect={(name, price) => {
+                                      updateManualMat(bom.id, mat.id, 'material', name);
+                                      if (price) {
+                                        const isUSD = currency === 'USD' || currency === '$';
+                                        const exRate = Number((currencies?.find(c => c.code === currency) || {}).exchangeRate || (isUSD ? 310 : 1));
+                                        const resolvedPrice = isUSD && exRate > 0 ? Number((price / exRate).toFixed(4)) : price;
+                                        updateManualMat(bom.id, mat.id, 'unitPrice', resolvedPrice);
+                                      }
+                                    }}
                                     inventory={inventory}
                                     className="w-full min-w-[120px]"
                                   />
@@ -2816,7 +2867,7 @@ export const QuotationBuilder: React.FC = () => {
                                 </td>
                                 <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " group-hover:bg-transparent"} value={mat.unitPrice} onChange={e => updateManualMat(bom.id, mat.id, 'unitPrice', e.target.value)} /></td>
                                 <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " group-hover:bg-transparent"} value={mat.qty} onChange={e => updateManualMat(bom.id, mat.id, 'qty', e.target.value)} /></td>
-                                <td className="px-4 py-2.5 text-right font-mono text-[11px] font-semibold text-primary">{mat.unitPrice * mat.qty > 0 ? formatCurrency(mat.unitPrice * mat.qty) : <span className="text-muted/30">-</span>}</td>
+                                <td className="px-4 py-2.5 text-right font-mono text-[11px] font-semibold text-primary">{mat.unitPrice * mat.qty > 0 ? formatCurrency(mat.unitPrice * mat.qty, false, currency) : <span className="text-muted/30">-</span>}</td>
                                 <td className="px-3 py-2.5 text-center"><button onClick={() => removeManualMat(bom.id, mat.id)} className="text-muted/50 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button></td>
                               </tr>
                             ))}
@@ -2870,12 +2921,12 @@ export const QuotationBuilder: React.FC = () => {
                                       <td className="p-0 border-r border-theme-subtle/10"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} className={tableInputClass + " font-bold text-primary group-hover:bg-transparent"} value={st.quoHr} onChange={e => handleProcChange(bom.id, proc.name, 'quoHr', e.target.value)} placeholder="-" /></td>
                                       <td className="px-3 py-1.5 text-[10px] text-muted font-mono whitespace-nowrap border-r border-theme-subtle/10">
                                           <div className="flex gap-2 justify-end">
-                                            <span className="text-amber-600/80 font-medium">Rs. {hrRate.toLocaleString()}/hr</span>
+                                            <span className="text-amber-600/80 font-medium">{currency === 'USD' ? `$ ${hrRate.toFixed(2)}/hr` : `Rs. ${hrRate.toLocaleString()}/hr`}</span>
                                             <span className="text-theme-subtle">|</span>
-                                            <span className="text-blue-500/80 font-medium">Rs. {setTimeRate.toLocaleString()}/set</span>
+                                            <span className="text-blue-500/80 font-medium">{currency === 'USD' ? `$ ${setTimeRate.toFixed(2)}/set` : `Rs. ${setTimeRate.toLocaleString()}/set`}</span>
                                           </div>
                                         </td>
-                                      <td className="px-4 py-1.5 text-right font-mono text-[11px] font-semibold">{subTotal > 0 ? <span className="text-primary">{formatCurrency(subTotal)}</span> : <span className="text-muted/30">-</span>}</td>
+                                      <td className="px-4 py-1.5 text-right font-mono text-[11px] font-semibold">{subTotal > 0 ? <span className="text-primary">{formatCurrency(subTotal, false, currency)}</span> : <span className="text-muted/30">-</span>}</td>
                                     </tr>
                                   )
                                 })}
@@ -2890,15 +2941,15 @@ export const QuotationBuilder: React.FC = () => {
                     <div className="flex gap-8 text-xs">
                       <div>
                         <span className="text-muted mr-2">Materials:</span>
-                        <span className="font-mono font-bold text-primary">{formatCurrency(autoMatTotal + manualMatTotal)}</span>
+                        <span className="font-mono font-bold text-primary">{formatCurrency(autoMatTotal + manualMatTotal, false, currency)}</span>
                       </div>
                       <div>
                         <span className="text-muted mr-2">Machining:</span>
-                        <span className="font-mono font-bold text-primary">{formatCurrency(machCost)}</span>
+                        <span className="font-mono font-bold text-primary">{formatCurrency(machCost, false, currency)}</span>
                       </div>
                       <div>
                         <span className="text-secondary font-black mr-2">BOM Total:</span>
-                        <span className="font-mono font-black text-rex-500">{formatCurrency(bomTotal)}</span>
+                        <span className="font-mono font-black text-rex-500">{formatCurrency(bomTotal, false, currency)}</span>
                       </div>
                     </div>
                   </div>
@@ -2920,7 +2971,7 @@ export const QuotationBuilder: React.FC = () => {
             <div className="flex justify-end px-5 py-3 bg-surface border border-theme-subtle/40 rounded-xl">
                <div className="flex items-center gap-4 text-sm">
                  <span className="font-bold text-secondary uppercase tracking-widest text-[11px]">All BOMs Grand Total</span>
-                 <span className="font-mono font-black text-lg text-rex-500">{formatCurrency(jobTotalCost)}</span>
+                 <span className="font-mono font-black text-lg text-rex-500">{formatCurrency(jobTotalCost, false, currency)}</span>
                </div>
             </div>
           )}
@@ -2967,8 +3018,8 @@ export const QuotationBuilder: React.FC = () => {
                         <th className="px-4 py-2.5 w-12 text-center">#</th>
                         <th className="px-3 py-2.5 min-w-[300px] w-full">Description</th>
                         <th className="px-3 py-2.5 w-24">Qty</th>
-                        <th className="px-3 py-2.5 w-44 min-w-[170px] whitespace-nowrap">Unit Price (Rs.)</th>
-                        <th className="px-4 py-2.5 w-36 text-right">Total (Rs.)</th>
+                        <th className="px-3 py-2.5 w-44 min-w-[170px] whitespace-nowrap">Unit Price ({currency === 'USD' ? '$' : 'Rs.'})</th>
+                        <th className="px-4 py-2.5 w-36 text-right">Total ({currency === 'USD' ? '$' : 'Rs.'})</th>
                         <th className="px-3 py-2.5 w-28">Notes</th>
                         <th className="px-3 py-2.5 w-10"></th>
                       </tr>
@@ -3006,7 +3057,7 @@ export const QuotationBuilder: React.FC = () => {
                           </td>
                           <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={item.qty} onChange={e => updateCustItem(item.id, 'qty', Number(e.target.value))} className={tableInputClass + " group-hover:bg-transparent"} /></td>
                           <td className="p-0"><input type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }} value={item.unitPrice} onChange={e => updateCustItem(item.id, 'unitPrice', Number(e.target.value))} className={tableInputClass + " group-hover:bg-transparent"} /></td>
-                          <td className="px-4 py-2 text-right font-mono text-[11px] font-semibold text-primary">{formatCurrency(item.qty * item.unitPrice)}</td>
+                          <td className="px-4 py-2 text-right font-mono text-[11px] font-semibold text-primary">{formatCurrency(item.qty * item.unitPrice, false, currency)}</td>
                           <td className="p-0"><input type="text" value={item.note} onChange={e => updateCustItem(item.id, 'note', e.target.value)} placeholder="Optional note" className={tableInputClass + " group-hover:bg-transparent text-muted"} /></td>
                           <td className="px-3 py-2 text-center"><button onClick={() => removeCustItem(item.id)} className="text-muted/50 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={13} /></button></td>
                         </tr>
@@ -3117,7 +3168,9 @@ export const QuotationBuilder: React.FC = () => {
                             ? custWithSSCL
                             : taxEnabled && selectedProfile?.tax1_show_separately === 0 && Number(selectedProfile.tax1_rate || 0) > 0 && !(selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || /vat/i.test(selectedProfile.tax1_name || ''))
                               ? (custSubtotal + custSubtotal * (Number(selectedProfile.tax1_rate)/100))
-                              : custSubtotal
+                              : custSubtotal,
+                          false,
+                          currency
                         )}
                       </span>
                   </div>
@@ -3139,14 +3192,16 @@ export const QuotationBuilder: React.FC = () => {
                             onClick={() => handleDiscountTypeToggle('amount')}
                             className={`px-1.5 py-0.5 rounded font-bold transition-all ${custDiscountType === 'amount' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted hover:text-primary'}`}
                           >
-                            LKR
+                            {currency}
                           </button>
                         </div>
                       </div>
                       <span className="font-mono text-red-500/90 font-semibold text-[12px] text-right">-{formatCurrency(
                         taxEnabled && selectedProfile?.tax1_show_separately === 0 && Number(selectedProfile.tax1_rate || 0) > 0 && !(selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || /vat/i.test(selectedProfile.tax1_name || ''))
                           ? custDiscountAmt * (1 + Number(selectedProfile.tax1_rate)/100)
-                          : custDiscountAmt
+                          : custDiscountAmt,
+                        false,
+                        currency
                       )}</span>
                     </div>
 
@@ -3170,7 +3225,7 @@ export const QuotationBuilder: React.FC = () => {
                         <div className="flex justify-between items-center text-[10px] px-1 text-muted">
                           <span>Deduction:</span>
                           <span className="font-mono font-medium text-primary">
-                            ≈ Rs. {formatCurrency(custDiscountAmt)}
+                            ≈ {formatCurrency(custDiscountAmt, false, currency)}
                           </span>
                         </div>
                       )}
@@ -3178,7 +3233,7 @@ export const QuotationBuilder: React.FC = () => {
                   ) : (
                     <div className="space-y-1">
                       <div className="flex items-center bg-surface2 border border-primary/60 ring-1 ring-primary/20 bg-primary/5 rounded-md shadow-inner px-2 py-1 transition-all">
-                        <span className="text-[10px] font-bold text-primary mr-1.5">LKR</span>
+                        <span className="text-[10px] font-bold text-primary mr-1.5">{currency}</span>
                         <input
                           type="number"
                           min="0"
@@ -3207,13 +3262,13 @@ export const QuotationBuilder: React.FC = () => {
                       {(selectedProfile.tax1_show_separately === 1 && custSscl > 0) && (
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-muted font-medium">{selectedProfile.tax1_name} ({selectedProfile.tax1_rate}%)</span>
-                          <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custSscl)}</span>
+                          <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custSscl, false, currency)}</span>
                         </div>
                       )}
                       {(selectedProfile.tax2_show_separately === 1 && custVat > 0) && (
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-muted font-medium">{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}%)</span>
-                          <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custVat)}</span>
+                          <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custVat, false, currency)}</span>
                         </div>
                       )}
                     </>
@@ -3222,7 +3277,7 @@ export const QuotationBuilder: React.FC = () => {
                   <div className="pt-4 mt-2 border-t border-dashed border-theme-subtle/50">
                     <div className="flex justify-between items-center">
                       <div className="text-[12px] font-bold text-secondary uppercase tracking-wider">Grand Total</div>
-                      <div className="text-[24px] leading-none font-black text-primary font-mono">{formatCurrency(custWithSSCL)}</div>
+                      <div className="text-[24px] leading-none font-black text-primary font-mono">{formatCurrency(custWithSSCL, false, currency)}</div>
                     </div>
                   </div>
                 </div>
@@ -3334,7 +3389,7 @@ export const QuotationBuilder: React.FC = () => {
                   </div>
                   <div className="flex justify-between items-center">
                      <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">{expectedProfit >= 0 ? 'Profit' : 'Loss'}</span>
-                     <span className={`text-[14px] font-mono font-black ${expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(Math.abs(expectedProfit))}</span>
+                     <span className={`text-[14px] font-mono font-black ${expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(Math.abs(expectedProfit), false, currency)}</span>
                   </div>
                 </div>
               </div>
@@ -3613,17 +3668,17 @@ export const QuotationBuilder: React.FC = () => {
                 </div>
               </div>
 
-              {/* Input 2: Fixed Profit Amount (Rs.) */}
+              {/* Input 2: Fixed Profit Amount */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-primary flex items-center gap-1.5">
                     <Coins size={13} className="text-emerald-500" />
-                    Fixed Profit Amount (Rs.)
+                    Fixed Profit Amount ({currency === 'USD' ? '$' : 'Rs.'})
                   </label>
                   <span className="text-[10px] text-muted">Fixed Profit Markup</span>
                 </div>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-muted text-xs font-mono">Rs.</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-muted text-xs font-mono">{currency === 'USD' ? '$' : 'Rs.'}</span>
                   <input 
                     type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
                     className={`w-full input-base font-bold text-base pl-9 pr-3 py-2 bg-surface font-mono transition-all ${
@@ -3631,12 +3686,12 @@ export const QuotationBuilder: React.FC = () => {
                     }`}
                     value={marginAmtInput} 
                     onChange={e => handleMarginAmtChange(e.target.value)} 
-                    placeholder={totalValidBomCost > 0 ? (totalValidBomCost * 0.35).toFixed(0) : "e.g. 50000"}
+                    placeholder={totalValidBomCost > 0 ? (totalValidBomCost * 0.35).toFixed(0) : (currency === 'USD' ? "e.g. 150" : "e.g. 50000")}
                   />
                 </div>
-                {/* Presets for Rs. */}
+                {/* Presets */}
                 <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                  {[10000, 25000, 50000, 100000, 250000].map(val => (
+                  {(currency === 'USD' ? [25, 50, 100, 250, 500, 1000] : [10000, 25000, 50000, 100000, 250000]).map(val => (
                     <button
                       key={val}
                       type="button"
@@ -3647,7 +3702,7 @@ export const QuotationBuilder: React.FC = () => {
                           : 'bg-surface hover:bg-surface2 text-muted border-theme-subtle hover:text-primary'
                       }`}
                     >
-                      +{(val / 1000).toFixed(0)}k
+                      {currency === 'USD' ? `+$${val}` : `+${(val / 1000).toFixed(0)}k`}
                     </button>
                   ))}
                 </div>
@@ -3664,7 +3719,7 @@ export const QuotationBuilder: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <label className="text-xs font-bold text-primary flex items-center gap-1.5">
                     <Receipt size={14} className="text-blue-500" />
-                    Final Required Value / Inclusive Budget (Rs.)
+                    Final Required Value / Inclusive Budget ({currency === 'USD' ? '$' : 'Rs.'})
                   </label>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
                     බදු සහිත අවසාන එකතුව
@@ -3676,7 +3731,7 @@ export const QuotationBuilder: React.FC = () => {
               </div>
 
               <div className="relative mb-2">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-muted text-sm font-mono">Rs.</span>
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-muted text-sm font-mono">{currency === 'USD' ? '$' : 'Rs.'}</span>
                 <input 
                   type="number" min="0" onKeyDown={e => { if(e.key === '-' || e.key === 'e') e.preventDefault() }}
                   className={`w-full input-base font-mono font-black text-lg pl-11 pr-4 py-2.5 bg-surface transition-all ${
@@ -3684,7 +3739,7 @@ export const QuotationBuilder: React.FC = () => {
                   }`}
                   value={finalValInput} 
                   onChange={e => handleFinalValChange(e.target.value)} 
-                  placeholder={totalValidBomCost > 0 ? (totalValidBomCost * 1.35 * getTaxMultiplier()).toFixed(0) : "e.g. 100000 or 100"}
+                  placeholder={totalValidBomCost > 0 ? (totalValidBomCost * 1.35 * getTaxMultiplier()).toFixed(0) : (currency === 'USD' ? "e.g. 500" : "e.g. 100000")}
                 />
               </div>
 
@@ -3692,7 +3747,7 @@ export const QuotationBuilder: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-theme-subtle/50 text-[11px]">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10px] font-semibold text-muted">Quick Targets:</span>
-                  {[50000, 100000, 250000, 500000, 1000000].map(val => (
+                  {(currency === 'USD' ? [100, 250, 500, 1000, 2500, 5000] : [50000, 100000, 250000, 500000, 1000000]).map(val => (
                     <button
                       key={val}
                       type="button"
@@ -3703,7 +3758,7 @@ export const QuotationBuilder: React.FC = () => {
                           : 'bg-surface hover:bg-surface2 text-muted border-theme-subtle hover:text-primary'
                       }`}
                     >
-                      {val >= 1000000 ? `${(val / 1000000).toFixed(0)}M` : `${(val / 1000).toFixed(0)}k`}
+                      {currency === 'USD' ? `$${val}` : (val >= 1000000 ? `${(val / 1000000).toFixed(0)}M` : `${(val / 1000).toFixed(0)}k`)}
                     </button>
                   ))}
                   <button
@@ -3786,8 +3841,8 @@ export const QuotationBuilder: React.FC = () => {
                   <span>Base BOM Manufacturing Cost:</span>
                   <span className="font-mono font-bold text-primary">
                     {previewCost > 0 
-                      ? `Rs. ${previewCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : 'Rs. 0.00 (No BOM Costing)'
+                      ? formatCurrency(previewCost, false, currency)
+                      : `${currency === 'USD' ? '$' : 'Rs.'} 0.00 (No BOM Costing)`
                     }
                   </span>
                 </div>
@@ -3795,7 +3850,7 @@ export const QuotationBuilder: React.FC = () => {
                 <div className="flex justify-between items-center text-muted">
                   <span>Calculated Profit Margin:</span>
                   <span className={`font-mono font-bold ${currentProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
-                    {currentProfit >= 0 ? '+' : ''}Rs. {Math.round(currentProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currentProfit >= 0 ? '+' : ''}{formatCurrency(currentProfit, false, currency)}
                     <span className="text-[11px] ml-1.5 font-semibold text-muted font-sans">
                       {previewCost > 0 ? `(${effectivePct.toFixed(1)}%)` : '(Direct Price)'}
                     </span>
@@ -3805,7 +3860,7 @@ export const QuotationBuilder: React.FC = () => {
                 <div className="pt-2 border-t border-theme-subtle/50 flex justify-between items-center">
                   <span className="font-semibold text-secondary">Pre-Tax Base Selling Price (Quotation Subtotal):</span>
                   <span className="font-mono font-bold text-primary text-sm">
-                    Rs. {targetBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(targetBase, false, currency)}
                   </span>
                 </div>
 
@@ -3818,14 +3873,14 @@ export const QuotationBuilder: React.FC = () => {
                         Taxes extracted from Final Value ({selectedProfile.name}):
                       </span>
                       <span className="font-mono font-bold text-xs">
-                        +Rs. {totalExtractedTax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        +{formatCurrency(totalExtractedTax, false, currency)}
                       </span>
                     </div>
                     <div className="text-[10px] text-muted flex justify-between items-center pt-0.5 border-t border-indigo-500/15">
                       <span>
-                        {t1 > 0 ? `SSCL (${t1}%): Rs. ${ssclAmt.toLocaleString()}` : ''}
+                        {t1 > 0 ? `SSCL (${t1}%): ${formatCurrency(ssclAmt, false, currency)}` : ''}
                         {t1 > 0 && t2 > 0 ? ' • ' : ''}
-                        {t2 > 0 ? `VAT (${t2}%): Rs. ${vatAmt.toLocaleString()}` : ''}
+                        {t2 > 0 ? `VAT (${t2}%): ${formatCurrency(vatAmt, false, currency)}` : ''}
                         {selectedProfile.tax2_compound ? ' (Compound)' : ''}
                       </span>
                       <span className="text-indigo-600 dark:text-indigo-400 font-semibold italic">Auto reverse-calculated</span>
@@ -3850,7 +3905,7 @@ export const QuotationBuilder: React.FC = () => {
                     </span>
                   </div>
                   <span className="font-mono text-base font-black text-purple-600 dark:text-purple-400">
-                    Rs. {currentFinal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(currentFinal, false, currency)}
                   </span>
                 </div>
               </div>

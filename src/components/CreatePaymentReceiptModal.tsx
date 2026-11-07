@@ -65,6 +65,14 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
   const paymentTerms = order?.paymentTerms || quotation?.paymentTerms || quoteData?.terms?.paymentTerms || "";
   const deliveryTerms = order?.deliveryTerms || quotation?.deliveryTerms || quoteData?.terms?.deliveryTerms || "";
 
+  const receiptCurrency = String(
+    order?.currency || 
+    quotation?.currency || 
+    quoteData?.currency || 
+    (quotation?.isForeign ? 'USD' : (order?.isForeign ? 'USD' : 'LKR'))
+  ).trim().toUpperCase();
+  const receiptExchangeRate = Number(order?.exchangeRate || quotation?.exchangeRate || (receiptCurrency === 'USD' ? 310 : 1));
+
   // Quoted total computation (prioritize order totalPrice if order is provided)
   const quotedTotal = Number(
     order?.totalPrice ||
@@ -225,7 +233,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
   const balanceAfterCurrent = Math.max(0, remainingBalance - currentAmountNum);
   const currentAdvancePercent = quotedTotal > 0 ? ((currentAmountNum / quotedTotal) * 100).toFixed(1) : "0.0";
   const paidPercentNow = quotedTotal > 0 ? Math.min(100, Math.round(((totalPaidSoFar + currentAmountNum) / quotedTotal) * 100)) : 0;
-  const amountWords = numberToWords(currentAmountNum);
+  const amountWords = numberToWords(currentAmountNum, receiptCurrency);
 
   const applyPercent = (pct: number) => {
     if (quotedTotal <= 0) return;
@@ -264,6 +272,8 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
         orderId: orderId || null,
         orderNo: orderNo || null,
         amount: numAmount,
+        currency: receiptCurrency,
+        exchangeRate: receiptExchangeRate,
         paymentMethod,
         accountId: depositAccountId || null,
         depositAccountId: depositAccountId || null,
@@ -394,7 +404,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                   <span className="flex items-center gap-1.5">
                     <Package size={13} className="text-muted" /> Scope Items ({itemsList.length})
                   </span>
-                  <span className="text-primary font-mono">{formatCurrency(quotedTotal)}</span>
+                  <span className="text-primary font-mono">{formatCurrency(quotedTotal, false, receiptCurrency)}</span>
                 </div>
 
                 <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 divide-y divide-theme-subtle/50 text-xs">
@@ -406,11 +416,11 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                             {item.productName || item.name || item.description || `Item #${idx + 1}`}
                           </div>
                           <div className="text-[10px] text-muted">
-                            Qty: <strong className="text-primary">{item.quantity || item.qty || 1}</strong> × {formatCurrency(Number(item.unitPrice || item.price || 0))}
+                            Qty: <strong className="text-primary">{item.quantity || item.qty || 1}</strong> × {formatCurrency(Number(item.unitPrice || item.price || 0), false, receiptCurrency)}
                           </div>
                         </div>
                         <div className="font-mono font-bold text-primary text-xs shrink-0">
-                          {formatCurrency(Number(item.totalPrice || item.total || (Number(item.quantity || 1) * Number(item.unitPrice || 0))))}
+                          {formatCurrency(Number(item.totalPrice || item.total || (Number(item.quantity || 1) * Number(item.unitPrice || 0))), false, receiptCurrency)}
                         </div>
                       </div>
                     ))
@@ -440,8 +450,8 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-muted">
-                  <span>Paid so far: <strong className="text-primary">{formatCurrency(totalPaidSoFar)}</strong></span>
-                  <span>Balance: <strong className="text-amber-600 dark:text-amber-400">{formatCurrency(balanceAfterCurrent)}</strong></span>
+                  <span>Paid so far: <strong className="text-primary">{formatCurrency(totalPaidSoFar, false, receiptCurrency)}</strong></span>
+                  <span>Balance: <strong className="text-amber-600 dark:text-amber-400">{formatCurrency(balanceAfterCurrent, false, receiptCurrency)}</strong></span>
                 </div>
 
                 {/* Prior Receipts List */}
@@ -461,7 +471,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                           </div>
                         </div>
                         <div className="font-mono font-bold text-emerald-600">
-                          {formatCurrency(Number(r.amount))}
+                          {formatCurrency(Number(r.amount), false, receiptCurrency)}
                         </div>
                       </div>
                     ))}
@@ -482,19 +492,19 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                 <div className="p-1">
                   <div className="text-[10px] font-bold text-muted uppercase">Total Consideration</div>
                   <div className="text-xs md:text-sm font-black text-primary mt-0.5">
-                    {formatCurrency(quotedTotal)}
+                    {formatCurrency(quotedTotal, false, receiptCurrency)}
                   </div>
                 </div>
                 <div className="p-1 border-x border-theme-subtle">
                   <div className="text-[10px] font-bold text-emerald-600 uppercase">This Receipt ({currentAdvancePercent}%)</div>
                   <div className="text-xs md:text-sm font-black text-emerald-600 mt-0.5">
-                    {formatCurrency(currentAmountNum)}
+                    {formatCurrency(currentAmountNum, false, receiptCurrency)}
                   </div>
                 </div>
                 <div className="p-1">
                   <div className="text-[10px] font-bold text-amber-600 uppercase">Balance on Delivery</div>
                   <div className="text-xs md:text-sm font-black text-amber-600 dark:text-amber-400 mt-0.5">
-                    {formatCurrency(balanceAfterCurrent)}
+                    {formatCurrency(balanceAfterCurrent, false, receiptCurrency)}
                   </div>
                 </div>
               </div>
@@ -503,7 +513,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
               <div className="space-y-2 bg-surface2/30 border border-theme-subtle rounded-none p-4">
                 <div className="flex items-center justify-between flex-wrap gap-1">
                   <label className="text-xs font-bold text-primary flex items-center gap-1.5">
-                    <DollarSign size={14} className="text-emerald-600" /> Advance Amount to Receive (LKR) *
+                    <DollarSign size={14} className="text-emerald-600" /> Advance Amount to Receive ({receiptCurrency === 'USD' ? '$ USD' : 'LKR'}) *
                   </label>
                   <div className="flex items-center gap-1">
                     <button
@@ -544,7 +554,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                   </div>
                 </div>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-2.5 text-xs font-black text-muted">Rs.</span>
+                  <span className="absolute left-3.5 top-2.5 text-xs font-black text-muted">{receiptCurrency === 'USD' ? '$' : 'Rs.'}</span>
                   <input
                     type="number"
                     min="1"

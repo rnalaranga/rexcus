@@ -604,11 +604,17 @@ export const ProductQuotations: React.FC = () => {
     const custId = group?.leadId || (lead as any)?.customerId;
     const cust = customers.find((c: any) => c.id === custId || (c.company && group?.clientName && c.company.toLowerCase() === group.clientName.toLowerCase()) || (c.name && group?.clientName && c.name.toLowerCase() === group.clientName.toLowerCase()));
 
+    const quoteCurrency = latest?.currency || quoteData?.currency || cust?.currency || (cust?.isForeign ? 'USD' : (lead?.isForeign ? 'USD' : 'LKR')) || 'LKR';
+    const quoteExchangeRate = Number(latest?.exchangeRate || quoteData?.exchangeRate || (quoteCurrency === 'USD' ? 310 : 1));
+
     const targetOrder = {
       id: latest?.id,
       orderNo: group?.quoNo || latest?.quotationNo || latest?.docNo,
       quotationNo: group?.quoNo || latest?.quotationNo || latest?.docNo,
       quoteId: latest?.id,
+      currency: quoteCurrency,
+      exchangeRate: quoteExchangeRate,
+      isForeign: quoteCurrency === 'USD',
       customerId: cust?.id || group?.leadId || null,
       matchedCustomerId: cust?.id || group?.leadId || null,
       customerName: cust?.name || group?.clientName || latest?.leadName || 'Valued Customer',
@@ -620,7 +626,7 @@ export const ProductQuotations: React.FC = () => {
       customerVat: cust?.vat || '',
       totalPrice: quoteTotal,
       totalAmount: quoteTotal,
-      taxProfileId: quoteData?.taxProfileId || null,
+      taxProfileId: quoteData?.taxProfileId || (quoteCurrency === 'USD' ? 'tp_export_zero_rated' : null),
       items: quoteData?.custItems || quoteData?.items || [],
       productName: quoteData?.subject || `Product Quotation #${group?.quoNo}`,
       targetDeliveryDate: quoteData?.deliveryDate || quoteData?.targetDeliveryDate || null,

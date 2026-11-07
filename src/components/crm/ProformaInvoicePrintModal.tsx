@@ -53,6 +53,14 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   const matchedCust = allCustomers.find((c: any) => c.id === invoice.customerId || c.id === invoice.leadId) ||
                       allLeads.find((l: any) => l.id === invoice.customerId || l.id === invoice.leadId);
 
+  const invoiceCurrency = String(
+    invoice.currency || 
+    invoice.lead?.currency || 
+    matchedCust?.currency || 
+    (matchedCust?.isForeign ? 'USD' : (invoice.isForeign ? 'USD' : 'LKR'))
+  ).trim().toUpperCase();
+  const invoiceExchangeRate = Number(invoice.exchangeRate || (invoiceCurrency === 'USD' ? 310 : 1));
+
   const customerData = {
     name: invoice.customer?.name || invoice.customerName || invoice.customer || invoice.customerCompany || matchedCust?.name || 'Valued Customer',
     company: invoice.customer?.company || invoice.customerCompany || invoice.customerName || invoice.customer || matchedCust?.company || matchedCust?.name || '',
@@ -127,7 +135,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
                 </span>
               </div>
               <p className="text-[11px] text-muted font-mono mt-0.5">
-                Total: {formatCurrency(invoiceTotal)} • Date: {formatDate(invoiceDate)}
+                Total: {formatCurrency(invoiceTotal, false, invoiceCurrency)} • Date: {formatDate(invoiceDate)}
               </p>
             </div>
           </div>
@@ -204,8 +212,8 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               taxProfile={taxProfiles?.find((p: any) => p.id === invoice.taxProfileId)}
               taxBreakdown={invoice.taxBreakdown ? (typeof invoice.taxBreakdown === 'string' ? JSON.parse(invoice.taxBreakdown) : invoice.taxBreakdown) : null}
               taxType={invoice.taxType || (invoice.taxProfileId ? 'profile' : 'none')}
-              currency={invoice.currency || (customerData as any)?.currency || 'LKR'}
-              exchangeRate={invoice.exchangeRate || 1}
+              currency={invoiceCurrency}
+              exchangeRate={invoiceExchangeRate}
             />
           </div>
         </div>

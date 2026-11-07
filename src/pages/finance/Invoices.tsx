@@ -1152,6 +1152,7 @@ export const Invoices: React.FC = () => {
                 </div>
                 
                 {(() => {
+                  const invCurr = viewInvoice.currency || 'LKR';
                   const invTotal = Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0));
                   const invPaid = Number(viewInvoice.paidAmount || 0);
                   const invBalance = Math.max(0, invTotal - invPaid);
@@ -1161,24 +1162,24 @@ export const Invoices: React.FC = () => {
                       <div className="bg-surface2/60 border border-theme-subtle rounded-xl p-3 mb-4 space-y-1.5 text-xs">
                         <div className="flex justify-between text-muted">
                           <span>Total Amount:</span>
-                          <span className="font-mono font-bold text-primary">{formatCurrency(invTotal)}</span>
+                          <span className="font-mono font-bold text-primary">{formatCurrency(invTotal, false, invCurr)}</span>
                         </div>
                         {Number(viewInvoice.discountAmount || 0) > 0 && (
                           <div className="flex justify-between text-muted">
                             <span>Discount:</span>
                             <span className="font-mono font-bold text-rose-500">
-                              -{formatCurrency(Number(viewInvoice.discountAmount))} {viewInvoice.discountType === 'percent' && Number(viewInvoice.discount) > 0 ? `(${viewInvoice.discount}%)` : ''}
+                              -{formatCurrency(Number(viewInvoice.discountAmount), false, invCurr)} {viewInvoice.discountType === 'percent' && Number(viewInvoice.discount) > 0 ? `(${viewInvoice.discount}%)` : ''}
                             </span>
                           </div>
                         )}
                         <div className="flex justify-between text-muted">
                           <span>Paid to Date:</span>
-                          <span className="font-mono font-bold text-emerald-600">{formatCurrency(invPaid)}</span>
+                          <span className="font-mono font-bold text-emerald-600">{formatCurrency(invPaid, false, invCurr)}</span>
                         </div>
                         <div className="flex justify-between text-muted border-t border-theme-subtle/50 pt-1.5">
                           <span className="font-semibold text-secondary">Balance Due:</span>
                           <span className={`font-mono font-bold ${invBalance > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                            {formatCurrency(invBalance)}
+                            {formatCurrency(invBalance, false, invCurr)}
                           </span>
                         </div>
                       </div>
@@ -1192,7 +1193,7 @@ export const Invoices: React.FC = () => {
                                 <div className="min-w-0 flex-1">
                                   <div className="flex justify-between items-start mb-1">
                                     <p className="text-xs font-bold">{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</p>
-                                    <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0)}</span>
+                                    <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0, false, invCurr)}</span>
                                   </div>
                                   <p className="text-[10px] text-muted uppercase">{p.method || 'Cash'} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
                                   {p.receiptNo && (
