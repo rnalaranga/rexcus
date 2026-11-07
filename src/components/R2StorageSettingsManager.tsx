@@ -7,8 +7,9 @@ import {
   AlertCircle, RefreshCw, Database, ExternalLink, ShieldCheck, 
   ArrowUpRight, HardDrive, Check, Sparkles
 } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/utils';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE = getApiBaseUrl();
 
 export const R2StorageSettingsManager: React.FC = () => {
   const { toast, showConfirm } = useDialog();

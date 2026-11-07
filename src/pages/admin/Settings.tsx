@@ -10,6 +10,7 @@ import { BankDetailsManager } from '@/components/BankDetailsManager';
 import { TermsConditionsManager } from '@/components/TermsConditionsManager';
 import { EmailSettingsManager } from '@/components/EmailSettingsManager';
 import { R2StorageSettingsManager } from '@/components/R2StorageSettingsManager';
+import { uploadFileToStorage } from '@/lib/api';
 export const Settings = () => {
   const { toast, showConfirm } = useDialog();
   const { settings, updateSettings } = useSettings();
@@ -85,24 +86,9 @@ export const Settings = () => {
         const rawDataUri = reader.result as string;
         setLogo(rawDataUri);
 
-        try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              dataUri: rawDataUri,
-              filename: file.name,
-              folder: 'branding'
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.url) {
-              setLogo(data.url);
-            }
-          }
-        } catch (err) {
-          console.warn('Upload to cloud error (keeping local preview):', err);
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'branding');
+        if (uploaded && uploaded.url) {
+          setLogo(uploaded.url);
         }
       };
       reader.readAsDataURL(file);

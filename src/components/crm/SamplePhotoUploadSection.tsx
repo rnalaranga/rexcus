@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Camera, Upload, X, Image as ImageIcon, Plus } from 'lucide-react';
+import { uploadFileToStorage } from '@/lib/api';
 
 export interface SamplePhoto {
   id: string;
@@ -82,13 +83,22 @@ export const SamplePhotoUploadSection: React.FC<SamplePhotoUploadSectionProps> =
       if (photos.length + newPhotos.length >= maxPhotos) break;
       const base64Url = await compressImage(file);
       if (base64Url) {
-        newPhotos.push({
+        const item: SamplePhoto = {
           id: 'photo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
           name: file.name,
           url: base64Url,
           size: file.size,
           date: new Date().toISOString()
-        });
+        };
+        newPhotos.push(item);
+
+        // Upload to storage in background
+        uploadFileToStorage(base64Url, file.name, 'sample_photos').then(res => {
+          if (res && res.url) {
+            item.url = res.url;
+            onChange([...photos, ...newPhotos]);
+          }
+        }).catch(() => {});
       }
     }
 

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
-import { createFinishedGoodsOrder, fetchNextDocumentNumber } from '@/lib/api';
+import { createFinishedGoodsOrder, fetchNextDocumentNumber, uploadFileToStorage } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -458,27 +458,12 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         customerPoAttachmentName: file.name
       }));
 
-      try {
-        const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataUri: rawDataUri,
-            filename: file.name,
-            folder: 'customer_po'
-          })
-        });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          if (uploadData && uploadData.url) {
-            setFormData(prev => ({
-              ...prev,
-              customerPoAttachment: uploadData.url
-            }));
-          }
-        }
-      } catch (err) {
-        console.warn('Upload to cloud storage error (keeping local data):', err);
+      const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
+      if (uploaded && uploaded.url) {
+        setFormData(prev => ({
+          ...prev,
+          customerPoAttachment: uploaded.url
+        }));
       }
     };
     reader.readAsDataURL(file);

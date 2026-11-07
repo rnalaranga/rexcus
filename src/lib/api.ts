@@ -1,4 +1,30 @@
-const API_URL = import.meta.env.VITE_API_URL || `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}`;
+import { getApiBaseUrl } from '@/lib/utils';
+
+const API_URL = getApiBaseUrl();
+
+export const uploadFileToStorage = async (
+  dataUri: string, 
+  filename: string, 
+  folder: string = 'attachments'
+): Promise<{ url: string; key: string } | null> => {
+  if (!dataUri || !dataUri.startsWith('data:')) return null;
+  try {
+    const res = await fetch(`${API_URL}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUri, filename, folder })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.url) {
+        return { url: data.url, key: data.key };
+      }
+    }
+  } catch (err) {
+    console.warn('Storage upload error (fallback to local data):', err);
+  }
+  return null;
+};
 
 export const getAuthHeaders = () => {
   const token = localStorage.getItem('token');

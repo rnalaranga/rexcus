@@ -2596,6 +2596,136 @@ app.post('/api/settings/r2/migrate', async (req, res) => {
       }
     }
 
+    // 4. Migrate customer_grns.photos (Sample GRN inspection photos)
+    try {
+      const [grnRows]: any = await db.query("SELECT id, photos FROM customer_grns WHERE photos LIKE '%data:%'");
+      for (const g of grnRows) {
+        try {
+          let photosList: any[] = [];
+          try {
+            photosList = typeof g.photos === 'string' ? JSON.parse(g.photos) : g.photos;
+          } catch (_) { continue; }
+          if (!Array.isArray(photosList) || photosList.length === 0) continue;
+
+          let modified = false;
+          for (let i = 0; i < photosList.length; i++) {
+            const photo = photosList[i];
+            const rawUrl = photo.url || photo.dataUrl;
+            if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
+              const matches = rawUrl.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+              if (matches && matches.length === 3) {
+                const mime = matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                const ext = mime.includes('png') ? 'png' : 'jpg';
+                const key = `sample_photos/grn_${g.id}_${i + 1}_${Date.now()}.${ext}`;
+
+                await client.send(new PutObjectCommand({
+                  Bucket: cfg.bucketName,
+                  Key: key,
+                  Body: buffer,
+                  ContentType: mime
+                }));
+
+                const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
+                photo.url = fileUrl;
+                delete photo.dataUrl;
+                bytesFreed += rawUrl.length;
+                migratedCount++;
+                modified = true;
+              }
+            }
+          }
+
+          if (modified) {
+            await db.query("UPDATE customer_grns SET photos = ? WHERE id = ?", [JSON.stringify(photosList), g.id]);
+          }
+        } catch (err: any) {
+          errors.push(`Customer GRN ${g.id} photos: ${err.message}`);
+        }
+      }
+    } catch (_) {}
+
+    // 5. Migrate customer_samples.photos
+    try {
+      const [sampleRows]: any = await db.query("SELECT id, photos FROM customer_samples WHERE photos LIKE '%data:%'");
+      for (const s of sampleRows) {
+        try {
+          let photosList: any[] = [];
+          try {
+            photosList = typeof s.photos === 'string' ? JSON.parse(s.photos) : s.photos;
+          } catch (_) { continue; }
+          if (!Array.isArray(photosList) || photosList.length === 0) continue;
+
+          let modified = false;
+          for (let i = 0; i < photosList.length; i++) {
+            const photo = photosList[i];
+            const rawUrl = photo.url || photo.dataUrl;
+            if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
+              const matches = rawUrl.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+              if (matches && matches.length === 3) {
+                const mime = matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                const ext = mime.includes('png') ? 'png' : 'jpg';
+                const key = `sample_photos/sample_${s.id}_${i + 1}_${Date.now()}.${ext}`;
+
+                await client.send(new PutObjectCommand({
+                  Bucket: cfg.bucketName,
+                  Key: key,
+                  Body: buffer,
+                  ContentType: mime
+                }));
+
+                const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
+                photo.url = fileUrl;
+                delete photo.dataUrl;
+                bytesFreed += rawUrl.length;
+                migratedCount++;
+                modified = true;
+              }
+            }
+          }
+
+          if (modified) {
+            await db.query("UPDATE customer_samples SET photos = ? WHERE id = ?", [JSON.stringify(photosList), s.id]);
+          }
+        } catch (err: any) {
+          errors.push(`Customer Sample ${s.id} photos: ${err.message}`);
+        }
+      }
+    } catch (_) {}
+
+    // 6. Migrate finished_products.imageUrl
+    try {
+      const [prodRows]: any = await db.query("SELECT id, name, imageUrl FROM finished_products WHERE imageUrl LIKE 'data:%'");
+      for (const p of prodRows) {
+        try {
+          const raw = p.imageUrl;
+          const matches = raw.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
+          if (matches && matches.length === 3) {
+            const mime = matches[1];
+            const buffer = Buffer.from(matches[2], 'base64');
+            const ext = mime.includes('png') ? 'png' : 'jpg';
+            const key = `products/prod_${p.id}_${Date.now()}.${ext}`;
+
+            await client.send(new PutObjectCommand({
+              Bucket: cfg.bucketName,
+              Key: key,
+              Body: buffer,
+              ContentType: mime
+            }));
+
+            const fileUrl = cfg.publicUrl ? `${cfg.publicUrl}/${key}` : `/api/files/${key}`;
+            await db.query("UPDATE finished_products SET imageUrl = ? WHERE id = ?", [fileUrl, p.id]);
+
+            bytesFreed += raw.length;
+            migratedCount++;
+          }
+        } catch (err: any) {
+          errors.push(`Product ${p.name || p.id}: ${err.message}`);
+        }
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       migratedCount,

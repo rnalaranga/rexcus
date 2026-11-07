@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useInventory, useMachiningOperations, useStockLedger } from '@/hooks/useData'
-import { addStockLedgerEntry } from '@/lib/api'
+import { addStockLedgerEntry, uploadFileToStorage } from '@/lib/api'
 
 const tableInputClass = "w-full bg-transparent border-b border-transparent hover:border-theme-subtle focus:border-primary px-2 py-1.5 text-xs outline-none transition-all placeholder:text-muted/30 text-primary"
 
@@ -424,9 +424,15 @@ export const FinishedProductModal: React.FC<FinishedProductModalProps> = ({
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       if (event.target?.result) {
-        setImageUrl(event.target.result as string)
+        const rawDataUri = event.target.result as string;
+        setImageUrl(rawDataUri);
+
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'products');
+        if (uploaded && uploaded.url) {
+          setImageUrl(uploaded.url);
+        }
       }
     }
     reader.readAsDataURL(file)

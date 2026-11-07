@@ -9,7 +9,7 @@ import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
-import { updateFinishedGoodsOrder } from '@/lib/api';
+import { updateFinishedGoodsOrder, uploadFileToStorage } from '@/lib/api';
 
 export type PoEntryMode = 'received' | 'pending' | 'without_po';
 
@@ -182,24 +182,9 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
       setCustomerPoAttachment(rawDataUri);
       setCustomerPoAttachmentName(file.name);
 
-      try {
-        const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataUri: rawDataUri,
-            filename: file.name,
-            folder: 'customer_po'
-          })
-        });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          if (uploadData && uploadData.url) {
-            setCustomerPoAttachment(uploadData.url);
-          }
-        }
-      } catch (err) {
-        console.warn('Upload to cloud storage error (keeping local data):', err);
+      const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
+      if (uploaded && uploaded.url) {
+        setCustomerPoAttachment(uploaded.url);
       }
     };
     reader.readAsDataURL(file);

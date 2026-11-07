@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Download, Camera } from 'lucide-react';
+import { resolveFileUrl } from '@/lib/utils';
 
 interface SamplePhotoViewerModalProps {
   isOpen: boolean;
@@ -19,7 +20,8 @@ export const SamplePhotoViewerModal: React.FC<SamplePhotoViewerModalProps> = ({
   if (!isOpen || !photos || photos.length === 0) return null;
 
   const currentPhoto = photos[currentIndex] || photos[0];
-  const currentSrc = typeof currentPhoto === 'string' ? currentPhoto : (currentPhoto?.url || currentPhoto?.dataUrl || '');
+  const rawSrc = typeof currentPhoto === 'string' ? currentPhoto : (currentPhoto?.url || currentPhoto?.dataUrl || '');
+  const currentSrc = resolveFileUrl(rawSrc);
   const currentName = typeof currentPhoto === 'string' ? `Photo ${currentIndex + 1}` : (currentPhoto?.name || `Photo ${currentIndex + 1}`);
 
   const handlePrev = (e: React.MouseEvent) => {

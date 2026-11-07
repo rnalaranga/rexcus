@@ -1,3 +1,5 @@
+import { resolveFileUrl } from '@/lib/utils';
+
 export interface SamplePhoto {
   id: string;
   name: string;
@@ -21,7 +23,7 @@ export function extractPhotosFromGrn(grn: any): SamplePhoto[] {
         .map((p: any, idx: number) => ({
           id: p.id || `photo-${grn.id}-${idx}`,
           name: p.name || `Sample Photo ${idx + 1}`,
-          url: p.url || p.dataUrl || '',
+          url: resolveFileUrl(p.url || p.dataUrl || ''),
           size: p.size,
           date: p.date || grn.receivedAt || grn.createdAt,
           grnId: grn.id

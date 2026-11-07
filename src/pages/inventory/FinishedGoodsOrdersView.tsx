@@ -52,7 +52,8 @@ import {
   deleteInvoice,
   fetchAllCustomerGRNs,
   fetchNextDocumentNumber,
-  changeSalesOrderNumber
+  changeSalesOrderNumber,
+  uploadFileToStorage
 } from '@/lib/api'
 
 interface FinishedGoodsOrdersViewProps {
@@ -537,12 +538,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       return
     }
     const reader = new FileReader()
-    reader.onload = () => {
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
       setFormData(prev => ({
         ...prev,
-        customerPoAttachment: reader.result as string,
+        customerPoAttachment: rawDataUri,
         customerPoAttachmentName: file.name
       }))
+
+      const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
+      if (uploaded && uploaded.url) {
+        setFormData(prev => ({
+          ...prev,
+          customerPoAttachment: uploaded.url
+        }));
+      }
     }
     reader.readAsDataURL(file)
     e.target.value = ''
@@ -2408,7 +2418,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     let menuStyle: React.CSSProperties = {}
     if (isOpen && actionCoords) {
       const PADDING = 8
-      const MENU_WIDTH = 260
+      const MENU_WIDTH = 270
 
       let left = actionCoords.right - MENU_WIDTH
       if (left < PADDING) left = PADDING
@@ -2418,17 +2428,20 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING
       const spaceAbove = actionCoords.top - PADDING
-      const openUpwards = spaceBelow < 340 && spaceAbove > spaceBelow
+      const openUpwards = spaceBelow < 420 && spaceAbove > spaceBelow
 
       menuStyle = {
         position: 'fixed',
         left: `${left}px`,
         width: `${MENU_WIDTH}px`,
         zIndex: 99999,
-        maxHeight: openUpwards ? `${Math.min(480, spaceAbove)}px` : `${Math.min(480, spaceBelow)}px`,
         ...(openUpwards 
-          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
-          : { top: `${actionCoords.bottom + 4}px` }
+          ? (actionCoords.top - 4 - 460 < PADDING 
+              ? { top: `${PADDING}px` } 
+              : { bottom: `${window.innerHeight - actionCoords.top + 4}px` }) 
+          : (actionCoords.bottom + 4 + 460 > window.innerHeight - PADDING && actionCoords.top > 460
+              ? { bottom: `${PADDING}px` }
+              : { top: `${actionCoords.bottom + 4}px` })
         )
       }
     }
@@ -2523,7 +2536,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           <div
             onClick={(e) => e.stopPropagation()}
             style={menuStyle}
-            className="order-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1 text-left rounded-none overflow-y-auto custom-scrollbar"
+            className="order-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1 text-left rounded-none"
           >
             <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider font-mono border-b border-theme-subtle mb-1 flex items-center justify-between">
               <span>Order #{order.orderNo || order.id}</span>

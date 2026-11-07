@@ -66,11 +66,21 @@ export function numberToWords(amount: number): string {
   return words + ' Only';
 }
 
+export function getApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.origin}/api`;
+  }
+  return 'http://localhost:3000/api';
+}
+
 export function resolveFileUrl(url: string): string {
   if (!url) return '';
   if (url.startsWith('data:')) return url;
 
-  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  const apiBase = getApiBaseUrl();
 
   // If already relative /api/files/...
   if (url.startsWith('/api/files/')) {
@@ -84,7 +94,7 @@ export function resolveFileUrl(url: string): string {
   }
 
   // If it's a relative path starting with common storage folders
-  if (/^(quotations|sales_orders|attachments|branding)\//i.test(url)) {
+  if (/^(quotations|sales_orders|customer_po|sample_photos|products|attachments|branding)\//i.test(url)) {
     return `${apiBase}/files/${url}`;
   }
 

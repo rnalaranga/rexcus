@@ -21,7 +21,8 @@ import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { 
   createQuotation, fetchQuotations, updateQuotation, deleteQuotation, 
   generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, 
-  approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber 
+  approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber,
+  uploadFileToStorage
 } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -883,13 +884,20 @@ export const ProductQuotationBuilder: React.FC = () => {
     if (!files || files.length === 0) return;
     Array.from(files).forEach(file => {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
+        const rawDataUri = reader.result as string;
+        const attId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         setAttachments(prev => [...prev, {
-          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: attId,
           name: file.name,
           type: file.type,
-          dataUrl: reader.result as string
+          dataUrl: rawDataUri
         }]);
+
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'quotations');
+        if (uploaded && uploaded.url) {
+          setAttachments(prev => prev.map(a => a.id === attId ? { ...a, dataUrl: uploaded.url } : a));
+        }
       };
       reader.readAsDataURL(file);
     });

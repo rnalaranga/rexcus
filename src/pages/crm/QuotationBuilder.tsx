@@ -14,7 +14,7 @@ import { useLeads, useInventory, useMachiningOperations, useCustomers, useQuotat
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
-import { createQuotation, fetchQuotations, updateQuotation, deleteQuotation, generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber } from '@/lib/api'
+import { createQuotation, fetchQuotations, updateQuotation, deleteQuotation, generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber, uploadFileToStorage } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { exportPdf } from '@/lib/exportPdf'
@@ -654,11 +654,18 @@ export const QuotationBuilder: React.FC = () => {
     if (!files) return;
     Array.from(files).forEach(file => {
       const reader = new FileReader();
-      reader.onload = (ev) => {
-         if (ev.target?.result) {
-            setAttachments(prev => [...prev, { id: Date.now() + Math.random(), name: file.name, dataUrl: ev.target?.result as string, type: file.type }]);
-         }
-      }
+      reader.onload = async (ev) => {
+        if (ev.target?.result) {
+          const rawDataUri = ev.target.result as string;
+          const attId = Date.now() + Math.random();
+          setAttachments(prev => [...prev, { id: attId, name: file.name, dataUrl: rawDataUri, type: file.type }]);
+
+          const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'quotations');
+          if (uploaded && uploaded.url) {
+            setAttachments(prev => prev.map(a => a.id === attId ? { ...a, dataUrl: uploaded.url } : a));
+          }
+        }
+      };
       reader.readAsDataURL(file);
     });
   }

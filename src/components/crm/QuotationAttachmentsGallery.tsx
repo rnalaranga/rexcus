@@ -4,6 +4,7 @@ import {
   ExternalLink, X, Maximize2, FileCheck, Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { openDataUriOrUrl, downloadDataUriOrUrl, resolveFileUrl } from '@/lib/utils';
 
 export interface QuotationAttachmentItem {
   id: string | number;
@@ -61,37 +62,13 @@ export const QuotationAttachmentsGallery: React.FC<QuotationAttachmentsGalleryPr
   const handleOpenInNewTab = (att: QuotationAttachmentItem) => {
     const src = att.dataUrl || att.url;
     if (!src) return;
-    try {
-      if (src.startsWith('data:')) {
-        const parts = src.split(',');
-        const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-          u8arr[n] = bstr.charCodeAt(n);
-        }
-        const blob = new Blob([u8arr], { type: mime });
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-      } else {
-        window.open(src, '_blank');
-      }
-    } catch (e) {
-      console.error('Error opening attachment:', e);
-      window.open(src, '_blank');
-    }
+    openDataUriOrUrl(src, att.name);
   };
 
   const handleDownload = (att: QuotationAttachmentItem) => {
     const src = att.dataUrl || att.url;
     if (!src) return;
-    const a = document.createElement('a');
-    a.href = src;
-    a.download = att.name || 'quotation_attachment';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadDataUriOrUrl(src, att.name || 'quotation_attachment');
   };
 
   return (
