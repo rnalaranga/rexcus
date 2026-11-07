@@ -11,7 +11,7 @@ import {
   CreditCard,
   Hash
 } from "lucide-react";
-import { formatCurrency, formatDate, numberToWords } from "@/lib/utils";
+import { formatCurrency, formatDate, numberToWords, resolveFileUrl } from "@/lib/utils";
 // @ts-ignore
 import { printElement } from "@/lib/printElement";
 import { exportPdf } from '@/lib/exportPdf';
@@ -35,6 +35,7 @@ export interface PaymentReceiptData {
   invoiceId?: string;
   invoiceNo?: string;
   amount: number;
+  currency?: string;
   paymentMethod: string;
   depositAccountId?: string;
   depositAccountName?: string;
@@ -80,7 +81,8 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
       : totalQuoted > 0
       ? Math.max(0, totalQuoted - amount)
       : null;
-  const words = numberToWords(amount);
+  const receiptCurrency = String(receipt.currency || (receipt as any).invoiceCurrency || 'LKR').trim().toUpperCase();
+  const words = numberToWords(amount, receiptCurrency);
 
   const companyName = settings?.company_name || settings?.companyName || "REX INDUSTRIES (PVT) LTD";
   const companyAddress = settings?.company_address || settings?.companyAddress || "No. 451/2, Chilaw Road, Kattuwa, Negombo, Sri Lanka";
@@ -204,17 +206,12 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                 {/* 1. Corporate Header */}
                 <div className="flex items-start justify-between border-b-2 border-slate-800 pb-3">
                   <div className="flex items-center gap-4">
-                    {settings?.company_logo ? (
-                      <img
-                        src={settings.company_logo}
-                        alt="Logo"
-                        className="max-h-16 max-w-[120px] object-contain"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded bg-slate-900 text-white font-black text-xl flex items-center justify-center tracking-tighter">
-                        REX
-                      </div>
-                    )}
+                    <img
+                      src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'}
+                      alt="Logo"
+                      className="max-h-16 max-w-[120px] object-contain"
+                      crossOrigin="anonymous"
+                    />
                     <div>
                       <h1 className="text-base font-black tracking-tight text-slate-900 uppercase">
                         {companyName}
@@ -334,7 +331,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                         </div>
                       </td>
                       <td className="p-2.5 text-right font-black text-sm align-top text-slate-900">
-                        {formatCurrency(amount)}
+                        {formatCurrency(amount, false, receiptCurrency)}
                       </td>
                     </tr>
 
@@ -346,7 +343,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                           Total Confirmed Order / Quotation Consideration:
                         </td>
                         <td className="p-1.5 text-right font-semibold text-slate-800 font-mono">
-                          {formatCurrency(totalQuoted)}
+                          {formatCurrency(totalQuoted, false, receiptCurrency)}
                         </td>
                       </tr>
                     )}
@@ -358,7 +355,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                           Balance Due to be Invoiced on Delivery:
                         </td>
                         <td className="p-1.5 text-right font-semibold text-slate-800 font-mono">
-                          {formatCurrency(balanceRemaining)}
+                          {formatCurrency(balanceRemaining, false, receiptCurrency)}
                         </td>
                       </tr>
                     )}
@@ -369,7 +366,7 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                         Total Amount Received:
                       </td>
                       <td className="p-2.5 text-right font-black text-base text-slate-950 font-mono">
-                        {formatCurrency(amount)}
+                        {formatCurrency(amount, false, receiptCurrency)}
                       </td>
                     </tr>
                   </tbody>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveFileUrl } from '@/lib/utils';
 
 export interface MRPrintViewProps {
   mr: any;
@@ -31,7 +31,7 @@ export const MRPrintView: React.FC<MRPrintViewProps> = ({ mr, settings }) => {
     workOrders.unshift(mr.workOrderNo);
   }
 
-  const logoUrl = settings?.company_logo || settings?.logo || settings?.companyLogo || '/rex-logo.png';
+  const logoUrl = resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png';
 
   return (
     <div
@@ -100,9 +100,12 @@ export const MRPrintView: React.FC<MRPrintViewProps> = ({ mr, settings }) => {
       <div className="flex p-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
         <div className="w-[32%] flex justify-center items-center">
-          {settings?.company_logo
-            ? <img src={settings.company_logo} alt="Logo" className="max-h-20 object-contain" />
-            : <div className="text-4xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
+          <img 
+            src={logoUrl} 
+            alt="Logo" 
+            className="max-h-20 object-contain" 
+            crossOrigin="anonymous" 
+          />
         </div>
 
         {/* Company Info (Right 68%) */}

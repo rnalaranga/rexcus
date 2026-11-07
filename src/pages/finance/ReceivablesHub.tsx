@@ -1138,13 +1138,13 @@ export const ReceivablesHub: React.FC = () => {
                           {inv.dueDate ? formatDate(inv.dueDate) : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                          {formatCurrency(tot)}
+                          {formatCurrency(tot, false, inv.currency || 'LKR')}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-emerald-600">
-                          {paid > 0 ? formatCurrency(paid) : '-'}
+                          {paid > 0 ? formatCurrency(paid, false, inv.currency || 'LKR') : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-black text-rose-600 dark:text-rose-400">
-                          {formatCurrency(due)}
+                          {formatCurrency(due, false, inv.currency || 'LKR')}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <TraceabilityDropdown
@@ -1347,13 +1347,13 @@ export const ReceivablesHub: React.FC = () => {
                           {pi.dueDate ? formatDate(pi.dueDate) : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                          {formatCurrency(tot)}
+                          {formatCurrency(tot, false, pi.currency || 'LKR')}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-emerald-600">
-                          {paid > 0 ? formatCurrency(paid) : '-'}
+                          {paid > 0 ? formatCurrency(paid, false, pi.currency || 'LKR') : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-black text-rose-600 dark:text-rose-400">
-                          {formatCurrency(due)}
+                          {formatCurrency(due, false, pi.currency || 'LKR')}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>

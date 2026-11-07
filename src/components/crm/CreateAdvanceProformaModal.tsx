@@ -91,6 +91,9 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const customerVat = order?.customerVat || order?.vatNo || matchedCustomer?.vat || matchedCustomer?.tin || '';
   const customerAttention = order?.attention || '';
 
+  const proformaCurrency = String(order?.currency || matchedCustomer?.currency || (matchedCustomer?.isForeign ? 'USD' : 'LKR')).trim().toUpperCase();
+  const proformaExchangeRate = Number(order?.exchangeRate || 1);
+
   // Order total
   const orderTotal = Number(order?.totalPrice || order?.totalAmount || 0);
 
@@ -295,7 +298,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
           id: `item-${Date.now()}`,
           reference: 'ADV-1',
           description: `Advance Payment Deposit (${advancePercent}%) - ${finalItemDesc}`,
-          details: finalItemSpecs ? `Item Specification & Scope:\n${finalItemSpecs}` : (order?.productName ? `Item: ${order.productName} (Total Order: ${formatCurrency(orderTotal)})` : `Sales Order #${orderNo}`),
+          details: finalItemSpecs ? `Item Specification & Scope:\n${finalItemSpecs}` : (order?.productName ? `Item: ${order.productName} (Total Order: ${formatCurrency(orderTotal, false, proformaCurrency)})` : `Sales Order #${orderNo}`),
           specifications: finalItemSpecs,
           qty: 1,
           unitPrice: calculation.subtotal,
@@ -327,6 +330,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         amount: calculation.totalPayable,
         paidAmount: 0,
         status: 'unpaid',
+        currency: proformaCurrency,
+        exchangeRate: proformaExchangeRate,
         isProforma: 1,
         invoiceType: 'proforma',
         taxProfileId: null,
@@ -440,7 +445,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
           <div className="grid grid-cols-3 gap-2 p-2.5 bg-surface2/40 border border-theme-subtle rounded-none font-mono">
             <div>
               <span className="text-muted block text-[10px] uppercase">Order Value</span>
-              <span className="font-bold text-primary text-xs">{formatCurrency(orderTotal)}</span>
+              <span className="font-bold text-primary text-xs">{formatCurrency(orderTotal, false, proformaCurrency)}</span>
             </div>
             <div>
               <span className="text-muted block text-[10px] uppercase">Ref Quotation</span>
@@ -542,7 +547,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 <Percent size={13} className="text-blue-500" /> Advance Deposit Amount
               </span>
               <span className="text-[11px] font-mono text-muted">
-                Order: {formatCurrency(orderTotal)}
+                Order: {formatCurrency(orderTotal, false, proformaCurrency)}
               </span>
             </div>
 
@@ -704,30 +709,30 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
             {/* Note alert */}
             <div className="p-2 bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-700 dark:text-blue-300 font-medium">
-              💡 Advance payment is a deposit towards total quotation value. Tax is NOT added on top of the advance amount. Total payable is strictly {formatCurrency(calculation.totalPayable)}.
+              💡 Advance payment is a deposit towards total quotation value. Tax is NOT added on top of the advance amount. Total payable is strictly {formatCurrency(calculation.totalPayable, false, proformaCurrency)}.
             </div>
 
             {/* Live Financial Breakdown */}
             <div className="p-2.5 bg-surface2/70 border border-theme-subtle rounded-none flex items-center justify-between flex-wrap gap-2 text-xs font-mono mt-1.5">
               <div>
                 <span className="text-[10px] text-muted block uppercase">Supply Subtotal</span>
-                <span className="font-bold text-primary">{formatCurrency(calculation.subtotal)}</span>
+                <span className="font-bold text-primary">{formatCurrency(calculation.subtotal, false, proformaCurrency)}</span>
               </div>
               {taxOption === 'opt3' && (
                 <div>
                   <span className="text-[10px] text-muted block uppercase">SSCL (2.5%)</span>
-                  <span className="font-bold text-primary">{formatCurrency(calculation.ssclAmount)}</span>
+                  <span className="font-bold text-primary">{formatCurrency(calculation.ssclAmount, false, proformaCurrency)}</span>
                 </div>
               )}
               {(taxOption === 'opt2' || taxOption === 'opt3') && (
                 <div>
                   <span className="text-[10px] text-muted block uppercase">VAT (18%)</span>
-                  <span className="font-bold text-primary">{formatCurrency(calculation.vatAmount)}</span>
+                  <span className="font-bold text-primary">{formatCurrency(calculation.vatAmount, false, proformaCurrency)}</span>
                 </div>
               )}
               <div className="text-right">
                 <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold block uppercase">Proforma Total Payable</span>
-                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{formatCurrency(calculation.totalPayable)}</span>
+                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{formatCurrency(calculation.totalPayable, false, proformaCurrency)}</span>
               </div>
             </div>
           </div>
@@ -804,7 +809,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
               className="text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-none flex items-center gap-1.5"
             >
               <FileText size={13} />
-              {loading ? 'Creating...' : `Issue Proforma Invoice (${formatCurrency(calculation.totalPayable)})`}
+              {loading ? 'Creating...' : `Issue Proforma Invoice (${formatCurrency(calculation.totalPayable, false, proformaCurrency)})`}
             </Button>
           </div>
         </form>

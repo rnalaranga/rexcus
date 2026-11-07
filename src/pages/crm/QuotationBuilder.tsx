@@ -543,6 +543,9 @@ export const QuotationBuilder: React.FC = () => {
         if (terms.trim()) setCustTerms(terms.trim());
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
+      if (cust.isForeign || cust.currency === 'USD') {
+        setCurrency('USD');
+      }
 
       fetchNextDocumentNumber('quotation', {
         userPrefix: user?.prefix,
@@ -577,6 +580,9 @@ export const QuotationBuilder: React.FC = () => {
           if (terms.trim()) setCustTerms(terms.trim());
         }
         if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
+      if (cust.isForeign || cust.currency === 'USD') {
+        setCurrency('USD');
+      }
 
         fetchNextDocumentNumber('quotation', {
           userPrefix: user?.prefix,
@@ -1578,6 +1584,8 @@ export const QuotationBuilder: React.FC = () => {
         custTotals: { subtotal: custSubtotal, discount: custDiscountAmt, total: custTotal, withSSCL: custWithSSCL },
         jobTotals: { totalMaterialCost, totalMachiningCost, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
+        currency: currency || 'LKR',
+        exchangeRate: Number((currencies.find(c => c.code === currency) || {}).exchangeRate || 1),
         customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
         createdBy: user?.id || user?.username || '',
         createdByName: user?.name || user?.username || '',
@@ -1585,12 +1593,16 @@ export const QuotationBuilder: React.FC = () => {
       }
 
       const amount = custWithSSCL
+      const currCode = currency || 'LKR'
+      const exRate = Number((currencies.find(c => c.code === currency) || {}).exchangeRate || 1)
 
       let result;
       if (currentId) {
         result = await updateQuotation(currentId, {
           leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
           totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+          currency: currCode,
+          exchangeRate: exRate,
           quotationNo: quotationNo || null,
           draftId: draftIdRef.current || undefined,
           createdBy: user?.id || user?.username || '',
@@ -1613,6 +1625,8 @@ export const QuotationBuilder: React.FC = () => {
           quotationNo: quotationNo || null,
           leadId: selectedLeadId || 'WALK-IN', type: 'main', data: snapshot,
           totalAmount: amount, customAmount: null, selectedProfileId, taxEnabled, docNo, issueNo, issueDate,
+          currency: currCode,
+          exchangeRate: exRate,
           createdBy: user?.id || user?.username || '',
           createdByName: user?.name || user?.username || ''
         });

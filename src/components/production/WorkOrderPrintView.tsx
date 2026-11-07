@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveFileUrl } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useQuotations, useFinishedGoodsOrders } from '@/hooks/useData';
 
@@ -201,7 +201,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
     try { operations = JSON.parse(workOrder.operations); } catch { operations = []; }
   }
 
-  const logoUrl = settings?.company_logo || settings?.logo || settings?.companyLogo || '/rex-logo.png';
+  const logoUrl = resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png';
 
   return (
     <>
@@ -282,6 +282,7 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
               src={logoUrl}
               alt="Rex Industries Logo"
               className="max-h-20 object-contain"
+              crossOrigin="anonymous"
               onError={(e) => {
                 const target = e.currentTarget;
                 target.style.display = 'none';

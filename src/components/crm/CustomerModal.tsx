@@ -194,7 +194,19 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
                     <div className="text-sm font-bold text-primary">Foreign Customer</div>
                     <div className="text-[10px] text-secondary mt-0.5">Customer is based outside local region.</div>
                   </div>
-                  <input type="checkbox" className="hidden" checked={formData.isForeign} onChange={e => setFormData({...formData, isForeign: e.target.checked})} />
+                  <input 
+                    type="checkbox" 
+                    className="hidden" 
+                    checked={formData.isForeign} 
+                    onChange={e => {
+                      const isFor = e.target.checked;
+                      setFormData(prev => ({
+                        ...prev, 
+                        isForeign: isFor,
+                        currency: isFor ? 'USD' : (prev.currency === 'USD' ? 'LKR' : (prev.currency || 'LKR'))
+                      }));
+                    }} 
+                  />
                 </label>
               </div>
             </div>

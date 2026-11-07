@@ -784,6 +784,9 @@ export const ProductQuotationBuilder: React.FC = () => {
         if (terms.trim()) setCustTerms(terms.trim());
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
+      if (cust.isForeign || cust.currency === 'USD') {
+        setCurrency('USD');
+      }
 
       fetchNextDocumentNumber('quotation', {
         userPrefix: user?.prefix,
@@ -809,6 +812,9 @@ export const ProductQuotationBuilder: React.FC = () => {
         setCustomerAddress(cust.address || leadItem.address || '');
         setVatNo(cust.vat || leadItem.vat || '');
         setTinNo(cust.tin || cust.brNumber || leadItem.tin || leadItem.brNumber || '');
+        if (cust.isForeign || cust.currency === 'USD') {
+          setCurrency('USD');
+        }
         fetchNextDocumentNumber('quotation', {
           userPrefix: user?.prefix,
           customerPrefix: cust.prefix,
@@ -1402,6 +1408,8 @@ export const ProductQuotationBuilder: React.FC = () => {
         jobTotals: { totalMaterialCost: totalProductCost, totalMachiningCost: 0, totalCost: jobTotalCost, withSSCL: jobWithSSCL },
         productTotals: { totalCost: totalProductCost, revenue: netRevenue, margin: expectedMargin, profit: expectedProfit },
         taxEnabled, selectedProfileId, selectedProfile, custSscl, custVat, jobSscl, jobVat,
+        currency: currency || 'LKR',
+        exchangeRate: Number((currencies.find((c: any) => c.code === currency) || {}).exchangeRate || 1),
         customerCompany: currentEntity?.company || selectedCustomer?.company || selectedLead?.company || currentEntity?.name || customerName,
         createdBy: user?.id || user?.username || '',
         createdByName: user?.name || user?.username || '',
@@ -1409,6 +1417,8 @@ export const ProductQuotationBuilder: React.FC = () => {
       };
 
       const amount = custWithSSCL;
+      const currCode = currency || 'LKR';
+      const exRate = Number((currencies.find((c: any) => c.code === currency) || {}).exchangeRate || 1);
       let result;
 
       if (currentId) {
@@ -1423,6 +1433,8 @@ export const ProductQuotationBuilder: React.FC = () => {
           docNo,
           issueNo,
           issueDate,
+          currency: currCode,
+          exchangeRate: exRate,
           quotationNo: quotationNo || null,
           draftId: draftIdRef.current || undefined,
           createdBy: user?.id || user?.username || '',
@@ -1453,6 +1465,8 @@ export const ProductQuotationBuilder: React.FC = () => {
           docNo,
           issueNo,
           issueDate,
+          currency: currCode,
+          exchangeRate: exRate,
           createdBy: user?.id || user?.username || '',
           createdByName: user?.name || user?.username || ''
         });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate, formatCurrency } from '@/lib/utils';
+import { formatDate, formatCurrency, resolveFileUrl } from '@/lib/utils';
 
 export interface POPrintViewProps {
   po: any;
@@ -52,7 +52,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
   const poDateFormatted = po.date ? formatDate(po.date) : formatDate(po.createdAt);
   const expectedDateFormatted = po.expectedDate ? formatDate(po.expectedDate) : 'Immediate / ASAP';
 
-  const logoUrl = settings?.company_logo || settings?.logo || settings?.companyLogo || '/rex-logo.png';
+  const logoUrl = resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png';
 
   return (
     <div
@@ -122,9 +122,12 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
       <div className="flex py-1.5 px-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
         <div className="w-[32%] flex justify-center items-center">
-          {logoUrl
-            ? <img src={logoUrl} alt="Logo" className="max-h-16 w-auto max-w-full object-contain" />
-            : <div className="text-5xl font-extrabold text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
+          <img 
+            src={logoUrl} 
+            alt="Logo" 
+            className="max-h-16 w-auto max-w-full object-contain" 
+            crossOrigin="anonymous" 
+          />
         </div>
 
         {/* Company Info (Right 68%) */}

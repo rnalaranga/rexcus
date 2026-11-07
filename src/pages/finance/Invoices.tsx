@@ -707,11 +707,11 @@ export const Invoices: React.FC = () => {
       render: (val: any, item) => (
         <div>
           <span className="font-mono font-semibold text-primary text-sm">
-            {formatCurrency(Number(val || item.amount || 0))}
+            {formatCurrency(Number(val || item.amount || 0), false, item.currency || 'LKR')}
           </span>
           {Number(item.taxAmount || item.tax || 0) > 0 && (
             <div className="text-[10px] text-muted font-mono">
-              Tax: {formatCurrency(Number(item.taxAmount || item.tax || 0))}
+              Tax: {formatCurrency(Number(item.taxAmount || item.tax || 0), false, item.currency || 'LKR')}
             </div>
           )}
         </div>
@@ -721,6 +721,7 @@ export const Invoices: React.FC = () => {
       key: 'dueSnapshot', header: 'Payment & Due Snapshot',
       render: (_, item) => {
         const pay = getInvoicePaymentInfo(item);
+        const invCurr = item.currency || 'LKR';
         
         if (pay.isSettled) {
           return (
@@ -729,7 +730,7 @@ export const Invoices: React.FC = () => {
                 <CheckCircle size={12} /> Settled
               </span>
               <span className="text-[10px] text-muted font-mono">
-                Paid: {formatCurrency(pay.paid || pay.total)}
+                Paid: {formatCurrency(pay.paid || pay.total, false, invCurr)}
               </span>
             </div>
           );
@@ -745,7 +746,7 @@ export const Invoices: React.FC = () => {
                   : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
               }`}>
                 <span className="text-[9px] uppercase tracking-wider font-sans opacity-75">Due:</span>
-                <span>{formatCurrency(pay.due)}</span>
+                <span>{formatCurrency(pay.due, false, invCurr)}</span>
               </span>
               {pay.isOverdue && (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 flex items-center gap-0.5">
@@ -756,7 +757,7 @@ export const Invoices: React.FC = () => {
 
             {/* Paid breakdown & mini progress bar */}
             <div className="flex items-center justify-between text-[10px] text-muted font-mono">
-              <span>Paid: {formatCurrency(pay.paid)}</span>
+              <span>Paid: {formatCurrency(pay.paid, false, invCurr)}</span>
               <span>{pay.paidPercent.toFixed(0)}%</span>
             </div>
             <div className="w-full bg-theme-subtle/40 rounded-full h-1.5 overflow-hidden">
@@ -1118,6 +1119,8 @@ export const Invoices: React.FC = () => {
                 })()}
                 advanceDeducted={Number(viewInvoice.advanceDeducted || 0)}
                 receiptNos={viewInvoice.receiptNos || ''}
+                currency={viewInvoice.currency || (getCustomerInfo(viewInvoice) as any)?.currency || 'LKR'}
+                exchangeRate={viewInvoice.exchangeRate || 1}
                 {...(() => {
                   const linkedOrder = (allOrders || []).find((o: any) => 
                     (viewInvoice.orderNo && o.orderNo === viewInvoice.orderNo) ||

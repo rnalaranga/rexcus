@@ -1451,7 +1451,19 @@ export const CustomerDetail: React.FC = () => {
                       <div className="text-sm font-bold text-primary">Foreign Customer</div>
                       <div className="text-[10px] text-secondary mt-0.5">Customer is based outside the local region. A blue indicator will be shown.</div>
                     </div>
-                    <input type="checkbox" className="hidden" checked={formData.isForeign} onChange={e => setFormData({...formData, isForeign: e.target.checked})} />
+                    <input 
+                      type="checkbox" 
+                      className="hidden" 
+                      checked={formData.isForeign} 
+                      onChange={e => {
+                        const isFor = e.target.checked;
+                        setFormData((prev: any) => ({
+                          ...prev,
+                          isForeign: isFor,
+                          currency: isFor ? 'USD' : (prev.currency === 'USD' ? 'LKR' : (prev.currency || 'LKR'))
+                        }));
+                      }} 
+                    />
                   </label>
                 </div>
               </div>

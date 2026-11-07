@@ -1,8 +1,11 @@
 import React from 'react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, resolveFileUrl } from '@/lib/utils';
 
-export function toWords(num: number): string {
-  if (isNaN(num) || num === 0) return 'Rupees Zero and Cents Zero Only';
+export function toWords(num: number, currency = 'LKR'): string {
+  const isUSD = String(currency || '').trim().toUpperCase() === 'USD' || currency === '$';
+  const currencyUnit = isUSD ? 'US Dollars' : 'Rupees';
+
+  if (isNaN(num) || num === 0) return `${currencyUnit} Zero and Cents Zero Only`;
   const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
   const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
   const g = ['','Thousand','Million','Billion','Trillion'];
@@ -34,7 +37,7 @@ export function toWords(num: number): string {
     }
   }
 
-  let words = `Rupees ${result.trim()}`;
+  let words = `${currencyUnit} ${result.trim()}`;
   if (cents > 0) {
     let centsWord = '';
     if (cents > 19) {
@@ -162,8 +165,13 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   discount = 0,
   discountType = 'percent',
   discountAmount = 0,
-  grossAmount: propGrossAmount = 0
+  grossAmount: propGrossAmount = 0,
+  currency: propCurrency,
+  exchangeRate: propExchangeRate
 }) => {
+  const invoiceCurrency = String(propCurrency || customer?.currency || company?.currency || 'LKR').trim().toUpperCase();
+  const isUSD = invoiceCurrency === 'USD' || invoiceCurrency === '$';
+  const currSymbol = isUSD ? '$' : 'Rs.';
   const parsedDiscountAmount = Number(discountAmount || 0);
   const rawItemsTotal = items.reduce((sum: number, it: any) => sum + (Number(it.qty || 0) * Number(it.unitPrice || 0)), 0);
   const effectiveGrossAmount = Number(propGrossAmount) > 0 ? Number(propGrossAmount) : rawItemsTotal;
@@ -259,7 +267,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   }
 
   const paymentModeDisplay = modeOfPayment || 'Credit';
-  const amountInWords = toWords(total);
+  const amountInWords = toWords(total, invoiceCurrency);
 
   // VAT Rate determination - ensures statutory 18% is displayed
   let displayVatRate: number | string | null = null;
@@ -402,7 +410,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
   const invoiceTitle = isProforma ? 'PROFORMA INVOICE' : (isTaxShownSeparately ? 'TAX INVOICE' : 'INVOICE');
   const invoiceDocLabel = isProforma ? 'Proforma Invoice No. :' : (isTaxShownSeparately ? 'Tax Invoice No. :' : 'Invoice No. :');
-  const logoSrc = company?.company_logo || company?.logo || company?.companyLogo;
+  const logoSrc = resolveFileUrl(company?.company_logo || company?.logo || company?.companyLogo || '') || '/rex-logo.png';
 
   return (
     <>
@@ -469,24 +477,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       }}>
         {/* Left: Company Logo */}
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          {logoSrc ? (
-            <img 
-              src={logoSrc} 
-              alt="Company Logo" 
-              style={{ maxHeight: '50px', maxWidth: '190px', objectFit: 'contain' }} 
-            />
-          ) : (
-            <div style={{ 
-              fontSize: '32px', 
-              fontWeight: '900', 
-              color: '#dc2626', 
-              fontFamily: 'Impact, Arial Black, sans-serif',
-              letterSpacing: '-1px',
-              lineHeight: 1
-            }}>
-              REX
-            </div>
-          )}
+          <img 
+            src={logoSrc} 
+            alt="Company Logo" 
+            style={{ maxHeight: '50px', maxWidth: '190px', objectFit: 'contain' }} 
+            crossOrigin="anonymous"
+          />
         </div>
 
         {/* Right: INVOICE / TAX INVOICE title in boxed border */}
@@ -657,8 +653,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
               {isSsclHidden && isVatHidden
-                ? <>Amount<br/>(Rs.)</>
-                : <>Amount<br/>Excluding VAT<br/>(Rs.)</>}
+                ? <>Amount<br/>({currSymbol})</>
+                : <>Amount<br/>Excluding VAT<br/>({currSymbol})</>}
             </th>
           </tr>
         </thead>
@@ -807,7 +803,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               {advanceDeducted > 0 && (
                 <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#0f172a' }}>
                   <span style={{ fontWeight: '700' }}>Net Balance Payable in words:</span>{' '}
-                  <span style={{ fontStyle: 'italic', fontWeight: '600' }}>{toWords(Math.max(0, total - advanceDeducted))}</span>
+                  <span style={{ fontStyle: 'italic', fontWeight: '600' }}>{toWords(Math.max(0, total - advanceDeducted), invoiceCurrency)}</span>
                 </div>
               )}
             </td>
@@ -836,7 +832,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             <tr>
               <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left', backgroundColor: '#fafafa' }}>
                 <div style={{ fontWeight: 700, fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px', color: '#111' }}>
-                  Bank Details for Remittance / Direct Deposit:
+                  {isUSD ? 'Bank Details for Foreign Remittance (USD Wire Transfer):' : 'Bank Details for Remittance / Direct Deposit:'}
                 </div>
                 <table style={{ width: '100%', fontSize: '10.5px', borderCollapse: 'collapse', lineHeight: '1.4' }}>
                   <tbody>

@@ -3796,7 +3796,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       <td className="px-3 py-1.5 text-right">
                         <div className="flex flex-col items-end gap-0.5">
                           <span className="font-mono font-bold text-xs text-primary">
-                            {formatCurrency(order.totalPrice)}
+                            {formatCurrency(order.totalPrice, false, order.currency || 'LKR')}
                           </span>
                           {(() => {
                             let vat = Number(order.vatAmount || 0);

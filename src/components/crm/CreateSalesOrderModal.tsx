@@ -158,6 +158,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     ssclAmount: 0,
     totalPrice: 0,
     status: 'Confirmed',
+    currency: 'LKR',
+    exchangeRate: 1,
     notes: ''
   });
 
@@ -376,6 +378,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       ssclAmount,
       totalPrice: grandTotal,
       status: 'Confirmed',
+      currency: quoteData.currency || quotation.currency || cust?.currency || (lead as any)?.currency || (cust?.isForeign ? 'USD' : 'LKR'),
+      exchangeRate: Number(quoteData.exchangeRate || quotation.exchangeRate || 1),
       notes: `Commercial Sales Order generated from Approved Quotation ${group.quoNo}`
     });
 

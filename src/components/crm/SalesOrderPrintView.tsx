@@ -34,6 +34,10 @@ interface SalesOrderPrintViewProps {
 }
 
 export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order, customer, settings }) => {
+  const orderCurrency = String(order.currency || customer?.currency || 'LKR').trim().toUpperCase();
+  const isUSD = orderCurrency === 'USD' || orderCurrency === '$';
+  const currSymbol = isUSD ? '$' : 'Rs';
+
   // Parse items list
   let itemsList: any[] = [];
   if (order.items) {
@@ -418,8 +422,8 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                 <th className="py-1.5 border-r border-black text-center">#</th>
                 <th className="py-1.5 border-r border-black text-left px-2.5">Item Description & Specification</th>
                 <th className="py-1.5 border-r border-black text-center">Qty</th>
-                <th className="py-1.5 border-r border-black text-right px-2.5">Unit Price (Rs)</th>
-                <th className="py-1.5 text-right px-2.5">Amount (Rs)</th>
+                <th className="py-1.5 border-r border-black text-right px-2.5">Unit Price ({currSymbol})</th>
+                <th className="py-1.5 text-right px-2.5">Amount ({currSymbol})</th>
               </tr>
             </thead>
             <tbody>
@@ -450,10 +454,10 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                       {itemQty} {item.uom || item.unit || 'Nos'}
                     </td>
                     <td className="py-2 px-2.5 text-right border-r border-black font-mono align-top">
-                      {formatCurrency(itemUnitPrice)}
+                      {formatCurrency(itemUnitPrice, false, orderCurrency)}
                     </td>
                     <td className="py-2 px-2.5 text-right font-mono font-bold align-top">
-                      {formatCurrency(lineTotal)}
+                      {formatCurrency(lineTotal, false, orderCurrency)}
                     </td>
                   </tr>
                 );
@@ -475,19 +479,19 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                     <td className="p-1 px-2.5 font-semibold text-gray-700">
                       {isTaxInclusive ? 'Gross Total (Entered)' : 'Subtotal'}
                     </td>
-                    <td className="p-1 px-2.5 text-right font-mono font-bold">{formatCurrency(subtotal)}</td>
+                    <td className="p-1 px-2.5 text-right font-mono font-bold">{formatCurrency(subtotal, false, orderCurrency)}</td>
                   </tr>
                   {discountAmount > 0 && (
                     <tr className="border-b border-black text-rose-700">
                       <td className="p-1 px-2.5 font-semibold">Commercial Discount</td>
-                      <td className="p-1 px-2.5 text-right font-mono font-bold">-{formatCurrency(discountAmount)}</td>
+                      <td className="p-1 px-2.5 text-right font-mono font-bold">-{formatCurrency(discountAmount, false, orderCurrency)}</td>
                     </tr>
                   )}
                   {isTaxInclusive && (vatAmount > 0 || ssclAmount > 0) && (
                     <tr className="border-b border-black text-gray-700 bg-gray-50/50">
                       <td className="p-1 px-2.5 font-semibold">Net Supply Value (Base Excl. Taxes)</td>
                       <td className="p-1 px-2.5 text-right font-mono font-bold">
-                        {formatCurrency(Math.max(0, totalPrice - taxAmount))}
+                        {formatCurrency(Math.max(0, totalPrice - taxAmount), false, orderCurrency)}
                       </td>
                     </tr>
                   )}
@@ -497,7 +501,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                         Social Security Contribution Levy (SSCL 2.5%{isTaxInclusive ? ' Extracted' : ''})
                       </td>
                       <td className="p-1 px-2.5 text-right font-mono font-bold">
-                        {isTaxInclusive ? '' : '+'}{formatCurrency(ssclAmount)}
+                        {isTaxInclusive ? '' : '+'}{formatCurrency(ssclAmount, false, orderCurrency)}
                       </td>
                     </tr>
                   )}
@@ -507,7 +511,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                         Value Added Tax (VAT 18%{isTaxInclusive ? ' Extracted' : ''})
                       </td>
                       <td className="p-1 px-2.5 text-right font-mono font-bold">
-                        {isTaxInclusive ? '' : '+'}{formatCurrency(vatAmount)}
+                        {isTaxInclusive ? '' : '+'}{formatCurrency(vatAmount, false, orderCurrency)}
                       </td>
                     </tr>
                   )}
@@ -517,7 +521,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                         Taxes ({isTaxInclusive ? 'Extracted' : 'Added'})
                       </td>
                       <td className="p-1 px-2.5 text-right font-mono font-bold">
-                        {isTaxInclusive ? '' : '+'}{formatCurrency(taxAmount)}
+                        {isTaxInclusive ? '' : '+'}{formatCurrency(taxAmount, false, orderCurrency)}
                       </td>
                     </tr>
                   )}
@@ -526,7 +530,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                       Total Order Value
                       {isTaxInclusive && <span className="block text-[9px] font-normal text-gray-600">(Tax-Inclusive Price)</span>}
                     </td>
-                    <td className="p-1.5 px-2.5 text-right font-mono text-blue-900">{formatCurrency(totalPrice)}</td>
+                    <td className="p-1.5 px-2.5 text-right font-mono text-blue-900">{formatCurrency(totalPrice, false, orderCurrency)}</td>
                   </tr>
                 </tbody>
               </table>

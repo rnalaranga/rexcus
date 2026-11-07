@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate, formatCurrency } from '@/lib/utils';
+import { formatDate, formatCurrency, resolveFileUrl } from '@/lib/utils';
 
 export interface SupplierGRNPrintViewProps {
   grn: any;
@@ -33,7 +33,7 @@ export const SupplierGRNPrintView: React.FC<SupplierGRNPrintViewProps> = ({ grn,
   }
 
   const supp = supplier || grn.supplier || {};
-  const logoUrl = settings?.company_logo || settings?.logo || settings?.companyLogo || '/rex-logo.png';
+  const logoUrl = resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png';
   const grnDateFormatted = grn.date ? formatDate(grn.date) : formatDate(grn.createdAt);
   const totalValue = items.reduce((sum, it) => sum + (Number(it.qtyReceived !== undefined ? it.qtyReceived : (it.qty || 0)) * Number(it.unitCost !== undefined ? it.unitCost : (it.unitPrice || 0))), 0);
 
@@ -74,9 +74,12 @@ export const SupplierGRNPrintView: React.FC<SupplierGRNPrintViewProps> = ({ grn,
       <div className="flex p-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
         <div className="w-[32%] flex justify-center items-center">
-          {settings?.company_logo
-            ? <img src={settings.company_logo} alt="Logo" className="max-h-20 object-contain" />
-            : <div className="text-4xl font-black text-red-600 tracking-tighter" style={{ fontFamily: 'Impact, sans-serif' }}>REX</div>}
+          <img 
+            src={logoUrl} 
+            alt="Logo" 
+            className="max-h-20 object-contain" 
+            crossOrigin="anonymous" 
+          />
         </div>
 
         {/* Company Info (Right 68%) */}

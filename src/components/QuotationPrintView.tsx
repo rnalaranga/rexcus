@@ -1,8 +1,10 @@
 import React from 'react'
 import { formatCurrency, resolveFileUrl } from '@/lib/utils'
 
-function toWords(num: number): string {
-  if (num === 0) return 'Zero';
+function toWords(num: number, currency = 'LKR'): string {
+  const isUSD = String(currency || '').trim().toUpperCase() === 'USD' || currency === '$';
+  const unit = isUSD ? 'US Dollars Only' : 'Rupees Only';
+  if (num === 0) return `Zero ${unit}`;
   const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
   const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
   const g = ['','Thousand','Million','Billion'];
@@ -24,7 +26,7 @@ function toWords(num: number): string {
     val = Math.floor(val / 1000);
     i++;
   }
-  return result.trim() + ' Rupees Only';
+  return result.trim() + ' ' + unit;
 }
 
 // Helper to deduplicate title repetitions and format line-by-line descriptions
@@ -773,7 +775,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
 
           {/* Value in words */}
           <div className="py-1.5 px-3 border-b border-black text-[10.5px] font-bold print-no-break bg-gray-50/30">
-            <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(displayGrandTotal))}</span>
+            <span className="uppercase">VALUE : {data.currency || 'LKR'} {toWords(Math.round(displayGrandTotal), data.currency || 'LKR')}</span>
           </div>
 
           {/* Footer Notes & Bank */}

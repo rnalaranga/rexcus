@@ -204,6 +204,8 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               taxProfile={taxProfiles?.find((p: any) => p.id === invoice.taxProfileId)}
               taxBreakdown={invoice.taxBreakdown ? (typeof invoice.taxBreakdown === 'string' ? JSON.parse(invoice.taxBreakdown) : invoice.taxBreakdown) : null}
               taxType={invoice.taxType || (invoice.taxProfileId ? 'profile' : 'none')}
+              currency={invoice.currency || (customerData as any)?.currency || 'LKR'}
+              exchangeRate={invoice.exchangeRate || 1}
             />
           </div>
         </div>

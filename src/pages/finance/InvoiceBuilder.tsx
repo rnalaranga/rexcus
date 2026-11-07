@@ -50,6 +50,8 @@ export const InvoiceBuilder: React.FC = () => {
   const [discount, setDiscount] = useState<number | string>(0);
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
   const [discountAmount, setDiscountAmount] = useState<number | string>(0);
+  const [currency, setCurrency] = useState<string>('LKR');
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [isEditing, setIsEditing] = useState(false);
   const [originalInvoiceId, setOriginalInvoiceId] = useState<string | null>(null);
   const [isCustomInvoiceNo, setIsCustomInvoiceNo] = useState(false);
@@ -138,6 +140,8 @@ export const InvoiceBuilder: React.FC = () => {
                 if (inv.discount !== undefined) setDiscount(inv.discount);
                 if (inv.discountType) setDiscountType(inv.discountType);
                 if (inv.discountAmount !== undefined) setDiscountAmount(inv.discountAmount);
+                if (inv.currency) setCurrency(inv.currency);
+                if (inv.exchangeRate) setExchangeRate(Number(inv.exchangeRate) || 1);
                 if (inv.items) {
                   try {
                     const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
@@ -275,6 +279,12 @@ export const InvoiceBuilder: React.FC = () => {
             } else if (!ordHasTax) {
               setTaxProfileId('none');
             }
+
+            if (ord.currency) {
+              setCurrency(ord.currency);
+              if (ord.currency === 'USD') setTaxProfileId('tp_export_zero_rated');
+            }
+            if (ord.exchangeRate) setExchangeRate(Number(ord.exchangeRate) || 1);
 
             // Discount resolution: Strictly preserve Sales Order discount value, type & prevent percent/amount confusion
             const ordSubtotal = Number(ord.subtotal || 0);
@@ -1254,6 +1264,8 @@ export const InvoiceBuilder: React.FC = () => {
         customerVat, 
         taxType, 
         taxProfileId, 
+        currency: currency || 'LKR',
+        exchangeRate: Number(exchangeRate) || 1,
         taxBreakdown: JSON.stringify(taxBreakdown),
         isTaxInclusive: isTaxInclusive ? 1 : 0,
         bankDetailId: bankDetailId || null,
@@ -1335,7 +1347,9 @@ export const InvoiceBuilder: React.FC = () => {
     discount: Number(discount) || 0,
     discountType,
     discountAmount: discountAmt,
-    grossAmount
+    grossAmount,
+    currency: currency || 'LKR',
+    exchangeRate: Number(exchangeRate) || 1
   };
 
   return (
@@ -1474,6 +1488,18 @@ export const InvoiceBuilder: React.FC = () => {
                   onChange={(val, cust) => {
                     setCustomerId(val);
                     if (cust && cust.vat) setCustomerVat(cust.vat);
+                    if (cust) {
+                      const isForeignCust = Boolean(cust.isForeign || cust.currency === 'USD');
+                      if (isForeignCust) {
+                        setCurrency('USD');
+                        setTaxProfileId('tp_export_zero_rated');
+                      } else {
+                        setCurrency(cust.currency || 'LKR');
+                        if (taxProfileId === 'tp_export_zero_rated') {
+                          setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep');
+                        }
+                      }
+                    }
                   }}
                   customers={customers}
                   leads={leads}
@@ -2021,6 +2047,69 @@ export const InvoiceBuilder: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Currency & Exchange Rate Selector */}
+                <div className="py-2.5 px-3 bg-surface2/40 border border-theme-subtle rounded-xl mt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Currency</span>
+                    <span className="text-[10px] font-mono font-bold text-primary">{currency}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrency('LKR');
+                        setExchangeRate(1);
+                        if (taxProfileId === 'tp_export_zero_rated') setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep');
+                      }}
+                      className={`p-1.5 text-[11px] font-bold rounded-lg border transition-all text-center ${
+                        currency === 'LKR'
+                          ? 'bg-primary text-surface border-primary shadow-xs'
+                          : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                      }`}
+                    >
+                      LKR (Rs.)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrency('USD');
+                        setTaxProfileId('tp_export_zero_rated');
+                      }}
+                      className={`p-1.5 text-[11px] font-bold rounded-lg border transition-all text-center ${
+                        currency === 'USD'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                      }`}
+                    >
+                      USD ($ Export)
+                    </button>
+                  </div>
+                  {currency === 'USD' && (
+                    <div className="pt-2 border-t border-theme-subtle/50 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[9.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                          Ex. Rate (1 USD = LKR)
+                        </label>
+                        <span className="text-[9px] text-muted font-mono">Central Bank / Bank Rate</span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        value={exchangeRate}
+                        onChange={e => setExchangeRate(Number(e.target.value) || 1)}
+                        className="w-full bg-surface border border-emerald-500/40 px-2.5 py-1 rounded text-xs font-mono font-bold text-primary outline-none focus:border-emerald-500"
+                        placeholder="310.00"
+                      />
+                      <div className="text-[9.5px] text-muted flex items-center justify-between pt-0.5">
+                        <span>LKR Equivalent:</span>
+                        <strong className="font-mono text-primary">{formatCurrency((total || subtotal) * (exchangeRate || 1), false, 'LKR')}</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="py-2 border-t border-theme-subtle space-y-3 mt-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
