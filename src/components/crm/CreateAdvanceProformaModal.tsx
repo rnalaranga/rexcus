@@ -91,7 +91,18 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const customerVat = order?.customerVat || order?.vatNo || matchedCustomer?.vat || matchedCustomer?.tin || '';
   const customerAttention = order?.attention || '';
 
-  const detectedCurrency = String(order?.currency || matchedCustomer?.currency || (matchedCustomer?.isForeign ? 'USD' : (order?.isForeign ? 'USD' : 'LKR'))).trim().toUpperCase();
+  const isCustomerForeign = Boolean(
+    matchedCustomer?.isForeign ||
+    matchedCustomer?.currency === 'USD' ||
+    order?.isForeign ||
+    order?.currency === 'USD' ||
+    linkedQuotation?.currency === 'USD' ||
+    (linkedQuotation?.data && typeof linkedQuotation.data === 'string' && linkedQuotation.data.includes('"currency":"USD"'))
+  );
+
+  const detectedCurrency = isCustomerForeign 
+    ? 'USD' 
+    : String(order?.currency || matchedCustomer?.currency || 'LKR').trim().toUpperCase();
   const detectedExchangeRate = Number(order?.exchangeRate || (detectedCurrency === 'USD' ? 310 : 1));
 
   // Currency & Exchange Rate State
@@ -227,20 +238,88 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   }, [order, effectiveOrderTotal, orderNo, linkedQuotation]);
 
   // Handle bank accounts filter
+  // Handle bank accounts filter (Settings Company Bank Details + GL Bank Accounts)
   const bankAccounts = useMemo(() => {
-    return accounts.filter(
+    let list: any[] = [];
+    if (settings?.company_bank_details) {
+      try {
+        const parsed = typeof settings.company_bank_details === 'string'
+          ? JSON.parse(settings.company_bank_details)
+          : settings.company_bank_details;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed.map((b: any) => ({
+            id: b.id,
+            name: b.bankName || b.name,
+            bankName: b.bankName || b.name,
+            branch: b.branchName || b.branch || '',
+            branchName: b.branchName || b.branch || '',
+            accountName: b.accountName || settings?.company_name || 'Rex Industries (Pvt) Ltd',
+            accountNumber: b.accountNumber,
+            swiftCode: b.swiftCode || '',
+            isDefault: b.isDefault
+          }));
+        }
+      } catch (e) {}
+    }
+
+    const glBanks = accounts.filter(
       (a: any) => 
         (a.type === 'Asset' && (a.subtype?.includes('Bank') || a.subtype?.includes('Cash') || a.name?.includes('Bank'))) ||
         a.accountNumber
-    );
-  }, [accounts]);
+    ).map((a: any) => ({
+      id: a.id,
+      name: a.bankName || a.name,
+      bankName: a.bankName || a.name,
+      branch: a.branch || '',
+      branchName: a.branch || '',
+      accountName: a.accountName || settings?.company_name || 'Rex Industries (Pvt) Ltd',
+      accountNumber: a.accountNumber || a.code,
+      swiftCode: a.swiftCode || '',
+      isDefault: false
+    }));
 
-  // Set default bank if available
-  useEffect(() => {
-    if (bankAccounts.length > 0 && !selectedBankId) {
-      setSelectedBankId(bankAccounts[0].id);
+    const combined = [...list];
+    glBanks.forEach((gb: any) => {
+      if (!combined.some((b: any) => b.accountNumber && b.accountNumber === gb.accountNumber)) {
+        combined.push(gb);
+      }
+    });
+
+    if (combined.length === 0) {
+      return [
+        {
+          id: 'bank_hnb',
+          bankName: 'Hatton National Bank',
+          name: 'Hatton National Bank',
+          branch: 'Negombo',
+          branchName: 'Negombo',
+          accountName: settings?.company_name || 'Rex Industries (Pvt) Ltd',
+          accountNumber: '011010078028',
+          swiftCode: 'HNBLLKLX',
+          isDefault: true
+        }
+      ];
     }
-  }, [bankAccounts, selectedBankId]);
+    return combined;
+  }, [settings?.company_bank_details, settings?.company_name, accounts]);
+
+  // Set default bank if available (prioritizes Master USD Account when currency is USD)
+  useEffect(() => {
+    if (bankAccounts.length > 0) {
+      if (currency === 'USD') {
+        const usdMaster = bankAccounts.find((b: any) => b.id === settings?.usd_master_account_id) ||
+                          bankAccounts.find((b: any) => b.swiftCode || b.name?.includes('USD') || b.bankName?.includes('USD'));
+        if (usdMaster) {
+          setSelectedBankId(usdMaster.id);
+          return;
+        }
+      }
+      if (!selectedBankId) {
+        const def = bankAccounts.find((b: any) => b.isDefault) || bankAccounts[0];
+        if (def) setSelectedBankId(def.id);
+      }
+    }
+  }, [bankAccounts, selectedBankId, currency, settings?.usd_master_account_id]);
 
   // Quick percent buttons
   const handlePercentSelect = (pct: number) => {
@@ -379,7 +458,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         bankDetails: selectedBank ? JSON.stringify({
           bankName: selectedBank.bankName || selectedBank.name,
           accountNumber: selectedBank.accountNumber || selectedBank.code,
-          branch: selectedBank.branch || '',
+          branch: selectedBank.branch || selectedBank.branchName || '',
+          branchName: selectedBank.branch || selectedBank.branchName || '',
           accountName: selectedBank.accountName || settings?.company_name || 'Rex Industries (Pvt) Ltd',
           swiftCode: selectedBank.swiftCode || ''
         }) : null,
@@ -423,7 +503,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         bankDetails: selectedBank ? {
           bankName: selectedBank.bankName || selectedBank.name,
           accountNumber: selectedBank.accountNumber || selectedBank.code,
-          branch: selectedBank.branch || '',
+          branch: selectedBank.branch || selectedBank.branchName || '',
+          branchName: selectedBank.branch || selectedBank.branchName || '',
           accountName: selectedBank.accountName || settings?.company_name || 'Rex Industries (Pvt) Ltd',
           swiftCode: selectedBank.swiftCode || ''
         } : null

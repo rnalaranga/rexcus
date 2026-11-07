@@ -50,16 +50,30 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   const deliveryDate = invoice.deliveryDate || invoiceDate;
 
   // Match customer for reliable fallback
-  const matchedCust = allCustomers.find((c: any) => c.id === invoice.customerId || c.id === invoice.leadId) ||
-                      allLeads.find((l: any) => l.id === invoice.customerId || l.id === invoice.leadId);
+  const cId = invoice.customerId || invoice.leadId || order?.customerId;
+  const cName = invoice.customerName || invoice.customerCompany || invoice.customer || order?.customerName || order?.customer;
+  const matchedCust = (cId ? (allCustomers.find((c: any) => c.id === cId) || allLeads.find((l: any) => l.id === cId)) : null) ||
+                      (cName ? (allCustomers.find((c: any) => c.name?.toLowerCase() === String(cName).trim().toLowerCase() || c.company?.toLowerCase() === String(cName).trim().toLowerCase()) ||
+                                allLeads.find((l: any) => l.name?.toLowerCase() === String(cName).trim().toLowerCase() || l.company?.toLowerCase() === String(cName).trim().toLowerCase())) : null);
 
-  const invoiceCurrency = String(
+  const isForeignExport = Boolean(
+    invoice.currency === 'USD' ||
+    order?.currency === 'USD' ||
+    invoice.taxProfileId === 'tp_export_zero_rated' ||
+    matchedCust?.isForeign ||
+    matchedCust?.currency === 'USD' ||
+    invoice.isForeign ||
+    order?.isForeign
+  );
+
+  const invoiceCurrency = isForeignExport ? 'USD' : String(
     invoice.currency || 
+    order?.currency ||
     invoice.lead?.currency || 
     matchedCust?.currency || 
-    (matchedCust?.isForeign ? 'USD' : (invoice.isForeign ? 'USD' : 'LKR'))
+    'LKR'
   ).trim().toUpperCase();
-  const invoiceExchangeRate = Number(invoice.exchangeRate || (invoiceCurrency === 'USD' ? 310 : 1));
+  const invoiceExchangeRate = Number(invoice.exchangeRate || order?.exchangeRate || (invoiceCurrency === 'USD' ? 310 : 1));
 
   const customerData = {
     name: invoice.customer?.name || invoice.customerName || invoice.customer || invoice.customerCompany || matchedCust?.name || 'Valued Customer',

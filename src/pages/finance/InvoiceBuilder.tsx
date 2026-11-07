@@ -1264,8 +1264,10 @@ export const InvoiceBuilder: React.FC = () => {
         customerVat, 
         taxType, 
         taxProfileId, 
-        currency: currency || 'LKR',
-        exchangeRate: Number(exchangeRate) || 1,
+        isProforma: isProforma ? 1 : 0,
+        invoiceType: isProforma ? 'proforma' : 'tax_invoice',
+        currency: (taxProfileId === 'tp_export_zero_rated' || selectedCustomer?.isForeign || selectedCustomer?.currency === 'USD') ? 'USD' : (currency || 'LKR'),
+        exchangeRate: Number(exchangeRate) || ((currency === 'USD' || taxProfileId === 'tp_export_zero_rated') ? 310 : 1),
         taxBreakdown: JSON.stringify(taxBreakdown),
         isTaxInclusive: isTaxInclusive ? 1 : 0,
         bankDetailId: bankDetailId || null,
@@ -1348,8 +1350,11 @@ export const InvoiceBuilder: React.FC = () => {
     discountType,
     discountAmount: discountAmt,
     grossAmount,
-    currency: currency || 'LKR',
-    exchangeRate: Number(exchangeRate) || 1
+    isProforma: isProforma,
+    invoiceType: isProforma ? 'proforma' : 'tax_invoice',
+    docTitle: isProforma ? 'PROFORMA INVOICE' : undefined,
+    currency: (taxProfileId === 'tp_export_zero_rated' || selectedCustomer?.isForeign || selectedCustomer?.currency === 'USD') ? 'USD' : (currency || 'LKR'),
+    exchangeRate: Number(exchangeRate) || ((currency === 'USD' || taxProfileId === 'tp_export_zero_rated') ? 310 : 1)
   };
 
   return (
@@ -2240,19 +2245,19 @@ export const InvoiceBuilder: React.FC = () => {
                 
                 <div className="pt-4 border-t border-blue-500/30 flex justify-between items-center">
                   <span className="text-base font-black text-primary uppercase tracking-wide">Grand Total</span>
-                  <span className="text-3xl font-black text-blue-600 font-mono">{formatCurrency(total)}</span>
+                  <span className="text-3xl font-black text-blue-600 font-mono">{formatCurrency(total, false, currency)}</span>
                 </div>
 
                 {advanceDeducted > 0 && (
                   <div className="pt-3 border-t border-theme-subtle space-y-2">
                     <div className="flex justify-between items-center text-xs">
                       <span className="font-bold text-emerald-700 dark:text-emerald-400">Less Advance Paid ({receiptNos})</span>
-                      <span className="font-mono font-bold text-emerald-600">-{formatCurrency(advanceDeducted)}</span>
+                      <span className="font-mono font-bold text-emerald-600">-{formatCurrency(advanceDeducted, false, currency)}</span>
                     </div>
                     <div className="pt-2 border-t border-emerald-500/20 flex justify-between items-center">
                       <span className="text-sm font-black text-primary uppercase tracking-wide">Net Balance Due</span>
                       <span className="text-2xl font-black text-emerald-600 font-mono">
-                        {formatCurrency(Math.max(0, total - advanceDeducted))}
+                        {formatCurrency(Math.max(0, total - advanceDeducted), false, currency)}
                       </span>
                     </div>
                   </div>

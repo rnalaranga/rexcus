@@ -616,8 +616,21 @@ export const ReceivablesHub: React.FC = () => {
       c.id === proforma.leadId || 
       (c.name && c.name.toLowerCase() === (proforma.customerName || '').toLowerCase())
     );
+    const isForeign = Boolean(
+      proforma.currency === 'USD' ||
+      proforma.taxProfileId === 'tp_export_zero_rated' ||
+      matchedCustomer?.isForeign ||
+      matchedCustomer?.currency === 'USD'
+    );
+    const resolvedCur = isForeign ? 'USD' : (proforma.currency || matchedCustomer?.currency || 'LKR');
+    const resolvedRate = Number(proforma.exchangeRate || (resolvedCur === 'USD' ? 310 : 1));
+
     const enriched = {
       ...proforma,
+      currency: resolvedCur,
+      exchangeRate: resolvedRate,
+      isProforma: 1,
+      invoiceType: 'proforma',
       customerName: proforma.customerName || matchedCustomer?.name || 'Customer',
       customerCompany: proforma.customerCompany || matchedCustomer?.company || proforma.customerName || 'Customer',
       customerAddress: proforma.customerAddress || matchedCustomer?.address || '',
@@ -1115,11 +1128,15 @@ export const ReceivablesHub: React.FC = () => {
                     const tot = Number(inv.total || inv.amount || 0);
                     const paid = Number(inv.paidAmount || 0);
                     const due = Math.max(0, tot - paid);
+                    const isInvUSD = inv.currency === 'USD' || inv.taxProfileId === 'tp_export_zero_rated';
 
                     return (
                       <tr key={inv.id} className="hover:bg-surface2/30 transition-colors">
                         <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
                           <div className="flex items-center gap-1.5 flex-wrap">
+                            {isInvUSD && (
+                              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Foreign Export Invoice" />
+                            )}
                             <span>{inv.invoiceNo || inv.id}</span>
                             {inv.invoiceType === 'opening' && (
                               <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 uppercase tracking-tight">
@@ -1305,11 +1322,15 @@ export const ReceivablesHub: React.FC = () => {
                     const due = Math.max(0, tot - paid);
                     const isFullyPaid = pi.status === 'paid' || (tot > 0 && paid >= tot);
                     const isPartiallyPaid = !isFullyPaid && paid > 0;
+                    const isPiUSD = pi.currency === 'USD';
 
                     return (
                       <tr key={pi.id} className="hover:bg-surface2/30 transition-colors">
                         <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
                           <div className="flex items-center gap-1.5">
+                            {isPiUSD && (
+                              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Advance Proforma" />
+                            )}
                             <span>{pi.invoiceNo || pi.id}</span>
                             <span className="px-1 py-0.2 text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 uppercase">
                               Proforma
@@ -1485,10 +1506,18 @@ export const ReceivablesHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {sortedReceipts.map((rec: any) => (
+                  {sortedReceipts.map((rec: any) => {
+                    const isRecUSD = rec.currency === 'USD';
+
+                    return (
                     <tr key={rec.id} className="hover:bg-surface2/30 transition-colors">
                       <td className="px-4 py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                        {rec.receiptNo || rec.id}
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                          {isRecUSD && (
+                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Payment Receipt" />
+                          )}
+                          <span>{rec.receiptNo || rec.id}</span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-muted font-mono">
                         {formatDate(rec.date)}
@@ -1517,7 +1546,7 @@ export const ReceivablesHub: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(Number(rec.amount || 0))}
+                        {formatCurrency(Number(rec.amount || 0), false, rec.currency || 'LKR')}
                       </td>
                       <td className="px-4 py-3 text-secondary">
                         <span className="px-2 py-0.5 rounded-none bg-surface2 border border-theme-subtle text-[11px] font-medium">
@@ -1561,7 +1590,8 @@ export const ReceivablesHub: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

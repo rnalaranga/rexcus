@@ -113,6 +113,7 @@ export interface InvoicePreviewProps {
   company?: any;
   modeOfPayment?: string;
   taxProfile?: any;
+  taxProfileId?: string;
   attention?: string;
   bankDetails?: any;
   advanceDeducted?: number;
@@ -151,6 +152,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   company = {}, 
   modeOfPayment,
   taxProfile, 
+  taxProfileId,
   attention,
   taxBreakdown,
   taxType,
@@ -169,7 +171,19 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   currency: propCurrency,
   exchangeRate: propExchangeRate
 }) => {
-  const invoiceCurrency = String(propCurrency || customer?.currency || company?.currency || 'LKR').trim().toUpperCase();
+  const effectiveTaxProfileId = taxProfileId || taxProfile?.id;
+  const isForeignExport = Boolean(
+    String(propCurrency || '').trim().toUpperCase() === 'USD' ||
+    propCurrency === '$' ||
+    effectiveTaxProfileId === 'tp_export_zero_rated' ||
+    taxProfile?.name?.toLowerCase().includes('export') ||
+    customer?.isForeign ||
+    (customer as any)?.foreign ||
+    (customer?.currency && String(customer.currency).trim().toUpperCase() === 'USD')
+  );
+
+  const rawCurrency = String(propCurrency || customer?.currency || (isForeignExport ? 'USD' : (company?.currency || 'LKR'))).trim().toUpperCase();
+  const invoiceCurrency = isForeignExport && (rawCurrency === 'LKR' || !rawCurrency) ? 'USD' : rawCurrency;
   const isUSD = invoiceCurrency === 'USD' || invoiceCurrency === '$';
   const currSymbol = isUSD ? '$' : 'Rs.';
   const parsedDiscountAmount = Number(discountAmount || 0);
@@ -334,7 +348,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             activeBank = parsed.find((b: any) => b.id === bankDetails);
           }
           if (!activeBank) {
-            activeBank = parsed.find((b: any) => b.isDefault) || parsed[0];
+            if (isUSD) {
+              activeBank = parsed.find((b: any) => (b.swiftCode && (b.bankName?.toLowerCase().includes('usd') || b.accountName?.toLowerCase().includes('usd') || b.branchName?.toLowerCase().includes('foreign')))) ||
+                           parsed.find((b: any) => b.swiftCode) ||
+                           parsed.find((b: any) => b.isDefault) || 
+                           parsed[0];
+            } else {
+              activeBank = parsed.find((b: any) => b.isDefault) || parsed[0];
+            }
           }
         }
       } catch (e) {}

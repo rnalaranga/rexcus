@@ -1642,6 +1642,9 @@ export const ProductQuotations: React.FC = () => {
                   );
                   const customerRequiresAdvance = Boolean(cust && (cust.requiresAdvance === true || cust.requiresAdvance === 1));
 
+                  const quoteCurrency = String(latest?.currency || parsed?.currency || cust?.currency || (cust?.isForeign ? 'USD' : 'LKR')).trim().toUpperCase();
+                  const isUSD = quoteCurrency === 'USD' || quoteCurrency === '$';
+
                   const isInfoOpen = openInfoId === group.quoNo;
                   let infoMenuStyle: React.CSSProperties = {};
                   if (isInfoOpen && infoCoords) {
@@ -1677,6 +1680,9 @@ export const ProductQuotations: React.FC = () => {
                         {/* Quote # & Version */}
                         <td className="px-3.5 py-2 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 flex-nowrap">
+                            {isUSD && (
+                              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Foreign Export Quotation" />
+                            )}
                             <button
                               type="button"
                               onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
@@ -1951,7 +1957,7 @@ export const ProductQuotations: React.FC = () => {
                         <td className="px-3.5 py-2.5 text-right">
                           <div className="flex flex-col items-end">
                             <span className="font-mono font-bold text-xs text-primary">
-                              {formatCurrency(Number(latest.totalAmount || 0))}
+                              {formatCurrency(Number(latest.totalAmount || 0), false, quoteCurrency)}
                             </span>
                             {totalAdv > 0 && latestRec && (
                               <button
@@ -1964,9 +1970,9 @@ export const ProductQuotations: React.FC = () => {
                                   setPrintReceiptModalOpen(true);
                                 }}
                                 className="inline-flex items-center gap-1 text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors mt-0.5"
-                                title={`View Advance Payment: ${formatCurrency(totalAdv)}`}
+                                title={`View Advance Payment: ${formatCurrency(totalAdv, false, quoteCurrency)}`}
                               >
-                                <Receipt size={9} /> Adv: {formatCurrency(totalAdv)}
+                                <Receipt size={9} /> Adv: {formatCurrency(totalAdv, false, quoteCurrency)}
                               </button>
                             )}
                           </div>
@@ -2174,7 +2180,7 @@ export const ProductQuotations: React.FC = () => {
                                           </span>
                                         )}
                                         <span className="font-mono text-secondary text-xs truncate">
-                                          {formatCurrency(Number(v.totalAmount || 0))}
+                                          {formatCurrency(Number(v.totalAmount || 0), false, v.currency || quoteCurrency)}
                                         </span>
                                         <span className="text-[10px] text-muted truncate">{formatDate(v.date)}</span>
                                       </div>
@@ -2221,6 +2227,14 @@ export const ProductQuotations: React.FC = () => {
             const latestRec = recs.length > 0 ? recs[recs.length - 1] : null;
             const isRevisionsExpanded = !!expandedRevisions[group.quoNo];
 
+            const cust = customers.find((c: any) =>
+              (group.leadId && c.leadId && String(c.leadId) === String(group.leadId)) ||
+              (group.clientCompany && c.company && c.company.toLowerCase() === group.clientCompany.toLowerCase()) ||
+              (group.clientName && c.name && c.name.toLowerCase() === group.clientName.toLowerCase())
+            );
+            const quoteCurrency = String(latest?.currency || parsed?.currency || cust?.currency || (cust?.isForeign ? 'USD' : 'LKR')).trim().toUpperCase();
+            const isUSD = quoteCurrency === 'USD' || quoteCurrency === '$';
+
             return (
               <GlassCard
                 key={group.quoNo}
@@ -2232,6 +2246,9 @@ export const ProductQuotations: React.FC = () => {
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-2 pb-2 mb-2 border-b border-theme-subtle/40">
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {isUSD && (
+                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Foreign Export Quotation" />
+                      )}
                       <button
                         type="button"
                         onClick={() => navigate(`/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${latest.id}`)}
@@ -2297,7 +2314,7 @@ export const ProductQuotations: React.FC = () => {
                         }}
                         className="inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
                       >
-                        <Receipt size={10} /> Adv: {formatCurrency(totalAdv)}
+                        <Receipt size={10} /> Adv: {formatCurrency(totalAdv, false, quoteCurrency)}
                       </button>
                     </div>
                   )}
@@ -2308,7 +2325,7 @@ export const ProductQuotations: React.FC = () => {
                   <div>
                     <span className="text-[10px] uppercase font-semibold text-muted block tracking-wider">Total Value</span>
                     <span className="text-sm font-bold font-mono text-primary block">
-                      {formatCurrency(Number(latest.totalAmount || 0))}
+                      {formatCurrency(Number(latest.totalAmount || 0), false, quoteCurrency)}
                     </span>
                   </div>
 

@@ -1457,7 +1457,13 @@ async function runDatabaseSync() {
         await db.query('INSERT IGNORE INTO chart_of_accounts SET ?', { ...acc, createdAt: now });
       }
     }
-  } catch (e) {}
+
+    // Ensure Foreign Currency USD Account and Master Setup Setting exist
+    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1010', '1010', 'Foreign Currency Bank Account (USD)', 'Asset', 'Bank', 0, NOW())`);
+    await db.query(`INSERT INTO settings (id, val) VALUES ('usd_master_account_id', 'acc_1010') ON DUPLICATE KEY UPDATE val=val`);
+  } catch (e) {
+    console.error('Error seeding COA:', e);
+  }
 
   // 5. Default Cost Centers seeding
   try {
@@ -1609,6 +1615,8 @@ async function runDatabaseSync() {
     "ALTER TABLE leads ADD COLUMN financeContactName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN financeContactPhone VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN industry VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE leads ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE leads ADD COLUMN isForeign TINYINT(1) DEFAULT 0",
     "ALTER TABLE users ADD COLUMN prefix VARCHAR(10) DEFAULT NULL",
     "ALTER TABLE customer_grns ADD COLUMN status VARCHAR(50) DEFAULT 'In Stock'",
     "ALTER TABLE customer_grns ADD COLUMN gatePassId VARCHAR(50) DEFAULT NULL",
@@ -8861,7 +8869,7 @@ app.post('/api/invoices', async (req, res) => {
       }
     } catch(e) { console.error('Auto GL Invoice Error:', e); }
 
-    res.json({ success: true, id: data.id });
+    res.json({ success: true, id: data.id, invoice: { ...safeData, id: data.id, invoiceNo: safeData.invoiceNo || data.id } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -9213,6 +9221,17 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
         if (acc && acc.length > 0) {
           depositAccountId = acc[0].id;
           depositAccountName = acc[0].name;
+        }
+      }
+      if (!depositAccountId) {
+        if (invoice.currency === 'USD' || payment.currency === 'USD') {
+          const [usdSetting]: any = await db.query('SELECT val FROM settings WHERE id = "usd_master_account_id" LIMIT 1');
+          const masterId = usdSetting && usdSetting.length > 0 ? usdSetting[0].val : 'acc_1010';
+          const [foundUsd]: any = await db.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [masterId]);
+          if (foundUsd && foundUsd.length > 0) {
+            depositAccountId = foundUsd[0].id;
+            depositAccountName = foundUsd[0].name;
+          }
         }
       }
       if (!depositAccountId) {
@@ -10848,6 +10867,19 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
           depositAccountName = acc[0].name;
         }
       } catch (e) {}
+    }
+    if (!depositAccountId) {
+      if (data.currency === 'USD' || String(data.notes || '').includes('USD') || String(data.reference || '').includes('USD')) {
+        try {
+          const [usdSetting]: any = await conn.query('SELECT val FROM settings WHERE id = "usd_master_account_id" LIMIT 1');
+          const masterId = usdSetting && usdSetting.length > 0 ? usdSetting[0].val : 'acc_1010';
+          const [foundUsd]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [masterId]);
+          if (foundUsd && foundUsd.length > 0) {
+            depositAccountId = foundUsd[0].id;
+            depositAccountName = foundUsd[0].name;
+          }
+        } catch (e) {}
+      }
     }
     if (!depositAccountId) {
       const isBank = (data.paymentMethod || '').toLowerCase().includes('bank') || (data.paymentMethod || '').toLowerCase().includes('cheque') || (data.paymentMethod || '').toLowerCase().includes('card');

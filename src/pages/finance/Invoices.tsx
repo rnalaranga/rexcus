@@ -309,7 +309,9 @@ export const Invoices: React.FC = () => {
           email: match.email || '',
           phone: match.phone || '',
           address: match.address || inv.customerAddress || '',
-          vat: match.vat || inv.customerVat || ''
+          vat: match.vat || inv.customerVat || '',
+          currency: match.currency || (match.isForeign ? 'USD' : 'LKR'),
+          isForeign: Boolean(match.isForeign || match.currency === 'USD')
         };
       }
     }
@@ -325,7 +327,9 @@ export const Invoices: React.FC = () => {
           email: match.email || '',
           phone: match.phone || '',
           address: match.address || inv.customerAddress || '',
-          vat: match.vat || inv.customerVat || ''
+          vat: match.vat || inv.customerVat || '',
+          currency: (match as any).currency || ((match as any).isForeign ? 'USD' : 'LKR'),
+          isForeign: Boolean((match as any).isForeign || (match as any).currency === 'USD')
         };
       }
     }
@@ -592,14 +596,20 @@ export const Invoices: React.FC = () => {
   const columns: Column<any>[] = [
     {
       key: 'id', header: 'Invoice #', sortable: true,
-      render: (val: any, item) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 flex-shrink-0">
-            <FileText size={16} />
-          </div>
-          <div>
-            <div className="font-bold text-primary cursor-pointer hover:text-blue-500 flex items-center gap-1.5" onClick={() => setViewInvoice(item)}>
-              <span>{item.invoiceNo || val}</span>
+      render: (val: any, item) => {
+        const isUSD = item.currency === 'USD' || item.taxProfileId === 'tp_export_zero_rated';
+
+        return (
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 flex-shrink-0">
+              <FileText size={16} />
+            </div>
+            <div>
+              <div className="font-bold text-primary cursor-pointer hover:text-blue-500 flex items-center gap-1.5" onClick={() => setViewInvoice(item)}>
+                {isUSD && (
+                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Foreign Export Invoice" />
+                )}
+                <span>{item.invoiceNo || val}</span>
               <button
                 type="button"
                 onClick={(e) => {
@@ -639,7 +649,8 @@ export const Invoices: React.FC = () => {
             )}
           </div>
         </div>
-      )
+        );
+      }
     },
     {
       key: 'customer', header: 'Customer',
@@ -1119,17 +1130,29 @@ export const Invoices: React.FC = () => {
                 })()}
                 advanceDeducted={Number(viewInvoice.advanceDeducted || 0)}
                 receiptNos={viewInvoice.receiptNos || ''}
-                currency={viewInvoice.currency || (getCustomerInfo(viewInvoice) as any)?.currency || 'LKR'}
-                exchangeRate={viewInvoice.exchangeRate || 1}
                 {...(() => {
+                  const custInfo = getCustomerInfo(viewInvoice);
                   const linkedOrder = (allOrders || []).find((o: any) => 
                     (viewInvoice.orderNo && o.orderNo === viewInvoice.orderNo) ||
                     (viewInvoice.orderId && (String(o.id) === String(viewInvoice.orderId) || String(o.orderNo) === String(viewInvoice.orderId)))
                   );
+                  const isForeignExport = Boolean(
+                    viewInvoice.currency === 'USD' ||
+                    linkedOrder?.currency === 'USD' ||
+                    linkedOrder?.isForeign ||
+                    viewInvoice.taxProfileId === 'tp_export_zero_rated' ||
+                    (custInfo as any)?.isForeign ||
+                    (custInfo as any)?.currency === 'USD'
+                  );
+                  const resolvedCur = isForeignExport ? 'USD' : (viewInvoice.currency || linkedOrder?.currency || (custInfo as any)?.currency || 'LKR');
+                  const resolvedRate = Number(viewInvoice.exchangeRate || linkedOrder?.exchangeRate || (resolvedCur === 'USD' ? 310 : 1));
+
                   const rawDisc = Number(viewInvoice.discount ?? linkedOrder?.discount ?? 0);
                   const rawDiscType = (viewInvoice.discountType || linkedOrder?.discountType || 'percent') as 'percent' | 'amount';
                   const rawDiscAmt = Number(viewInvoice.discountAmount ?? linkedOrder?.discountAmount ?? (rawDiscType === 'amount' ? rawDisc : 0));
                   return {
+                    currency: resolvedCur,
+                    exchangeRate: resolvedRate,
                     discount: rawDisc,
                     discountType: rawDiscType,
                     discountAmount: rawDiscAmt

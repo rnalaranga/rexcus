@@ -247,21 +247,38 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [submittingChangeNumber, setSubmittingChangeNumber] = useState(false)
 
   const handleOpenPrintProforma = (proforma: any, order?: any) => {
-    if (!proforma) return
+    if (!proforma) return;
+    const linkedCust = customers.find((c: any) => c.id === proforma.customerId || c.id === order?.customerId) ||
+                       leads.find((l: any) => l.id === proforma.customerId || l.id === order?.customerId);
+    const isForeign = Boolean(
+      order?.currency === 'USD' ||
+      order?.isForeign ||
+      proforma?.currency === 'USD' ||
+      proforma?.taxProfileId === 'tp_export_zero_rated' ||
+      linkedCust?.isForeign ||
+      linkedCust?.currency === 'USD'
+    );
+    const resolvedCur = isForeign ? 'USD' : (proforma.currency || order?.currency || linkedCust?.currency || 'LKR');
+    const resolvedRate = Number(proforma.exchangeRate || order?.exchangeRate || (resolvedCur === 'USD' ? 310 : 1));
+
     const enriched = {
       ...proforma,
-      customerName: proforma.customerName || order?.customerName || order?.customer || '',
-      customerCompany: proforma.customerCompany || order?.customerCompany || order?.customerName || order?.customer || '',
-      customerAddress: proforma.customerAddress || order?.deliveryAddress || order?.customerAddress || '',
-      customerPhone: proforma.customerPhone || order?.customerPhone || order?.phone || '',
-      customerEmail: proforma.customerEmail || order?.customerEmail || order?.email || '',
-      customerVat: proforma.customerVat || order?.customerVat || '',
+      currency: resolvedCur,
+      exchangeRate: resolvedRate,
+      isProforma: 1,
+      invoiceType: 'proforma',
+      customerName: proforma.customerName || order?.customerName || order?.customer || linkedCust?.name || '',
+      customerCompany: proforma.customerCompany || order?.customerCompany || order?.customerName || order?.customer || linkedCust?.company || '',
+      customerAddress: proforma.customerAddress || order?.deliveryAddress || order?.customerAddress || linkedCust?.address || '',
+      customerPhone: proforma.customerPhone || order?.customerPhone || order?.phone || linkedCust?.phone || '',
+      customerEmail: proforma.customerEmail || order?.customerEmail || order?.email || linkedCust?.email || '',
+      customerVat: proforma.customerVat || order?.customerVat || linkedCust?.vat || '',
       orderNo: proforma.orderNo || order?.orderNo || '',
       quotationNo: proforma.quotationNo || order?.quotationNo || '',
       orderId: proforma.orderId || order?.id || ''
-    }
-    setActivePrintProforma(enriched)
-  }
+    };
+    setActivePrintProforma(enriched);
+  };
 
   const handleDeleteProforma = async (proforma: any) => {
     if (!proforma) return;
@@ -3395,13 +3412,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <tbody className="divide-y divide-theme-subtle/40">
                 {proformaInvoicesList.map((pi: any, idx: number) => {
                   const linkedSO = orders.find(o => o.orderNo === pi.orderNo || o.id === pi.orderId);
+                  const isPiUSD = pi.currency === 'USD' || linkedSO?.currency === 'USD' || linkedSO?.isForeign;
 
                   return (
                     <tr key={pi.id || idx} className="hover:bg-surface2/30 transition-colors">
                       <td className="px-3.5 py-2.5">
-                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400 block text-xs">
-                          {pi.invoiceNo || pi.id}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {isPiUSD && (
+                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Advance Proforma" />
+                          )}
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400 block text-xs">
+                            {pi.invoiceNo || pi.id}
+                          </span>
+                        </div>
                         <span className="text-[10px] text-muted font-mono">{formatDate(pi.date || pi.createdAt)}</span>
                       </td>
 
@@ -3420,7 +3443,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </td>
 
                       <td className="px-3.5 py-2.5 text-right font-mono">
-                        <span className="font-bold text-primary block text-xs">{formatCurrency(pi.total || 0)}</span>
+                        <span className="font-bold text-primary block text-xs">{formatCurrency(pi.total || 0, false, pi.currency || linkedSO?.currency || (linkedSO?.isForeign ? 'USD' : 'LKR'))}</span>
                         {pi.advancePercent && (
                           <span className="text-[10px] text-muted">({pi.advancePercent}% advance deposit)</span>
                         )}
@@ -3587,6 +3610,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   null;
                 const isInvoicePaid = linkedInvoice?.status === 'paid' || order.paymentStatus === 'Paid';
                 const isInvoicePartPaid = linkedInvoice?.status === 'partially_paid' || order.paymentStatus === 'Partially Paid';
+                const isOrderUSD = order.currency === 'USD' || order.isForeign;
 
                 return (
                   <tr key={order.id} className={`hover:bg-surface2/40 transition-colors ${openActionOrderId === order.id ? 'relative z-50 bg-surface2/60' : 'relative z-0'}`}>
@@ -3594,6 +3618,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     <td className="px-3 py-1.5">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
+                          {isOrderUSD && (
+                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Export Sales Order" />
+                          )}
                           <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
                             {order.orderNo}
                           </span>
@@ -3838,12 +3865,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                   <div className="flex items-center gap-1 text-[9.5px] font-mono font-medium">
                                     {sscl > 0 && (
                                       <span className="text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/20" title="Social Security Contribution Levy (2.5%)">
-                                        SSCL: {formatCurrency(sscl)}
+                                        SSCL: {formatCurrency(sscl, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}
                                       </span>
                                     )}
                                     {vat > 0 && (
                                       <span className="text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20" title="Value Added Tax (18%)">
-                                        VAT: {formatCurrency(vat)}
+                                        VAT: {formatCurrency(vat, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}
                                       </span>
                                     )}
                                   </div>
@@ -3858,7 +3885,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             if (totalTax > 0) {
                               return (
                                 <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-medium">
-                                  Tax: {formatCurrency(totalTax)}
+                                  Tax: {formatCurrency(totalTax, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}
                                 </span>
                               );
                             }
@@ -3875,7 +3902,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors mt-0.5"
                               title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
                             >
-                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0))}
+                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || order.currency || (order.isForeign ? 'USD' : 'LKR'))}
                             </button>
                           )}
                         </div>
@@ -3925,7 +3952,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               type: 'proforma',
                               title: 'Advance Proforma Invoice',
                               reference: linkedProforma.invoiceNo || linkedProforma.id,
-                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0))}`,
+                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || order.currency || (order.isForeign ? 'USD' : 'LKR'))}`,
                               statusBadge: { label: 'Proforma', variant: 'info' },
                               onClick: () => handleOpenPrintProforma(linkedProforma, order)
                             });
@@ -4012,7 +4039,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               type: 'receipt',
                               title: 'Advance Payment',
                               reference: latestRec.receiptNo || 'Payment Receipt',
-                              subtitle: `Advance Paid: ${formatCurrency(totalAdv)}`,
+                              subtitle: `Advance Paid: ${formatCurrency(totalAdv, false, order.currency || (order.isForeign ? 'USD' : 'LKR'))}`,
                               statusBadge: { label: 'Advance Paid', variant: 'success' },
                               onClick: () => {
                                 setActivePrintReceipt({

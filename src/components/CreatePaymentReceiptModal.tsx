@@ -138,11 +138,21 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
   );
 
   useEffect(() => {
-    if (depositAccounts.length > 0 && !depositAccountId) {
-      const def = depositAccounts.find((a: any) => /commercial|boc|bank|main/i.test(a.name)) || depositAccounts[0];
-      if (def) setDepositAccountId(def.id);
+    if (depositAccounts.length > 0) {
+      if (receiptCurrency === 'USD') {
+        const usdMaster = depositAccounts.find((a: any) => a.id === settings?.usd_master_account_id) ||
+                          depositAccounts.find((a: any) => a.id === 'acc_1010' || /usd|foreign/i.test(a.name));
+        if (usdMaster) {
+          setDepositAccountId(usdMaster.id);
+          return;
+        }
+      }
+      if (!depositAccountId) {
+        const def = depositAccounts.find((a: any) => /commercial|boc|bank|main/i.test(a.name)) || depositAccounts[0];
+        if (def) setDepositAccountId(def.id);
+      }
     }
-  }, [depositAccounts, depositAccountId]);
+  }, [depositAccounts, depositAccountId, receiptCurrency, settings?.usd_master_account_id]);
 
   useEffect(() => {
     if (customerAttention && !attention) {
