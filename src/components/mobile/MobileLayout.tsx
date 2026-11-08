@@ -25,9 +25,9 @@ export const MobileLayout: React.FC = () => {
   useEffect(() => {
     // Set mobile phone status bar / browser header to Rex Red
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    const prevColor = themeMeta?.getAttribute('content') || '#dc2626';
+    const prevColor = themeMeta?.getAttribute('content') || '#0f0f10';
     if (themeMeta) {
-      themeMeta.setAttribute('content', '#dc2626');
+      themeMeta.setAttribute('content', '#0f0f10');
     }
 
     let mounted = true;
@@ -87,7 +87,7 @@ export const MobileLayout: React.FC = () => {
   return (
     <div className="fixed inset-0 h-screen h-[100dvh] w-screen flex flex-col bg-base text-primary font-sans overflow-hidden select-none">
       {/* Top App Header with Rex Red Crown (Flows from Phone Notification/Status Bar) */}
-      <header className="shrink-0 z-40 bg-gradient-to-r from-rex-700 via-rex-600 to-rex-700 text-white shadow-md border-b border-rex-800/40 px-3.5 pt-[env(safe-area-inset-top,0px)]">
+      <header className="shrink-0 z-40 bg-[#0f0f10] text-white shadow-md border-b border-white/[0.08] px-3.5 pt-[env(safe-area-inset-top,0px)]">
         <div className="h-16 flex items-center justify-between">
           {/* Left: Enhanced Rex Logo on crisp white rounded card & Brand Tag */}
           <div className="flex items-center gap-2.5 min-w-0">
@@ -137,7 +137,7 @@ export const MobileLayout: React.FC = () => {
       </main>
 
       {/* Bottom Thumb Navigation Bar styled in Desktop Sidebar Theme (#0f0f10) */}
-      <nav className="shrink-0 z-40 bg-[#0f0f10]/98 backdrop-blur-md border-t border-white/[0.08] px-2 pt-1.5 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] flex justify-around items-center w-full max-w-lg mx-auto shadow-[0_-4px_24px_rgba(0,0,0,0.7)] touch-manipulation">
+      <nav className="shrink-0 z-40 bg-gradient-to-r from-rex-700 via-rex-600 to-rex-700 border-t border-rex-800/50 px-2 pt-1.5 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] flex justify-around items-center w-full max-w-lg mx-auto shadow-[0_-4px_24px_rgba(225,29,72,0.4)] touch-manipulation text-white">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.to || 
@@ -149,33 +149,33 @@ export const MobileLayout: React.FC = () => {
               to={item.to}
               className={`relative flex-1 max-w-[76px] flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150 touch-manipulation ${
                 isActive 
-                  ? 'bg-white/[0.08] text-rex-500 font-bold scale-[1.03] shadow-xs' 
-                  : 'text-zinc-400 hover:text-zinc-200 active:scale-95'
+                  ? 'bg-black/25 text-white font-bold scale-[1.03] shadow-inner border border-white/20' 
+                  : 'text-white/70 hover:text-white active:scale-95'
               }`}
             >
               <div className="relative flex items-center justify-center">
                 <Icon 
                   size={20} 
-                  strokeWidth={isActive ? 2.4 : 1.9}
+                  strokeWidth={isActive ? 2.5 : 2.0}
                   className={`transition-transform duration-200 ${
                     isActive 
-                      ? 'text-rex-500 drop-shadow-[0_0_8px_rgba(225,29,72,0.5)]' 
-                      : 'text-zinc-400'
+                      ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.7)]' 
+                      : 'text-white/75'
                   } ${item.to === '/mobile/more' && isActive ? 'rotate-45' : ''}`} 
                 />
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1.5 -right-3 min-w-[16px] h-4 px-1 rounded-full bg-rex-600 text-white font-mono text-[9px] font-bold flex items-center justify-center animate-pulse shadow-md shadow-rex-600/70">
+                  <span className="absolute -top-1.5 -right-3 min-w-[16px] h-4 px-1 rounded-full bg-white text-rex-700 font-mono text-[9px] font-extrabold flex items-center justify-center shadow-md">
                     {item.badge > 99 ? '99+' : item.badge}
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] mt-0.5 tracking-tight font-medium ${
-                isActive ? 'text-zinc-100 font-bold' : 'text-zinc-400'
+              <span className={`text-[10px] mt-0.5 tracking-tight ${
+                isActive ? 'text-white font-extrabold' : 'text-white/80 font-medium'
               }`}>
                 {item.label}
               </span>
               {isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-rex-500 mt-0.5 animate-fade-in shadow-[0_0_6px_#e11d48]"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-white mt-0.5 animate-fade-in shadow-[0_0_6px_#ffffff]"></span>
               )}
             </NavLink>
           );
