@@ -4,6 +4,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccounts } from '@/hooks/useFinance';
 import { 
   Shield, User, Plus, Trash2, KeyRound, Edit2, AlertCircle, 
   Search, Copy, Lock, Check, Layers, Users, CheckCheck, X,
@@ -39,6 +40,9 @@ type UserRecord = {
   prefix?: string;
   role: string;
   roleName?: string;
+  assignedCashAccountId?: string;
+  assignedCashAccountName?: string;
+  assignedCashAccountCode?: string;
   created_at: string;
 };
 
@@ -82,7 +86,7 @@ const RoleBadge = ({ roleId, label }: { roleId: string; label?: string }) => (
   </span>
 );
 
-const emptyUserForm = { name: '', username: '', password: '', role: 'user', prefix: '' };
+const emptyUserForm = { name: '', username: '', password: '', role: 'user', prefix: '', assignedCashAccountId: '' };
 const emptyRoleForm = { id: '', name: '', description: '', permissions: [] as string[] };
 
 const EXCEL_ACTIONS_LIST: { key: ExcelAction; label: string }[] = [
@@ -108,6 +112,8 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
   const location = useLocation();
   const navigate = useNavigate();
   const { user: currentUser, refreshUser } = useAuth();
+  const { data: allAccounts = [] } = useAccounts();
+  const cashAccounts = useMemo(() => (allAccounts || []).filter((a: any) => a.type === 'Asset' && (a.subtype === 'Cash' || a.subtype === 'Bank' || a.name?.toLowerCase().includes('cash') || a.name?.toLowerCase().includes('petty'))), [allAccounts]);
 
   // Tab State
   const defaultTab = initialTab || (location.pathname.includes('/roles') ? 'roles' : 'users');
@@ -361,7 +367,8 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
           name: showEditUser.name,
           username: showEditUser.username?.trim().toLowerCase(),
           role: showEditUser.role,
-          prefix: showEditUser.prefix
+          prefix: showEditUser.prefix,
+          assignedCashAccountId: showEditUser.assignedCashAccountId || null
         })
       });
       const data = await res.json();
@@ -1500,6 +1507,24 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
               </select>
             </div>
             <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Assigned Petty Cash Account (Mobile & Staff)</label>
+              <select
+                value={userForm.assignedCashAccountId || ''}
+                onChange={e => setUserForm({ ...userForm, assignedCashAccountId: e.target.value })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all font-medium"
+              >
+                <option value="">-- None (Default Main Petty Cash: 1110) --</option>
+                {cashAccounts.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} — {a.name} (Bal: Rs. {Number(a.balance || 0).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted mt-1 leading-snug">
+                Assign a dedicated sub-petty cash ledger account for this user's mobile vouchers.
+              </p>
+            </div>
+            <div>
               <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Initial Password</label>
               <input
                 type="password"
@@ -1569,6 +1594,24 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
                   renderRoleOptions(showEditUser.role)
                 )}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Assigned Petty Cash Account (Mobile & Staff)</label>
+              <select
+                value={showEditUser.assignedCashAccountId || ''}
+                onChange={e => setShowEditUser({ ...showEditUser, assignedCashAccountId: e.target.value })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all font-medium"
+              >
+                <option value="">-- None (Default Main Petty Cash: 1110) --</option>
+                {cashAccounts.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} — {a.name} (Bal: Rs. {Number(a.balance || 0).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted mt-1 leading-snug">
+                Assign a dedicated sub-petty cash ledger account for this user's mobile vouchers.
+              </p>
             </div>
             <div className="flex justify-end gap-3 pt-3">
               <Button variant="ghost" onClick={() => setShowEditUser(null)}>Cancel</Button>

@@ -26,15 +26,20 @@ export const Modal: React.FC<ModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden'
+      document.body.style.overflow = 'hidden';
+      // If the main scroll container is scrolled down, reset modal container to top so it opens in direct viewport view
+      const mainContainer = document.querySelector('main');
+      if (mainContainer && mainContainer.scrollTop > 0) {
+        // preserve position or smooth
+      }
     } else {
-      document.body.style.overflow = 'unset'
-      setIsMaximized(false)
+      document.body.style.overflow = 'unset';
+      setIsMaximized(false);
     }
     return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isOpen])
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null
 

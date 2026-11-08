@@ -85,7 +85,7 @@ export const MobileLayout: React.FC = () => {
   ];
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-base text-primary font-sans overflow-hidden">
+    <div className="fixed inset-0 h-screen h-[100dvh] w-screen flex flex-col bg-base text-primary font-sans overflow-hidden select-none">
       {/* Top App Header with Rex Red Crown (Flows from Phone Notification/Status Bar) */}
       <header className="shrink-0 z-40 bg-gradient-to-r from-rex-700 via-rex-600 to-rex-700 text-white shadow-md border-b border-rex-800/40 px-3.5 pt-[env(safe-area-inset-top,0px)]">
         <div className="h-16 flex items-center justify-between">
@@ -137,7 +137,7 @@ export const MobileLayout: React.FC = () => {
       </main>
 
       {/* Bottom Thumb Navigation Bar styled in Desktop Sidebar Theme (#0f0f10) */}
-      <nav className="shrink-0 z-30 bg-[#0f0f10] border-t border-white/[0.08] px-2 py-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))] flex justify-around items-center max-w-lg mx-auto shadow-[0_-4px_24px_rgba(0,0,0,0.6)]">
+      <nav className="shrink-0 z-40 bg-[#0f0f10]/98 backdrop-blur-md border-t border-white/[0.08] px-2 pt-1.5 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] flex justify-around items-center w-full max-w-lg mx-auto shadow-[0_-4px_24px_rgba(0,0,0,0.7)] touch-manipulation">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.to || 
@@ -147,7 +147,7 @@ export const MobileLayout: React.FC = () => {
             <NavLink
               key={item.to}
               to={item.to}
-              className={`relative flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all ${
+              className={`relative flex-1 max-w-[76px] flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150 touch-manipulation ${
                 isActive 
                   ? 'bg-white/[0.08] text-rex-500 font-bold scale-[1.03] shadow-xs' 
                   : 'text-zinc-400 hover:text-zinc-200 active:scale-95'

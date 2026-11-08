@@ -128,9 +128,9 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md animate-fade-in overflow-hidden">
       <div 
-        className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col my-auto overflow-hidden"
+        className="bg-surface border border-theme-subtle rounded-none shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Bar */}

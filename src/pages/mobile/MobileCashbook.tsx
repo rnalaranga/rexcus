@@ -18,7 +18,17 @@ export const MobileCashbook: React.FC = () => {
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  const { data: cashbookData, loading, refetch } = useCashbook(selectedDate);
+  // Determine default cash account (user assigned petty cash takes precedence)
+  const defaultCashAccId = user?.assignedCashAccountId || '';
+  const [selectedCashAccountId, setSelectedCashAccountId] = useState<string>(defaultCashAccId);
+
+  useEffect(() => {
+    if (user?.assignedCashAccountId && !selectedCashAccountId) {
+      setSelectedCashAccountId(user.assignedCashAccountId);
+    }
+  }, [user?.assignedCashAccountId]);
+
+  const { data: cashbookData, loading, refetch } = useCashbook(selectedDate, selectedCashAccountId || undefined);
   const { data: allAccounts = [] } = useAccounts();
 
   // New entry modal / bottom sheet
@@ -89,7 +99,7 @@ export const MobileCashbook: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const cashAccId = cashbookData?.cashAccount?.id || 'acc_1000';
+      const cashAccId = selectedCashAccountId || cashbookData?.cashAccount?.id || user?.assignedCashAccountId || 'acc_1110';
       const nowTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
       await createCashbookEntry({
@@ -152,15 +162,37 @@ export const MobileCashbook: React.FC = () => {
 
   return (
     <div className="space-y-3.5 pb-6">
-      {/* Top Bar with Date Selector */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-bold text-primary flex items-center gap-2">
-            Daily Cashbook
-          </h1>
-          <p className="text-[11px] text-muted">
-            {cashbookData?.cashAccount?.name || 'Petty Cash & Till'}
-          </p>
+      {/* Top Bar with Date Selector & Dedicated Cash Account */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-base font-bold text-primary truncate">
+              Daily Cashbook
+            </h1>
+            {user?.assignedCashAccountId && (
+              <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold uppercase shrink-0">
+                My Wallet
+              </span>
+            )}
+          </div>
+          {/* Account Selector if multiple cash accounts or dedicated petty cash */}
+          {cashbookData?.allCashAccounts && cashbookData.allCashAccounts.length > 1 ? (
+            <select
+              value={selectedCashAccountId || cashbookData?.cashAccount?.id || ''}
+              onChange={(e) => setSelectedCashAccountId(e.target.value)}
+              className="text-[11px] font-medium text-muted bg-transparent border-b border-theme-subtle focus:outline-none focus:text-primary max-w-full truncate pr-4 cursor-pointer mt-0.5"
+            >
+              {cashbookData.allCashAccounts.map((acc: any) => (
+                <option key={acc.id} value={acc.id} className="bg-surface text-primary">
+                  {acc.code} - {acc.name} {acc.id === user?.assignedCashAccountId ? '⭐ (My Assigned)' : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-[11px] text-muted truncate mt-0.5">
+              {cashbookData?.cashAccount?.name || 'Petty Cash & Till'}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <input

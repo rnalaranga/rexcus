@@ -17,7 +17,7 @@ export const MobileDashboard: React.FC = () => {
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const { data: finData, loading: finLoading, refetch: refetchFin } = useFinanceDashboard();
-  const { data: cashbookData, loading: cashLoading, refetch: refetchCash } = useCashbook(todayStr);
+  const { data: cashbookData, loading: cashLoading, refetch: refetchCash } = useCashbook(todayStr, user?.assignedCashAccountId || undefined);
 
   const { data: quotations = [], refetch: refetchQuotes } = useQuotations();
   const { data: customers = [] } = useCustomers();

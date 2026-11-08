@@ -32,7 +32,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
       <div className="w-full max-w-5xl bg-surface border border-theme shadow-2xl flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
         {/* Top Control Bar (Hidden on print) */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-theme-subtle bg-surface2 print:hidden">

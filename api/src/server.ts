@@ -662,7 +662,14 @@ app.get('/api/auth/me', async (req, res) => {
     if (!authHeader) return res.status(401).json({ error: 'No token provided' });
     const token = authHeader.split(' ')[1];
     const decoded: any = jwt.verify(token, JWT_SECRET);
-    const [users]: any = await db.query('SELECT id, name, username, role, prefix FROM users WHERE id = ?', [decoded.id]);
+    const [users]: any = await db.query(
+      'SELECT u.id, u.name, u.username, u.role, u.prefix, u.assignedCashAccountId, ' +
+      'coa.code as assignedCashAccountCode, coa.name as assignedCashAccountName ' +
+      'FROM users u ' +
+      'LEFT JOIN chart_of_accounts coa ON u.assignedCashAccountId = coa.id ' +
+      'WHERE u.id = ?',
+      [decoded.id]
+    );
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = users[0];
     
@@ -726,7 +733,8 @@ app.post('/api/auth/login', async (req, res) => {
         role: user.role, 
         roleName,
         permissions,
-        prefix: user.prefix 
+        prefix: user.prefix,
+        assignedCashAccountId: user.assignedCashAccountId || null
       } 
     });
   } catch (error) {
@@ -1863,7 +1871,8 @@ async function runDatabaseSync() {
     "ALTER TABLE cashbook_entries ADD COLUMN rejectedBy VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN rejectedAt DATETIME DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN rejectionReason TEXT DEFAULT NULL",
-    "ALTER TABLE cashbook_entries ADD COLUMN receiptPhoto MEDIUMTEXT DEFAULT NULL"
+    "ALTER TABLE cashbook_entries ADD COLUMN receiptPhoto MEDIUMTEXT DEFAULT NULL",
+    "ALTER TABLE users ADD COLUMN assignedCashAccountId VARCHAR(50) DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -3074,9 +3083,11 @@ app.post('/api/email/send', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT u.id, u.name, u.username, u.role, u.prefix, u.created_at, r.name as roleName
+      SELECT u.id, u.name, u.username, u.role, u.prefix, u.assignedCashAccountId, u.created_at, r.name as roleName,
+             coa.code as assignedCashAccountCode, coa.name as assignedCashAccountName
       FROM users u
       LEFT JOIN roles r ON u.role = r.id
+      LEFT JOIN chart_of_accounts coa ON u.assignedCashAccountId = coa.id
       ORDER BY u.created_at DESC
     `);
     res.json(rows);
@@ -3088,14 +3099,23 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, username, password, role, prefix } = req.body;
+    const { name, username, password, role, prefix, assignedCashAccountId } = req.body;
     const [existing]: any = await db.query('SELECT id FROM users WHERE username = ?', [username]);
     if (existing.length > 0) return res.status(400).json({ error: 'Username already taken' });
 
     const password_hash = await bcrypt.hash(password, 10);
     const id = `USR-${Date.now()}`;
     const created_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    await db.query('INSERT INTO users SET ?', { id, name, username, password_hash, role: role || 'user', prefix: prefix || null, created_at });
+    await db.query('INSERT INTO users SET ?', { 
+      id, 
+      name, 
+      username, 
+      password_hash, 
+      role: role || 'user', 
+      prefix: prefix || null, 
+      assignedCashAccountId: assignedCashAccountId || null,
+      created_at 
+    });
     res.json({ success: true, user: { id, name, username, role: role || 'user' } });
   } catch (error) {
     console.error(error);
@@ -3107,7 +3127,7 @@ app.put('/api/users/:id', async (req, res) => {
   const conn = await db.getConnection();
   try {
     const userId = req.params.id;
-    const { name, role, prefix, username } = req.body;
+    const { name, role, prefix, username, assignedCashAccountId } = req.body;
 
     // 1. Fetch current user record
     const [existingUsers]: any = await conn.query('SELECT * FROM users WHERE id = ?', [userId]);
@@ -3140,12 +3160,13 @@ app.put('/api/users/:id', async (req, res) => {
 
     // 4.1 Update users table
     await conn.query(
-      'UPDATE users SET name = COALESCE(?, name), username = ?, role = COALESCE(?, role), prefix = ? WHERE id = ?',
+      'UPDATE users SET name = COALESCE(?, name), username = ?, role = COALESCE(?, role), prefix = ?, assignedCashAccountId = ? WHERE id = ?',
       [
         name !== undefined && name !== null && String(name).trim() !== '' ? String(name).trim() : null,
         cleanUsername,
         role || null,
         prefix !== undefined && prefix !== null ? String(prefix).trim().toUpperCase() : currentUser.prefix,
+        assignedCashAccountId !== undefined ? (assignedCashAccountId || null) : currentUser.assignedCashAccountId,
         userId
       ]
     );

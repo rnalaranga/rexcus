@@ -9,6 +9,9 @@ export type User = {
   roleName?: string;
   permissions?: string[];
   prefix?: string;
+  assignedCashAccountId?: string | null;
+  assignedCashAccountName?: string | null;
+  assignedCashAccountCode?: string | null;
 };
 
 type AuthContextType = {

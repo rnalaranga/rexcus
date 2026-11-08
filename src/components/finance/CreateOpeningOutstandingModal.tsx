@@ -145,14 +145,14 @@ export const CreateOpeningOutstandingModal: React.FC<CreateOpeningOutstandingMod
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 overflow-hidden">
       {/* Full screen White Ice Glass backdrop covering 100% of viewport */}
       <div 
         className="fixed inset-0 bg-ice-blur bg-white/60 dark:bg-white/15 backdrop-blur-md transition-opacity cursor-pointer animate-fade-in"
         onClick={onClose}
       />
 
-      <div className="relative z-10 w-full max-w-xl bg-surface border border-theme shadow-2xl rounded-none flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative z-10 w-full max-w-xl max-h-[92vh] bg-surface border border-theme shadow-2xl rounded-none flex flex-col animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme-subtle bg-surface2/60">
           <div className="flex items-center gap-2.5">

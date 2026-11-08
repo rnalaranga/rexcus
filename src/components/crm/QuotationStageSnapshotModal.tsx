@@ -145,8 +145,8 @@ export const QuotationStageSnapshotModal: React.FC<QuotationStageSnapshotModalPr
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
-      <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-surface border border-theme-subtle shadow-2xl rounded-none overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
+      <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-surface border border-theme-subtle shadow-2xl rounded-none overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         
         {/* MODAL HEADER */}
         <div className="p-4 sm:p-5 bg-surface2/80 border-b border-theme-subtle flex items-start justify-between gap-3 shrink-0">

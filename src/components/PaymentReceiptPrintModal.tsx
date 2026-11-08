@@ -112,9 +112,9 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
       {/* Modal Dialog Window */}
-      <div className="bg-slate-900 border border-slate-700/80 rounded-lg max-w-5xl w-full max-h-[96vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in my-auto">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-lg max-w-5xl w-full max-h-[96vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
         {/* Top Control Bar (Clean, Minimal, Monochrome Dark) */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-950/80 shrink-0 text-white no-print">
           <div className="flex items-center gap-3">
