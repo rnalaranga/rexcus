@@ -8,6 +8,7 @@ import {
 import { useQuotations, useCustomers, useFinishedGoodsOrders, useLeads } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
 import { QuotationPrintView } from '@/components/QuotationPrintView';
+import { MobileA4Preview } from '@/components/mobile/MobileA4Preview';
 import { 
   approveQuotation, rejectQuotation, approveQuotationEdit, rejectQuotationEdit,
   approveOrderAdvanceWaiver, rejectOrderAdvanceWaiver, approveCreditLimit,
@@ -715,24 +716,17 @@ export const MobileApprovals: React.FC = () => {
                   )}
                 </>
               ) : (
-                /* Full Letterhead (A4 Printable Document) */
-                <div className="space-y-2">
-                  <p className="text-[10.5px] text-muted text-center italic">
-                    Swipe horizontally to view full standard A4 letterhead document
-                  </p>
-                  <div className="p-2 bg-white text-black overflow-x-auto rounded-lg border border-theme-subtle shadow-inner">
-                    <div className="min-w-[720px] origin-top-left">
-                      {mergedQuotePrintData && (
-                        <QuotationPrintView 
-                          data={mergedQuotePrintData} 
-                          type={previewQuote.raw?.type === 'job' ? 'job' : 'main'} 
-                          lead={previewQuote.lead} 
-                          settings={settings} 
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
+                /* Full Letterhead (A4 Printable Document) with Auto-Fit & Zoom */
+                mergedQuotePrintData ? (
+                  <MobileA4Preview title={`${previewQuote.title} — Official Letterhead`}>
+                    <QuotationPrintView 
+                      data={mergedQuotePrintData} 
+                      type={previewQuote.raw?.type === 'job' ? 'job' : 'main'} 
+                      lead={previewQuote.lead} 
+                      settings={settings} 
+                    />
+                  </MobileA4Preview>
+                ) : null
               )}
             </div>
 

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useFinishedGoodsOrders, useQuotations, useCustomers } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
+import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView';
+import { MobileA4Preview } from '@/components/mobile/MobileA4Preview';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export const MobileSalesOrders: React.FC = () => {
@@ -20,6 +22,7 @@ export const MobileSalesOrders: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'usd' | 'lkr'>('all');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [previewTab, setPreviewTab] = useState<'details' | 'letterhead'>('details');
 
   // Enriched Sales Orders
   const orders = useMemo(() => {
@@ -319,8 +322,45 @@ export const MobileSalesOrders: React.FC = () => {
               </button>
             </div>
 
+            {/* View Switcher Tabs */}
+            <div className="flex items-center border-b border-theme bg-surface2/50 px-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPreviewTab('details')}
+                className={`py-2 px-3 text-xs font-bold border-b-2 transition-all ${
+                  previewTab === 'details'
+                    ? 'border-rex-600 text-rex-600 dark:text-rex-400'
+                    : 'border-transparent text-muted hover:text-primary'
+                }`}
+              >
+                Line Items & Specs
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewTab('letterhead')}
+                className={`py-2 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                  previewTab === 'letterhead'
+                    ? 'border-rex-600 text-rex-600 dark:text-rex-400'
+                    : 'border-transparent text-muted hover:text-primary'
+                }`}
+              >
+                <FileText size={13} />
+                <span>A4 Letterhead Document</span>
+              </button>
+            </div>
+
             {/* Modal Body */}
             <div className="overflow-y-auto p-4 space-y-3.5 flex-1 text-primary">
+              {previewTab === 'letterhead' ? (
+                <MobileA4Preview title={`Sales Order #${selectedOrder.orderNo || selectedOrder.id}`}>
+                  <SalesOrderPrintView 
+                    order={selectedOrder} 
+                    customer={customers.find((c: any) => c.id === selectedOrder.customerId || c.company === selectedOrder.customerCompany || c.name === selectedOrder.customerName)} 
+                    settings={settings} 
+                  />
+                </MobileA4Preview>
+              ) : (
+                <>
               {/* Customer & Dates Info Card */}
               <div className="p-3 rounded-xl bg-surface2/60 border border-theme-subtle space-y-2 text-xs">
                 <div className="flex items-center justify-between font-bold text-primary">
@@ -455,6 +495,8 @@ export const MobileSalesOrders: React.FC = () => {
                   <p className="text-muted pt-1"><span className="font-semibold">Notes:</span> {selectedOrder.notes}</p>
                 )}
               </div>
+                </>
+              )}
             </div>
 
             {/* Bottom Sticky Action Footer */}
