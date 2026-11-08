@@ -81,7 +81,17 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
       : totalQuoted > 0
       ? Math.max(0, totalQuoted - amount)
       : null;
-  const receiptCurrency = String(receipt.currency || (receipt as any).invoiceCurrency || 'LKR').trim().toUpperCase();
+  const isUSD = Boolean(
+    receipt.currency === 'USD' ||
+    receipt.currency === '$' ||
+    (receipt as any).invoiceCurrency === 'USD' ||
+    receipt.depositAccountId === 'acc_1010' ||
+    (receipt as any).accountId === 'acc_1010' ||
+    String(receipt.reference || '').toUpperCase().includes('USD') ||
+    String(receipt.notes || '').toUpperCase().includes('USD') ||
+    String(receipt.depositAccountName || (receipt as any).accountName || '').toUpperCase().includes('USD')
+  );
+  const receiptCurrency = isUSD ? 'USD' : String(receipt.currency || (receipt as any).invoiceCurrency || 'LKR').trim().toUpperCase();
   const words = numberToWords(amount, receiptCurrency);
 
   const companyName = settings?.company_name || settings?.companyName || "REX INDUSTRIES (PVT) LTD";

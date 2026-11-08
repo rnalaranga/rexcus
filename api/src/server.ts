@@ -9228,6 +9228,17 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       }
     }
     
+    const isUSD = Boolean(
+      invoice.currency === 'USD' ||
+      invoice.currency === '$' ||
+      payment.currency === 'USD' ||
+      payment.currency === '$' ||
+      invoice.taxProfileId === 'tp_export_zero_rated' ||
+      String(invoice.taxType || '').toLowerCase().includes('export')
+    );
+    const paymentCurrency = isUSD ? 'USD' : (payment.currency || invoice.currency || 'LKR');
+    const paymentExchangeRate = Number(payment.exchangeRate || invoice.exchangeRate || (isUSD ? 310 : 1));
+
     // Resolve Deposit Account (Bank / Cash)
     let depositAccountId = payment.accountId || null;
     let depositAccountName = '';
@@ -9240,7 +9251,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
         }
       }
       if (!depositAccountId) {
-        if (invoice.currency === 'USD' || payment.currency === 'USD') {
+        if (isUSD) {
           const [usdSetting]: any = await db.query('SELECT val FROM settings WHERE id = "usd_master_account_id" LIMIT 1');
           const masterId = usdSetting && usdSetting.length > 0 ? usdSetting[0].val : 'acc_1010';
           const [foundUsd]: any = await db.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [masterId]);
@@ -9251,7 +9262,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
         }
       }
       if (!depositAccountId) {
-        const isBank = (payment.method || '').toLowerCase().includes('bank') || (payment.method || '').toLowerCase().includes('cheque') || (payment.method || '').toLowerCase().includes('card');
+        const isBank = (payment.method || '').toLowerCase().includes('bank') || (payment.method || '').toLowerCase().includes('cheque') || (payment.method || '').toLowerCase().includes('card') || (payment.method || '').toLowerCase().includes('wire');
         const searchSubtype = isBank ? 'Bank' : 'Cash';
         const [found]: any = await db.query(
           'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" ORDER BY CASE WHEN subtype = ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END LIMIT 1',
@@ -9279,7 +9290,9 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       id: `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       date: pDate,
       amount: paymentAmount,
-      method: payment.method || 'Cash',
+      currency: paymentCurrency,
+      exchangeRate: paymentExchangeRate,
+      method: payment.method || (isUSD ? 'Bank Wire / TT' : 'Cash'),
       accountId: depositAccountId || null,
       accountName: depositAccountName || null,
       reference: payment.reference || ''
@@ -9398,8 +9411,10 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       customerCompany: invoice.customerCompany || null,
       totalQuotedAmount: invoiceTotal,
       amount: paymentAmount,
+      currency: paymentCurrency,
+      exchangeRate: paymentExchangeRate,
       balanceDue: Math.max(0, invoiceTotal - newPaidAmount),
-      paymentMethod: payment.method || 'Cash',
+      paymentMethod: payment.method || (isUSD ? 'Bank Wire / TT' : 'Cash'),
       accountId: depositAccountId,
       accountName: depositAccountName,
       reference: payment.reference || `Payment for Invoice #${invoice.invoiceNo || invoice.id}`,
@@ -11146,8 +11161,18 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
         }
       } catch (e) {}
     }
+    const isUSD = Boolean(
+      data.currency === 'USD' ||
+      data.currency === '$' ||
+      String(data.notes || '').toUpperCase().includes('USD') ||
+      String(data.reference || '').toUpperCase().includes('USD') ||
+      depositAccountId === 'acc_1010'
+    );
+    const receiptCurrency = isUSD ? 'USD' : (data.currency || 'LKR');
+    const receiptExchangeRate = Number(data.exchangeRate || (isUSD ? 310 : 1));
+
     if (!depositAccountId) {
-      if (data.currency === 'USD' || String(data.notes || '').includes('USD') || String(data.reference || '').includes('USD')) {
+      if (isUSD) {
         try {
           const [usdSetting]: any = await conn.query('SELECT val FROM settings WHERE id = "usd_master_account_id" LIMIT 1');
           const masterId = usdSetting && usdSetting.length > 0 ? usdSetting[0].val : 'acc_1010';
@@ -11254,8 +11279,10 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       customerCompany: data.customerCompany || null,
       totalQuotedAmount: Number(data.totalQuotedAmount || data.totalQuoted || 0),
       amount: amountVal,
+      currency: receiptCurrency,
+      exchangeRate: receiptExchangeRate,
       balanceDue: Number(data.balanceDue || 0),
-      paymentMethod: data.paymentMethod || 'Cash',
+      paymentMethod: data.paymentMethod || (isUSD ? 'Bank Wire / TT' : 'Cash'),
       accountId: depositAccountId,
       accountName: depositAccountName,
       reference: data.reference || null,

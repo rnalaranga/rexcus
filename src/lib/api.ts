@@ -964,6 +964,8 @@ export const settleCustomerOutstanding = async (data: {
   reference?: string;
   notes?: string;
   totalAmount: number;
+  currency?: string;
+  exchangeRate?: number;
   allocations: Array<{
     invoiceId: string;
     invoiceNo?: string;

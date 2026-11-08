@@ -445,17 +445,49 @@ export const ReceivablesHub: React.FC = () => {
     });
   }, [allInvoices]);
 
-  // Proforma Summary Metrics
+  // Proforma Summary Metrics (USD & LKR Breakdown)
   const proformaMetrics = useMemo(() => {
-    const totalExpected = proformaInvoices.reduce((s, pi) => s + (Number(pi.total || pi.amount || 0)), 0);
-    const totalCollected = proformaInvoices.reduce((s, pi) => s + (Number(pi.paidAmount || 0)), 0);
-    const totalPending = Math.max(0, totalExpected - totalCollected);
-    const pendingCount = proformaInvoices.filter((pi: any) => {
+    let expectedLkr = 0;
+    let expectedUsd = 0;
+    let collectedLkr = 0;
+    let collectedUsd = 0;
+    let pendingCount = 0;
+
+    proformaInvoices.forEach((pi: any) => {
+      const isUSD = Boolean(
+        pi.currency === 'USD' || 
+        pi.currency === '$' || 
+        pi.taxProfileId === 'tp_export_zero_rated' || 
+        pi.isForeign
+      );
       const tot = Number(pi.total || pi.amount || 0);
       const paid = Number(pi.paidAmount || 0);
-      return !(pi.status === 'paid' || (tot > 0 && paid >= tot));
-    }).length;
-    return { totalExpected, totalCollected, totalPending, pendingCount };
+
+      if (isUSD) {
+        expectedUsd += tot;
+        collectedUsd += paid;
+      } else {
+        expectedLkr += tot;
+        collectedLkr += paid;
+      }
+
+      if (!(pi.status === 'paid' || (tot > 0 && paid >= tot))) {
+        pendingCount++;
+      }
+    });
+
+    const totalPendingLkr = Math.max(0, expectedLkr - collectedLkr);
+    const totalPendingUsd = Math.max(0, expectedUsd - collectedUsd);
+
+    return { 
+      totalExpectedLkr: expectedLkr, 
+      totalExpectedUsd: expectedUsd,
+      totalCollectedLkr: collectedLkr,
+      totalCollectedUsd: collectedUsd,
+      totalPendingLkr,
+      totalPendingUsd,
+      pendingCount 
+    };
   }, [proformaInvoices]);
 
   // Summary Metrics
@@ -707,20 +739,27 @@ export const ReceivablesHub: React.FC = () => {
     }
   };
 
-  // Open Direct Payment Modal for an Invoice
+  // Open Direct Payment Modal for an Invoice / Proforma
   const handleOpenPaymentModal = (invoice: any) => {
     const invTotal = Number(invoice.total || invoice.amount || 0);
     const invPaid = Number(invoice.paidAmount || 0);
     const balanceDue = Math.max(0, invTotal - invPaid);
+    const isUSD = Boolean(
+      invoice.currency === 'USD' ||
+      invoice.currency === '$' ||
+      invoice.taxProfileId === 'tp_export_zero_rated' ||
+      invoice.isForeign
+    );
+    const defaultAccId = isUSD ? (settings?.usd_master_account_id || 'acc_1010') : '';
 
     setPaymentModalInvoice(invoice);
     setPaymentForm({
       amount: balanceDue > 0 ? String(balanceDue) : '',
-      method: 'Bank Transfer',
-      accountId: '',
+      method: isUSD ? 'Bank Wire / TT' : 'Bank Transfer',
+      accountId: defaultAccId,
       reference: '',
       date: new Date().toISOString().slice(0, 10),
-      notes: `Settlement for Invoice ${invoice.invoiceNo || invoice.id}`
+      notes: `Settlement for ${invoice.isProforma || invoice.invoiceType === 'proforma' ? 'Proforma' : 'Invoice'} ${invoice.invoiceNo || invoice.id}`
     });
   };
 
@@ -739,12 +778,23 @@ export const ReceivablesHub: React.FC = () => {
       return;
     }
 
+    const isUSD = Boolean(
+      paymentModalInvoice.currency === 'USD' ||
+      paymentModalInvoice.currency === '$' ||
+      paymentModalInvoice.taxProfileId === 'tp_export_zero_rated' ||
+      paymentModalInvoice.isForeign
+    );
+    const modalCurrency = isUSD ? 'USD' : (paymentModalInvoice.currency || 'LKR');
+    const modalExchangeRate = Number(paymentModalInvoice.exchangeRate || (isUSD ? 310 : 1));
+
     setSubmittingPayment(true);
     try {
       const res = await addInvoicePayment(paymentModalInvoice.id, {
         amount: amt,
+        currency: modalCurrency,
+        exchangeRate: modalExchangeRate,
         method: paymentForm.method,
-        accountId: paymentForm.accountId || null,
+        accountId: paymentForm.accountId || (isUSD ? (settings?.usd_master_account_id || 'acc_1010') : null),
         reference: paymentForm.reference || null,
         date: paymentForm.date
       });
@@ -753,9 +803,13 @@ export const ReceivablesHub: React.FC = () => {
         throw new Error(res.error || 'Failed to record payment');
       }
 
-      toast(`Payment of ${formatCurrency(amt)} recorded successfully for Invoice ${paymentModalInvoice.invoiceNo || paymentModalInvoice.id}!`, 'success');
+      toast(`Payment of ${formatCurrency(amt, false, modalCurrency)} recorded successfully for ${paymentModalInvoice.isProforma || paymentModalInvoice.invoiceType === 'proforma' ? 'Proforma' : 'Invoice'} ${paymentModalInvoice.invoiceNo || paymentModalInvoice.id}!`, 'success');
       if (res && res.receipt) {
-        setPrintReceipt(res.receipt);
+        setPrintReceipt({
+          ...res.receipt,
+          currency: modalCurrency,
+          exchangeRate: modalExchangeRate
+        });
       }
       setPaymentModalInvoice(null);
       refetchInvoices();
@@ -938,7 +992,23 @@ export const ReceivablesHub: React.FC = () => {
             <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Advance Proformas</span>
             <FileText size={16} className="text-indigo-500" />
           </div>
-          <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono mt-1">{formatCurrency(proformaMetrics.totalPending)}</p>
+          <div className="mt-1">
+            {proformaMetrics.totalPendingUsd > 0 && (
+              <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                $ {proformaMetrics.totalPendingUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            )}
+            {proformaMetrics.totalPendingLkr > 0 && (
+              <p className={`${proformaMetrics.totalPendingUsd > 0 ? 'text-xs text-secondary font-mono mt-0.5' : 'text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono'}`}>
+                Rs. {proformaMetrics.totalPendingLkr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            )}
+            {proformaMetrics.totalPendingUsd === 0 && proformaMetrics.totalPendingLkr === 0 && (
+              <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                Rs. 0.00
+              </p>
+            )}
+          </div>
           <p className="text-[10px] text-muted mt-0.5">{proformaMetrics.pendingCount} awaiting advance payment</p>
         </GlassCard>
 
@@ -1322,7 +1392,13 @@ export const ReceivablesHub: React.FC = () => {
                     const due = Math.max(0, tot - paid);
                     const isFullyPaid = pi.status === 'paid' || (tot > 0 && paid >= tot);
                     const isPartiallyPaid = !isFullyPaid && paid > 0;
-                    const isPiUSD = pi.currency === 'USD';
+                    const isPiUSD = Boolean(
+                      pi.currency === 'USD' ||
+                      pi.currency === '$' ||
+                      pi.taxProfileId === 'tp_export_zero_rated' ||
+                      pi.isForeign
+                    );
+                    const piCurrency = isPiUSD ? 'USD' : (pi.currency || 'LKR');
 
                     return (
                       <tr key={pi.id} className="hover:bg-surface2/30 transition-colors">
@@ -1368,13 +1444,13 @@ export const ReceivablesHub: React.FC = () => {
                           {pi.dueDate ? formatDate(pi.dueDate) : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                          {formatCurrency(tot, false, pi.currency || 'LKR')}
+                          {formatCurrency(tot, false, piCurrency)}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-emerald-600">
-                          {paid > 0 ? formatCurrency(paid, false, pi.currency || 'LKR') : '-'}
+                          {paid > 0 ? formatCurrency(paid, false, piCurrency) : '-'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-black text-rose-600 dark:text-rose-400">
-                          {formatCurrency(due, false, pi.currency || 'LKR')}
+                          {formatCurrency(due, false, piCurrency)}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
@@ -1507,7 +1583,15 @@ export const ReceivablesHub: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
                   {sortedReceipts.map((rec: any) => {
-                    const isRecUSD = rec.currency === 'USD';
+                    const isRecUSD = Boolean(
+                      rec.currency === 'USD' ||
+                      rec.currency === '$' ||
+                      rec.accountId === 'acc_1010' ||
+                      String(rec.reference || '').toUpperCase().includes('USD') ||
+                      String(rec.notes || '').toUpperCase().includes('USD') ||
+                      String(rec.accountName || '').toUpperCase().includes('USD')
+                    );
+                    const recCurrency = isRecUSD ? 'USD' : (rec.currency || 'LKR');
 
                     return (
                     <tr key={rec.id} className="hover:bg-surface2/30 transition-colors">
@@ -1546,7 +1630,7 @@ export const ReceivablesHub: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(Number(rec.amount || 0), false, rec.currency || 'LKR')}
+                        {formatCurrency(Number(rec.amount || 0), false, recCurrency)}
                       </td>
                       <td className="px-4 py-3 text-secondary">
                         <span className="px-2 py-0.5 rounded-none bg-surface2 border border-theme-subtle text-[11px] font-medium">
@@ -1599,140 +1683,225 @@ export const ReceivablesHub: React.FC = () => {
         </GlassCard>
       )}
 
-      {/* RECORD INVOICE PAYMENT MODAL */}
-      {paymentModalInvoice && (
-        <Modal
-          isOpen={true}
-          onClose={() => setPaymentModalInvoice(null)}
-          title={`Record Customer Payment - ${paymentModalInvoice.invoiceNo || paymentModalInvoice.id}`}
-        >
-          <form onSubmit={handleSubmitPayment} className="space-y-4">
-            <div className="p-3 bg-surface2/50 border border-theme-subtle rounded-none flex items-center justify-between text-xs">
-              <div>
-                <span className="text-muted block text-[10px] font-bold uppercase">Customer</span>
-                <span className="font-bold text-primary">{paymentModalInvoice.customerName || paymentModalInvoice.customerId}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-muted block text-[10px] font-bold uppercase">Total Due</span>
-                <span className="font-mono font-bold text-rose-600 text-sm">
-                  {formatCurrency(Math.max(0, Number(paymentModalInvoice.total || paymentModalInvoice.amount || 0) - Number(paymentModalInvoice.paidAmount || 0)))}
-                </span>
-              </div>
-            </div>
+      {/* RECORD INVOICE / PROFORMA PAYMENT MODAL */}
+      {paymentModalInvoice && (() => {
+        const isUSD = Boolean(
+          paymentModalInvoice.currency === 'USD' ||
+          paymentModalInvoice.currency === '$' ||
+          paymentModalInvoice.taxProfileId === 'tp_export_zero_rated' ||
+          paymentModalInvoice.isForeign
+        );
+        const modalCurrency = isUSD ? 'USD' : (paymentModalInvoice.currency || 'LKR');
+        const isProformaDoc = Boolean(
+          paymentModalInvoice.isProforma ||
+          paymentModalInvoice.invoiceType === 'proforma' ||
+          String(paymentModalInvoice.id || paymentModalInvoice.invoiceNo || '').startsWith('PI-')
+        );
+        const invTotal = Number(paymentModalInvoice.total || paymentModalInvoice.amount || 0);
+        const invPaid = Number(paymentModalInvoice.paidAmount || 0);
+        const balanceDue = Math.max(0, invTotal - invPaid);
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        // Filter and sort deposit accounts: put USD accounts on top if USD
+        const eligibleAccounts = accounts
+          .filter((a: any) => a.type === 'Asset' && (a.subtype === 'Bank' || a.subtype === 'Cash' || /bank|cash/i.test(a.name)))
+          .sort((a: any, b: any) => {
+            if (isUSD) {
+              const aIsUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
+              const bIsUsd = b.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(b.name);
+              if (aIsUsd && !bIsUsd) return -1;
+              if (!aIsUsd && bIsUsd) return 1;
+            }
+            return (a.code || '').localeCompare(b.code || '');
+          });
+
+        return (
+          <Modal
+            isOpen={true}
+            onClose={() => setPaymentModalInvoice(null)}
+            title={`Record Payment — ${isProformaDoc ? 'Advance Proforma' : 'Commercial Invoice'} #${paymentModalInvoice.invoiceNo || paymentModalInvoice.id}`}
+            size="xl"
+          >
+            <form onSubmit={handleSubmitPayment} className="space-y-5 p-1">
+              {/* Header Card */}
+              <div className="p-4 bg-surface2/60 border border-theme-subtle rounded-xl flex items-center justify-between text-xs flex-wrap gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted block text-[10px] font-bold uppercase tracking-wider">Customer</span>
+                    {isUSD && (
+                      <span className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold text-[10px]">
+                        ★ USD Export Zero-Rated ($)
+                      </span>
+                    )}
+                    {isProformaDoc && (
+                      <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-bold text-[10px]">
+                        Advance Proforma
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-bold text-primary text-sm mt-0.5 block">
+                    {paymentModalInvoice.customerName || paymentModalInvoice.customerCompany || paymentModalInvoice.customerId}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-6">
+                  <div>
+                    <span className="text-muted block text-[10px] font-bold uppercase tracking-wider">Total Quoted</span>
+                    <span className="font-mono font-bold text-primary text-sm">
+                      {formatCurrency(invTotal, false, modalCurrency)}
+                    </span>
+                  </div>
+                  {invPaid > 0 && (
+                    <div>
+                      <span className="text-muted block text-[10px] font-bold uppercase tracking-wider">Paid So Far</span>
+                      <span className="font-mono font-bold text-emerald-600 text-sm">
+                        {formatCurrency(invPaid, false, modalCurrency)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-right">
+                    <span className="text-muted block text-[10px] font-bold uppercase tracking-wider">Balance Due</span>
+                    <span className="font-mono font-black text-rose-600 text-base">
+                      {formatCurrency(balanceDue, false, modalCurrency)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                    Payment Amount ({isUSD ? '$ USD' : 'Rs. LKR'}) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-muted text-xs">
+                      {isUSD ? '$' : 'Rs.'}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={paymentForm.amount}
+                      onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                      className="w-full bg-surface border border-theme-subtle rounded-lg pl-10 pr-3 py-2.5 text-sm font-mono font-bold text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+                      placeholder={`0.00 (Due: ${balanceDue.toFixed(2)})`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentForm.date}
+                    onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentForm.method}
+                    onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value })}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2.5 text-sm text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
+                  >
+                    {isUSD ? (
+                      <>
+                        <option value="Bank Wire / TT">Bank Wire / TT (Foreign Inward Remittance)</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Cash">Cash (Foreign Currency)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="Bank Transfer">Bank Transfer (HNB / Commercial / Sampath)</option>
+                        <option value="Cash">Cash in Hand</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Credit Card">Credit / Debit Card</option>
+                        <option value="Advance">Advance Settlement</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                    Deposit Account ({isUSD ? 'Foreign USD Bank' : 'Bank / Cash'})
+                  </label>
+                  <select
+                    value={paymentForm.accountId}
+                    onChange={e => setPaymentForm({ ...paymentForm, accountId: e.target.value })}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2.5 text-sm text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
+                  >
+                    {!paymentForm.accountId && <option value="">Auto-resolve Deposit Account</option>}
+                    {eligibleAccounts.map((a: any) => {
+                      const isAccUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
+                      return (
+                        <option key={a.id} value={a.id}>
+                          {a.code ? `[${a.code}] ` : ''}{a.name} ({a.subtype || 'Asset'} — {isAccUsd ? `$ ${Number(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : `Rs. ${Number(a.balance || 0).toLocaleString()}`})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-secondary mb-1">
-                  Payment Amount (Rs.) <span className="text-red-500">*</span>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                  Reference / Wire TT / Cheque / Bank Slips No
                 </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={paymentForm.amount}
-                  onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                  className="w-full input-base text-xs font-mono font-bold"
-                  placeholder="0.00"
+                  type="text"
+                  placeholder={isUSD ? "e.g. TT-WIRE-902144 or USD-SWIFT-REF" : "e.g. HNB-TXN-902144 or CHQ-001289"}
+                  value={paymentForm.reference}
+                  onChange={e => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-sm text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-secondary mb-1">
-                  Payment Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={paymentForm.date}
-                  onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                  className="w-full input-base text-xs font-mono"
-                />
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-800 dark:text-emerald-300">
+                💡 Submitting will immediately credit Accounts Receivable, debit Bank/Cash in the General Ledger, mark the {isProformaDoc ? 'Advance Proforma' : 'Invoice'} as <strong>Paid</strong>, and update the Sales Order status.
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-secondary mb-1">
-                  Payment Method
-                </label>
-                <select
-                  value={paymentForm.method}
-                  onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value })}
-                  className="w-full input-base text-xs cursor-pointer"
+              <div className="flex items-center justify-between pt-3 border-t border-theme-subtle flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const custObj = customers.find((c: any) => c.id === paymentModalInvoice?.customerId || c.id === paymentModalInvoice?.leadId) || { id: paymentModalInvoice?.customerId, name: paymentModalInvoice?.customerName };
+                    setSettlementCustomer(custObj);
+                    setPaymentModalInvoice(null);
+                    setIsMultiSettlementOpen(true);
+                  }}
+                  className="text-xs text-rex-600 dark:text-rex-400 font-semibold hover:underline"
                 >
-                  <option value="Bank Transfer">Bank Transfer (HNB / Commercial / Sampath)</option>
-                  <option value="Cash">Cash in Hand</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Credit Card">Credit / Debit Card</option>
-                  <option value="Advance">Advance Settlement</option>
-                </select>
+                  Need to settle across multiple invoices? Open Multi-Invoice Settlement &rarr;
+                </button>
+
+                <div className="flex gap-2">
+                  <Button variant="ghost" type="button" onClick={() => setPaymentModalInvoice(null)} className="text-xs px-4">
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    disabled={submittingPayment}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4"
+                  >
+                    {submittingPayment ? 'Recording...' : 'Confirm Payment & Update GL'}
+                  </Button>
+                </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-secondary mb-1">
-                  Deposit Account (Asset)
-                </label>
-                <select
-                  value={paymentForm.accountId}
-                  onChange={e => setPaymentForm({ ...paymentForm, accountId: e.target.value })}
-                  className="w-full input-base text-xs cursor-pointer"
-                >
-                  <option value="">Auto-resolve (Cash / Bank)</option>
-                  {accounts.filter((a: any) => a.type === 'Asset').map((a: any) => (
-                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-secondary mb-1">
-                Reference / Cheque / Bank Slips No
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. HNB-TXN-902144 or CHQ-001289"
-                value={paymentForm.reference}
-                onChange={e => setPaymentForm({ ...paymentForm, reference: e.target.value })}
-                className="w-full input-base text-xs"
-              />
-            </div>
-
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
-              💡 Submitting will immediately credit Accounts Receivable, debit Bank/Cash in the General Ledger, mark the invoice as <strong>Paid</strong>, and update the Sales Order status.
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-theme-subtle">
-              <button
-                type="button"
-                onClick={() => {
-                  const custObj = customers.find((c: any) => c.id === paymentModalInvoice?.customerId || c.id === paymentModalInvoice?.leadId) || { id: paymentModalInvoice?.customerId, name: paymentModalInvoice?.customerName };
-                  setSettlementCustomer(custObj);
-                  setPaymentModalInvoice(null);
-                  setIsMultiSettlementOpen(true);
-                }}
-                className="text-[11px] text-rex-600 dark:text-rex-400 font-semibold hover:underline"
-              >
-                Need to settle across multiple invoices? Open Multi-Invoice Settlement &rarr;
-              </button>
-
-              <div className="flex gap-2">
-                <Button variant="ghost" type="button" onClick={() => setPaymentModalInvoice(null)} className="text-xs">
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={submittingPayment}
-                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                >
-                  {submittingPayment ? 'Recording...' : 'Confirm Payment & Update GL'}
-                </Button>
-              </div>
-            </div>
-          </form>
-        </Modal>
-      )}
+            </form>
+          </Modal>
+        );
+      })()}
 
       {/* CREATE ADVANCE RECEIPT MODAL */}
       <CreatePaymentReceiptModal

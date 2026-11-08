@@ -218,10 +218,23 @@ export const Invoices: React.FC = () => {
     }
     setSubmitting(true);
     try {
+      const isUSD = Boolean(
+        viewInvoice.currency === 'USD' ||
+        viewInvoice.currency === '$' ||
+        viewInvoice.taxProfileId === 'tp_export_zero_rated' ||
+        viewInvoice.isForeign
+      );
+      const invCurr = isUSD ? 'USD' : (viewInvoice.currency || 'LKR');
+      const invRate = Number(viewInvoice.exchangeRate || (isUSD ? 310 : 1));
+      const targetAccountId = paymentData.accountId || (isUSD ? (settings?.usd_master_account_id || 'acc_1010') : undefined);
+
       const { addInvoicePayment } = await import('@/lib/api');
       const res = await addInvoicePayment(viewInvoice.id, {
         ...paymentData,
-        amount: pAmount
+        amount: pAmount,
+        currency: invCurr,
+        exchangeRate: invRate,
+        accountId: targetAccountId
       });
       
       if (res && res.error) {
@@ -244,7 +257,11 @@ export const Invoices: React.FC = () => {
       setShowPaymentModal(false);
       setPaymentData({ amount: '', method: 'Cash', accountId: '', reference: '' });
       if (res && res.receipt) {
-        setPrintReceiptData(res.receipt);
+        setPrintReceiptData({
+          ...res.receipt,
+          currency: invCurr,
+          exchangeRate: invRate
+        });
       }
     } catch (e: any) {
       console.error('Record payment error:', e);
@@ -1169,14 +1186,34 @@ export const Invoices: React.FC = () => {
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="text-[11px] font-black text-primary uppercase tracking-widest">Payment History</h4>
                   {viewInvoice.status !== 'paid' && canRecordPayment && (
-                    <Button variant="ghost" size="sm" className="h-6 text-[10px] border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 px-2 rounded-md" onClick={() => setShowPaymentModal(true)}>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 text-[10px] border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 px-2 rounded-md" 
+                      onClick={() => {
+                        const isUSD = Boolean(viewInvoice.currency === 'USD' || viewInvoice.currency === '$' || viewInvoice.taxProfileId === 'tp_export_zero_rated' || viewInvoice.isForeign);
+                        setPaymentData({
+                          amount: '',
+                          method: isUSD ? 'Bank Wire / TT' : 'Bank Transfer',
+                          accountId: isUSD ? (settings?.usd_master_account_id || 'acc_1010') : '',
+                          reference: ''
+                        });
+                        setShowPaymentModal(true);
+                      }}
+                    >
                       + Record
                     </Button>
                   )}
                 </div>
                 
                 {(() => {
-                  const invCurr = viewInvoice.currency || 'LKR';
+                  const isUSD = Boolean(
+                    viewInvoice.currency === 'USD' || 
+                    viewInvoice.currency === '$' || 
+                    viewInvoice.taxProfileId === 'tp_export_zero_rated' || 
+                    viewInvoice.isForeign
+                  );
+                  const invCurr = isUSD ? 'USD' : (viewInvoice.currency || 'LKR');
                   const invTotal = Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0));
                   const invPaid = Number(viewInvoice.paidAmount || 0);
                   const invBalance = Math.max(0, invTotal - invPaid);
@@ -1212,12 +1249,13 @@ export const Invoices: React.FC = () => {
                         <div className="space-y-2">
                           {paymentList.map((p: any, i: number) => {
                             const cust = getCustomerInfo(viewInvoice);
+                            const paymentCur = p.currency || invCurr;
                             return (
                               <div key={p.id || i} className="bg-surface2 p-3 rounded-xl border border-theme-subtle flex items-center justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex justify-between items-start mb-1">
                                     <p className="text-xs font-bold">{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</p>
-                                    <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0, false, invCurr)}</span>
+                                    <span className="font-mono font-bold text-emerald-600 text-xs">{formatCurrency(Number(p.amount) || 0, false, paymentCur)}</span>
                                   </div>
                                   <p className="text-[10px] text-muted uppercase">{p.method || 'Cash'} {p.reference ? `- Ref: ${p.reference}` : ''}</p>
                                   {p.receiptNo && (
@@ -1238,8 +1276,12 @@ export const Invoices: React.FC = () => {
                                       invoiceNo: viewInvoice.invoiceNo || viewInvoice.id,
                                       date: p.date || new Date().toISOString(),
                                       amount: Number(p.amount) || 0,
+                                      currency: paymentCur,
+                                      exchangeRate: p.exchangeRate || viewInvoice.exchangeRate || (paymentCur === 'USD' ? 310 : 1),
                                       paymentMethod: p.method || 'Cash',
                                       reference: p.reference || '',
+                                      accountId: p.accountId,
+                                      accountName: p.accountName,
                                       customerId: viewInvoice.customerId || viewInvoice.leadId || '',
                                       customerName: cust.company || cust.name || 'Customer',
                                       customerCompany: cust.company || '',
@@ -1456,68 +1498,136 @@ export const Invoices: React.FC = () => {
       )}
 
       {/* Payment Form Modal */}
-      {showPaymentModal && viewInvoice && (
-        <Modal isOpen={true} onClose={() => setShowPaymentModal(false)} title="Record Payment">
-          <div className="p-4 space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Amount (Rs.)</label>
-              <input 
-                type="number" 
-                value={paymentData.amount}
-                onChange={e => setPaymentData({ ...paymentData, amount: e.target.value })}
-                className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
-                placeholder={`Balance: ${Math.max(0, (Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0)) - Number(viewInvoice.paidAmount || 0))).toFixed(2)}`}
-              />
+      {showPaymentModal && viewInvoice && (() => {
+        const isUSD = Boolean(
+          viewInvoice.currency === 'USD' ||
+          viewInvoice.currency === '$' ||
+          viewInvoice.taxProfileId === 'tp_export_zero_rated' ||
+          viewInvoice.isForeign
+        );
+        const invCurr = isUSD ? 'USD' : (viewInvoice.currency || 'LKR');
+        const invTotal = Number(viewInvoice.total !== undefined && viewInvoice.total !== null ? viewInvoice.total : (viewInvoice.amount || 0));
+        const invPaid = Number(viewInvoice.paidAmount || 0);
+        const invBalance = Math.max(0, invTotal - invPaid);
+
+        return (
+          <Modal isOpen={true} onClose={() => setShowPaymentModal(false)} title={`Record Payment — ${viewInvoice.invoiceNo || viewInvoice.id}`} size="lg">
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-surface2/60 border border-theme-subtle rounded-xl flex items-center justify-between text-xs flex-wrap gap-2">
+                <div>
+                  <span className="text-muted block text-[10px] font-bold uppercase tracking-wider">Customer</span>
+                  <span className="font-bold text-primary">{viewInvoice.customerName || viewInvoice.customerCompany || 'Customer'}</span>
+                </div>
+                {isUSD && (
+                  <span className="px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold text-xs">
+                    ★ USD Export Zero-Rated ($)
+                  </span>
+                )}
+                <div className="text-right">
+                  <span className="text-muted block text-[10px] font-bold uppercase tracking-wider">Balance Due</span>
+                  <span className="font-mono font-bold text-rose-600 text-sm">
+                    {formatCurrency(invBalance, false, invCurr)}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                  Amount ({isUSD ? '$ USD' : 'Rs. LKR'}) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-muted text-xs">
+                    {isUSD ? '$' : 'Rs.'}
+                  </span>
+                  <input 
+                    type="number" 
+                    step="0.01"
+                    value={paymentData.amount}
+                    onChange={e => setPaymentData({ ...paymentData, amount: e.target.value })}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg pl-10 pr-3 py-2 text-primary font-mono font-bold focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+                    placeholder={`Due: ${invBalance.toFixed(2)}`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Payment Method</label>
+                <select 
+                  value={paymentData.method}
+                  onChange={e => setPaymentData({ ...paymentData, method: e.target.value })}
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
+                >
+                  {isUSD ? (
+                    <>
+                      <option value="Bank Wire / TT">Bank Wire / TT (Foreign Inward Remittance)</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="Card">Card</option>
+                      <option value="Cash">Cash (Foreign Currency)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option>Cash</option>
+                      <option>Bank Transfer</option>
+                      <option>Cheque</option>
+                      <option>Card</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
+                  Deposit To ({isUSD ? 'Foreign USD Bank' : 'Bank / Cash Account'})
+                </label>
+                <select 
+                  value={paymentData.accountId}
+                  onChange={e => setPaymentData({ ...paymentData, accountId: e.target.value })}
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
+                >
+                  <option value="">{isUSD ? 'Master USD Account (acc_1010)' : `Default Account (Auto match ${paymentData.method})`}</option>
+                  {accounts
+                    .filter(a => a.type === 'Asset' && (a.subtype === 'Bank' || a.subtype === 'Cash' || a.name?.toLowerCase().includes('bank') || a.name?.toLowerCase().includes('cash')))
+                    .sort((a, b) => {
+                      if (isUSD) {
+                        const aIsUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
+                        const bIsUsd = b.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(b.name);
+                        if (aIsUsd && !bIsUsd) return -1;
+                        if (!aIsUsd && bIsUsd) return 1;
+                      }
+                      return (a.code || '').localeCompare(b.code || '');
+                    })
+                    .map(a => {
+                      const isAccUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
+                      return (
+                        <option key={a.id} value={a.id}>
+                          {a.code ? `[${a.code}] ` : ''}{a.name} ({a.subtype || 'Asset'} — {isAccUsd ? `$ ${Number(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : `Rs. ${Number(a.balance || 0).toLocaleString()}`})
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Reference (Optional)</label>
+                <input 
+                  type="text" 
+                  value={paymentData.reference}
+                  onChange={e => setPaymentData({ ...paymentData, reference: e.target.value })}
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
+                  placeholder={isUSD ? "e.g. TT-WIRE-902144 or USD-REF" : "Txn ID, Cheque No..."}
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-theme-subtle">
+                <Button variant="ghost" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
+                <Button variant="primary" onClick={handleAddPayment} disabled={submitting || !paymentData.amount}>
+                  {submitting ? 'Saving...' : 'Save Payment & Update GL'}
+                </Button>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Method</label>
-              <select 
-                value={paymentData.method}
-                onChange={e => setPaymentData({ ...paymentData, method: e.target.value })}
-                className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
-              >
-                <option>Cash</option>
-                <option>Bank Transfer</option>
-                <option>Cheque</option>
-                <option>Card</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Deposit To (Bank / Cash Account)</label>
-              <select 
-                value={paymentData.accountId}
-                onChange={e => setPaymentData({ ...paymentData, accountId: e.target.value })}
-                className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
-              >
-                <option value="">Default Account (Auto match {paymentData.method})</option>
-                {accounts
-                  .filter(a => a.type === 'Asset' && (a.subtype === 'Bank' || a.subtype === 'Cash' || a.name?.toLowerCase().includes('bank') || a.name?.toLowerCase().includes('cash')))
-                  .map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.code ? `[${a.code}] ` : ''}{a.name} ({a.subtype || 'Asset'} - Rs. {Number(a.balance || 0).toLocaleString()})
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Reference (Optional)</label>
-              <input 
-                type="text" 
-                value={paymentData.reference}
-                onChange={e => setPaymentData({ ...paymentData, reference: e.target.value })}
-                className="w-full bg-surface border border-theme-subtle rounded px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
-                placeholder="Txn ID, Cheque No..."
-              />
-            </div>
-            <div className="pt-4 flex justify-end gap-3 border-t border-theme-subtle">
-              <Button variant="ghost" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
-              <Button variant="primary" onClick={handleAddPayment} disabled={submitting || !paymentData.amount}>
-                {submitting ? 'Saving...' : 'Save Payment'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* Create Manual Invoice Modal */}
       {showCreateModal && (

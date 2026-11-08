@@ -65,14 +65,6 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
     }
   }, [customer, allCustomers, openInvoices]);
 
-  // Default deposit account to first bank or cash account
-  useEffect(() => {
-    if (!depositAccountId && depositAccounts.length > 0) {
-      const defaultBank = depositAccounts.find(a => a.subtype === 'Bank') || depositAccounts[0];
-      setDepositAccountId(defaultBank.id);
-    }
-  }, [depositAccounts, depositAccountId]);
-
   // Customer object resolved
   const currentCustomer = useMemo(() => {
     return allCustomers.find(c => c.id === selectedCustomerId) || customer || null;
@@ -97,6 +89,33 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
       .filter(inv => inv.balanceDue > 0.01)
       .sort((a, b) => new Date(a.date || a.createdAt).getTime() - new Date(b.date || b.createdAt).getTime());
   }, [openInvoices, selectedCustomerId]);
+
+  const isUSD = useMemo(() => {
+    return customerInvoices.some((inv: any) => 
+      inv.currency === 'USD' || 
+      inv.currency === '$' || 
+      inv.taxProfileId === 'tp_export_zero_rated' || 
+      inv.isForeign
+    );
+  }, [customerInvoices]);
+  const settlementCurrency = isUSD ? 'USD' : 'LKR';
+
+  // Default deposit account to first bank or cash account (prioritizes USD if foreign)
+  useEffect(() => {
+    if (depositAccounts.length > 0) {
+      if (isUSD) {
+        const usdAcc = depositAccounts.find(a => a.id === 'acc_1010' || /usd|foreign/i.test(a.name));
+        if (usdAcc && depositAccountId !== usdAcc.id) {
+          setDepositAccountId(usdAcc.id);
+          return;
+        }
+      }
+      if (!depositAccountId) {
+        const defaultBank = depositAccounts.find(a => a.subtype === 'Bank') || depositAccounts[0];
+        setDepositAccountId(defaultBank.id);
+      }
+    }
+  }, [depositAccounts, depositAccountId, isUSD]);
 
   // Total customer outstanding across all their open invoices
   const totalCustomerOutstanding = useMemo(() => {
@@ -244,6 +263,7 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
         reference: reference.trim() || undefined,
         notes: notes.trim() || undefined,
         totalAmount: numEnteredTotal,
+        currency: settlementCurrency,
         allocations: validAllocationsList
       });
 
@@ -302,7 +322,7 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
           <div className="text-right sm:border-l sm:border-theme sm:pl-4">
             <span className="text-[10px] uppercase font-bold text-muted block">Total Customer Outstanding</span>
             <div className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono mt-0.5">
-              {formatCurrency(totalCustomerOutstanding)}
+              {formatCurrency(totalCustomerOutstanding, false, settlementCurrency)}
             </div>
             <span className="text-[10px] text-muted block mt-0.5">
               {customerInvoices.length} Unpaid / Partial Invoices
@@ -316,10 +336,12 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             {/* Total Payment Received */}
             <div>
               <label className="block text-xs font-bold text-primary mb-1">
-                Payment Received (LKR) *
+                Payment Received ({settlementCurrency}) *
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-xs font-bold">Rs.</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-xs font-bold">
+                  {settlementCurrency === 'USD' ? '$' : 'Rs.'}
+                </span>
                 <input
                   type="number"
                   step="0.01"
@@ -609,7 +631,7 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             <div>
               <span className="text-muted block text-[10px] uppercase font-bold">Total Allocated</span>
               <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                {formatCurrency(totalAllocated)}
+                {formatCurrency(totalAllocated, false, settlementCurrency)}
               </span>
             </div>
 
@@ -618,7 +640,7 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             <div>
               <span className="text-muted block text-[10px] uppercase font-bold">Unallocated Difference</span>
               <span className={`font-mono font-black text-sm ${Math.abs(unallocatedDifference) < 0.05 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {Math.abs(unallocatedDifference) < 0.05 ? 'Rs. 0.00 (Balanced)' : formatCurrency(unallocatedDifference)}
+                {Math.abs(unallocatedDifference) < 0.05 ? `${settlementCurrency === 'USD' ? '$' : 'Rs.'} 0.00 (Balanced)` : formatCurrency(unallocatedDifference, false, settlementCurrency)}
               </span>
             </div>
           </div>
