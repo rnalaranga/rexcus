@@ -590,7 +590,7 @@ export const MobileApprovals: React.FC = () => {
             </div>
 
             {/* Modal Body */}
-            <div className="overflow-y-auto p-4 space-y-3.5 flex-1 text-primary">
+            <div className={`overflow-y-auto flex-1 text-primary ${previewTab === 'print' ? 'p-1' : 'p-4 space-y-3.5'}`}>
               {previewTab === 'summary' ? (
                 <>
                   {/* Client Info Card */}

@@ -350,7 +350,7 @@ export const MobileSalesOrders: React.FC = () => {
             </div>
 
             {/* Modal Body */}
-            <div className="overflow-y-auto p-4 space-y-3.5 flex-1 text-primary">
+            <div className={`overflow-y-auto flex-1 text-primary ${previewTab === 'letterhead' ? 'p-1' : 'p-4 space-y-3.5'}`}>
               {previewTab === 'letterhead' ? (
                 <MobileA4Preview title={`Sales Order #${selectedOrder.orderNo || selectedOrder.id}`}>
                   <SalesOrderPrintView 
