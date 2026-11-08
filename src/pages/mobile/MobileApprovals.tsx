@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   CheckSquare, Check, X, AlertTriangle, FileText, ShoppingBag, 
@@ -530,7 +531,7 @@ export const MobileApprovals: React.FC = () => {
       )}
 
       {/* ── Quotation Full Preview Modal ── */}
-      {previewQuote && (
+      {previewQuote && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-fade-in">
           <div className="bg-surface border border-theme rounded-t-2xl sm:rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mx-auto">
             {/* Modal Header */}
@@ -764,11 +765,12 @@ export const MobileApprovals: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Photo Lightbox Modal ── */}
-      {previewPhoto && (
+      {previewPhoto && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 animate-fade-in">
           <div className="relative max-w-md w-full bg-surface rounded-2xl overflow-hidden shadow-2xl border border-theme">
             <div className="p-3 flex items-center justify-between border-b border-theme bg-surface2/60">
@@ -787,11 +789,12 @@ export const MobileApprovals: React.FC = () => {
               <img src={previewPhoto} alt="Receipt Voucher" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Reject Reason Modal ── */}
-      {rejectItem && (
+      {rejectItem && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
           <div className="bg-surface border border-theme rounded-t-2xl sm:rounded-2xl max-w-sm w-full p-4 space-y-3.5 shadow-2xl animate-fade-in text-primary">
             <div className="flex items-center justify-between pb-2 border-b border-theme">
@@ -840,7 +843,8 @@ export const MobileApprovals: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

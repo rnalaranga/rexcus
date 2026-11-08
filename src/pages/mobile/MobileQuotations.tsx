@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -309,7 +310,7 @@ export const MobileQuotations: React.FC = () => {
       )}
 
       {/* ── Quotation Full Preview Modal ── */}
-      {selectedQuote && (
+      {selectedQuote && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-fade-in">
           <div className="bg-surface border border-theme rounded-t-2xl sm:rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mx-auto">
             {/* Modal Header */}
@@ -514,6 +515,8 @@ export const MobileQuotations: React.FC = () => {
             </div>
           </div>
         </div>
+      ,
+        document.body
       )}
     </div>
   );

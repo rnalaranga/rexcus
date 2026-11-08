@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
@@ -356,7 +357,7 @@ export const MobileCashbook: React.FC = () => {
       )}
 
       {/* Record Cash Entry Bottom Sheet / Modal */}
-      {isModalOpen && (
+      {isModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-surface border border-theme rounded-t-2xl sm:rounded-2xl max-w-md w-full p-4 space-y-3.5 shadow-2xl max-h-[90vh] overflow-y-auto animate-fade-in text-primary">
             {/* Modal Header */}
@@ -543,10 +544,11 @@ export const MobileCashbook: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Photo Lightbox Modal */}
-      {viewPhoto && (
+      {viewPhoto && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs animate-fade-in">
           <div className="bg-surface border border-theme rounded-2xl max-w-sm w-full p-3.5 space-y-3 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -573,6 +575,8 @@ export const MobileCashbook: React.FC = () => {
             </button>
           </div>
         </div>
+      ,
+        document.body
       )}
     </div>
   );
