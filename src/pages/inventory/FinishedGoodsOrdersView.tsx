@@ -954,7 +954,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       finalGrandTotal = isQuoteTaxInclusive ? netBase : (netBase + finalTotalTax);
     }
 
-    const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
+    const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_vat18' : '');
     const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && finalTotalTax > 0 ? Number(((finalTotalTax / netBase) * 100).toFixed(2)) : 0));
 
     const quotePoNo = quote.customerPoNo || parsed.customerPoNo || '';
@@ -5147,7 +5147,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         ...prev,
                         currency: 'LKR',
                         exchangeRate: 1,
-                        taxProfileId: prev.taxProfileId === 'tp_export_zero_rated' ? 'tp_opt2_sscl_absorbed_vat_sep' : prev.taxProfileId
+                        taxProfileId: prev.taxProfileId === 'tp_export_zero_rated' ? 'tp_vat18' : prev.taxProfileId
                       }))}
                       className={`p-1.5 text-xs font-bold rounded-lg border transition-all text-center ${
                         (formData.currency || 'LKR') === 'LKR'

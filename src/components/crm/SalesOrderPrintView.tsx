@@ -33,6 +33,28 @@ interface SalesOrderPrintViewProps {
   settings?: any
 }
 
+// Clean and deduplicate multi-line description lines (matching QuotationPrintView)
+const cleanDescLines = (rawDesc: string) => {
+  if (!rawDesc) return { titleLine: '', detailLines: '' };
+  const lines = rawDesc.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { titleLine: '', detailLines: '' };
+
+  const titleLine = lines[0];
+  const titleClean = titleLine.replace(/\s*\([^)]*\)/g, '').replace(/^[•\-*\s]+/, '').trim().toLowerCase();
+
+  const remaining: string[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const l = lines[i];
+    const lineClean = l.replace(/^[•\-*\s]+/, '').trim().toLowerCase();
+    if (lineClean === titleClean) {
+      continue;
+    }
+    remaining.push(l);
+  }
+
+  return { titleLine, detailLines: remaining.join('\n') };
+};
+
 export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order, customer, settings }) => {
   const orderCurrency = String(order.currency || customer?.currency || (customer?.isForeign ? 'USD' : 'LKR')).trim().toUpperCase();
   const isUSD = orderCurrency === 'USD' || orderCurrency === '$';
@@ -431,7 +453,8 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                 const itemQty = Number(item.qty) || 1;
                 const itemUnitPrice = Number(item.unitPrice) || 0;
                 const lineTotal = Number(item.amount) || (itemQty * itemUnitPrice);
-                const desc = item.description || item.productName || item.desc || 'Order Item';
+                const rawDesc = item.description || item.productName || item.desc || 'Order Item';
+                const { titleLine, detailLines } = cleanDescLines(rawDesc);
 
                 return (
                   <tr key={idx} className="border-b border-black text-[11px] leading-snug">
@@ -439,7 +462,14 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
                       {idx + 1}
                     </td>
                     <td className="py-2 px-2.5 border-r border-black align-top">
-                      <div className="font-bold text-[11.5px] text-black whitespace-pre-line">{desc}</div>
+                      <div className="font-bold text-[11.5px] text-black leading-tight">
+                        {titleLine}
+                      </div>
+                      {detailLines && (
+                        <div className="text-[10.5px] text-gray-800 mt-1 whitespace-pre-line leading-relaxed font-sans">
+                          {detailLines}
+                        </div>
+                      )}
                       {item.productSku && (
                         <div className="text-[10px] font-mono text-gray-600 mt-0.5">SKU: {item.productSku}</div>
                       )}

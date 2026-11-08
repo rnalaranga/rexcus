@@ -317,7 +317,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       grandTotal = isQuoteTaxInclusive ? netBase : (netBase + taxAmount);
     }
 
-    const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_opt2_sscl_absorbed_vat_sep' : '');
+    const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_vat18' : '');
     const taxRate = Number(quoteData.selectedProfile?.tax2_rate || (netBase > 0 && taxAmount > 0 ? Number(((taxAmount / netBase) * 100).toFixed(2)) : 0));
 
     const cust = customers.find((c: any) => c.id === group.leadId);
@@ -866,7 +866,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                         ...prev,
                         currency: 'LKR',
                         exchangeRate: 1,
-                        taxProfileId: prev.taxProfileId === 'tp_export_zero_rated' ? 'tp_opt2_sscl_absorbed_vat_sep' : prev.taxProfileId
+                        taxProfileId: prev.taxProfileId === 'tp_export_zero_rated' ? 'tp_vat18' : prev.taxProfileId
                       }))}
                       className={`px-2 py-0.5 text-[10px] font-bold rounded ${formData.currency === 'LKR' ? 'bg-primary text-surface' : 'text-muted hover:text-primary'}`}
                     >

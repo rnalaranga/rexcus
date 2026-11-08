@@ -89,6 +89,28 @@ export const TEMPLATES = [
   { id: 'government', name: 'Official Tax Invoice', description: 'Statutory Gazette Format (Gazette No. 2481/22)', color: '#000000', accent: '#000000' }
 ];
 
+// Clean and deduplicate multi-line description lines (matching QuotationPrintView)
+const cleanDescLines = (rawDesc: string) => {
+  if (!rawDesc) return { titleLine: '', detailLines: '' };
+  const lines = rawDesc.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { titleLine: '', detailLines: '' };
+
+  const titleLine = lines[0];
+  const titleClean = titleLine.replace(/\s*\([^)]*\)/g, '').replace(/^[•\-*\s]+/, '').trim().toLowerCase();
+
+  const remaining: string[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const l = lines[i];
+    const lineClean = l.replace(/^[•\-*\s]+/, '').trim().toLowerCase();
+    if (lineClean === titleClean) {
+      continue;
+    }
+    remaining.push(l);
+  }
+
+  return { titleLine, detailLines: remaining.join('\n') };
+};
+
 export interface InvoicePreviewProps {
   dueDate?: string;
   customerAddress?: string;
@@ -684,21 +706,29 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             const rawUnitPrice = Number(item.unitPrice || 0);
             const lineUnitPriceExclVat = isTaxInclusive ? (rawUnitPrice / unitPriceDivisor) : (rawUnitPrice * itemMultiplier);
             const lineExclVat = Number(item.qty || 0) * lineUnitPriceExclVat;
+            const rawDesc = item.description || item.productName || item.name || '';
+            const { titleLine, detailLines } = cleanDescLines(rawDesc);
+
             return (
               <tr key={idx} style={{ borderBottom: tableBorder }}>
                 <td style={{ padding: '8px 4px', textAlign: 'center', borderRight: tableBorder, verticalAlign: 'top' }}>
                   {item.reference || (idx + 1)}
                 </td>
                 <td style={{ padding: '8px 10px', borderRight: tableBorder, verticalAlign: 'top', whiteSpace: 'pre-wrap' }}>
-                  <div style={{ fontWeight: '700', fontSize: '11px', color: '#0f172a' }}>
-                    {item.description || item.productName || item.name}
+                  <div style={{ fontWeight: '700', fontSize: '11px', color: '#0f172a', lineHeight: 1.3 }}>
+                    {titleLine || rawDesc}
                   </div>
-                  {item.details && (
+                  {detailLines && (
+                    <div style={{ fontSize: '10px', color: '#334155', marginTop: '3px', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                      {detailLines}
+                    </div>
+                  )}
+                  {item.details && !detailLines?.includes(item.details) && (
                     <div style={{ fontSize: '10px', color: '#334155', marginTop: '3px', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
                       {item.details}
                     </div>
                   )}
-                  {item.specifications && (!item.details || !item.details.includes(item.specifications)) && (
+                  {item.specifications && (!item.details || !item.details.includes(item.specifications)) && (!detailLines || !detailLines.includes(item.specifications)) && (
                     <div style={{ fontSize: '9.5px', color: '#475569', marginTop: '2px', whiteSpace: 'pre-wrap', lineHeight: '1.3' }}>
                       <span style={{ fontWeight: '600' }}>Specifications:</span> {item.specifications}
                     </div>

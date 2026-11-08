@@ -4548,7 +4548,10 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
     }
     const quote = rows[0];
 
-    // Promote type if it was a draft so it becomes a permanent official quotation
+    if (quote.type === 'draft' || quote.type === 'product_draft') {
+      return res.status(400).json({ error: 'Quotation drafts cannot be approved directly. Please save the quotation first.' });
+    }
+
     let newType = quote.type;
     if (quote.type === 'draft') newType = 'main';
     else if (quote.type === 'product_draft') newType = 'product';

@@ -237,14 +237,15 @@ export const QuotationBuilder: React.FC = () => {
   const [currency, setCurrency] = useState('LKR')
   const { data: taxProfiles } = useTaxProfiles()
   const [taxEnabled, setTaxEnabled] = useState(true)
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep')
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_vat18')
 
   useEffect(() => {
     if (taxProfiles && taxProfiles.length > 0) {
       const currentValid = taxProfiles.some((p: any) => p.id === selectedProfileId);
       if (!currentValid) {
-        const opt2 = taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
-        if (opt2) setSelectedProfileId(opt2.id);
+        const defaultProfile = taxProfiles.find((p: any) => p.id === 'tp_vat18' || p.name?.toLowerCase().includes('vat only')) ||
+          taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
+        if (defaultProfile) setSelectedProfileId(defaultProfile.id);
         else setSelectedProfileId(taxProfiles[0].id);
       }
     }
@@ -574,10 +575,12 @@ export const QuotationBuilder: React.FC = () => {
         if (terms.trim()) setCustTerms(terms.trim());
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
-      if (cust.isForeign || cust.currency === 'USD') {
-        handleCurrencyChange('USD');
-      } else if (currency === 'USD') {
-        handleCurrencyChange('LKR');
+      if (!currentIdRef.current && !quoteIdParam) {
+        if (cust.isForeign || cust.currency === 'USD') {
+          handleCurrencyChange('USD');
+        } else if (currency === 'USD') {
+          handleCurrencyChange('LKR');
+        }
       }
 
       fetchNextDocumentNumber('quotation', {
@@ -613,10 +616,12 @@ export const QuotationBuilder: React.FC = () => {
           if (terms.trim()) setCustTerms(terms.trim());
         }
         if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
-      if (cust.isForeign || cust.currency === 'USD') {
-        handleCurrencyChange('USD');
-      } else if (currency === 'USD') {
-        handleCurrencyChange('LKR');
+      if (!currentIdRef.current && !quoteIdParam) {
+        if (cust.isForeign || cust.currency === 'USD') {
+          handleCurrencyChange('USD');
+        } else if (currency === 'USD') {
+          handleCurrencyChange('LKR');
+        }
       }
 
         fetchNextDocumentNumber('quotation', {
@@ -1040,7 +1045,7 @@ export const QuotationBuilder: React.FC = () => {
     if (snap.customerName) setCustomerName(snap.customerName)
     if (snap.customerAddress || snap.address) setCustomerAddress(snap.customerAddress || snap.address)
     setTaxEnabled(snap.taxEnabled ?? true)
-    setSelectedProfileId(snap.selectedProfileId || 'tp_opt2_sscl_absorbed_vat_sep')
+    setSelectedProfileId(snap.selectedProfileId || 'tp_vat18')
     setJobItems(snap.jobItems || [])
     setAttachments(snap.attachments || [])
     
@@ -1071,6 +1076,9 @@ export const QuotationBuilder: React.FC = () => {
     setCustDiscountAmount(snap.custDiscountAmount !== undefined ? snap.custDiscountAmount : (snap.custTotals?.discount !== undefined ? snap.custTotals.discount : 0))
     setLinkedProductQuoteNo(snap.linkedProductQuoteNo || snap.linkedQuoteNo || '');
     setLinkedProductQuoteId(snap.linkedProductQuoteId || snap.linkedQuoteId || '');
+    if (snap.currency) {
+      setCurrency(snap.currency);
+    }
   }
 
 
@@ -3406,8 +3414,14 @@ export const QuotationBuilder: React.FC = () => {
                  <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-zinc-800 text-primary rounded-md shadow-sm border border-theme-subtle/40 whitespace-nowrap shrink-0">
                    Live Preview
                  </button>
-                 <button className="flex-1 py-1.5 text-xs font-bold text-muted hover:text-primary transition-colors flex items-center justify-center gap-1.5 rounded-md hover:bg-surface2 whitespace-nowrap shrink-0">
-                   <span className="text-purple-500"><Wand2 size={13} /></span> AI Co-Pilot
+                 <button 
+                   type="button"
+                   onClick={() => handleAiPolishAll()}
+                   disabled={isPolishingAll || custItems.length === 0}
+                   className="flex-1 py-1.5 text-xs font-bold text-muted hover:text-purple-600 transition-colors flex items-center justify-center gap-1.5 rounded-md hover:bg-surface2 whitespace-nowrap shrink-0 disabled:opacity-50"
+                   title="Polish all quotation line item descriptions with Groq AI"
+                 >
+                   <span className="text-purple-500"><Wand2 size={13} /></span> {isPolishingAll ? 'Polishing...' : 'AI Co-Pilot'}
                  </button>
                </div>
                <button 
@@ -3500,7 +3514,7 @@ export const QuotationBuilder: React.FC = () => {
             settings={settings}
           />
           
-          {currentQuote && !isApproved && (
+          {currentQuote && !isApproved && currentQuote.type !== 'draft' && currentQuote.type !== 'product_draft' && Boolean(currentId) && (
             <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="shrink-0 text-amber-600" />

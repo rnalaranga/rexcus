@@ -129,9 +129,11 @@ function AppRoutes() {
           <Route path="/crm/contacts" element={<Contacts />} />
           <Route path="/crm/followups" element={<Followups />} />
           <Route path="/crm/quotations" element={<Quotations />} />
-          <Route path="/crm/quotations/new/:leadId?" element={<QuotationBuilder />} />
+          <Route path="/crm/quotations/new" element={<QuotationBuilder />} />
+          <Route path="/crm/quotations/new/:leadId" element={<QuotationBuilder />} />
           <Route path="/crm/product-quotations" element={<ProductQuotations />} />
-          <Route path="/crm/product-quotations/new/:leadId?" element={<ProductQuotationBuilder />} />
+          <Route path="/crm/product-quotations/new" element={<ProductQuotationBuilder />} />
+          <Route path="/crm/product-quotations/new/:leadId" element={<ProductQuotationBuilder />} />
           <Route path="/crm/sales-orders" element={<SalesOrdersHub />} />
 
           {/* Direct Navigation & CRM Aliases */}
@@ -149,6 +151,7 @@ function AppRoutes() {
           <Route path="/inventory/gate-passes" element={<GatePassesHub />} />
           <Route path="/gate-passes" element={<Navigate to="/inventory/gate-passes" replace />} />
           <Route path="/inventory/sales-orders" element={<SalesOrdersHub isStoresMode={true} />} />
+          <Route path="/inventory/finished-goods" element={<Navigate to="/crm/sales-orders" replace />} />
           <Route path="/inventory/material-issue" element={<MaterialIssueHub />} />
           <Route path="/material-issue" element={<Navigate to="/inventory/material-issue" replace />} />
           <Route path="/inventory/suppliers" element={<Suppliers />} />

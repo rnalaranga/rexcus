@@ -376,7 +376,7 @@ export const ProductQuotationBuilder: React.FC = () => {
   const [currency, setCurrency] = useState('LKR')
   const { data: taxProfiles } = useTaxProfiles()
   const [taxEnabled, setTaxEnabled] = useState(true)
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep')
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('tp_vat18')
 
   // Filter only finished goods / ready-made products & standard parts from inventory
   const finishedProducts = useMemo(() => {
@@ -404,8 +404,9 @@ export const ProductQuotationBuilder: React.FC = () => {
     if (taxProfiles && taxProfiles.length > 0) {
       const currentValid = taxProfiles.some((p: any) => p.id === selectedProfileId);
       if (!currentValid) {
-        const opt2 = taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
-        if (opt2) setSelectedProfileId(opt2.id);
+        const defaultProfile = taxProfiles.find((p: any) => p.id === 'tp_vat18' || p.name?.toLowerCase().includes('vat only')) ||
+          taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
+        if (defaultProfile) setSelectedProfileId(defaultProfile.id);
         else setSelectedProfileId(taxProfiles[0].id);
       }
     }
@@ -784,8 +785,10 @@ export const ProductQuotationBuilder: React.FC = () => {
         if (terms.trim()) setCustTerms(terms.trim());
       }
       if (cust.deliveryTerms) setCustDelivery(cust.deliveryTerms);
-      if (cust.isForeign || cust.currency === 'USD') {
-        setCurrency('USD');
+      if (!currentIdRef.current && !quoteIdParam) {
+        if (cust.isForeign || cust.currency === 'USD') {
+          setCurrency('USD');
+        }
       }
 
       fetchNextDocumentNumber('quotation', {
@@ -1198,7 +1201,7 @@ export const ProductQuotationBuilder: React.FC = () => {
     if (snap.customerName) setCustomerName(snap.customerName);
     if (snap.customerAddress || snap.address) setCustomerAddress(snap.customerAddress || snap.address);
     setTaxEnabled(snap.taxEnabled ?? true);
-    setSelectedProfileId(snap.selectedProfileId || 'tp_opt2_sscl_absorbed_vat_sep');
+    setSelectedProfileId(snap.selectedProfileId || 'tp_vat18');
     setJobItems(snap.jobItems || []);
     setAttachments(snap.attachments || []);
     setCustItems(snap.custItems || []);
@@ -1213,6 +1216,9 @@ export const ProductQuotationBuilder: React.FC = () => {
     setCustDiscountAmount(snap.custDiscountAmount !== undefined ? snap.custDiscountAmount : (snap.custTotals?.discount !== undefined ? snap.custTotals.discount : 0));
     setLinkedCustomQuoteNo(snap.linkedCustomQuoteNo || snap.linkedQuoteNo || '');
     setLinkedCustomQuoteId(snap.linkedCustomQuoteId || snap.linkedQuoteId || '');
+    if (snap.currency) {
+      setCurrency(snap.currency);
+    }
   };
 
   // --- Auto Save Draft (DB) ---
@@ -2961,7 +2967,7 @@ export const ProductQuotationBuilder: React.FC = () => {
             />
           </div>
           
-          {currentQuote && currentQuote.status !== 'Approved' && (
+          {currentQuote && currentQuote.status !== 'Approved' && currentQuote.type !== 'draft' && currentQuote.type !== 'product_draft' && Boolean(currentId) && (
             <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="shrink-0 text-amber-600" />

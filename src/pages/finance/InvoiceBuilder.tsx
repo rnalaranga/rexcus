@@ -45,7 +45,7 @@ export const InvoiceBuilder: React.FC = () => {
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [taxEnabled, setTaxEnabled] = useState(true);
-  const [taxProfileId, setTaxProfileId] = useState('tp_opt2_sscl_absorbed_vat_sep');
+  const [taxProfileId, setTaxProfileId] = useState('tp_vat18');
   const [isTaxInclusive, setIsTaxInclusive] = useState(false);
   const [discount, setDiscount] = useState<number | string>(0);
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
@@ -60,8 +60,9 @@ export const InvoiceBuilder: React.FC = () => {
     if (taxProfiles && taxProfiles.length > 0) {
       const currentValid = taxProfiles.some((p: any) => p.id === taxProfileId);
       if (!currentValid) {
-        const opt2 = taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
-        if (opt2) setTaxProfileId(opt2.id);
+        const defaultProfile = taxProfiles.find((p: any) => p.id === 'tp_vat18' || p.name?.toLowerCase().includes('vat only')) ||
+          taxProfiles.find((p: any) => p.id === 'tp_opt2_sscl_absorbed_vat_sep' || p.id === 'tp_vat_sscl' || p.name?.toLowerCase().includes('option 2'));
+        if (defaultProfile) setTaxProfileId(defaultProfile.id);
         else setTaxProfileId(taxProfiles[0].id);
       }
     }
@@ -264,7 +265,8 @@ export const InvoiceBuilder: React.FC = () => {
                 }
               } catch (e) {}
             }
-            if (ord.targetDeliveryDate) setDeliveryDate(ord.targetDeliveryDate.slice(0, 10));
+            // Always default delivery/supply date to invoice date when creating new invoice
+            setDeliveryDate(date);
             setPlaceOfSupply('Negombo');
             if (ord.paymentTerms) setNotes(ord.paymentTerms);
 
@@ -614,7 +616,8 @@ export const InvoiceBuilder: React.FC = () => {
                 if (matchedSo && isMounted) {
                   if (matchedSo.orderNo) setOrderNo(matchedSo.orderNo);
                   if (matchedSo.deliveryAddress) setPlaceOfSupply(matchedSo.deliveryAddress);
-                  if (matchedSo.targetDeliveryDate) setDeliveryDate(matchedSo.targetDeliveryDate.slice(0, 10));
+                  // Always default delivery/supply date to invoice date when creating new invoice
+                  setDeliveryDate(date);
                   const soDispatch = matchedSo.gatePassNo || matchedSo.gatePassId || matchedSo.dispatchNo;
                   if (soDispatch) {
                     setDispatchNo(soDispatch);
@@ -1501,7 +1504,7 @@ export const InvoiceBuilder: React.FC = () => {
                       } else {
                         setCurrency(cust.currency || 'LKR');
                         if (taxProfileId === 'tp_export_zero_rated') {
-                          setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep');
+                          setTaxProfileId('tp_vat18');
                         }
                       }
                     }
@@ -2065,7 +2068,7 @@ export const InvoiceBuilder: React.FC = () => {
                       onClick={() => {
                         setCurrency('LKR');
                         setExchangeRate(1);
-                        if (taxProfileId === 'tp_export_zero_rated') setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep');
+                        if (taxProfileId === 'tp_export_zero_rated') setTaxProfileId('tp_vat18');
                       }}
                       className={`p-1.5 text-[11px] font-bold rounded-lg border transition-all text-center ${
                         currency === 'LKR'
