@@ -355,11 +355,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     // Advance Proforma Invoice is non-taxable advance deposit (tax is settled on final tax invoice)
     setTaxOption('none');
 
-    // Default notes
-    setNotes(
-      `Proforma Invoice for ${initialPct}% payment against Sales Order #${orderNo}. ` +
-      `Kindly arrange payment to the bank account stated below to commence manufacturing.`
-    );
+    // Default notes (empty by default so unwanted auto-remarks are not inserted)
+    setNotes('');
   }, [order, effectiveOrderTotal, orderNo, linkedQuotation, detectedCurrency, detectedExchangeRate, isCustomerForeign]);
 
   // Handle bank accounts filter

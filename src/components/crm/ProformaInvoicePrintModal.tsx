@@ -100,7 +100,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   if (items.length === 0 && (invoiceSubtotal > 0 || invoiceTotal > 0)) {
     const advLineAmount = invoiceSubtotal > 0 ? invoiceSubtotal : invoiceTotal;
     const desc = invoice.productName ? `Advance Deposit Payment - ${invoice.productName}` : `Advance Deposit Payment - Sales Order #${invoice.orderNo || ''}`;
-    const spec = invoice.productSku ? `SKU: ${invoice.productSku}` : (invoice.notes || 'Advance payment for manufacturing commencement');
+    const spec = invoice.productSku ? `SKU: ${invoice.productSku}` : '';
     items = [
       {
         id: 'item-adv-1',
