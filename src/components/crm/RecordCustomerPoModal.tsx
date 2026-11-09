@@ -268,7 +268,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
       }
 
       if (quotation) {
-        const url = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api') + '/quotations/' + quotation.id + '/po-received';
+        const url = (import.meta.env.VITE_API_URL || '/api') + '/quotations/' + quotation.id + '/po-received';
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

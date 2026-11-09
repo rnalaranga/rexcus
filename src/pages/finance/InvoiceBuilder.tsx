@@ -115,7 +115,7 @@ export const InvoiceBuilder: React.FC = () => {
         if (paramEditInvoiceId) {
           setIsEditing(true);
           try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/${encodeURIComponent(paramEditInvoiceId)}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/${encodeURIComponent(paramEditInvoiceId)}`);
             if (res.ok) {
               const inv = await res.json();
               if (inv && !inv.error) {
@@ -181,7 +181,7 @@ export const InvoiceBuilder: React.FC = () => {
           let ord: any = null;
           // 1. Try single order endpoint
           try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${paramOrderId}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders/${paramOrderId}`);
             if (res.ok) {
               ord = await res.json();
             }
@@ -190,7 +190,7 @@ export const InvoiceBuilder: React.FC = () => {
           // 2. Fallback to list search
           if (!ord) {
             try {
-              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders`);
+              const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders`);
               if (res.ok) {
                 const orders = await res.json();
                 ord = (orders || []).find((o: any) => String(o.id) === String(paramOrderId) || String(o.orderNo) === String(paramOrderId));
@@ -263,7 +263,7 @@ export const InvoiceBuilder: React.FC = () => {
               if (activeDp) setSelectedDispatchId(activeDp.gatePassId || activeDp.dispatchNo || activeDp.id);
             } else {
               try {
-                const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
+                const gpRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/gate-passes`);
                 if (gpRes.ok) {
                   const allGps = await gpRes.json();
                   const matchedGp = (allGps || []).find((g: any) =>
@@ -313,7 +313,7 @@ export const InvoiceBuilder: React.FC = () => {
             // If order has no discount recorded, check its linked quotation
             if (rawOrdDiscount === 0 && rawOrdDiscountAmount === 0 && (ord.quoteId || ord.quotationNo)) {
               try {
-                const qRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations`);
+                const qRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations`);
                 if (qRes.ok) {
                   const allQ = await qRes.json();
                   const matchedQ = (allQ || []).find((qItem: any) => 
@@ -474,7 +474,7 @@ export const InvoiceBuilder: React.FC = () => {
 
           // 1. Dedicated single quotation endpoint
           try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/single/${paramQuoteId}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/single/${paramQuoteId}`);
             if (res.ok) {
               q = await res.json();
             }
@@ -483,7 +483,7 @@ export const InvoiceBuilder: React.FC = () => {
           // 2. Standard quotation route with fallback
           if (!q) {
             try {
-              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${paramQuoteId}`);
+              const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/${paramQuoteId}`);
               if (res.ok) {
                 const data = await res.json();
                 q = Array.isArray(data) ? (data.find((d: any) => d.id === paramQuoteId || d.quotationNo === paramQuoteId) || data[0]) : data;
@@ -494,7 +494,7 @@ export const InvoiceBuilder: React.FC = () => {
           // 3. Fallback to all quotations
           if (!q) {
             try {
-              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations`);
+              const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations`);
               if (res.ok) {
                 const allQuotes = await res.json();
                 q = (allQuotes || []).find((it: any) => String(it.id) === String(paramQuoteId) || String(it.quotationNo) === String(paramQuoteId) || String(it.docNo) === String(paramQuoteId));
@@ -617,7 +617,7 @@ export const InvoiceBuilder: React.FC = () => {
             try {
               let matchedSo: any = null;
               // 1. Look for linked Finished Goods / Sales Order
-              const soRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders`);
+              const soRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders`);
               if (soRes.ok) {
                 const allSos = await soRes.json();
                 matchedSo = (allSos || []).find((s: any) =>
@@ -637,7 +637,7 @@ export const InvoiceBuilder: React.FC = () => {
               }
 
               // 2. Look for linked Gate Pass (Goods Delivery / Dispatch Note)
-              const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
+              const gpRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/gate-passes`);
               if (gpRes.ok) {
                 const allGps = await gpRes.json();
                 const matchedGp = (allGps || []).find((g: any) =>
@@ -781,7 +781,7 @@ export const InvoiceBuilder: React.FC = () => {
 
     const timer = setTimeout(async () => {
       try {
-        const gpRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes`);
+        const gpRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/gate-passes`);
         if (!gpRes.ok) return;
         const allGps = await gpRes.json();
         const matched = (allGps || []).find((g: any) => {
@@ -823,7 +823,7 @@ export const InvoiceBuilder: React.FC = () => {
     });
 
     // Check for linked Advance Proforma Invoice
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices`)
       .then(res => res.json())
       .then((invs: any[]) => {
         if (!Array.isArray(invs)) return;
@@ -945,7 +945,7 @@ export const InvoiceBuilder: React.FC = () => {
 
   useEffect(() => {
     // Fetch company settings
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/settings`)
       .then(r => r.json())
       .then(s => {
         let banks: any[] = [];
@@ -996,7 +996,7 @@ export const InvoiceBuilder: React.FC = () => {
   // Fetch next invoice number whenever date changes to match IRD YYMMM format (only for new invoices if user hasn't typed a custom number)
   useEffect(() => {
     if (isEditing || isCustomInvoiceNo) return;
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${date}`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number?date=${date}`)
       .then(r => r.json())
       .then(d => { if (d.invoiceNo && !isCustomInvoiceNo && !isEditing) setDocNo(d.invoiceNo); })
       .catch(() => {
@@ -1011,7 +1011,7 @@ export const InvoiceBuilder: React.FC = () => {
 
   const handleGenerateNextNumber = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${date}`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number?date=${date}`);
       if (res.ok) {
         const d = await res.json();
         if (d.invoiceNo) {
@@ -1222,7 +1222,7 @@ export const InvoiceBuilder: React.FC = () => {
     try {
       if (customCustomer && customCustomer.id === customerId && !customers.some(c => c.id === customerId) && !leads.some(l => l.id === customerId)) {
         try {
-          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers`, {
+          await fetch(`${import.meta.env.VITE_API_URL || '/api'}/customers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1312,7 +1312,7 @@ export const InvoiceBuilder: React.FC = () => {
           const newInvNos = currentInvNos
             ? (currentInvNos.split(', ').includes(cleanDocNo) ? currentInvNos : `${currentInvNos}, ${cleanDocNo}`)
             : cleanDocNo;
-          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${paramOrderId}`, {
+          await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders/${paramOrderId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ invoiceId: cleanDocNo, invoiceNo: newInvNos })

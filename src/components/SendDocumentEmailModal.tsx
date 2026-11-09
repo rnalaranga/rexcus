@@ -6,7 +6,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { Mail, Send, Paperclip, CheckCircle2, AlertCircle, RefreshCw, FileText } from 'lucide-react';
 import { exportPdfDataUri } from '@/lib/exportPdf';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface SendDocumentEmailModalProps {
   isOpen: boolean;

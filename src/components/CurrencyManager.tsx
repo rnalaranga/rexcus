@@ -33,7 +33,7 @@ export const CurrencyManager = () => {
 
   const fetchCurrencies = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies`);
       const data = await res.json();
       setCurrencies(Array.isArray(data) ? data : []);
     } catch(e) { console.error(e); }
@@ -44,7 +44,7 @@ export const CurrencyManager = () => {
   const syncRates = async () => {
     setLoading(true);
     try {
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies/sync`, { method: 'POST' });
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies/sync`, { method: 'POST' });
       await fetchCurrencies();
       toast('Live exchange rates synchronized successfully!', 'success');
     } catch(e) { console.error(e); }
@@ -54,7 +54,7 @@ export const CurrencyManager = () => {
   const addCurrency = async () => {
     if(!newCurrency.code) return;
     try {
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`, {
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCurrency)
@@ -68,7 +68,7 @@ export const CurrencyManager = () => {
   const deleteCurrency = async (code: string) => {
     if(code === 'LKR') return alert("Cannot delete base currency");
     try {
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies/${code}`, { method: 'DELETE' });
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies/${code}`, { method: 'DELETE' });
       await fetchCurrencies();
       toast(`Currency ${code} removed`, 'info');
     } catch(e) { console.error(e); }

@@ -544,7 +544,7 @@ export const ProductQuotationBuilder: React.FC = () => {
       let targetQuote: any = null;
       if (quoteIdParam && !initialLoadedRef.current) {
         try {
-          const singleRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/single/${quoteIdParam}`);
+          const singleRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/single/${quoteIdParam}`);
           if (singleRes.ok) {
             targetQuote = await singleRes.json();
           }

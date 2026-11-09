@@ -319,7 +319,7 @@ export const QuotationBuilder: React.FC = () => {
         let targetQuote: any = null;
         if (quoteIdParam && !initialLoadedRef.current) {
           try {
-            const singleRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/single/${quoteIdParam}`);
+            const singleRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/single/${quoteIdParam}`);
             if (singleRes.ok) {
               targetQuote = await singleRes.json();
             }
@@ -1825,7 +1825,7 @@ export const QuotationBuilder: React.FC = () => {
       }
 
       if (editTemplateId) {
-        const res = await fetch(`http://localhost:3000/api/quotation-templates/${editTemplateId}`, {
+        const res = await fetch(`/api/quotation-templates/${editTemplateId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1833,7 +1833,7 @@ export const QuotationBuilder: React.FC = () => {
         if (!res.ok) throw new Error('Failed to update template')
         showToast('success', `Template "${templateSaveName}" updated successfully!`)
       } else {
-        const res = await fetch('http://localhost:3000/api/quotation-templates', {
+        const res = await fetch('/api/quotation-templates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1856,7 +1856,7 @@ export const QuotationBuilder: React.FC = () => {
     const tplId = editTemplateId || templateIdParam
     if (tplId && !templateLoadedRef.current) {
       templateLoadedRef.current = true
-      fetch(`http://localhost:3000/api/quotation-templates/${tplId}`)
+      fetch(`/api/quotation-templates/${tplId}`)
         .then(r => r.json())
         .then((tpl: QuotationTemplate) => {
           if (tpl) {

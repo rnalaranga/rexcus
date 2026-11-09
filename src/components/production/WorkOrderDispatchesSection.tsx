@@ -47,7 +47,7 @@ export const WorkOrderDispatchesSection: React.FC<WorkOrderDispatchesSectionProp
     if (!gpId) return
     setLoadingGp(true)
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes/${gpId}`)
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/gate-passes/${gpId}`)
       if (!res.ok) throw new Error('Gate pass not found')
       const gp = await res.json()
       setPrintGatePass(gp)

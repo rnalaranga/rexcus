@@ -15,7 +15,7 @@ import { Modal } from '@/components/ui/Modal';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Operation Categories for filtering & grouping
 export const OP_CATEGORIES = [

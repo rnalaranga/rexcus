@@ -83,7 +83,7 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:3000/api/quotation-templates');
+      const res = await fetch('/api/quotation-templates');
       if (res.ok) {
         const data = await res.json();
         setTemplates(data || []);
@@ -186,7 +186,7 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
       };
 
       if (activeTab === 'edit' && selectedTemplate) {
-        const res = await fetch(`http://localhost:3000/api/quotation-templates/${selectedTemplate.id}`, {
+        const res = await fetch(`/api/quotation-templates/${selectedTemplate.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -194,7 +194,7 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
         if (!res.ok) throw new Error('Failed to update template');
         showToast('success', 'Template updated successfully!');
       } else {
-        const res = await fetch('http://localhost:3000/api/quotation-templates', {
+        const res = await fetch('/api/quotation-templates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -215,7 +215,7 @@ export const QuotationTemplatesModal: React.FC<QuotationTemplatesModalProps> = (
   const handleDeleteTemplate = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to delete template "${name}"?`)) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/quotation-templates/${id}`, {
+      const res = await fetch(`/api/quotation-templates/${id}`, {
         method: 'DELETE'
       });
       if (!res.ok) throw new Error('Failed to delete template');

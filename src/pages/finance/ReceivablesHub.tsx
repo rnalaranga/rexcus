@@ -383,7 +383,7 @@ export const ReceivablesHub: React.FC = () => {
   // Fetch AR Aging Report Data
   const loadAging = useCallback(() => {
     setLoadingAging(true);
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/aging?type=ar`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/reports/aging?type=ar`)
       .then(res => res.json())
       .then(res => {
         setAgingData(Array.isArray(res) ? res : []);

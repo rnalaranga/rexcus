@@ -133,13 +133,13 @@ export const TopBar: React.FC = () => {
 
   // 1. Fetch system stats
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/system/stats`)
       .then(res => res.json())
       .then(setSysStats)
       .catch(() => {})
       
     const interval = setInterval(() => {
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats`)
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/system/stats`)
         .then(res => res.json())
         .then(setSysStats)
         .catch(() => {})
@@ -149,7 +149,7 @@ export const TopBar: React.FC = () => {
 
   // 2. Fetch notifications
   const fetchNotifications = () => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/notifications`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/notifications`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -207,7 +207,7 @@ export const TopBar: React.FC = () => {
 
     setIsSearching(true)
     const timer = setTimeout(() => {
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/search?q=${encodeURIComponent(q)}`, {
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/search?q=${encodeURIComponent(q)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       })
         .then(r => r.json())

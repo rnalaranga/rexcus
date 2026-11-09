@@ -86,7 +86,7 @@ export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     return `${window.location.origin}/api`;
   }
-  return 'http://localhost:3000/api';
+  return '/api';
 }
 
 export function resolveFileUrl(url: string): string {

@@ -121,7 +121,7 @@ export const Leads: React.FC = () => {
     if (confirm('Are you sure you want to convert this lead to a Customer? It will be marked as Won.')) {
       setSubmitting(true);
       try {
-        const res = await fetch('http://localhost:3000/api/leads/' + leadId + '/convert', { method: 'POST' });
+        const res = await fetch('/api/leads/' + leadId + '/convert', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
           alert('Successfully converted to Customer! ID: ' + data.customerId);
@@ -473,7 +473,7 @@ export const Leads: React.FC = () => {
     if (confirm('Are you sure you want to convert this lead to a Customer? It will be marked as Won.')) {
       setSubmitting(true);
       try {
-        const res = await fetch('http://localhost:3000/api/leads/' + editId + '/convert', { method: 'POST' });
+        const res = await fetch('/api/leads/' + editId + '/convert', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
           alert('Successfully converted to Customer! ID: ' + data.customerId);

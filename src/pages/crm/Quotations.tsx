@@ -1760,7 +1760,7 @@ export const Quotations: React.FC = () => {
                 if (linkedOrder?.gatePassId || linkedOrder?.gatePassNo) {
                   const gpId = linkedOrder.gatePassId || linkedOrder.gatePassNo;
                   try {
-                    const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes/${gpId}`);
+                    const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/gate-passes/${gpId}`);
                     if (res.ok) {
                       const gp = await res.json();
                       setPrintGatePass(gp);
@@ -1928,7 +1928,7 @@ export const Quotations: React.FC = () => {
 
   const handleRestoreQuotation = async (quoteId: string, quoteNo: string) => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${quoteId}/restore`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/${quoteId}/restore`, {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Failed to restore quotation');
@@ -1942,7 +1942,7 @@ export const Quotations: React.FC = () => {
   const handlePermanentDelete = async (quoteId: string, quoteNo: string) => {
     if (await showConfirm(`Permanently delete quotation ${quoteNo}? This cannot be undone.`, 'Permanent Deletion', { confirmLabel: 'Delete Forever' })) {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${quoteId}/permanent`, {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/${quoteId}/permanent`, {
           method: 'DELETE'
         });
         if (!res.ok) throw new Error('Failed to permanently delete');

@@ -4,7 +4,7 @@ node_modules/
 # Environment Variables (Sensitive Data)
 .env
 .env.local
-.env.production
+!.env.production
 
 # Build / Output Folders
 build/

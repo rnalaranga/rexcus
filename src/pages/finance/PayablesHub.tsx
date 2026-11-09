@@ -42,7 +42,7 @@ export const PayablesHub: React.FC = () => {
 
   const loadAging = useCallback(() => {
     setLoadingAging(true);
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/aging?type=ap`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/reports/aging?type=ap`)
       .then(res => res.json())
       .then(res => { setAgingData(Array.isArray(res) ? res : []); setLoadingAging(false); })
       .catch((e) => { console.error(e); setLoadingAging(false); });

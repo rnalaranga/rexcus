@@ -49,7 +49,7 @@ export const CRMDashboard: React.FC = () => {
 
   const [currencies, setCurrencies] = React.useState<any[]>([])
   React.useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies`)
       .then(res => res.json())
       .then(data => setCurrencies(Array.isArray(data) ? data : []))
       .catch(console.error)

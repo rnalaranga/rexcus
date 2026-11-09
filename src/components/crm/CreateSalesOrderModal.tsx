@@ -799,7 +799,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       // Sync PO status back to quotation
       if (quotationData?.quotation?.id) {
         try {
-          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations/${quotationData.quotation.id}/po-received`, {
+          await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/${quotationData.quotation.id}/po-received`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

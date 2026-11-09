@@ -61,10 +61,10 @@ export const CustomerDetail: React.FC = () => {
   const [currencies, setCurrencies] = useState<any[]>([])
 
   React.useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/users`)
       .then(res => res.json())
       .then(data => setUsers(Array.isArray(data) ? data : [])).catch(console.error);
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies`)
       .then(res => res.json())
       .then(data => setCurrencies(Array.isArray(data) ? data : [])).catch(console.error);
   }, []);
@@ -96,7 +96,7 @@ export const CustomerDetail: React.FC = () => {
     if (!id) return;
     setInvoicesLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/invoices`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/customers/${id}/invoices`);
       const data = await res.json();
       setCustomerInvoices(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -114,7 +114,7 @@ export const CustomerDetail: React.FC = () => {
   React.useEffect(() => {
     if (activeTab === 'pos' && id) {
       setPosLoading(true);
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/pos`)
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/customers/${id}/pos`)
         .then(res => res.json())
         .then(data => {
           setCustomerPos({
@@ -246,7 +246,7 @@ export const CustomerDetail: React.FC = () => {
   )
   const handleUpdateRating = async (rating: number) => {
     try {
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}`, {
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/customers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rating })
@@ -260,7 +260,7 @@ export const CustomerDetail: React.FC = () => {
 
   const handleApprove = async (status: 'approved' | 'rejected') => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/customers/${id}/approve-credit`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/customers/${id}/approve-credit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, actionBy: user?.name || user?.username || 'Finance Approver' })

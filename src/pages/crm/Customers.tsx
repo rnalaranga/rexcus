@@ -39,10 +39,10 @@ export const Customers: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [currencies, setCurrencies] = useState<any[]>([]);
   React.useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/users`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/users`)
       .then(res => res.json())
       .then(data => setUsers(Array.isArray(data) ? data : [])).catch(console.error);
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/currencies`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies`)
       .then(res => res.json())
       .then(data => setCurrencies(Array.isArray(data) ? data : [])).catch(console.error);
   }, []);

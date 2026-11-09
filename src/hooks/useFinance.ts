@@ -103,7 +103,7 @@ export function useCurrencies() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:3000/api') + '/currencies').then(r => r.json());
+      const res = await fetch((import.meta.env.VITE_API_URL || '/api') + '/currencies').then(r => r.json());
       setData(Array.isArray(res) ? res : []);
     } catch (e) { console.error(e); }
     setLoading(false);

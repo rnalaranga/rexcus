@@ -49,14 +49,14 @@ export const Settings = () => {
   const [sysStats, setSysStats] = useState<any>(null);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/system/stats`)
       .then(res => res.json())
       .then(data => setSysStats(data))
       .catch(console.error);
       
     // Update every 10 seconds
     const interval = setInterval(() => {
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/system/stats`)
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/system/stats`)
         .then(res => res.json())
         .then(data => setSysStats(data))
         .catch(console.error);
@@ -100,7 +100,7 @@ export const Settings = () => {
     if (await showConfirm('This will safely scan and synchronize missing database tables and columns (including Customer Samples, Gate Passes, Supplier Registration & VAT, Supplier Ledger & Payables, and Accounting fields). No data will be deleted. Proceed?', 'Fix Database Structure', { confirmLabel: 'Proceed' })) {
       setFixingDb(true);
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/fix-db`, { 
+        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/settings/fix-db`, { 
           method: 'POST', 
           headers: {'Content-Type': 'application/json'} 
         });
@@ -122,7 +122,7 @@ export const Settings = () => {
     setDownloadingBackup(true);
     try {
       toast('Preparing SQL database backup...', 'info');
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/settings/backup-db`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/settings/backup-db`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to download backup');

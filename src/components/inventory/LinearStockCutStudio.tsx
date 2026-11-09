@@ -107,7 +107,7 @@ export const LinearStockCutStudio: React.FC<LinearStockCutStudioProps> = ({
     setLoadingWorkOrders(true)
     Promise.all([
       fetchWorkOrders().catch(() => []),
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/quotations`).then(r => r.json()).catch(() => [])
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations`).then(r => r.json()).catch(() => [])
     ]).then(([wos, quotes]) => {
       if (isMounted) {
         if (Array.isArray(wos)) setWorkOrders(wos)

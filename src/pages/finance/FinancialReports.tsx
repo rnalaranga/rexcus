@@ -119,7 +119,7 @@ export const FinancialReports: React.FC = () => {
     } else {
       // Traditional Financial Statements (pnl, bs, tb, exp)
       const endpoints: Record<string, string> = { pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', exp: 'expenses' };
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finance/reports/${endpoints[activeTab]}`)
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/reports/${endpoints[activeTab]}`)
         .then(res => res.json())
         .then(res => {
           setFinancialStatementData(res);

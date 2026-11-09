@@ -1861,12 +1861,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       return
     }
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/gate-passes/${gpId}`)
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/gate-passes/${gpId}`)
       if (!res.ok) {
         if (res.status === 404) {
           toast(`Gate Pass "${gpId}" was deleted. Restoring order dispatch balance...`, 'info')
           try {
-            await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/finished-goods-orders/${order.id}/reconcile-dispatches`, {
+            await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders/${order.id}/reconcile-dispatches`, {
               method: 'POST'
             })
             await refetch()

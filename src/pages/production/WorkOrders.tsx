@@ -28,7 +28,7 @@ import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 type StatusFilter = 'all' | 'planned' | 'in_progress' | 'qc_rework' | 'completed'
 

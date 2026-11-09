@@ -41,7 +41,7 @@ import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { Truck, ArrowLeftRight, Calculator } from 'lucide-react'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 type DetailTab = 'bom' | 'routing' | 'materials' | 'qc_rework' | 'dispatches' | 'costing'
 

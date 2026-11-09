@@ -34,7 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentToken = localStorage.getItem('token');
     if (!currentToken) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/auth/me`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/me`, {
         headers: { Authorization: `Bearer ${currentToken}` }
       });
       if (res.ok) {

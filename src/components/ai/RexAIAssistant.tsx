@@ -17,7 +17,7 @@ interface ChatMessage {
   model?: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const QUICK_PROMPTS = [
   { label: '🛒 Item Purchase Prices', query: 'What is the purchase price (unitCost) of EN8 round bar and other raw materials?' },

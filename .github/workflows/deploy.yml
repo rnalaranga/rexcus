@@ -20,10 +20,12 @@ jobs:
           cache: 'npm'
 
       - name: Install Frontend Dependencies & Build on GitHub (16GB RAM)
+        env:
+          VITE_API_URL: /api
         run: |
           echo "=== Building frontend on GitHub Actions Runner (16GB RAM) ==="
           npm ci || npm install --prefer-offline --no-audit
-          npm run build
+          VITE_API_URL=/api npm run build
           tar -czf dist.tar.gz dist/
           echo "Frontend built and packaged successfully!"
 

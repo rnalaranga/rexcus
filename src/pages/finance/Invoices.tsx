@@ -97,7 +97,7 @@ export const Invoices: React.FC = () => {
   const handleGenerateNextForModal = async () => {
     try {
       const invDate = changeNoModalTarget?.date || new Date().toISOString()
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/invoices/next-number?date=${encodeURIComponent(invDate)}`)
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number?date=${encodeURIComponent(invDate)}`)
       if (res.ok) {
         const d = await res.json()
         if (d.invoiceNo) {
