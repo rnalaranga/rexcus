@@ -1278,6 +1278,8 @@ export default function Approvals() {
                   const merged = {
                     ...previewQuote.quote,
                     ...parsed,
+                    quotationNo: parsed.quotationNo || previewQuote.quote?.quotationNo || (previewQuote.quote?.docNo && !previewQuote.quote.docNo.startsWith('FO/') ? previewQuote.quote.docNo : '') || previewQuote.quote?.id || '',
+                    docNo: parsed.docNo || previewQuote.quote?.docNo || 'FO/PD/02',
                     status: previewQuote.quote.status || parsed.status || 'Draft',
                     custItems: (Array.isArray(parsed.custItems) && parsed.custItems.length > 0)
                       ? parsed.custItems

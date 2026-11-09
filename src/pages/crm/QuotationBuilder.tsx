@@ -342,7 +342,7 @@ export const QuotationBuilder: React.FC = () => {
           if (target) {
             initialLoadedRef.current = true;
             const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
-            restoreSnapshot(snap);
+            restoreSnapshot(snap, target);
             if (target.type === 'draft') {
               setDraftId(target.id);
               draftIdRef.current = target.id;
@@ -370,7 +370,7 @@ export const QuotationBuilder: React.FC = () => {
             draftIdRef.current = existingDraft.id;
             try {
               const snap = typeof existingDraft.data === 'string' ? JSON.parse(existingDraft.data) : existingDraft.data;
-              restoreSnapshot(snap);
+              restoreSnapshot(snap, existingDraft);
             } catch(e) {}
           }
         }
@@ -1025,15 +1025,16 @@ export const QuotationBuilder: React.FC = () => {
   const expectedProfit = custWithSSCL - jobWithSSCL
   const expectedMargin = custWithSSCL > 0 ? (expectedProfit / custWithSSCL) * 100 : 0
 
-  const restoreSnapshot = (snap: any) => {
-    setDocNo(snap.docNo || 'FO/PD/02')
-    setIssueNo(snap.issueNo || '01')
-    setIssueDate(snap.issueDate || 'March 04, 2026')
-    setQuoDate(snap.quoDate || new Date().toISOString().split('T')[0])
+  const restoreSnapshot = (snap: any, rootObj?: any) => {
+    setDocNo(snap.docNo || rootObj?.docNo || 'FO/PD/02')
+    setIssueNo(snap.issueNo || rootObj?.issueNo || '01')
+    setIssueDate(snap.issueDate || rootObj?.issueDate || 'March 04, 2026')
+    setQuoDate(snap.quoDate || rootObj?.quoDate || (rootObj?.date ? String(rootObj.date).slice(0, 10) : '') || new Date().toISOString().split('T')[0])
     setVatNo(snap.vatNo !== undefined ? snap.vatNo : (lead?.vat || ''))
     const savedTin = snap.tinNo !== undefined ? snap.tinNo : (lead?.tin || lead?.brNumber || '');
     setTinNo((lead?.svat && savedTin === lead.svat) ? '' : savedTin)
-    setQuotationNo(snap.quotationNo || '')
+    const resolvedQuoNo = snap.quotationNo || rootObj?.quotationNo || (rootObj?.docNo && !rootObj.docNo.startsWith('FO/') ? rootObj.docNo : '') || (rootObj?.id && !String(rootObj.id).startsWith('draft_') ? rootObj.id : '') || ''
+    setQuotationNo(resolvedQuoNo)
     setJobQty(snap.jobQty || '1')
     setAttention(snap.attention || '')
     setSubject(snap.subject || 'To machining parts as per given sample')
@@ -1696,7 +1697,7 @@ export const QuotationBuilder: React.FC = () => {
   const handleLoadVersion = (v: any) => {
     try {
       const snap = typeof v.data === 'string' ? JSON.parse(v.data) : v.data
-      restoreSnapshot(snap)
+      restoreSnapshot(snap, v)
       setCurrentId(v.id)
       setShowHistory(false)
       showToast('success', `Loaded v${v.version}`)

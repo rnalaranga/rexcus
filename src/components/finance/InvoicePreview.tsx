@@ -142,6 +142,7 @@ export interface InvoicePreviewProps {
   receiptNos?: string;
   paymentTerms?: string;
   isTaxInclusive?: boolean;
+  hideVatSeparately?: boolean;
   discount?: number;
   discountType?: 'percent' | 'amount';
   discountAmount?: number;
@@ -187,6 +188,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   invoiceType = '',
   docTitle = '',
   isTaxInclusive = false,
+  hideVatSeparately = false,
   discount = 0,
   discountType = 'percent',
   discountAmount = 0,
@@ -425,10 +427,22 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const hasTax1 = Boolean(taxProfile && Number(taxProfile.tax1_rate) > 0);
   const hasTax2 = Boolean(taxProfile && Number(taxProfile.tax2_rate) > 0);
 
-  const isSsclHidden = Boolean(hasTax1 && taxProfile.tax1_show_separately === 0);
-  const isVatHidden = Boolean(hasTax2 && taxProfile.tax2_show_separately === 0);
-  const isSsclSeparate = Boolean(hasTax1 && taxProfile.tax1_show_separately === 1);
-  const isVatSeparate = Boolean(hasTax2 ? taxProfile.tax2_show_separately === 1 : (taxAmount > 0));
+  const isVatAbsorbedByProfile = Boolean(
+    effectiveTaxProfileId === 'tp_vat18_absorbed' ||
+    effectiveTaxProfileId === 'tp_opt1_absorbed' ||
+    (hasTax2 && taxProfile?.tax2_show_separately === 0)
+  );
+
+  const isHideVat = Boolean(
+    hideVatSeparately ||
+    taxBreakdown?.hideVatSeparately ||
+    isVatAbsorbedByProfile
+  );
+
+  const isSsclHidden = Boolean(hasTax1 && (taxProfile?.tax1_show_separately === 0 || isHideVat));
+  const isVatHidden = Boolean(hasTax2 ? (taxProfile?.tax2_show_separately === 0 || isHideVat) : isHideVat);
+  const isSsclSeparate = Boolean(hasTax1 && taxProfile?.tax1_show_separately === 1 && !isHideVat);
+  const isVatSeparate = Boolean(!isHideVat && (hasTax2 ? taxProfile?.tax2_show_separately === 1 : (taxAmount > 0)));
 
   const t1Rate = Number(taxProfile?.tax1_rate || taxBreakdown?.tax1Rate || 2.5);
   const t2Rate = Number(taxProfile?.tax2_rate || taxBreakdown?.tax2Rate || displayVatRate || 18);
@@ -446,12 +460,19 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       unitPriceDivisor = taxProfile?.tax2_compound ? ((1 + t1Rate / 100) * (1 + t2Rate / 100)) : (1 + (t1Rate + t2Rate) / 100);
       itemMultiplier = 1;
     } else {
+      // Both absorbed or VAT absorbed: entered prices already include taxes
       unitPriceDivisor = 1;
       itemMultiplier = 1;
     }
   } else {
     if (isSsclHidden && isVatHidden) {
       // Option 1: Both SSCL & VAT absorbed into unit prices & supply value
+      itemMultiplier = taxProfile?.tax2_compound ? ((1 + t1Rate/100) * (1 + t2Rate/100)) : (1 + (t1Rate + t2Rate)/100);
+    } else if (!hasTax1 && isVatHidden) {
+      // VAT ONLY absorbed (No SSCL): unit prices absorb the VAT (e.g. 18%)
+      itemMultiplier = 1 + t2Rate / 100;
+    } else if (hasTax1 && isVatHidden) {
+      // Both taxes absorbed into price
       itemMultiplier = taxProfile?.tax2_compound ? ((1 + t1Rate/100) * (1 + t2Rate/100)) : (1 + (t1Rate + t2Rate)/100);
     } else if (isSsclHidden && !isVatHidden) {
       // Option 2 or Option 4: If SSCL is included in the base or absorbed, item multiplier for base price
@@ -721,7 +742,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               {isProforma ? <>Unit Price<br/>({effectivePriceBasis})</> : <>Unit<br/>Price</>}
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
-              {isProforma || (isSsclHidden && isVatHidden)
+              {isProforma || isVatHidden
                 ? <>Amount<br/>({currSymbol})</>
                 : <>Amount<br/>Excluding VAT<br/>({currSymbol})</>}
             </th>
@@ -809,7 +830,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           {/* TOTAL VALUE OF SUPPLY */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isProforma ? 'Total Advance Amount Requested:' : (effectiveDiscountAmt > 0 ? 'Total Net Value of Supply:' : 'Total Value of Supply:')}
+              {isProforma ? 'Total Advance Amount Requested:' : (isVatHidden ? 'Total Value of Supply (VAT Included):' : (effectiveDiscountAmt > 0 ? 'Total Net Value of Supply:' : 'Total Value of Supply:'))}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
               {(isTaxInclusive || isProforma ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -843,7 +864,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           {/* TOTAL CONSIDERATION */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isProforma ? `Total Amount Payable (${invoiceCurrency}):` : 'Total Amount/consideration including VAT:'}
+              {isProforma ? `Total Amount Payable (${invoiceCurrency}):` : (isVatHidden ? 'Total Amount / Consideration (VAT Included):' : 'Total Amount/consideration including VAT:')}
             </td>
             <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
               {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

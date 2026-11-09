@@ -36,6 +36,7 @@ const navGroups: NavGroup[] = [
       { label: 'Product Quotations', path: '/crm/product-quotations', icon: PackageCheck, permission: 'quotations.view' },
       { label: 'Approvals Hub', path: '/admin/approvals', icon: CheckSquare, permission: 'approvals.quotations' },
       { label: 'Sales Orders', path: '/crm/sales-orders', icon: ShoppingBag, permission: 'crm.customers.view' },
+      { label: 'Sales Reports', path: '/crm/reports', icon: BarChart3, permission: 'quotations.view' },
       { label: 'Deals',      path: '/crm/deals',      icon: Briefcase,       permission: 'crm.deals.manage' },
       { label: 'Contacts',   path: '/crm/contacts',   icon: Contact2,        permission: 'crm.customers.view' },
       { label: 'Follow-ups', path: '/crm/followups',  icon: Bell,            permission: 'crm.followups.manage' },

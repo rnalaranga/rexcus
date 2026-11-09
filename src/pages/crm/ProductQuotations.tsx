@@ -243,7 +243,8 @@ export const ProductQuotations: React.FC = () => {
                         q.type === 'product_draft' || 
                         parsed.isProductQuotation === true || 
                         parsed.quotationCategory === 'product' ||
-                        String(q.quotationNo || q.docNo || parsed.quotationNo || q.id || '').startsWith('PQ');
+                        String(q.quotationNo || q.docNo || parsed.quotationNo || q.id || '').startsWith('PQ') ||
+                        String(q.quotationNo || q.docNo || parsed.quotationNo || q.id || '').includes('PQ');
       if (!isProduct) return false;
 
       // Access check: If not canViewAll, user can ONLY view their own quotations
@@ -2480,13 +2481,15 @@ export const ProductQuotations: React.FC = () => {
             <div id="product-quote-list-print" className="bg-white text-black p-2 overflow-x-auto">
               <QuotationPrintView
                 data={{
-                  ...previewData.quotation.parsed,
-                  currency: previewData.quotation?.currency || previewData.quotation.parsed?.currency || previewData.lead?.currency || (previewData.lead?.isForeign ? 'USD' : 'LKR'),
-                  exchangeRate: previewData.quotation?.exchangeRate || previewData.quotation.parsed?.exchangeRate || 1,
-                  status: previewData.quotation?.status || previewData.quotation.parsed?.status || 'Draft',
-                  approvedBy: previewData.quotation?.approvedBy || previewData.quotation.parsed?.approvedBy,
-                  isDeleted: Boolean(previewData.quotation?.deletedAt || previewData.quotation?.isDeleted || previewData.quotation.parsed?.isDeleted),
-                  deletedAt: previewData.quotation?.deletedAt || previewData.quotation.parsed?.deletedAt
+                  ...previewData.quotation?.parsed,
+                  quotationNo: previewData.quotation?.quotationNo || previewData.quotation?.parsed?.quotationNo || previewData.quotation?.docNo || previewData.quotation?.id || previewData.lead?.quoNo || '',
+                  docNo: previewData.quotation?.parsed?.docNo || previewData.quotation?.docNo || 'FO/PD/02',
+                  currency: previewData.quotation?.currency || previewData.quotation?.parsed?.currency || previewData.lead?.currency || (previewData.lead?.isForeign ? 'USD' : 'LKR'),
+                  exchangeRate: previewData.quotation?.exchangeRate || previewData.quotation?.parsed?.exchangeRate || 1,
+                  status: previewData.quotation?.status || previewData.quotation?.parsed?.status || 'Draft',
+                  approvedBy: previewData.quotation?.approvedBy || previewData.quotation?.parsed?.approvedBy,
+                  isDeleted: Boolean(previewData.quotation?.deletedAt || previewData.quotation?.isDeleted || previewData.quotation?.parsed?.isDeleted),
+                  deletedAt: previewData.quotation?.deletedAt || previewData.quotation?.parsed?.deletedAt
                 }}
                 type="main"
                 lead={previewData.lead}
@@ -2534,6 +2537,8 @@ export const ProductQuotations: React.FC = () => {
               <QuotationPrintView
                 data={{
                   ...emailModalData.quotation?.parsed,
+                  quotationNo: emailModalData.quotation?.quotationNo || emailModalData.quotation?.parsed?.quotationNo || emailModalData.quotation?.docNo || emailModalData.quotation?.id || emailModalData.lead?.quoNo || '',
+                  docNo: emailModalData.quotation?.parsed?.docNo || emailModalData.quotation?.docNo || 'FO/PD/02',
                   currency: emailModalData.quotation?.currency || emailModalData.quotation?.parsed?.currency || emailModalData.lead?.currency || (emailModalData.lead?.isForeign ? 'USD' : 'LKR'),
                   exchangeRate: emailModalData.quotation?.exchangeRate || emailModalData.quotation?.parsed?.exchangeRate || 1,
                   status: emailModalData.quotation?.status || emailModalData.quotation?.parsed?.status || 'Draft',

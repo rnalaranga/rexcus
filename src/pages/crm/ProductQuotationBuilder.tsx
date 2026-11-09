@@ -36,13 +36,11 @@ const tableInputClass = "w-full bg-transparent border-b border-transparent hover
 const docInputClass = "w-full bg-surface border border-theme-subtle/40 px-3 py-2 rounded-lg text-xs outline-none focus:border-emerald-500/50 transition-colors disabled:text-muted disabled:cursor-default"
 
 export const buildDefaultQuotationNo = (userPfx?: string | null, custPfx?: string | null, num: string | number = '2206') => {
-  const cleanUser = (userPfx || '').trim().toUpperCase().replace(/[-_]+$/, '');
-  const pfx = cleanUser ? (cleanUser.endsWith('SQ') ? cleanUser : `${cleanUser}SQ`) : 'SQ';
   const cleanCust = (custPfx || '').trim().toUpperCase().replace(/[-_]+$/, '');
   if (cleanCust) {
-    return `${pfx}-${cleanCust}-${num}`;
+    return `PQ-${cleanCust}-${num}`;
   }
-  return `${pfx}-${num}`;
+  return `PQ-${num}`;
 };
 
 
@@ -574,7 +572,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         if (target) {
           initialLoadedRef.current = true;
           const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
-          restoreSnapshot(snap);
+          restoreSnapshot(snap, target);
           if (target.type === 'product_draft') {
             setDraftId(target.id);
             draftIdRef.current = target.id;
@@ -602,7 +600,7 @@ export const ProductQuotationBuilder: React.FC = () => {
           draftIdRef.current = existingDraft.id;
           try {
             const snap = typeof existingDraft.data === 'string' ? JSON.parse(existingDraft.data) : existingDraft.data;
-            restoreSnapshot(snap);
+            restoreSnapshot(snap, existingDraft);
           } catch(e) {}
         }
       }
@@ -791,7 +789,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         }
       }
 
-      fetchNextDocumentNumber('quotation', {
+      fetchNextDocumentNumber('product_quotation', {
         userPrefix: user?.prefix,
         customerPrefix: cust.prefix,
         reserve: false
@@ -818,7 +816,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         if (cust.isForeign || cust.currency === 'USD') {
           setCurrency('USD');
         }
-        fetchNextDocumentNumber('quotation', {
+        fetchNextDocumentNumber('product_quotation', {
           userPrefix: user?.prefix,
           customerPrefix: cust.prefix,
           reserve: false
@@ -832,7 +830,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         setCustomerAddress(leadItem.address || '');
         setVatNo(leadItem.vat || '');
         setTinNo(leadItem.tin || leadItem.brNumber || '');
-        fetchNextDocumentNumber('quotation', {
+        fetchNextDocumentNumber('product_quotation', {
           userPrefix: user?.prefix,
           reserve: false
         }).then(res => {
@@ -858,7 +856,7 @@ export const ProductQuotationBuilder: React.FC = () => {
       if (lead.tin || linkedCust?.tin || lead.brNumber || linkedCust?.brNumber) setTinNo(lead.tin || linkedCust?.tin || lead.brNumber || linkedCust?.brNumber || '');
       if (!quoteIdParam && !quotationNo) {
         const cust = isCust ? customers?.find(c => c.id === leadId) || lead : (linkedCust || null);
-        fetchNextDocumentNumber('quotation', {
+        fetchNextDocumentNumber('product_quotation', {
           userPrefix: user?.prefix,
           customerPrefix: cust?.prefix,
           reserve: false
@@ -870,7 +868,7 @@ export const ProductQuotationBuilder: React.FC = () => {
         });
       }
     } else if (!quoteIdParam && !quotationNo) {
-      fetchNextDocumentNumber('quotation', {
+      fetchNextDocumentNumber('product_quotation', {
         userPrefix: user?.prefix,
         reserve: false
       }).then(res => {
@@ -1186,15 +1184,16 @@ export const ProductQuotationBuilder: React.FC = () => {
   const expectedProfit = netRevenue - jobTotalCost;
   const expectedMargin = netRevenue > 0 ? (expectedProfit / netRevenue) * 100 : 0;
 
-  const restoreSnapshot = (snap: any) => {
-    setDocNo(snap.docNo || 'FO/PD/02');
-    setIssueNo(snap.issueNo || '01');
-    setIssueDate(snap.issueDate || 'March 04, 2026');
-    setQuoDate(snap.quoDate || new Date().toISOString().split('T')[0]);
+  const restoreSnapshot = (snap: any, rootObj?: any) => {
+    setDocNo(snap.docNo || rootObj?.docNo || 'FO/PD/02');
+    setIssueNo(snap.issueNo || rootObj?.issueNo || '01');
+    setIssueDate(snap.issueDate || rootObj?.issueDate || 'March 04, 2026');
+    setQuoDate(snap.quoDate || rootObj?.quoDate || (rootObj?.date ? String(rootObj.date).slice(0, 10) : '') || new Date().toISOString().split('T')[0]);
     setVatNo(snap.vatNo !== undefined ? snap.vatNo : (lead?.vat || ''));
     const savedTin = snap.tinNo !== undefined ? snap.tinNo : (lead?.tin || lead?.brNumber || '');
     setTinNo((lead?.svat && savedTin === lead.svat) ? '' : savedTin);
-    setQuotationNo(snap.quotationNo || '');
+    const resolvedQuoNo = snap.quotationNo || rootObj?.quotationNo || (rootObj?.docNo && !rootObj.docNo.startsWith('FO/') ? rootObj.docNo : '') || (rootObj?.id && !String(rootObj.id).startsWith('product_draft') && !String(rootObj.id).startsWith('draft_') ? rootObj.id : '') || '';
+    setQuotationNo(resolvedQuoNo);
     setJobQty(snap.jobQty || '1');
     setAttention(snap.attention || '');
     setSubject(snap.subject || 'Supply of Finished Goods / Products');
@@ -1504,7 +1503,7 @@ export const ProductQuotationBuilder: React.FC = () => {
   const handleLoadVersion = (v: any) => {
     try {
       const snap = typeof v.data === 'string' ? JSON.parse(v.data) : v.data;
-      restoreSnapshot(snap);
+      restoreSnapshot(snap, v);
       setCurrentId(v.id);
       setShowHistory(false);
       showToast('success', `Loaded v${v.version}`);

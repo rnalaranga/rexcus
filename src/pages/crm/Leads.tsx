@@ -2927,6 +2927,8 @@ export const Leads: React.FC = () => {
                   parsed.isDeleted = true;
                   parsed.deletedAt = previewQuoteData.quotation.deletedAt;
                 }
+                parsed.quotationNo = parsed.quotationNo || previewQuoteData.quotation?.quotationNo || (previewQuoteData.quotation?.docNo && !previewQuoteData.quotation.docNo.startsWith('FO/') ? previewQuoteData.quotation.docNo : '') || previewQuoteData.quotation?.id || '';
+                parsed.docNo = parsed.docNo || previewQuoteData.quotation?.docNo || 'FO/PD/02';
                 if (!parsed.vatNo && previewQuoteData.lead?.vat) parsed.vatNo = previewQuoteData.lead.vat;
                 if (!parsed.tinNo && (previewQuoteData.lead?.tin || previewQuoteData.lead?.brNumber)) parsed.tinNo = previewQuoteData.lead.tin || previewQuoteData.lead.brNumber;
                 if (!parsed.customerAddress && previewQuoteData.lead?.address) parsed.customerAddress = previewQuoteData.lead.address;

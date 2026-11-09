@@ -1873,7 +1873,8 @@ async function runDatabaseSync() {
     "ALTER TABLE cashbook_entries ADD COLUMN rejectedAt DATETIME DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN rejectionReason TEXT DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN receiptPhoto MEDIUMTEXT DEFAULT NULL",
-    "ALTER TABLE users ADD COLUMN assignedCashAccountId VARCHAR(50) DEFAULT NULL"
+    "ALTER TABLE users ADD COLUMN assignedCashAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE invoices ADD COLUMN hideVatSeparately TINYINT(1) DEFAULT 0"
   ];
 
   for (const patch of patches) {
@@ -1890,6 +1891,7 @@ async function runDatabaseSync() {
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_opt4_sscl_included_vat_sep', 'Option 4: SSCL Included + VAT Separate', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat_sscl', 'Option 2: SSCL Absorbed + VAT Separate (Standard)', 'SSCL', 2.50, 'VAT', 18.00, 1, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18', 'VAT Only (18% Separate)', 'SSCL', 0.00, 'VAT', 18.00, 0, 0, 1) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_rate=VALUES(tax1_rate), tax2_rate=VALUES(tax2_rate), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
+    "INSERT INTO tax_profiles (id, name, tax1_name, tax1_rate, tax2_name, tax2_rate, tax2_compound, tax1_show_separately, tax2_show_separately) VALUES ('tp_vat18_absorbed', 'VAT Only (18% Absorbed / Not Separate)', 'SSCL', 0.00, 'VAT', 18.00, 0, 0, 0) ON DUPLICATE KEY UPDATE name=VALUES(name), tax1_rate=VALUES(tax1_rate), tax2_rate=VALUES(tax2_rate), tax1_show_separately=VALUES(tax1_show_separately), tax2_show_separately=VALUES(tax2_show_separately)",
     "INSERT IGNORE INTO currencies (code, name, symbol, exchangeRate, isBase) VALUES ('LKR', 'Sri Lankan Rupee', 'Rs', 1.0, 1)",
     `INSERT IGNORE INTO settings (id, val) VALUES ('company_bank_details', '[{"id":"bank_hnb","bankName":"Hatton National Bank","branchName":"Negombo","accountName":"Rex Industries (Pvt) Ltd","accountNumber":"011010078028","swiftCode":"HNBLLKLX","isDefault":true}]')`,
     `INSERT IGNORE INTO settings (id, val) VALUES ('quotation_terms_presets', '[{"id":"tc_std_30d","name":"Standard 30 Days Credit","paymentTerms":"30 days from date of delivery","validity":"30 Days","delivery":"2-3 weeks from confirmed PO","isDefault":true},{"id":"tc_50_adv","name":"50% Advance + Balance on Delivery","paymentTerms":"50% Advance with confirmed PO, balance 50% upon delivery","validity":"14 Days","delivery":"10-15 working days","isDefault":false},{"id":"tc_cod","name":"Immediate Payment on Delivery (COD)","paymentTerms":"100% on delivery against invoice","validity":"30 Days","delivery":"3-5 working days / Ex-stock","isDefault":false},{"id":"tc_milestone","name":"Progressive Milestone Payment","paymentTerms":"30% Advance, 40% on dispatch, 30% after installation & sign-off","validity":"30 Days","delivery":"4-6 weeks from approved drawings","isDefault":false}]')`,
@@ -1905,7 +1907,8 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1110', '1110', 'Petty Cash', 'Asset', 'Cash', 0, NOW())",
-    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('quotation', 'Quotations (Normal & Product)', '', 2206, 4, 1, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('quotation', 'Quotations (Custom / Engineering)', '', 2206, 4, 1, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('product_quotation', 'Product Quotations', 'PQ', 2206, 4, 0, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('work_order', 'Work Orders', 'WO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('invoice', 'Tax Invoices', 'INV-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
@@ -3448,8 +3451,8 @@ app.post('/api/sequences/next', async (req, res) => {
     // Quotation numbers always start with [userprefix]SQ (e.g. RSSQ, RNSQ) or SQ if no user prefix
     const userQuoPrefix = cleanUserPfx ? (cleanUserPfx.endsWith('SQ') ? cleanUserPfx : `${cleanUserPfx}SQ`) : 'SQ';
 
-    // Check if this quotation sequence should use user-specific prefix sequence
-    const isUserQuotation = ((seqType === 'quotation' || seqType === 'product_quotation') && Boolean(seq.include_user_prefix) && Boolean(cleanUserPfx));
+    // Check if this quotation sequence should use user-specific prefix sequence (only for standard/custom quotations)
+    const isUserQuotation = (seqType === 'quotation' && Boolean(seq.include_user_prefix) && Boolean(cleanUserPfx));
 
     if (isUserQuotation) {
       const [uRows]: any = await db.query(
@@ -3470,10 +3473,21 @@ app.post('/api/sequences/next', async (req, res) => {
     const paddedNumber = String(currentNum).padStart(padding, '0');
 
     const parts: string[] = [];
-    if (seqType === 'quotation' || seqType === 'product_quotation') {
-      // Always starts with [userprefix]SQ (e.g. RSSQ, RNSQ) or SQ
+    if (seqType === 'quotation') {
+      // Normal / Custom Quotations: Always starts with [userprefix]SQ (e.g. RSSQ, RNSQ) or SQ
       parts.push(userQuoPrefix);
 
+      if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
+        parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
+      }
+    } else if (seqType === 'product_quotation') {
+      // Product Quotation prefix: Always starts with PQ
+      const basePrefix = (seq.prefix || 'PQ').trim().replace(/[-_]+$/, '') || 'PQ';
+      parts.push(basePrefix);
+
+      if (seq.include_user_prefix && cleanUserPfx) {
+        parts.push(cleanUserPfx);
+      }
       if (seq.include_customer_prefix && customerPrefix && customerPrefix.trim()) {
         parts.push(customerPrefix.trim().toUpperCase().replace(/[-_]+$/, ''));
       }
@@ -4410,15 +4424,21 @@ app.post('/api/quotations', async (req, res) => {
         if (!userPfx && qData.userPrefix) {
           userPfx = String(qData.userPrefix).trim().toUpperCase();
         }
+        const isProductQuo = (qType === 'product' || qData.isProductQuotation || String(newQuotation.quotationNo).startsWith('PQ'));
         if (!userPfx && newQuotation.quotationNo) {
-          const m = String(newQuotation.quotationNo).match(/^([A-Za-z]+?)SQ(?:-[A-Za-z0-9]+)*-\d+/i);
+          const m = String(newQuotation.quotationNo).match(/^([A-Za-z]+?)(?:SQ|PQ)(?:-[A-Za-z0-9]+)*-\d+/i);
           if (m && m[1]) userPfx = m[1].toUpperCase();
         }
 
         const numMatch = String(newQuotation.quotationNo).match(/(\d+)$/);
         if (numMatch) {
           const usedNum = parseInt(numMatch[1], 10);
-          if (userPfx) {
+          if (isProductQuo) {
+            await db.query(
+              "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'product_quotation'",
+              [usedNum + 1]
+            );
+          } else if (userPfx) {
             const cleanP = userPfx.replace(/[-_]+$/, '');
             await db.query(
               `INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) 
@@ -4675,15 +4695,26 @@ app.post('/api/quotations/:id/approve', async (req, res) => {
           const [uRow]: any = await db.query('SELECT prefix FROM users WHERE id = ? OR username = ? LIMIT 1', [createdBy, createdBy]);
           if (uRow && uRow[0]?.prefix) userPfx = uRow[0].prefix.trim().toUpperCase();
         }
+        const isProductQuo = (newType === 'product' || quote?.type === 'product' || parsed.isProductQuotation || String(recordNo).startsWith('PQ'));
         if (!userPfx && parsed.userPrefix) {
           userPfx = String(parsed.userPrefix).trim().toUpperCase();
         }
-        if (userPfx) {
+        if (!userPfx && recordNo) {
+          const m = String(recordNo).match(/^([A-Za-z]+?)(?:SQ|PQ)(?:-[A-Za-z0-9]+)*-\d+/i);
+          if (m && m[1]) userPfx = m[1].toUpperCase();
+        }
+        if (isProductQuo) {
+          await db.query(
+            "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'product_quotation'",
+            [usedNum + 1]
+          );
+        } else if (userPfx) {
+          const cleanP = userPfx.replace(/[-_]+$/, '');
           await db.query(
             `INSERT INTO user_quotation_sequences (user_prefix, user_id, next_number, updated_at) 
              VALUES (?, ?, ?, NOW()) 
              ON DUPLICATE KEY UPDATE next_number = GREATEST(next_number, VALUES(next_number)), updated_at = NOW()`,
-            [userPfx, createdBy || null, usedNum + 1]
+            [cleanP, createdBy || null, usedNum + 1]
           );
         } else {
           await db.query(

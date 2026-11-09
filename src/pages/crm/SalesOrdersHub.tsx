@@ -1,8 +1,9 @@
 import React from 'react'
-import { ShoppingBag } from 'lucide-react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { ShoppingBag, BarChart3 } from 'lucide-react'
+import { useLocation, useSearchParams, useNavigate } from 'react-router-dom'
 import { FinishedGoodsOrdersView } from '@/pages/inventory/FinishedGoodsOrdersView'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -13,6 +14,7 @@ interface SalesOrdersHubProps {
 export const SalesOrdersHub: React.FC<SalesOrdersHubProps> = ({ isStoresMode = false }) => {
   const { user } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   const isStoreRole = Boolean(
@@ -51,6 +53,17 @@ export const SalesOrdersHub: React.FC<SalesOrdersHubProps> = ({ isStoresMode = f
         </div>
 
         <div className="flex items-center gap-2">
+          {!isStoreRole && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={BarChart3}
+              onClick={() => navigate('/crm/reports')}
+              className="text-xs border border-theme-subtle hover:bg-surface2 text-blue-600 dark:text-blue-400"
+            >
+              Sales Reports
+            </Button>
+          )}
           <PageHelpButton moduleId={isStoreRole ? 'inventory-sales-orders' : 'crm-sales-orders'} />
         </div>
       </div>

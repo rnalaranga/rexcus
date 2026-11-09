@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List, BarChart3 } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -785,7 +785,8 @@ export const Quotations: React.FC = () => {
         q.type === "product_draft" || 
         parsed.isProductQuotation === true || 
         parsed.quotationCategory === "product" ||
-        String(q.quotationNo || q.docNo || q.id || "").startsWith("PQ")
+        String(q.quotationNo || q.docNo || q.id || "").startsWith("PQ") ||
+        String(q.quotationNo || q.docNo || q.id || "").includes("PQ")
       );
 
       const repName = q.createdByName || parsed.createdByName || parsed.salesRep || parsed.preparedBy || "";
@@ -1983,6 +1984,15 @@ export const Quotations: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={BarChart3}
+            onClick={() => navigate('/crm/reports')}
+            className="text-xs border border-theme-subtle hover:bg-surface2 text-blue-600 dark:text-blue-400"
+          >
+            Sales Reports
+          </Button>
           <PageHelpButton moduleId="crm-quotations" />
           {selectedQuotes.length > 1 && (
             <Button
@@ -3386,6 +3396,8 @@ export const Quotations: React.FC = () => {
             <QuotationPrintView 
                data={((): any => {
                   const parsed = typeof previewData.quotation.data === 'string' ? JSON.parse(previewData.quotation.data) : previewData.quotation.data;
+                  parsed.quotationNo = parsed.quotationNo || previewData.quotation?.quotationNo || (previewData.quotation?.docNo && !previewData.quotation.docNo.startsWith('FO/') ? previewData.quotation.docNo : '') || previewData.quotation?.id || '';
+                  parsed.docNo = parsed.docNo || previewData.quotation?.docNo || 'FO/PD/02';
                   parsed.status = previewData.quotation?.status || parsed.status || 'Draft';
                   if (previewData.isDeleted || previewData.quotation?.deletedAt || previewData.quotation?.isDeleted) {
                     parsed.isDeleted = true;

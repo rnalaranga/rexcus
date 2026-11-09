@@ -70,7 +70,17 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
 
   const vatNo = rawVat;
   const tinNo = rawTin;
-  const quotationNo = data.quotationNo || ''
+  const quotationNo = 
+    data.quotationNo || 
+    data.quoteNo || 
+    data.quotation_no || 
+    data.quotationNumber || 
+    data.quoNo ||
+    (data.docNo && !data.docNo.startsWith('FO/') && !data.docNo.startsWith('ISO') ? data.docNo : '') ||
+    (data.id && !String(data.id).startsWith('draft_') && !String(data.id).startsWith('product_draft_') ? data.id : '') ||
+    lead?.quotationNo ||
+    lead?.quoNo ||
+    '';
   const attention = data.attention || ''
   const subject = data.subject || ''
 
@@ -118,7 +128,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
     data.isProductQuotation || 
     data.quotationCategory === 'product' || 
     data.isTaxInclusive ||
-    (data.quotationNo && data.quotationNo.startsWith('PQ-'))
+    (data.quotationNo && (data.quotationNo.startsWith('PQ-') || data.quotationNo.startsWith('PQ') || data.quotationNo.includes('PQ')))
   );
 
   const quoteStatus = String(data.status || '').trim();
@@ -636,7 +646,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                     <td className="p-1.5 font-bold font-mono">
                       <div className="flex items-start">
                         <span className="font-bold mr-1 shrink-0">:</span>
-                        <span className="flex-1">{quotationNo}</span>
+                        <span className="flex-1">{quotationNo || '-'}</span>
                       </div>
                     </td>
                   </tr>
