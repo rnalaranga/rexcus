@@ -3798,6 +3798,34 @@ app.get('/api/customers/:id/invoices', async (req, res) => {
   }
 });
 
+app.get('/api/customers/:id/sales-orders', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [custRows]: any = await db.query('SELECT id, name, company FROM customers WHERE id = ?', [id]);
+    const cust = custRows && custRows[0] ? custRows[0] : null;
+
+    let query = `
+      SELECT * FROM finished_goods_orders 
+      WHERE customerId = ? 
+         OR (customerId IS NULL AND (customerName = ? OR customerName = ?))
+         OR quoteId IN (SELECT id FROM quotations WHERE leadId = ? OR leadId IN (SELECT id FROM leads WHERE customerId = ?))
+      ORDER BY createdAt DESC, id DESC
+    `;
+    const params = [
+      id, 
+      cust?.company || '___NO_MATCH___', 
+      cust?.name || '___NO_MATCH___', 
+      id, 
+      id
+    ];
+
+    const [rows]: any = await db.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/customers', async (req, res) => {
   try {
     const data = { ...req.body };

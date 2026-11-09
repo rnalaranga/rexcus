@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2, FileCheck, Eye, CreditCard, AlertCircle, Clock } from 'lucide-react'
+import { ArrowLeft, FileText, ArrowRight, Phone, Mail, MapPin, Building2, User, Users, Trash2, Plus, Calendar, Briefcase, Edit2, Star, Download, Search, Receipt, Bell, CheckCircle2, FileCheck, Eye, CreditCard, AlertCircle, Clock, ShoppingBag } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -70,9 +70,12 @@ export const CustomerDetail: React.FC = () => {
   }, []);
   
   // Invoices & Ledger Tabs View State
-  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'ledger' | 'quotations' | 'samples' | 'pos'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'invoices' | 'ledger' | 'quotations' | 'samples' | 'pos'>('overview')
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [customerOrders, setCustomerOrders] = useState<any[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [orderFilter, setOrderFilter] = useState<'all' | 'pending' | 'in_production' | 'completed' | 'dispatched'>('all')
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [paymentInvoice, setPaymentInvoice] = useState<any | null>(null)
@@ -107,9 +110,25 @@ export const CustomerDetail: React.FC = () => {
     }
   }, [id]);
 
+  const loadCustomerOrders = React.useCallback(async () => {
+    if (!id) return;
+    setOrdersLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/customers/${id}/sales-orders`);
+      const data = await res.json();
+      setCustomerOrders(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to load customer sales orders:', e);
+      setCustomerOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, [id]);
+
   React.useEffect(() => {
     loadCustomerInvoices();
-  }, [loadCustomerInvoices]);
+    loadCustomerOrders();
+  }, [loadCustomerInvoices, loadCustomerOrders]);
 
   React.useEffect(() => {
     if (activeTab === 'pos' && id) {
@@ -439,9 +458,17 @@ export const CustomerDetail: React.FC = () => {
              Overview
            </button>
            <button 
-             onClick={() => setActiveTab('invoices')}
-             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${activeTab === 'invoices' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+             onClick={() => setActiveTab('orders')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'orders' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
            >
+             <ShoppingBag size={13} className="text-blue-500" />
+             Sales Orders ({customerOrders.length})
+           </button>
+           <button 
+             onClick={() => setActiveTab('invoices')}
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'invoices' ? 'border-rex-600 text-primary' : 'border-transparent text-muted hover:text-secondary'}`}
+           >
+             <FileText size={13} className="text-emerald-500" />
              Invoices ({customerInvoices.length})
            </button>
            <button 
@@ -697,6 +724,159 @@ export const CustomerDetail: React.FC = () => {
           </GlassCard>
 
           
+          {/* Recent Sales Orders Preview */}
+          <GlassCard className="col-span-1 lg:col-span-3 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <ShoppingBag size={14} className="text-blue-500" />
+                <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                  Sales Orders ({customerOrders.length})
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('orders')}
+                  className="text-[10px] text-rex-500 hover:underline font-medium"
+                >
+                  View All Orders &rarr;
+                </button>
+              </div>
+            </div>
+            {ordersLoading ? (
+              <div className="py-6 flex items-center justify-center text-xs text-muted">
+                <Clock size={14} className="animate-spin mr-2" /> Loading orders...
+              </div>
+            ) : customerOrders.length === 0 ? (
+              <p className="text-sm text-muted text-center py-6">No sales orders found for this customer.</p>
+            ) : (
+              <div className="space-y-2">
+                {customerOrders.slice(0, 4).map((so: any) => {
+                  let itemsParsed: any[] = []
+                  try {
+                    itemsParsed = typeof so.items === 'string' ? JSON.parse(so.items) : (so.items || [])
+                  } catch (e) {
+                    itemsParsed = []
+                  }
+                  const totalAmt = Number(so.totalAmount || so.total || 0)
+                  const st = (so.status || 'pending').toLowerCase()
+                  const statusVariant = 
+                    st.includes('dispatch') || st.includes('deliver') ? 'success' :
+                    st.includes('prod') ? 'info' :
+                    st.includes('confirm') ? 'accent' :
+                    st.includes('cancel') ? 'error' : 'warning'
+
+                  return (
+                    <div
+                      key={so.id}
+                      onClick={() => navigate('/inventory/finished-goods-orders')}
+                      className="flex items-center justify-between gap-4 px-4 py-3 glass hover:bg-surface2/60 transition-colors cursor-pointer border border-theme-subtle/50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-xs text-primary">{so.orderNumber || `SO-${so.id}`}</span>
+                          {so.customerPoNumber && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-medium">
+                              PO: {so.customerPoNumber}
+                            </span>
+                          )}
+                          <Badge variant={statusVariant} size="sm">
+                            {so.status || 'Pending'}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] text-muted mt-1 truncate">
+                          {formatDate(so.orderDate || so.createdAt)} &bull; {itemsParsed.length} item(s) {itemsParsed[0]?.name ? `(${itemsParsed[0].name}${itemsParsed.length > 1 ? ` +${itemsParsed.length - 1} more` : ''})` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-mono font-bold text-primary">
+                          {formatCurrency(totalAmt, false, customer.currency)}
+                        </p>
+                        {so.targetDeliveryDate && (
+                          <p className="text-[10px] text-secondary mt-0.5">
+                            Due {formatDate(so.targetDeliveryDate)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Recent Invoices Preview */}
+          <GlassCard className="col-span-1 lg:col-span-3 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <FileText size={14} className="text-emerald-500" />
+                <h2 className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                  Recent Invoices ({customerInvoices.length})
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('invoices')}
+                  className="text-[10px] text-rex-500 hover:underline font-medium"
+                >
+                  View All Invoices &rarr;
+                </button>
+              </div>
+            </div>
+            {invoicesLoading ? (
+              <div className="py-6 flex items-center justify-center text-xs text-muted">
+                <Clock size={14} className="animate-spin mr-2" /> Loading invoices...
+              </div>
+            ) : customerInvoices.length === 0 ? (
+              <p className="text-sm text-muted text-center py-6">No invoices created yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {customerInvoices.slice(0, 4).map((inv: any) => {
+                  const totalAmt = Number(inv.total || inv.amount || 0)
+                  const paidAmt = Number(inv.paidAmount || 0)
+                  const balDue = Math.max(0, totalAmt - paidAmt)
+                  const isOpening = inv.invoiceType === 'opening' || inv.isOpeningBalance
+
+                  return (
+                    <div
+                      key={inv.id}
+                      onClick={() => setActiveTab('invoices')}
+                      className="flex items-center justify-between gap-4 px-4 py-3 glass hover:bg-surface2/60 transition-colors cursor-pointer border border-theme-subtle/50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-xs text-primary">{inv.invoiceNo || inv.id}</span>
+                          {isOpening && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                              Opening
+                            </span>
+                          )}
+                          <Badge variant={balDue <= 0 ? 'success' : paidAmt > 0 ? 'warning' : 'info'} size="sm">
+                            {balDue <= 0 ? 'Paid' : paidAmt > 0 ? 'Partial' : 'Unpaid'}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] text-muted mt-1">
+                          Date: {formatDate(inv.date)} {inv.dueDate ? `Â· Due: ${formatDate(inv.dueDate)}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-mono font-bold text-primary">
+                          {formatCurrency(totalAmt, false, customer.currency)}
+                        </p>
+                        {balDue > 0 && (
+                          <p className="text-[10px] font-mono text-rex-600 dark:text-rex-400 font-semibold mt-0.5">
+                            Due: {formatCurrency(balDue, false, customer.currency)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </GlassCard>
+
           {/* Leads & Inquiries */}
           <GlassCard className="col-span-1 lg:col-span-3 p-5">
             <div className="flex items-center justify-between mb-4">
@@ -755,6 +935,176 @@ export const CustomerDetail: React.FC = () => {
             )}
           </GlassCard>
         </div>
+      )}
+
+      {activeTab === 'orders' && (
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-4 border-b border-theme-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-surface2/40">
+            <div>
+              <h2 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <ShoppingBag size={15} className="text-blue-500" />
+                Customer Sales Orders
+              </h2>
+              <p className="text-[11px] text-muted mt-0.5">
+                Total Orders: <span className="font-bold font-mono text-primary">{customerOrders.length}</span> &bull; 
+                Total Value: <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(
+                    customerOrders.reduce((acc: number, o: any) => acc + Number(o.totalAmount || o.total || 0), 0),
+                    false,
+                    customer.currency
+                  )}
+                </span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex bg-surface border border-theme-subtle rounded-none p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter('all')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${orderFilter === 'all' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  All ({customerOrders.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter('pending')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${orderFilter === 'pending' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  Pending ({customerOrders.filter((o: any) => ['pending', 'confirmed', 'order_placed'].includes(String(o.status || '').toLowerCase())).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter('in_production')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${orderFilter === 'in_production' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  In Prod ({customerOrders.filter((o: any) => String(o.status || '').toLowerCase().includes('prod')).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter('dispatched')}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${orderFilter === 'dispatched' ? 'bg-rex-600 text-white' : 'text-muted hover:text-primary'}`}
+                >
+                  Dispatched ({customerOrders.filter((o: any) => ['dispatched', 'delivered', 'completed'].includes(String(o.status || '').toLowerCase())).length})
+                </button>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/inventory/finished-goods-orders')}
+                className="text-xs shrink-0"
+              >
+                Open Orders Hub
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            {ordersLoading ? (
+              <div className="p-8 text-center text-xs text-muted">
+                <Clock size={16} className="animate-spin inline mr-2" />
+                Loading customer sales orders...
+              </div>
+            ) : customerOrders.length === 0 ? (
+              <div className="p-8 text-center text-muted text-xs">
+                No sales orders found for this customer.
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-theme-subtle bg-surface2/60 text-[10px] text-muted uppercase tracking-wider font-semibold">
+                    <th className="px-4 py-3">Order No</th>
+                    <th className="px-4 py-3">Order Date</th>
+                    <th className="px-4 py-3">Target Delivery</th>
+                    <th className="px-4 py-3">Customer PO</th>
+                    <th className="px-4 py-3">Items</th>
+                    <th className="px-4 py-3 text-right">Total Amount</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle">
+                  {customerOrders
+                    .filter((so: any) => {
+                      const st = String(so.status || '').toLowerCase()
+                      if (orderFilter === 'pending') return ['pending', 'confirmed', 'order_placed'].includes(st)
+                      if (orderFilter === 'in_production') return st.includes('prod')
+                      if (orderFilter === 'dispatched') return ['dispatched', 'delivered', 'completed'].includes(st)
+                      return true
+                    })
+                    .map((so: any) => {
+                      let itemsParsed: any[] = []
+                      try {
+                        itemsParsed = typeof so.items === 'string' ? JSON.parse(so.items) : (so.items || [])
+                      } catch (e) {
+                        itemsParsed = []
+                      }
+                      const totalAmt = Number(so.totalAmount || so.total || 0)
+                      const st = String(so.status || 'pending').toLowerCase()
+                      const statusVariant = 
+                        st.includes('dispatch') || st.includes('deliver') ? 'success' :
+                        st.includes('prod') ? 'info' :
+                        st.includes('confirm') ? 'accent' :
+                        st.includes('cancel') ? 'error' : 'warning'
+
+                      return (
+                        <tr key={so.id} className="hover:bg-surface2/30 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-primary">
+                            <span>{so.orderNumber || `SO-${so.id}`}</span>
+                          </td>
+                          <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                            {formatDate(so.orderDate || so.createdAt)}
+                          </td>
+                          <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                            {so.targetDeliveryDate ? formatDate(so.targetDeliveryDate) : '-'}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-secondary">
+                            {so.customerPoNumber ? (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-semibold">
+                                {so.customerPoNumber}
+                              </span>
+                            ) : (
+                              <span className="text-muted text-[11px]">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-secondary">
+                            <span className="text-xs font-medium text-primary">
+                              {itemsParsed.length} item{itemsParsed.length === 1 ? '' : 's'}
+                            </span>
+                            {itemsParsed[0]?.name && (
+                              <span className="text-[11px] text-muted block truncate max-w-xs">
+                                {itemsParsed[0].name}{itemsParsed.length > 1 ? ` (+${itemsParsed.length - 1} more)` : ''}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-primary whitespace-nowrap">
+                            {formatCurrency(totalAmt, false, customer.currency)}
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <Badge variant={statusVariant} size="sm">
+                              {so.status || 'Pending'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => navigate('/inventory/finished-goods-orders')}
+                                className="text-[11px] h-7 px-2"
+                                title="Open in Finished Goods & Sales Orders"
+                              >
+                                <Eye size={12} className="mr-1" /> View
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </GlassCard>
       )}
 
       {activeTab === 'invoices' && (
