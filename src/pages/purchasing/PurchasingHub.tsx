@@ -384,7 +384,7 @@ export const PurchasingHub: React.FC = () => {
             data-no-row-click="true"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
             style={menuStyle}
-            className="purchasing-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none animate-in fade-in zoom-in-95 duration-100 overflow-y-auto overscroll-contain custom-scrollbar"
+            className="purchasing-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none animate-in fade-in zoom-in-95 duration-100 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar"
           >
             {tab === 'po' && (
               <>

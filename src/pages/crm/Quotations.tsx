@@ -1273,7 +1273,7 @@ export const Quotations: React.FC = () => {
           <div
             onClick={(e) => e.stopPropagation()}
             style={menuStyle}
-            className="quotation-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none overflow-y-auto overscroll-contain custom-scrollbar"
+            className="quotation-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar"
           >
             <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
               Quotation Actions

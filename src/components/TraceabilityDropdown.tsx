@@ -92,7 +92,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
     if (!buttonRef.current) return
     const rect = buttonRef.current.getBoundingClientRect()
     const DROPDOWN_WIDTH = 340
-    const ESTIMATED_HEIGHT = 70 + accessibleTraces.length * 58
+    const ESTIMATED_HEIGHT = Math.min(480, 70 + accessibleTraces.length * 58)
     const PADDING = 12
 
     let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
@@ -339,7 +339,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
             </div>
 
             {/* Traces List */}
-            <div className="divide-y divide-theme-subtle/50 p-1">
+            <div className="divide-y divide-theme-subtle/50 p-1 max-h-[380px] overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar">
               {!hasTraces ? (
                 <div className="py-6 px-4 text-center">
                   <div className="w-8 h-8 mx-auto rounded-none bg-surface2/60 flex items-center justify-center text-muted mb-2 border border-theme-subtle">
