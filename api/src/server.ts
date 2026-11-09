@@ -1860,7 +1860,7 @@ async function runDatabaseSync() {
     "ALTER TABLE quotations ADD COLUMN soChangeInfo LONGTEXT DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN soChanged TINYINT(1) DEFAULT 0",
     "UPDATE customers SET company = UPPER(TRIM(company)) WHERE company IS NOT NULL AND company != ''",
-    "ALTER TABLE invoices MODIFY COLUMN deliveryDate DATE DEFAULT NULL",
+    "ALTER TABLE invoices MODIFY COLUMN deliveryDate VARCHAR(100) DEFAULT NULL",
     "UPDATE journal_lines SET partyId = NULL, partyType = NULL WHERE accountId IN (SELECT id FROM chart_of_accounts WHERE type IN ('Revenue', 'Equity', 'Liability')) AND partyId IS NOT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'approved'",
     "ALTER TABLE cashbook_entries ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'desktop'",
@@ -8834,10 +8834,14 @@ app.post('/api/invoices', async (req, res) => {
     } else {
       safeData.date = new Date().toISOString().slice(0, 10);
     }
-    // Date of supply must be the same date invoice was created
-    safeData.deliveryDate = safeData.date;
+    // Delivery Date / Date or Period of Supply (supports specific date or weeks like "3 Weeks")
+    if (data.deliveryDate !== undefined && data.deliveryDate !== null && String(data.deliveryDate).trim()) {
+      safeData.deliveryDate = String(data.deliveryDate).trim();
+    } else {
+      safeData.deliveryDate = safeData.date;
+    }
     if ('dueDate' in safeData) {
-      safeData.dueDate = formatMySQLDateOnly(safeData.dueDate);
+      safeData.dueDate = safeData.dueDate ? formatMySQLDateOnly(safeData.dueDate) : null;
     }
 
     await db.query('INSERT INTO invoices SET ?', safeData);
@@ -9083,8 +9087,13 @@ app.put('/api/invoices/:id', async (req, res) => {
       }
     }
 
-    if ('deliveryDate' in safeData && safeData.deliveryDate !== undefined) {
-      safeData.deliveryDate = formatMySQLDateOnly(safeData.deliveryDate);
+    if ('deliveryDate' in safeData && safeData.deliveryDate !== undefined && safeData.deliveryDate !== null) {
+      const rawVal = String(safeData.deliveryDate).trim();
+      if (/(week|weeks|day|days|month|months)/i.test(rawVal)) {
+        safeData.deliveryDate = rawVal;
+      } else {
+        safeData.deliveryDate = formatMySQLDateOnly(rawVal) || rawVal;
+      }
     }
     if ('date' in safeData && safeData.date !== undefined) {
       safeData.date = formatMySQLDateOnly(safeData.date) || new Date().toISOString().slice(0, 10);

@@ -156,8 +156,11 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   // Form State
   const [proformaNo, setProformaNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState(
-    new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const [customerPoNo, setCustomerPoNo] = useState(order?.poNo || order?.customerPoNo || '');
+  const [supplyType, setSupplyType] = useState<'weeks' | 'date'>('weeks');
+  const [supplyWeeks, setSupplyWeeks] = useState('3 Weeks');
+  const [supplySpecificDate, setSupplySpecificDate] = useState(
+    new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   );
   const [advancePercent, setAdvancePercent] = useState<number>(30);
   const [advanceBaseAmount, setAdvanceBaseAmount] = useState<number>(0);
@@ -357,6 +360,19 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
     // Default notes (empty by default so unwanted auto-remarks are not inserted)
     setNotes('');
+
+    if (order?.poNo || order?.customerPoNo) {
+      setCustomerPoNo(order.poNo || order.customerPoNo);
+    }
+    if (order?.deliveryDate) {
+      if (/(week|weeks)/i.test(order.deliveryDate)) {
+        setSupplyType('weeks');
+        setSupplyWeeks(order.deliveryDate);
+      } else {
+        setSupplyType('date');
+        setSupplySpecificDate(order.deliveryDate.slice(0, 10));
+      }
+    }
   }, [order, effectiveOrderTotal, orderNo, linkedQuotation, detectedCurrency, detectedExchangeRate, isCustomerForeign]);
 
   // Handle bank accounts filter
@@ -567,10 +583,12 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         customerPhone: customerPhone,
         customerEmail: customerEmail,
         customerVat: customerVat,
+        poNo: customerPoNo.trim() || order?.poNo || order?.customerPoNo || null,
+        customerPoNo: customerPoNo.trim() || order?.poNo || order?.customerPoNo || null,
         placeOfSupply: order?.deliveryAddress || 'Negombo, Sri Lanka',
         date: toDateOnly(date) || new Date().toISOString().slice(0, 10),
-        dueDate: toDateOnly(dueDate),
-        deliveryDate: toDateOnly(date) || new Date().toISOString().slice(0, 10),
+        dueDate: null,
+        deliveryDate: supplyType === 'weeks' ? supplyWeeks : (toDateOnly(supplySpecificDate) || supplySpecificDate),
         subtotal: calculation.totalPayable,
         taxAmount: 0,
         total: calculation.totalPayable,
@@ -754,7 +772,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
           </div>
 
           {/* Section 1: Document Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
             <div>
               <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
                 Proforma Invoice #
@@ -783,15 +801,54 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
 
             <div>
               <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
-                Valid Until
+                Customer PO # (Optional)
               </label>
               <input
-                type="date"
-                required
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                type="text"
+                placeholder="e.g. PO-89214"
+                value={customerPoNo}
+                onChange={(e) => setCustomerPoNo(e.target.value)}
                 className="w-full h-8 px-2.5 font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                Date of Supply / Period
+              </label>
+              <div className="flex gap-1.5">
+                <select
+                  value={supplyType === 'weeks' ? supplyWeeks : 'date'}
+                  onChange={(e) => {
+                    if (e.target.value === 'date') {
+                      setSupplyType('date');
+                    } else {
+                      setSupplyType('weeks');
+                      setSupplyWeeks(e.target.value);
+                    }
+                  }}
+                  className="flex-1 h-8 px-2 text-xs font-semibold bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 cursor-pointer"
+                >
+                  <option value="1 Week">1 Week</option>
+                  <option value="2 Weeks">2 Weeks</option>
+                  <option value="3 Weeks">3 Weeks</option>
+                  <option value="4 Weeks">4 Weeks</option>
+                  <option value="5 Weeks">5 Weeks</option>
+                  <option value="6 Weeks">6 Weeks</option>
+                  <option value="7 Weeks">7 Weeks</option>
+                  <option value="8 Weeks">8 Weeks</option>
+                  <option value="date">Specific Date...</option>
+                </select>
+                {supplyType === 'date' && (
+                  <input
+                    type="date"
+                    required
+                    value={supplySpecificDate}
+                    onChange={(e) => setSupplySpecificDate(e.target.value)}
+                    className="flex-1 h-8 px-2 font-mono text-xs bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
+                  />
+                )}
+              </div>
             </div>
           </div>
 
@@ -822,7 +879,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     <th className="p-2 w-10 text-center">#</th>
                     <th className="p-2">Product Description & Technical Specifications</th>
                     <th className="p-2 w-28 text-center">Qty & UoM</th>
-                    <th className="p-2 w-28 text-right">Unit Price ({currency === 'USD' ? '$' : 'Rs.'})</th>
+                    <th className="p-2 w-28 text-right">Unit Price (FOB) ({currency === 'USD' ? '$' : 'Rs.'})</th>
                     <th className="p-2 w-28 text-right">Total ({currency === 'USD' ? '$' : 'Rs.'})</th>
                     <th className="p-2 w-10 text-center"></th>
                   </tr>

@@ -275,7 +275,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       customerVat: proforma.customerVat || order?.customerVat || linkedCust?.vat || '',
       orderNo: proforma.orderNo || order?.orderNo || '',
       quotationNo: proforma.quotationNo || order?.quotationNo || '',
-      orderId: proforma.orderId || order?.id || ''
+      orderId: proforma.orderId || order?.id || '',
+      poNo: proforma.poNo || proforma.customerPoNo || order?.poNo || order?.customerPoNo || '',
+      customerPoNo: proforma.customerPoNo || proforma.poNo || order?.customerPoNo || order?.poNo || '',
+      deliveryDate: proforma.deliveryDate || order?.deliveryDate || ''
     };
     setActivePrintProforma(enriched);
   };

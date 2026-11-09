@@ -220,15 +220,19 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
   const purchaserAddress = customer?.address || customerAddress || customer?.deliveryAddress || customer?.billingAddress || '-';
   const purchaserPhone = customer?.phone || customerPhone || customer?.mobile || '-';
-  const invoiceDateFormatted = formatGazetteDate(date);
-  const supplyDateFormatted = formatGazetteDate(date || deliveryDate);
-
   const isProforma = Boolean(
     isProformaProp ||
     invoiceType === 'proforma' ||
     docTitle?.toLowerCase().includes('proforma') ||
     (docNo && (docNo.startsWith('PI-') || docNo.startsWith('PRO-') || docNo.includes('PROFORMA')))
   );
+
+  const invoiceDateFormatted = formatGazetteDate(date);
+  const supplyDateFormatted = deliveryDate && String(deliveryDate).trim()
+    ? (/(week|weeks|day|days|month|months)/i.test(String(deliveryDate).trim()) 
+        ? String(deliveryDate).trim() 
+        : formatGazetteDate(String(deliveryDate).trim()))
+    : formatGazetteDate(date);
 
   // Parse reference and additional info items into structured boxes
   const cleanPoNo = (poNo || customerPoNo || '').toString().trim();
@@ -238,21 +242,23 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   if (orderNo) infoItems.push({ label: 'Order No.', value: String(orderNo) });
   if (quotationNo) infoItems.push({ label: 'Quotation No.', value: String(quotationNo) });
 
-  // Payment Due Date
-  let displayDueDate = '';
-  if (dueDate) {
-    displayDueDate = formatGazetteDate(dueDate);
-  } else if (date) {
-    try {
-      const d = new Date(date);
-      if (!isNaN(d.getTime())) {
-        d.setDate(d.getDate() + 30);
-        displayDueDate = formatGazetteDate(d.toISOString());
-      }
-    } catch (e) {}
-  }
-  if (displayDueDate && displayDueDate !== '-') {
-    infoItems.push({ label: 'Payment Due Date', value: displayDueDate });
+  // Payment Due Date (Do NOT show on Proforma Invoices)
+  if (!isProforma && invoiceType !== 'proforma') {
+    let displayDueDate = '';
+    if (dueDate) {
+      displayDueDate = formatGazetteDate(dueDate);
+    } else if (date) {
+      try {
+        const d = new Date(date);
+        if (!isNaN(d.getTime())) {
+          d.setDate(d.getDate() + 30);
+          displayDueDate = formatGazetteDate(d.toISOString());
+        }
+      } catch (e) {}
+    }
+    if (displayDueDate && displayDueDate !== '-') {
+      infoItems.push({ label: 'Payment Due Date', value: displayDueDate });
+    }
   }
   // Determine Payment Terms value (concise string: e.g. "Bank Wire / TT" or "Credit")
   let cleanPaymentTerms = '';
@@ -698,7 +704,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               Quantity
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', borderRight: tableBorder, width: '14%' }}>
-              Unit<br/>Price
+              {isProforma ? <>Unit Price<br/>(FOB)</> : <>Unit<br/>Price</>}
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
               {isProforma || (isSsclHidden && isVatHidden)
