@@ -3,14 +3,41 @@ name: Deploy Rexcus ERP to VPS
 on:
   push:
     branches:
-      - main # ඔබේ default branch එක master නම් මෙය 'master' ලෙස වෙනස් කරන්න
+      - main
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploying to VPS via SSH
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies & Build on GitHub (16GB RAM)
+        run: |
+          echo "=== Building frontend on GitHub Actions Runner (16GB RAM) ==="
+          npm ci || npm install --prefer-offline --no-audit
+          npm run build
+          tar -czf dist.tar.gz dist/
+          echo "Frontend built and packaged successfully!"
+
+      - name: Transfer Pre-Built Frontend to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: "dist.tar.gz"
+          target: "/tmp"
+
+      - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -21,55 +48,38 @@ jobs:
           command_timeout: 25m
           script: |
             set -e
-            echo "=== Rexcus Deployment Started ==="
-            export NODE_OPTIONS="--max-old-space-size=4096"
+            echo "=== Rexcus Deployment on VPS Started ==="
 
             # 0. Safety trap: whatever happens, always ensure PM2 backend is running upon exit
             trap 'echo "Safety trap: Ensuring backend is running..."; pm2 restart rexnw-backend --update-env || pm2 restart all || true; pm2 status || true' EXIT
 
-            # Immediately recover backend from 500 Bad Gateway right at the start
-            echo "Quick-starting backend to resolve 500 Bad Gateway immediately..."
-            pm2 restart rexnw-backend --update-env || pm2 restart all || true
-
-            # 1. Enable 2GB SWAP memory on VPS if not already active (Eliminates OOM exit code 137 forever)
-            if [ $(swapon --show | wc -l) -le 1 ]; then
-              echo "No swap file detected. Creating 2GB swap space to prevent memory kills..."
-              (sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048) && \
-              sudo chmod 600 /swapfile && \
-              sudo mkswap /swapfile && \
-              sudo swapon /swapfile && \
-              (grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab) || true
-              echo "Swap setup completed!"
-            else
-              echo "Swap memory already active."
-            fi
-
-            # 2. Project Directory එකට යෑම
+            # 1. Project Directory එකට යෑම
             cd /var/www/rexnw
 
-            # 3. Local modifications discard කර GitHub එකෙන් අලුත්ම Code එකට sync කිරීම
+            # 2. Local modifications discard කර GitHub එකෙන් අලුත්ම Code එකට sync කිරීම
             echo "Fetching latest changes from origin/main..."
             git fetch origin main
             git reset --hard origin/main
             git clean -fd
 
-            # 4. Frontend Build කිරීම
-            echo "Installing root dependencies..."
-            npm install --prefer-offline --no-audit
+            # 3. Deploy pre-built frontend from GitHub Runner (Zero VPS RAM/CPU strain, No OOM 137)
+            if [ -f "/tmp/dist.tar.gz" ]; then
+              echo "Extracting pre-built frontend to /var/www/rexnw/dist..."
+              rm -rf dist/
+              tar -xzf /tmp/dist.tar.gz -C /var/www/rexnw/
+              rm -f /tmp/dist.tar.gz
+              echo "Pre-built frontend deployed successfully!"
+            else
+              echo "Warning: /tmp/dist.tar.gz not found, fallback to local build..."
+              npm install --prefer-offline --no-audit
+              npx vite build
+            fi
 
-            echo "Temporarily stopping backend PM2 process to free RAM for frontend build..."
-            pm2 stop rexnw-backend || true
-
-            echo "Building frontend..."
-            export NODE_OPTIONS="--max-old-space-size=2048"
-            npx vite build
-            echo "Frontend build completed successfully!"
-
-            # 5. Backend Dependencies Update කිරීම
+            # 4. Backend Dependencies Update කිරීම (Fast - backend only)
             if [ -d "api" ]; then
               echo "Installing API dependencies..."
               cd api
-              npm install --prefer-offline --no-audit
+              npm install --prefer-offline --no-audit --omit=dev
 
               # Chrome setup for Puppeteer vector PDF (skip if already installed)
               CHROME_PATH=$(find /var/www/rexnw/api/chrome-bin -name chrome -o -name chrome.exe 2>/dev/null | head -n 1 || true)
@@ -83,7 +93,7 @@ jobs:
               cd ..
             fi
 
-            # 6. Linux headless Chrome dependencies and unzip archiver (skip if already present)
+            # 5. Linux headless Chrome dependencies and unzip archiver (skip if already present)
             if ! command -v unzip &> /dev/null; then
               echo "Installing system packages..."
               (sudo apt-get update -y && sudo apt-get install -y unzip chromium-browser chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libasound2) || true
@@ -91,7 +101,7 @@ jobs:
               echo "System dependencies already installed (skipping apt-get)"
             fi
 
-            # 7. Final PM2 Backend Restart & Save
+            # 6. Final PM2 Backend Restart & Save
             echo "Final PM2 restart and save..."
             pm2 restart rexnw-backend --update-env || pm2 restart all || true
             pm2 save || true
