@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, FileCheck, Calendar, Building2, UploadCloud, Eye, Trash2, 
-  CheckCircle2, AlertCircle, DollarSign, FileText, Clock, ShieldCheck 
+  CheckCircle2, AlertCircle, DollarSign, FileText, Clock, ShieldCheck, Loader2 
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
@@ -38,6 +38,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
   const { data: allOrders = [] } = useFinishedGoodsOrders();
 
   const [submitting, setSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [poMode, setPoMode] = useState<PoEntryMode>('received');
   const [customerPoNo, setCustomerPoNo] = useState('');
   const [customerPoDate, setCustomerPoDate] = useState(new Date().toISOString().slice(0, 10));
@@ -171,21 +172,35 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 15 * 1024 * 1024) {
-      toast('File size exceeds 15MB limit', 'error');
+    if (file.size > 25 * 1024 * 1024) {
+      toast('File size exceeds 25MB limit', 'error');
       return;
     }
 
+    setIsUploading(true);
     const reader = new FileReader();
     reader.onload = async () => {
-      const rawDataUri = reader.result as string;
-      setCustomerPoAttachment(rawDataUri);
-      setCustomerPoAttachmentName(file.name);
+      try {
+        const rawDataUri = reader.result as string;
+        setCustomerPoAttachment(rawDataUri);
+        setCustomerPoAttachmentName(file.name);
 
-      const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
-      if (uploaded && uploaded.url) {
-        setCustomerPoAttachment(uploaded.url);
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
+        if (uploaded && uploaded.url) {
+          setCustomerPoAttachment(uploaded.url);
+          toast('PO document attached successfully', 'success');
+        } else {
+          toast('PO document attached', 'info');
+        }
+      } catch (err) {
+        console.warn('PO file upload warning:', err);
+      } finally {
+        setIsUploading(false);
       }
+    };
+    reader.onerror = () => {
+      setIsUploading(false);
+      toast('Failed to read file from disk', 'error');
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -444,7 +459,12 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
                 <label className="block text-xs font-semibold text-secondary mb-1">
                   Customer PO Document Attachment (PDF or Image)
                 </label>
-                {customerPoAttachment ? (
+                {isUploading ? (
+                  <div className="flex items-center justify-center gap-2 p-4 border border-theme-subtle bg-surface/50 text-xs text-muted">
+                    <Loader2 size={16} className="animate-spin text-emerald-500" />
+                    <span>Uploading and attaching document...</span>
+                  </div>
+                ) : customerPoAttachment ? (
                   <div className="flex items-center justify-between p-2.5 bg-surface border border-theme-subtle">
                     <div className="flex items-center gap-2 min-w-0">
                       <FileCheck size={16} className="text-emerald-500 shrink-0" />
@@ -480,7 +500,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
                   <label className="flex flex-col items-center justify-center p-4 border border-dashed border-theme-subtle hover:border-emerald-500 bg-surface cursor-pointer transition-colors text-center">
                     <UploadCloud size={20} className="text-emerald-500 mb-1" />
                     <span className="text-xs font-semibold text-primary">Upload Customer PO Document</span>
-                    <span className="text-[10px] text-muted">Supports PDF, PNG, JPG up to 15MB</span>
+                    <span className="text-[10px] text-muted">Supports PDF, PNG, JPG up to 25MB</span>
                     <input
                       type="file"
                       accept="image/*,application/pdf"
@@ -575,7 +595,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
             <Button
               type="submit"
               variant="primary"
-              disabled={submitting}
+              disabled={submitting || isUploading}
               className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
             >
               {submitting ? 'Saving...' : (isOrderMode ? 'Save Customer PO' : (isProceedingToSo ? 'Save & Create Sales Order' : 'Save PO Details'))}

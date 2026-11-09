@@ -5,7 +5,7 @@ import {
   X, ShoppingBag, FileText, Calendar, Building2, User, Phone, 
   MapPin, UploadCloud, Eye, Trash2, CheckCircle2, AlertCircle, 
   Package, DollarSign, AlertTriangle, ShieldCheck, Lock, Clock,
-  Plus, Edit3
+  Plus, Edit3, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
@@ -40,6 +40,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const { data: allOrders = [] } = useFinishedGoodsOrders();
 
   const [submitting, setSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [poMode, setPoMode] = useState<'received' | 'pending' | 'without_po'>('received');
   const [withoutPoReason, setWithoutPoReason] = useState('Verbal / Phone Confirmation');
   const [adminOverrideWaiver, setAdminOverrideWaiver] = useState(false);
@@ -461,27 +462,41 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 15 * 1024 * 1024) {
-      toast('File size exceeds 15MB limit', 'error');
+    if (file.size > 25 * 1024 * 1024) {
+      toast('File size exceeds 25MB limit', 'error');
       return;
     }
 
+    setIsUploading(true);
     const reader = new FileReader();
     reader.onload = async () => {
-      const rawDataUri = reader.result as string;
-      setFormData(prev => ({
-        ...prev,
-        customerPoAttachment: rawDataUri,
-        customerPoAttachmentName: file.name
-      }));
-
-      const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
-      if (uploaded && uploaded.url) {
+      try {
+        const rawDataUri = reader.result as string;
         setFormData(prev => ({
           ...prev,
-          customerPoAttachment: uploaded.url
+          customerPoAttachment: rawDataUri,
+          customerPoAttachmentName: file.name
         }));
+
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'customer_po');
+        if (uploaded && uploaded.url) {
+          setFormData(prev => ({
+            ...prev,
+            customerPoAttachment: uploaded.url
+          }));
+          toast('Customer PO attached successfully', 'success');
+        } else {
+          toast('Customer PO attached', 'info');
+        }
+      } catch (err) {
+        console.warn('PO file upload error:', err);
+      } finally {
+        setIsUploading(false);
       }
+    };
+    reader.onerror = () => {
+      setIsUploading(false);
+      toast('Failed to read file from disk', 'error');
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -1391,7 +1406,12 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                     Customer PO Document (Upload PDF or Image)
                   </label>
 
-                  {formData.customerPoAttachment ? (
+                  {isUploading ? (
+                    <div className="flex items-center justify-center gap-2 p-4 border border-theme-subtle bg-surface/50 text-xs text-muted">
+                      <Loader2 size={16} className="animate-spin text-emerald-500" />
+                      <span>Uploading and attaching document...</span>
+                    </div>
+                  ) : formData.customerPoAttachment ? (
                     <div className="flex items-center justify-between p-2.5 bg-surface border border-emerald-500/30">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
@@ -1436,7 +1456,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                       <label className="flex flex-col items-center justify-center p-3.5 border border-dashed border-theme-subtle hover:border-emerald-500 bg-surface/60 hover:bg-emerald-500/5 cursor-pointer transition-colors text-center">
                         <UploadCloud size={18} className="text-emerald-500 mb-1" />
                         <span className="text-xs font-semibold text-primary">Click to upload customer's PO file (PDF, PNG, JPG)</span>
-                        <span className="text-[10px] text-muted mt-0.5">Recommended max file size: 15MB</span>
+                        <span className="text-[10px] text-muted mt-0.5">Recommended max file size: 25MB</span>
                         <input
                           type="file"
                           accept="image/*,application/pdf"
@@ -1572,7 +1592,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
             <Button
               type="submit"
               variant="primary"
-              disabled={submitting}
+              disabled={submitting || isUploading}
               className={`font-bold px-5 ${
                 (isAdvanceMissing && !adminOverrideWaiver)
                   ? 'bg-amber-600 hover:bg-amber-500 text-white'

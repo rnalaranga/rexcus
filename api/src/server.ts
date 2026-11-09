@@ -2295,6 +2295,39 @@ function getR2Client(cfg: { accountId: string; accessKeyId: string; secretAccess
   });
 }
 
+async function saveFileLocally(buffer: Buffer, originalFilename: string, mimeType: string, folder: string = 'attachments') {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const cleanName = (originalFilename || 'document')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .toLowerCase();
+  const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${cleanName}`;
+  const relativeKey = `${folder}/${year}/${month}/${uniqueName}`;
+
+  // Find or create public uploads directory
+  let uploadsBase = path.resolve(process.cwd(), 'public', 'uploads');
+  if (!fs.existsSync(path.resolve(process.cwd(), 'public'))) {
+    uploadsBase = path.resolve(__dirname, '../../public', 'uploads');
+  }
+
+  const targetDir = path.join(uploadsBase, folder, String(year), month);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const filePath = path.join(targetDir, uniqueName);
+  fs.writeFileSync(filePath, buffer);
+
+  return {
+    url: `/uploads/${relativeKey}`,
+    key: relativeKey,
+    size: buffer.length,
+    mimeType,
+    isR2: false
+  };
+}
+
 async function uploadToR2(buffer: Buffer, originalFilename: string, mimeType: string, folder: string = 'attachments') {
   const cfg = await getR2Config();
   if (!cfg.enabled || !cfg.bucketName) {
@@ -2326,7 +2359,8 @@ async function uploadToR2(buffer: Buffer, originalFilename: string, mimeType: st
     url: publicUrl,
     key,
     size: buffer.length,
-    mimeType
+    mimeType,
+    isR2: true
   };
 }
 
@@ -2340,9 +2374,23 @@ app.get('/api/files/{*splat}', async (req, res) => {
     let key = rawPath;
     try { key = decodeURIComponent(rawPath); } catch (_) {}
 
+    // First check if the file exists locally under public/uploads
+    const localCandidates = [
+      path.resolve(process.cwd(), 'public', 'uploads', key),
+      path.resolve(process.cwd(), '../public', 'uploads', key),
+      path.resolve(__dirname, '../../public', 'uploads', key),
+      path.resolve(__dirname, '../public', 'uploads', key)
+    ];
+
+    for (const cand of localCandidates) {
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        return res.sendFile(cand);
+      }
+    }
+
     const cfg = await getR2Config();
     if (!cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucketName) {
-      return res.status(404).send('Cloudflare R2 storage credentials are not configured');
+      return res.status(404).send('Cloudflare R2 storage credentials are not configured and file not found locally');
     }
 
     const client = getR2Client(cfg);
@@ -2487,23 +2535,12 @@ app.post('/api/upload', async (req, res) => {
       return res.status(400).json({ error: 'dataUri is required' });
     }
 
-    // If it's already an HTTP/HTTPS URL, return it directly
-    if (dataUri.startsWith('http://') || dataUri.startsWith('https://')) {
+    // If it's already an HTTP/HTTPS URL or /uploads URL, return it directly
+    if (dataUri.startsWith('http://') || dataUri.startsWith('https://') || dataUri.startsWith('/uploads/')) {
       return res.json({
         success: true,
         url: dataUri,
-        isR2: true
-      });
-    }
-
-    const cfg = await getR2Config();
-    if (!cfg.enabled || !cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucketName) {
-      // Graceful fallback: preserve dataUri if R2 is not configured
-      return res.json({
-        success: true,
-        url: dataUri,
-        isR2: false,
-        message: 'Saved locally as data URI (R2 not configured)'
+        isR2: !dataUri.startsWith('/uploads/')
       });
     }
 
@@ -2514,19 +2551,39 @@ app.post('/api/upload', async (req, res) => {
 
     const mimeType = matches[1];
     const buffer = Buffer.from(matches[2], 'base64');
-    const result = await uploadToR2(buffer, filename || 'file', mimeType, folder || 'attachments');
 
-    res.json({
+    // Attempt upload to Cloudflare R2 if configured
+    try {
+      const cfg = await getR2Config();
+      if (cfg.enabled && cfg.accountId && cfg.accessKeyId && cfg.secretAccessKey && cfg.bucketName) {
+        const result = await uploadToR2(buffer, filename || 'file', mimeType, folder || 'attachments');
+        return res.json({
+          success: true,
+          url: result.url,
+          key: result.key,
+          size: result.size,
+          mimeType: result.mimeType,
+          isR2: true
+        });
+      }
+    } catch (r2Error: any) {
+      console.warn('R2 upload failed, automatically falling back to local disk storage:', r2Error?.message || r2Error);
+    }
+
+    // Bulletproof Fallback: Save directly to local VPS storage (public/uploads/...)
+    const localResult = await saveFileLocally(buffer, filename || 'file', mimeType, folder || 'attachments');
+    return res.json({
       success: true,
-      url: result.url,
-      key: result.key,
-      size: result.size,
-      mimeType: result.mimeType,
-      isR2: true
+      url: localResult.url,
+      key: localResult.key,
+      size: localResult.size,
+      mimeType: localResult.mimeType,
+      isR2: false,
+      message: 'Saved to local server storage'
     });
   } catch (error: any) {
     console.error('Upload error:', error);
-    res.status(500).json({ error: error.message || 'Failed to upload file to R2' });
+    res.status(500).json({ error: error.message || 'Failed to upload file' });
   }
 });
 
