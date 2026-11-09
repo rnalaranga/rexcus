@@ -779,17 +779,12 @@ export const QuotationBuilder: React.FC = () => {
         
         const qty = Number(nm.qty) || 0
         const up = Number(nm.unitPrice) || 0
-        const density = 0.00000785
         
-        let price = qty * up
-        if (isRod && nm.dia && nm.length) {
-          price = Math.PI * Math.pow(Number(nm.dia) / 2, 2) * Number(nm.length) * density * up * qty
-        } else if (!isRod && nm.width && nm.length && nm.thick) {
-          price = Number(nm.width) * Number(nm.length) * Number(nm.thick) * density * up * qty
-        }
+        // Direct calculation: QTY x Unit Price = Total Price
+        const price = Number((qty * up).toFixed(2))
         
-        nm.shaftPrice = isRod ? Number(price.toFixed(2)) : 0
-        nm.platePrice = !isRod ? Number(price.toFixed(2)) : 0
+        nm.shaftPrice = isRod ? price : 0
+        nm.platePrice = !isRod ? price : 0
         return nm
       })
       return { ...b, autoMats: newAutoMats }
