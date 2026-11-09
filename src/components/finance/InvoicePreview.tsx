@@ -254,12 +254,18 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   if (displayDueDate && displayDueDate !== '-') {
     infoItems.push({ label: 'Payment Due Date', value: displayDueDate });
   }
-  // Determine Payment Terms value (concise string: e.g. "Advance Deposit (30%)" or "Bank Wire / TT")
+  // Determine Payment Terms value (concise string: e.g. "Bank Wire / TT" or "Credit")
   let cleanPaymentTerms = '';
   if (paymentTerms && String(paymentTerms).trim() && !String(paymentTerms).trim().startsWith('{')) {
     cleanPaymentTerms = String(paymentTerms).trim();
+    if (isProforma || invoiceType === 'proforma') {
+      cleanPaymentTerms = cleanPaymentTerms
+        .replace(/Advance Deposit \(\d+%\)\s*-\s*/i, '')
+        .replace(/Advance Deposit\s*-\s*/i, '')
+        .replace(/Advance Deposit \(\d+%\)/i, modeOfPayment || 'Bank Wire / TT');
+    }
   } else if (isProforma || invoiceType === 'proforma') {
-    cleanPaymentTerms = modeOfPayment || 'Advance Deposit';
+    cleanPaymentTerms = modeOfPayment || 'Bank Wire / TT';
   } else if (modeOfPayment && String(modeOfPayment).trim()) {
     cleanPaymentTerms = String(modeOfPayment).trim();
   } else {

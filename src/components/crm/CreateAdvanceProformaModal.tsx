@@ -600,7 +600,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         items: JSON.stringify(proformaItems),
         notes: notes,
         attention: customerAttention,
-        paymentTerms: `Advance Deposit (${advancePercent}%) - ${modeOfPayment}`,
+        paymentTerms: modeOfPayment ? `${modeOfPayment}` : 'Bank Wire / TT',
         additionalInfo: ''
       };
 

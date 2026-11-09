@@ -206,7 +206,11 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               date={invoiceDate}
               deliveryDate={deliveryDate}
               placeOfSupply={invoice.placeOfSupply || 'Negombo, Sri Lanka'}
-              paymentTerms={invoice.paymentTerms || `Advance Deposit (${invoice.advancePercent || 30}%) - ${invoice.modeOfPayment || 'Bank Wire / TT'}`}
+              paymentTerms={
+                invoice.paymentTerms 
+                  ? String(invoice.paymentTerms).replace(/Advance Deposit \(\d+%\)\s*-\s*/i, '').replace(/Advance Deposit\s*-\s*/i, '')
+                  : (invoice.modeOfPayment || 'Bank Wire / TT')
+              }
               additionalInfo={(invoice.additionalInfo && !String(invoice.additionalInfo).trim().startsWith('{')) ? invoice.additionalInfo : ''}
               quotationNo={invoice.quotationNo || ''}
               orderNo={invoice.orderNo || ''}
