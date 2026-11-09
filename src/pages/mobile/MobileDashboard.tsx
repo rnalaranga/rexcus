@@ -12,8 +12,18 @@ import { useQuotations, useCustomers, useFinishedGoodsOrders } from '@/hooks/use
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export const MobileDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const navigate = useNavigate();
+
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.roleName?.toLowerCase().includes('administrator') ||
+    user?.permissions?.includes('*') ||
+    user?.permissions?.includes('admin')
+  );
+
+  const canViewFinancials = isAdmin || (can && can('finance.reports.view'));
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const { data: finData, loading: finLoading, refetch: refetchFin } = useFinanceDashboard();
@@ -108,85 +118,118 @@ export const MobileDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* 2x2 Executive Financial Snapshot */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* Cash in Hand */}
-        <div 
-          onClick={() => navigate('/mobile/cashbook')}
-          className="p-3.5 rounded-xl bg-surface border border-theme active:border-emerald-500/50 transition-all flex flex-col justify-between cursor-pointer shadow-xs hover:shadow-sm"
-        >
-          <div className="flex items-center justify-between text-muted mb-1.5">
-            <span className="text-[11px] font-semibold tracking-tight">Cash in Hand</span>
-            <div className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <Wallet size={13} />
+      {/* 2x2 Executive Financial Snapshot - Restricted to Admin & Finance authorized heads */}
+      {canViewFinancials ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Cash in Hand */}
+          <div 
+            onClick={() => navigate('/mobile/cashbook')}
+            className="p-3.5 rounded-xl bg-surface border border-theme active:border-emerald-500/50 transition-all flex flex-col justify-between cursor-pointer shadow-xs hover:shadow-sm"
+          >
+            <div className="flex items-center justify-between text-muted mb-1.5">
+              <span className="text-[11px] font-semibold tracking-tight">Cash in Hand</span>
+              <div className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Wallet size={13} />
+              </div>
+            </div>
+            <div>
+              <div className="text-base font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
+                {formatCurrency(cashInHand)}
+              </div>
+              <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5 font-mono">
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">+{formatCurrency(cashbookData?.totalIn || 0, true)}</span>
+                <span>/</span>
+                <span className="text-rose-600 dark:text-rose-400 font-medium">-{formatCurrency(cashbookData?.totalOut || 0, true)}</span>
+              </div>
             </div>
           </div>
-          <div>
-            <div className="text-base font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
-              {formatCurrency(cashInHand)}
-            </div>
-            <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5 font-mono">
-              <span className="text-emerald-600 dark:text-emerald-400 font-medium">+{formatCurrency(cashbookData?.totalIn || 0, true)}</span>
-              <span>/</span>
-              <span className="text-rose-600 dark:text-rose-400 font-medium">-{formatCurrency(cashbookData?.totalOut || 0, true)}</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Receivables (Market Due) */}
-        <div className="p-3.5 rounded-xl bg-surface border border-theme flex flex-col justify-between shadow-xs hover:shadow-sm">
-          <div className="flex items-center justify-between text-muted mb-1.5">
-            <span className="text-[11px] font-semibold tracking-tight">Receivables (AR)</span>
-            <div className="w-6 h-6 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <ArrowDownLeft size={13} />
+          {/* Receivables (Market Due) */}
+          <div className="p-3.5 rounded-xl bg-surface border border-theme flex flex-col justify-between shadow-xs hover:shadow-sm">
+            <div className="flex items-center justify-between text-muted mb-1.5">
+              <span className="text-[11px] font-semibold tracking-tight">Receivables (AR)</span>
+              <div className="w-6 h-6 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <ArrowDownLeft size={13} />
+              </div>
+            </div>
+            <div>
+              <div className="text-base font-bold font-mono text-blue-600 dark:text-blue-400 tracking-tight">
+                {formatCurrency(receivables)}
+              </div>
+              <span className="text-[10px] text-muted block mt-0.5">
+                Market Collections Due
+              </span>
             </div>
           </div>
-          <div>
-            <div className="text-base font-bold font-mono text-blue-600 dark:text-blue-400 tracking-tight">
-              {formatCurrency(receivables)}
-            </div>
-            <span className="text-[10px] text-muted block mt-0.5">
-              Market Collections Due
-            </span>
-          </div>
-        </div>
 
-        {/* Payables (Suppliers) */}
-        <div className="p-3.5 rounded-xl bg-surface border border-theme flex flex-col justify-between shadow-xs hover:shadow-sm">
-          <div className="flex items-center justify-between text-muted mb-1.5">
-            <span className="text-[11px] font-semibold tracking-tight">Payables (AP)</span>
-            <div className="w-6 h-6 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-              <ArrowUpRight size={13} />
+          {/* Payables (Suppliers) */}
+          <div className="p-3.5 rounded-xl bg-surface border border-theme flex flex-col justify-between shadow-xs hover:shadow-sm">
+            <div className="flex items-center justify-between text-muted mb-1.5">
+              <span className="text-[11px] font-semibold tracking-tight">Payables (AP)</span>
+              <div className="w-6 h-6 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                <ArrowUpRight size={13} />
+              </div>
+            </div>
+            <div>
+              <div className="text-base font-bold font-mono text-rose-600 dark:text-rose-400 tracking-tight">
+                {formatCurrency(payables)}
+              </div>
+              <span className="text-[10px] text-muted block mt-0.5">
+                Supplier Liabilities
+              </span>
             </div>
           </div>
-          <div>
-            <div className="text-base font-bold font-mono text-rose-600 dark:text-rose-400 tracking-tight">
-              {formatCurrency(payables)}
-            </div>
-            <span className="text-[10px] text-muted block mt-0.5">
-              Supplier Liabilities
-            </span>
-          </div>
-        </div>
 
-        {/* Revenue */}
-        <div className="p-3.5 rounded-xl bg-surface border border-theme flex flex-col justify-between shadow-xs hover:shadow-sm">
-          <div className="flex items-center justify-between text-muted mb-1.5">
-            <span className="text-[11px] font-semibold tracking-tight">Period Revenue</span>
-            <div className="w-6 h-6 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-              <TrendingUp size={13} />
+          {/* Revenue */}
+          <div className="p-3.5 rounded-xl bg-surface border border-theme flex flex-col justify-between shadow-xs hover:shadow-sm">
+            <div className="flex items-center justify-between text-muted mb-1.5">
+              <span className="text-[11px] font-semibold tracking-tight">Period Revenue</span>
+              <div className="w-6 h-6 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <TrendingUp size={13} />
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="text-base font-bold font-mono text-purple-600 dark:text-purple-400 tracking-tight">
-              {formatCurrency(revenue)}
+            <div>
+              <div className="text-base font-bold font-mono text-purple-600 dark:text-purple-400 tracking-tight">
+                {formatCurrency(revenue)}
+              </div>
+              <span className="text-[10px] text-muted block mt-0.5">
+                Invoiced Sales Total
+              </span>
             </div>
-            <span className="text-[10px] text-muted block mt-0.5">
-              Invoiced Sales Total
-            </span>
           </div>
         </div>
-      </div>
+      ) : (
+        /* Staff / Non-Admin Quick Wallet & Operational Card */
+        user?.assignedCashAccountId ? (
+          <div 
+            onClick={() => navigate('/mobile/cashbook')}
+            className="p-3.5 rounded-xl bg-surface border border-theme active:border-emerald-500/50 transition-all flex items-center justify-between cursor-pointer shadow-xs hover:shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <Wallet size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-primary">
+                    My Assigned Petty Cash
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                    Wallet
+                  </span>
+                </div>
+                <div className="text-base font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  {formatCurrency(cashInHand)}
+                </div>
+                <div className="text-[10px] text-muted mt-0.5">
+                  {user?.assignedCashAccountName || 'Assigned Account'} • Tap to record vouchers
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted shrink-0" />
+          </div>
+        ) : null
+      )}
 
       {/* ── Key ERP Hubs: Quotations & Sales Orders ── */}
       <div className="space-y-2">
