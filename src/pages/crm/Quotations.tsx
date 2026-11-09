@@ -19,7 +19,7 @@ import { useTaxProfiles } from '@/hooks/useFinance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportPdf } from '@/lib/exportPdf'
 import { deleteQuotation, updateQuotationStatus, submitQuotationForApproval, approveQuotation, rejectQuotation, createWorkOrder, createInvoice, fetchCustomerGRNs, createCustomerGRN, fetchWorkOrders, createFinishedGoodsOrder, fetchPaymentReceipts } from '@/lib/api'
-import { Banknote, Mail, AlertCircle, Camera, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info, ShieldCheck, Truck } from 'lucide-react'
+import { Banknote, Mail, AlertCircle, Camera, ShoppingBag, Receipt, UserCheck, Shield, Users, GitBranch, FileCheck, Info, ShieldCheck, Truck, Paperclip } from 'lucide-react'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CreatePaymentReceiptModal } from '@/components/CreatePaymentReceiptModal'
 import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
@@ -42,6 +42,7 @@ import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProfor
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { FileSpreadsheet } from 'lucide-react'
 import { QuotationAttachmentsGallery, QuotationAttachmentItem } from '@/components/crm/QuotationAttachmentsGallery'
+import { QuotationAttachmentsModal } from '@/components/crm/QuotationAttachmentsModal'
 import { SalesOrderWarningBadge, getQuotationSoChange } from '@/components/crm/SalesOrderWarningBadge'
 
 const extractQuoteAttachments = (parsed: any): QuotationAttachmentItem[] => {
@@ -660,6 +661,11 @@ export const Quotations: React.FC = () => {
   const [printGrnData, setPrintGrnData] = useState<{ grn: any, group: any } | null>(null)
   const [viewBomDialog, setViewBomDialog] = useState<any>(null)
   const [selectedBomTab, setSelectedBomTab] = useState<number | 'overview'>('overview')
+  const [viewAttachmentsModalData, setViewAttachmentsModalData] = useState<{
+    quotationNo: string;
+    attachments: QuotationAttachmentItem[];
+    customerName?: string;
+  } | null>(null)
 
   const formatAutoMatDimensions = (m: any) => {
     if (!m) return '-';
@@ -1370,6 +1376,39 @@ export const Quotations: React.FC = () => {
               <FileEdit size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
               <span>Edit in Quotation Builder</span>
             </button>
+
+            {/* 2.5 View Quotation Attachments / Drawings */}
+            {(() => {
+              const quoteAtts = extractQuoteAttachments(parsed);
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewAttachmentsModalData({
+                      quotationNo: group.quoNo,
+                      attachments: quoteAtts,
+                      customerName: group.clientName || group.leadCompany || group.leadName
+                    });
+                    setOpenActionId(null);
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <Paperclip size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div className="flex items-center justify-between flex-1 min-w-0">
+                    <span className="truncate">View Attachments / Drawings</span>
+                    {quoteAtts.length > 0 ? (
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-bold ml-1 shrink-0">
+                        {quoteAtts.length}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-muted font-mono ml-1 shrink-0">
+                        None
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })()}
 
             {/* 3. Send Email */}
             <button
@@ -4351,6 +4390,17 @@ export const Quotations: React.FC = () => {
         photos={activeViewingPhotos?.photos || []}
         title={activeViewingPhotos?.title || 'Sample Photos'}
       />
+
+      {/* ── QUOTATION ATTACHMENTS & DRAWINGS MODAL ── */}
+      {viewAttachmentsModalData && (
+        <QuotationAttachmentsModal
+          isOpen={Boolean(viewAttachmentsModalData)}
+          onClose={() => setViewAttachmentsModalData(null)}
+          quotationNo={viewAttachmentsModalData.quotationNo}
+          attachments={viewAttachmentsModalData.attachments}
+          customerName={viewAttachmentsModalData.customerName}
+        />
+      )}
 
       {/* ── CREATE SALES ORDER MODAL WITH CUSTOMER PO ── */}
       {salesOrderModalData && (

@@ -41,8 +41,9 @@ import { GatePassPrintModal } from '@/components/GatePassPrintModal'
 import { CreateAdvanceProformaModal } from '@/components/crm/CreateAdvanceProformaModal'
 import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrintModal'
 import { Pagination } from '@/components/ui/Pagination'
-import { FileSpreadsheet } from 'lucide-react'
+import { FileSpreadsheet, Paperclip } from 'lucide-react'
 import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
+import { QuotationAttachmentsModal } from '@/components/crm/QuotationAttachmentsModal'
 
 export const ProductQuotations: React.FC = () => {
   const navigate = useNavigate()
@@ -112,6 +113,11 @@ export const ProductQuotations: React.FC = () => {
   const [emailModalData, setEmailModalData] = useState<any>(null)
   const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
+  const [viewAttachmentsModalData, setViewAttachmentsModalData] = useState<{
+    quotationNo: string;
+    attachments: any[];
+    customerName?: string;
+  } | null>(null)
 
   useEffect(() => {
     fetchAllCustomerGRNs().then(setAllCustomerGrns).catch(() => {});
@@ -841,6 +847,49 @@ export const ProductQuotations: React.FC = () => {
               <Edit3 size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
               <span>Edit in Quotation Builder</span>
             </button>
+
+            {/* 2.5 View Quotation Attachments / Drawings */}
+            {(() => {
+              const rawAtts = latest?.parsed?.attachments || latest?.attachments || [];
+              const parsedAtts = Array.isArray(rawAtts) ? rawAtts.map((a: any, idx: number) => ({
+                id: a.id || `pq-att-${idx}`,
+                name: a.name || `Attachment ${idx + 1}`,
+                type: a.type,
+                dataUrl: a.dataUrl,
+                url: a.url,
+                source: 'Product Quotation Specs'
+              })) : [];
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewAttachmentsModalData({
+                      quotationNo: group.quoNo,
+                      attachments: parsedAtts,
+                      customerName: group.clientName || group.leadCompany || group.leadName
+                    });
+                    setOpenActionId(null);
+                    setActionCoords(null);
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+                >
+                  <Paperclip size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div className="flex items-center justify-between flex-1 min-w-0">
+                    <span className="truncate">View Attachments / Drawings</span>
+                    {parsedAtts.length > 0 ? (
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-bold ml-1 shrink-0">
+                        {parsedAtts.length}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-muted font-mono ml-1 shrink-0">
+                        None
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })()}
 
             {/* View Sample Photos */}
             {(() => {
@@ -2528,6 +2577,17 @@ export const ProductQuotations: React.FC = () => {
         photos={activeViewingPhotos?.photos || []}
         title={activeViewingPhotos?.title || 'Sample Photos'}
       />
+
+      {/* Quotation Attachments & Drawings Modal */}
+      {viewAttachmentsModalData && (
+        <QuotationAttachmentsModal
+          isOpen={Boolean(viewAttachmentsModalData)}
+          onClose={() => setViewAttachmentsModalData(null)}
+          quotationNo={viewAttachmentsModalData.quotationNo}
+          attachments={viewAttachmentsModalData.attachments}
+          customerName={viewAttachmentsModalData.customerName}
+        />
+      )}
 
       {/* Email Modal */}
       {emailModalData && (
