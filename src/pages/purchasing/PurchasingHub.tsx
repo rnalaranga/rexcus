@@ -321,19 +321,17 @@ export const PurchasingHub: React.FC = () => {
       const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING;
       const spaceAbove = actionCoords.top - PADDING;
       const openUpwards = spaceBelow < 300 && spaceAbove > spaceBelow;
+      const maxHeight = Math.min(480, Math.max(220, (openUpwards ? spaceAbove : spaceBelow) - 10));
 
       menuStyle = {
         position: 'fixed',
         left: `${left}px`,
         width: `${MENU_WIDTH}px`,
+        maxHeight: `${maxHeight}px`,
         zIndex: 99999,
         ...(openUpwards 
-          ? (actionCoords.top - 4 - 360 < PADDING 
-              ? { top: `${PADDING}px` } 
-              : { bottom: `${window.innerHeight - actionCoords.top + 4}px` }) 
-          : (actionCoords.bottom + 4 + 360 > window.innerHeight - PADDING && actionCoords.top > 360
-              ? { bottom: `${PADDING}px` }
-              : { top: `${actionCoords.bottom + 4}px` })
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
         )
       };
     }
@@ -386,7 +384,7 @@ export const PurchasingHub: React.FC = () => {
             data-no-row-click="true"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
             style={menuStyle}
-            className="purchasing-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none animate-in fade-in zoom-in-95 duration-100"
+            className="purchasing-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none animate-in fade-in zoom-in-95 duration-100 overflow-y-auto overscroll-contain custom-scrollbar"
           >
             {tab === 'po' && (
               <>

@@ -87,16 +87,7 @@ const extractQuoteAttachments = (parsed: any): QuotationAttachmentItem[] => {
     });
   }
 
-  // 3. Customer PO Attachment if present
-  if (parsed.customerPoAttachment) {
-    list.push({
-      id: 'customer-po-doc',
-      name: parsed.customerPoNumber ? `Purchase Order (${parsed.customerPoNumber})` : 'Customer Purchase Order',
-      type: 'application/pdf',
-      dataUrl: parsed.customerPoAttachment,
-      source: 'Customer PO'
-    });
-  }
+  // Note: Customer PO is accessed via dedicated "View Customer PO" action in menu
 
   return list;
 };
@@ -1220,20 +1211,18 @@ export const Quotations: React.FC = () => {
 
       const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING;
       const spaceAbove = actionCoords.top - PADDING;
-      const openUpwards = spaceBelow < 400 && spaceAbove > spaceBelow;
+      const openUpwards = spaceBelow < 380 && spaceAbove > spaceBelow;
+      const maxHeight = Math.min(500, Math.max(220, (openUpwards ? spaceAbove : spaceBelow) - 10));
 
       menuStyle = {
         position: 'fixed',
         left: `${left}px`,
         width: `${MENU_WIDTH}px`,
+        maxHeight: `${maxHeight}px`,
         zIndex: 99999,
         ...(openUpwards 
-          ? (actionCoords.top - 4 - 450 < PADDING 
-              ? { top: `${PADDING}px` } 
-              : { bottom: `${window.innerHeight - actionCoords.top + 4}px` }) 
-          : (actionCoords.bottom + 4 + 450 > window.innerHeight - PADDING && actionCoords.top > 450
-              ? { bottom: `${PADDING}px` }
-              : { top: `${actionCoords.bottom + 4}px` })
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
         )
       };
     }
@@ -1284,7 +1273,7 @@ export const Quotations: React.FC = () => {
           <div
             onClick={(e) => e.stopPropagation()}
             style={menuStyle}
-            className="quotation-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none"
+            className="quotation-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none overflow-y-auto overscroll-contain custom-scrollbar"
           >
             <div className="px-3.5 py-1 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono">
               Quotation Actions

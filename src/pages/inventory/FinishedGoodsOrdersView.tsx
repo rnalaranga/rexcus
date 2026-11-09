@@ -2461,20 +2461,18 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
       const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING
       const spaceAbove = actionCoords.top - PADDING
-      const openUpwards = spaceBelow < 420 && spaceAbove > spaceBelow
+      const openUpwards = spaceBelow < 380 && spaceAbove > spaceBelow
+      const maxHeight = Math.min(500, Math.max(220, (openUpwards ? spaceAbove : spaceBelow) - 10))
 
       menuStyle = {
         position: 'fixed',
         left: `${left}px`,
         width: `${MENU_WIDTH}px`,
+        maxHeight: `${maxHeight}px`,
         zIndex: 99999,
         ...(openUpwards 
-          ? (actionCoords.top - 4 - 460 < PADDING 
-              ? { top: `${PADDING}px` } 
-              : { bottom: `${window.innerHeight - actionCoords.top + 4}px` }) 
-          : (actionCoords.bottom + 4 + 460 > window.innerHeight - PADDING && actionCoords.top > 460
-              ? { bottom: `${PADDING}px` }
-              : { top: `${actionCoords.bottom + 4}px` })
+          ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+          : { top: `${actionCoords.bottom + 4}px` }
         )
       }
     }
@@ -2569,7 +2567,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
           <div
             onClick={(e) => e.stopPropagation()}
             style={menuStyle}
-            className="order-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1 text-left rounded-none"
+            className="order-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1 text-left rounded-none overflow-y-auto overscroll-contain custom-scrollbar"
           >
             <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider font-mono border-b border-theme-subtle mb-1 flex items-center justify-between">
               <span>Order #{order.orderNo || order.id}</span>
