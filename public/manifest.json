@@ -3,9 +3,11 @@
   "name": "Rex Industries ERP",
   "description": "Executive & Field Mobile Portal for Rex Industries ERP",
   "start_url": "/mobile",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#090d16",
-  "theme_color": "#0f172a",
+  "display_override": ["standalone", "fullscreen"],
+  "background_color": "#0f0f10",
+  "theme_color": "#0f0f10",
   "orientation": "portrait-primary",
   "icons": [
     {

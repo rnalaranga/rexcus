@@ -3,19 +3,21 @@ import {
   FileText, Download, PieChart, Landmark, DollarSign, Wallet,
   Calendar, Search, Filter, ArrowDownLeft, ArrowUpRight, Clock,
   Printer, FileSpreadsheet, CheckCircle, AlertTriangle, ChevronRight,
-  TrendingUp, TrendingDown, Building2, User, Hash, Layers
+  TrendingUp, TrendingDown, Building2, User, Hash, Layers, BookOpen,
+  ArrowRight
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
-import { fetchAdvancedReport, fetchCustomers } from '@/lib/api';
+import { fetchAdvancedReport, fetchCustomers, fetchAccountLedgerReport } from '@/lib/api';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import * as XLSX from 'xlsx';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
-type MainTab = 'invoices' | 'unpaid' | 'cashbook' | 'tax' | 'pnl' | 'bs' | 'tb' | 'exp';
+type MainTab = 'invoices' | 'unpaid' | 'cashbook' | 'tax' | 'account_ledger' | 'pnl' | 'bs' | 'tb' | 'exp';
 
 export const FinancialReports: React.FC = () => {
   const { settings } = useSettings();
@@ -31,6 +33,10 @@ export const FinancialReports: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cashbookView, setCashbookView] = useState<'by_account' | 'detailed'>('by_account');
   const [search, setSearch] = useState<string>('');
+
+  // Account Ledger filters and data
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [accountLedgerData, setAccountLedgerData] = useState<any>(null);
 
   // Data states
   const [reportData, setReportData] = useState<any>(null);
@@ -96,6 +102,20 @@ export const FinancialReports: React.FC = () => {
           console.error(err);
           setLoading(false);
         });
+    } else if (activeTab === 'account_ledger') {
+      fetchAccountLedgerReport({
+        accountId: selectedAccountId || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined
+      })
+        .then(res => {
+          setAccountLedgerData(res);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error(err);
+          setLoading(false);
+        });
     } else {
       // Traditional Financial Statements (pnl, bs, tb, exp)
       const endpoints: Record<string, string> = { pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', exp: 'expenses' };
@@ -110,7 +130,7 @@ export const FinancialReports: React.FC = () => {
           setLoading(false);
         });
     }
-  }, [activeTab, startDate, endDate, customerId, statusFilter]);
+  }, [activeTab, startDate, endDate, customerId, statusFilter, selectedAccountId]);
 
   // Filtered rows by search term
   const filteredRows = useMemo(() => {
@@ -130,6 +150,35 @@ export const FinancialReports: React.FC = () => {
       );
     });
   }, [reportData?.rows, search]);
+
+  // Filtered account ledger transactions (Single Account mode)
+  const filteredLedgerLines = useMemo(() => {
+    if (!accountLedgerData?.lines) return [];
+    if (!search.trim()) return accountLedgerData.lines;
+    const q = search.toLowerCase();
+    return accountLedgerData.lines.filter((l: any) =>
+      (l.reference && l.reference.toLowerCase().includes(q)) ||
+      (l.entryId && l.entryId.toLowerCase().includes(q)) ||
+      (l.entryDescription && l.entryDescription.toLowerCase().includes(q)) ||
+      (l.lineDescription && l.lineDescription.toLowerCase().includes(q)) ||
+      (l.partyName && l.partyName.toLowerCase().includes(q)) ||
+      (l.partyId && l.partyId.toLowerCase().includes(q)) ||
+      (l.date && String(l.date).toLowerCase().includes(q))
+    );
+  }, [accountLedgerData?.lines, search]);
+
+  // Filtered account summaries (Summary mode across all COA)
+  const filteredSummaryAccounts = useMemo(() => {
+    if (!accountLedgerData?.accounts) return [];
+    if (!search.trim()) return accountLedgerData.accounts;
+    const q = search.toLowerCase();
+    return accountLedgerData.accounts.filter((a: any) =>
+      a.code.toLowerCase().includes(q) ||
+      a.name.toLowerCase().includes(q) ||
+      a.type.toLowerCase().includes(q) ||
+      (a.subtype && a.subtype.toLowerCase().includes(q))
+    );
+  }, [accountLedgerData?.accounts, search]);
 
   // Filtered cashbook account summaries
   const filteredAccountSummaries = useMemo(() => {
@@ -238,6 +287,67 @@ export const FinancialReports: React.FC = () => {
           XLSX.utils.book_append_sheet(wb, ws, 'Cashbook_Ledger');
           XLSX.writeFile(wb, `Rex_Cashbook_Ledger_${dateRangeLabel}.xlsx`);
         }
+      } else if (activeTab === 'account_ledger') {
+        if (accountLedgerData?.mode === 'single' && accountLedgerData?.account) {
+          const acc = accountLedgerData.account;
+          const excelRows = (accountLedgerData.lines || []).map((l: any, idx: number) => ({
+            '#': idx + 1,
+            'Date': l.date ? String(l.date).slice(0, 10) : '',
+            'Reference': l.reference || l.entryId,
+            'Particulars': l.entryDescription || l.lineDescription || '',
+            'Party': l.partyName || l.partyId || '',
+            'Debit (LKR)': Number(l.debit || 0),
+            'Credit (LKR)': Number(l.credit || 0),
+            'Running Balance (LKR)': Number(l.runningBalance || 0)
+          }));
+
+          // Add opening row at top
+          excelRows.unshift({
+            '#': 0,
+            'Date': startDate ? `Prior to ${startDate}` : 'Beginning',
+            'Reference': 'OPENING B/F',
+            'Particulars': 'Balance Brought Forward',
+            'Party': '—',
+            'Debit (LKR)': 0,
+            'Credit (LKR)': 0,
+            'Running Balance (LKR)': Number(accountLedgerData.openingBalance || 0)
+          } as any);
+
+          // Add closing totals row at bottom
+          excelRows.push({
+            '#': '',
+            'Date': '',
+            'Reference': 'TOTALS & CLOSING C/F',
+            'Particulars': `Net Period Movement: ${accountLedgerData.netMovement || 0}`,
+            'Party': '',
+            'Debit (LKR)': Number(accountLedgerData.totalDebit || 0),
+            'Credit (LKR)': Number(accountLedgerData.totalCredit || 0),
+            'Running Balance (LKR)': Number(accountLedgerData.closingBalance || 0)
+          } as any);
+
+          const ws = XLSX.utils.json_to_sheet(excelRows);
+          XLSX.utils.book_append_sheet(wb, ws, `Ledger_${acc.code}`);
+          const cleanName = String(acc.name).replace(/[^a-zA-Z0-9]/g, '_');
+          XLSX.writeFile(wb, `Rex_Account_Ledger_${acc.code}_${cleanName}_${dateRangeLabel}.xlsx`);
+        } else if (accountLedgerData?.mode === 'summary') {
+          const summaryRows = (accountLedgerData.accounts || []).map((a: any, idx: number) => ({
+            '#': idx + 1,
+            'Account Code': a.code,
+            'Account Name': a.name,
+            'Type': a.type,
+            'Subtype': a.subtype || '',
+            'Opening Balance': a.openingBalance,
+            'Period Debit': a.periodDebit,
+            'Period Credit': a.periodCredit,
+            'Net Movement': a.periodNet,
+            'Closing Balance': a.closingBalance,
+            'Transactions': a.txCount
+          }));
+
+          const ws = XLSX.utils.json_to_sheet(summaryRows);
+          XLSX.utils.book_append_sheet(wb, ws, 'All_Accounts_Summary');
+          XLSX.writeFile(wb, `Rex_COA_Summary_${dateRangeLabel}.xlsx`);
+        }
       }
     } catch (err) {
       console.error('Excel Export failed:', err);
@@ -250,7 +360,7 @@ export const FinancialReports: React.FC = () => {
   const exportToPdf = () => {
     const element = document.getElementById('report-print-container');
     if (!element) return;
-    const isLandscape = ['invoices', 'unpaid', 'cashbook', 'tax'].includes(activeTab);
+    const isLandscape = ['invoices', 'unpaid', 'cashbook', 'tax', 'account_ledger'].includes(activeTab);
     const opt: any = {
       margin: 8,
       filename: `Rex_Report_${activeTab}_${startDate || 'all'}.pdf`,
@@ -357,6 +467,17 @@ export const FinancialReports: React.FC = () => {
           <Building2 size={14} /> Tax Liability (RAMIS)
         </button>
 
+        <button
+          onClick={() => setActiveTab('account_ledger')}
+          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
+            activeTab === 'account_ledger'
+              ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-indigo-500/30'
+          }`}
+        >
+          <BookOpen size={14} /> Account Ledger (COA)
+        </button>
+
         <div className="w-px h-6 bg-theme-subtle mx-1 shrink-0" />
 
         <button
@@ -388,7 +509,7 @@ export const FinancialReports: React.FC = () => {
       </div>
 
       {/* QuickBooks-Style Dynamic Filter Bar */}
-      {['invoices', 'unpaid', 'cashbook', 'tax'].includes(activeTab) && (
+      {['invoices', 'unpaid', 'cashbook', 'tax', 'account_ledger'].includes(activeTab) && (
         <GlassCard className="p-4 space-y-3">
           {/* Top Row: Quick Preset Buttons */}
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -489,6 +610,32 @@ export const FinancialReports: React.FC = () => {
               />
             </div>
 
+            {/* Account Ledger: Chart of Accounts Autocomplete */}
+            {activeTab === 'account_ledger' && (
+              <div className="flex-1 min-w-[280px] max-w-sm">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <AccountAutocomplete
+                      value={selectedAccountId}
+                      onChange={(accId) => setSelectedAccountId(accId)}
+                      placeholder="Autocomplete: Type code or name..."
+                      showClear={true}
+                    />
+                  </div>
+                  {selectedAccountId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAccountId('')}
+                      className="px-2 py-1 text-xs rounded bg-surface2 border border-theme-subtle text-secondary hover:text-primary transition-colors whitespace-nowrap"
+                      title="Clear account filter and view all accounts"
+                    >
+                      All Accounts
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Customer filter */}
             {['invoices', 'unpaid', 'tax'].includes(activeTab) && (
               <div className="flex items-center gap-2">
@@ -530,7 +677,7 @@ export const FinancialReports: React.FC = () => {
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 type="text"
-                placeholder="Search report..."
+                placeholder={activeTab === 'account_ledger' ? "Search entry, ref, party..." : "Search report..."}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-8 pr-3 py-1.5 text-xs bg-surface border border-theme rounded-lg text-primary outline-none focus:ring-1 focus:ring-rex-500 w-52 sm:w-64"
@@ -618,6 +765,79 @@ export const FinancialReports: React.FC = () => {
         </div>
       )}
 
+      {/* Account Ledger KPI Cards */}
+      {activeTab === 'account_ledger' && accountLedgerData && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {accountLedgerData.mode === 'single' ? (
+            <>
+              <GlassCard className="p-3 border-l-4 border-l-amber-500">
+                <span className="text-[10px] uppercase font-bold text-muted block">Opening Balance</span>
+                <div className="text-lg font-black text-primary mt-1">{formatCurrency(accountLedgerData.openingBalance)}</div>
+                <span className="text-[10px] text-muted block mt-0.5">B/F Prior to {startDate || 'all'}</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-emerald-500">
+                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">Total Period Debit</span>
+                <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-1">+{formatCurrency(accountLedgerData.totalDebit)}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Debit Inflows / Increases</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-rose-500">
+                <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 block">Total Period Credit</span>
+                <div className="text-lg font-black text-rose-600 dark:text-rose-400 mt-1">-{formatCurrency(accountLedgerData.totalCredit)}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Credit Outflows / Reductions</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-purple-500">
+                <span className="text-[10px] uppercase font-bold text-muted block">Net Movement</span>
+                <div className={`text-lg font-black mt-1 ${accountLedgerData.netMovement >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {accountLedgerData.netMovement >= 0 ? '+' : ''}{formatCurrency(accountLedgerData.netMovement)}
+                </div>
+                <span className="text-[10px] text-muted block mt-0.5">Period Net Change</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-indigo-600 bg-indigo-500/5">
+                <span className="text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-300 block">Closing Balance</span>
+                <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 mt-1">{formatCurrency(accountLedgerData.closingBalance)}</div>
+                <span className="text-[10px] text-muted block mt-0.5">C/F As of {endDate || todayStr}</span>
+              </GlassCard>
+            </>
+          ) : (
+            <>
+              <GlassCard className="p-3 border-l-4 border-l-indigo-500">
+                <span className="text-[10px] uppercase font-bold text-muted block">Total Accounts</span>
+                <div className="text-lg font-black text-primary mt-1">{accountLedgerData.accounts?.length || 0}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Chart of Accounts</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-blue-500">
+                <span className="text-[10px] uppercase font-bold text-muted block">Period Transactions</span>
+                <div className="text-lg font-black text-primary mt-1">{accountLedgerData.grandTotals?.totalTx || 0}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Journal Postings</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-emerald-500">
+                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">Total Period Debits</span>
+                <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(accountLedgerData.grandTotals?.totalDebit || 0)}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Across All Accounts</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-rose-500">
+                <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 block">Total Period Credits</span>
+                <div className="text-lg font-black text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(accountLedgerData.grandTotals?.totalCredit || 0)}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Across All Accounts</span>
+              </GlassCard>
+
+              <GlassCard className="p-3 border-l-4 border-l-purple-500 bg-purple-500/5">
+                <span className="text-[10px] uppercase font-bold text-purple-700 dark:text-purple-300 block">Active Date Range</span>
+                <div className="text-sm font-black text-primary mt-1 font-mono">{startDate || 'Start'} to {endDate || 'Now'}</div>
+                <span className="text-[10px] text-muted block mt-0.5">Period Filter</span>
+              </GlassCard>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Main Report Container (Printable and Viewable) */}
       <GlassCard className="p-0 overflow-hidden shadow-sm">
         <div id="report-print-container" className="bg-white text-slate-900 p-6 md:p-8">
@@ -635,6 +855,7 @@ export const FinancialReports: React.FC = () => {
                     {activeTab === 'unpaid' && 'ACCOUNTS RECEIVABLE & UNPAID INVOICES AGING REPORT'}
                     {activeTab === 'cashbook' && 'DAILY CASHBOOK INFLOW & OUTFLOW ANALYSIS'}
                     {activeTab === 'tax' && 'INLAND REVENUE DEPARTMENT (RAMIS) OUTPUT TAX REPORT'}
+                    {activeTab === 'account_ledger' && (accountLedgerData?.mode === 'single' ? `GENERAL LEDGER — ${accountLedgerData?.account?.code} ${accountLedgerData?.account?.name?.toUpperCase()}` : 'CHART OF ACCOUNTS — GENERAL LEDGER SUMMARY')}
                     {activeTab === 'pnl' && 'INCOME STATEMENT (PROFIT & LOSS)'}
                     {activeTab === 'bs' && 'STATEMENT OF FINANCIAL POSITION (BALANCE SHEET)'}
                     {activeTab === 'tb' && 'TRIAL BALANCE STATEMENT'}
@@ -886,6 +1107,235 @@ export const FinancialReports: React.FC = () => {
                           </tr>
                         </tbody>
                       </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 2.5 ACCOUNT LEDGER (GENERAL LEDGER REPORT) */}
+              {activeTab === 'account_ledger' && accountLedgerData && (
+                <div className="space-y-4">
+                  {accountLedgerData.mode === 'single' && accountLedgerData.account ? (
+                    <div>
+                      {/* Single Account Header info */}
+                      <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0">
+                            <BookOpen size={18} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-bold text-base text-slate-900">
+                                {accountLedgerData.account.code}
+                              </span>
+                              <span className="font-bold text-base text-slate-900">
+                                {accountLedgerData.account.name}
+                              </span>
+                              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700">
+                                {accountLedgerData.account.type}
+                              </span>
+                              {accountLedgerData.account.subtype && (
+                                <span className="text-[10px] text-slate-500">
+                                  ({accountLedgerData.account.subtype})
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
+                              <span>Normal Balance: <strong className="text-slate-700">{accountLedgerData.account.type === 'Asset' || accountLedgerData.account.type === 'Expense' ? 'Debit (Dr)' : 'Credit (Cr)'}</strong></span>
+                              <span>•</span>
+                              <span>Date Range: <strong className="text-slate-700">{startDate ? startDate : 'Beginning'} to {endDate ? endDate : 'Current'}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAccountId('')}
+                            className="text-xs px-2.5 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold transition-colors flex items-center gap-1 shadow-sm"
+                          >
+                            <ArrowDownLeft size={13} className="rotate-45" /> View All Accounts
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Line-by-Line General Ledger Table */}
+                      <div className="overflow-x-auto border border-slate-300 rounded-lg">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 uppercase text-[10px]">
+                              <th className="py-2.5 px-3">Date</th>
+                              <th className="py-2.5 px-3">Entry / Ref #</th>
+                              <th className="py-2.5 px-4">Particulars & Description</th>
+                              <th className="py-2.5 px-3">Party / Counterparty</th>
+                              <th className="py-2.5 px-3 text-right text-emerald-700">Debit (LKR)</th>
+                              <th className="py-2.5 px-3 text-right text-rose-700">Credit (LKR)</th>
+                              <th className="py-2.5 px-3 text-right font-bold">Running Balance</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {/* Opening Balance Row */}
+                            <tr className="bg-amber-50/70 font-semibold text-slate-700">
+                              <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px]">{startDate ? `Prior to ${startDate}` : 'B/F'}</td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-amber-700">OPENING B/F</td>
+                              <td className="py-2.5 px-4 italic text-slate-600">Balance brought forward from prior transactions</td>
+                              <td className="py-2.5 px-3 text-slate-400">—</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-400">—</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-400">—</td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                                {formatCurrency(accountLedgerData.openingBalance || 0)}
+                              </td>
+                            </tr>
+
+                            {/* Transaction Rows */}
+                            {filteredLedgerLines.map((l: any, idx: number) => {
+                              const d = l.date ? String(l.date).slice(0, 10) : '';
+                              const ref = l.reference || l.entryId;
+                              const desc = l.entryDescription || l.lineDescription || 'Journal Transaction';
+                              return (
+                                <tr key={l.id || idx} className="hover:bg-slate-50 transition-colors">
+                                  <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">{d}</td>
+                                  <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{ref}</td>
+                                  <td className="py-2.5 px-4 font-medium text-slate-800">
+                                    {desc}
+                                    {l.lineDescription && l.entryDescription && l.lineDescription !== l.entryDescription && (
+                                      <span className="block text-[10px] text-slate-500 font-normal mt-0.5">{l.lineDescription}</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-600">{l.partyName || (l.partyId ? `${l.partyType || 'Party'}: ${l.partyId}` : '—')}</td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-emerald-700 font-medium">
+                                    {Number(l.debit) > 0 ? formatCurrency(l.debit) : '—'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-rose-700 font-medium">
+                                    {Number(l.credit) > 0 ? formatCurrency(l.credit) : '—'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                                    {formatCurrency(l.runningBalance || 0)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {filteredLedgerLines.length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-500 italic">
+                                  No journal transactions found for this account in the selected date range ({startDate || 'Start'} to {endDate || 'Now'}).
+                                </td>
+                              </tr>
+                            )}
+
+                            {/* Closing Totals Row */}
+                            <tr className="bg-slate-100 font-black border-t-2 border-slate-400 text-slate-900">
+                              <td className="py-2.5 px-3" colSpan={4}>
+                                PERIOD TOTALS & CLOSING BALANCE CARRIED FORWARD (C/F)
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
+                                {formatCurrency(accountLedgerData.totalDebit || 0)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-rose-700">
+                                {formatCurrency(accountLedgerData.totalCredit || 0)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-black text-sm text-indigo-900">
+                                {formatCurrency(accountLedgerData.closingBalance || 0)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* All Accounts Summary Mode */}
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <BookOpen size={13} className="text-indigo-600" /> Chart of Accounts Ledger Summary
+                          </h3>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Account-wise opening balance, period movements (debits & credits), and closing balances for {startDate ? startDate : 'Beginning'} to {endDate ? endDate : 'Current'}. Select any account using the autocomplete box above or click &ldquo;View Ledger&rdquo; below.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-300 rounded-lg">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 uppercase text-[10px]">
+                              <th className="py-2.5 px-3">Code</th>
+                              <th className="py-2.5 px-3">Account Name</th>
+                              <th className="py-2.5 px-2.5">Type & Subtype</th>
+                              <th className="py-2.5 px-3 text-right text-slate-600">Opening Balance</th>
+                              <th className="py-2.5 px-3 text-right text-emerald-700">Period Debit</th>
+                              <th className="py-2.5 px-3 text-right text-rose-700">Period Credit</th>
+                              <th className="py-2.5 px-3 text-right text-purple-700">Net Movement</th>
+                              <th className="py-2.5 px-3 text-right font-bold">Closing Balance</th>
+                              <th className="py-2.5 px-3 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {filteredSummaryAccounts.map((acc: any) => (
+                              <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="py-2 px-3 font-mono font-bold text-indigo-700">{acc.code}</td>
+                                <td className="py-2 px-3 font-semibold text-slate-900">{acc.name}</td>
+                                <td className="py-2 px-2.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                    {acc.type}
+                                  </span>
+                                  {acc.subtype && <span className="text-[10px] text-slate-500 ml-1">({acc.subtype})</span>}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono text-slate-700 font-medium">
+                                  {formatCurrency(acc.openingBalance)}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono text-emerald-700 font-medium">
+                                  {acc.periodDebit > 0 ? formatCurrency(acc.periodDebit) : '—'}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono text-rose-700 font-medium">
+                                  {acc.periodCredit > 0 ? formatCurrency(acc.periodCredit) : '—'}
+                                </td>
+                                <td className={`py-2 px-3 text-right font-mono font-semibold ${acc.periodNet >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  {acc.periodNet !== 0 ? (acc.periodNet > 0 ? `+${formatCurrency(acc.periodNet)}` : formatCurrency(acc.periodNet)) : '—'}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                  {formatCurrency(acc.closingBalance)}
+                                </td>
+                                <td className="py-2 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedAccountId(acc.id)}
+                                    className="px-2.5 py-1 rounded text-[11px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors inline-flex items-center gap-1"
+                                  >
+                                    View Ledger <ArrowRight size={11} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {filteredSummaryAccounts.length === 0 && (
+                              <tr>
+                                <td colSpan={9} className="py-8 text-center text-slate-500 italic">
+                                  No accounts found matching search criteria.
+                                </td>
+                              </tr>
+                            )}
+                            <tr className="bg-slate-100 font-black border-t-2 border-slate-400 text-slate-900">
+                              <td className="py-2.5 px-3" colSpan={3}>GRAND TOTALS</td>
+                              <td className="py-2.5 px-3 text-right font-mono">
+                                {formatCurrency(accountLedgerData.grandTotals?.totalOpening || 0)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
+                                {formatCurrency(accountLedgerData.grandTotals?.totalDebit || 0)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-rose-700">
+                                {formatCurrency(accountLedgerData.grandTotals?.totalCredit || 0)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-purple-700">—</td>
+                              <td className="py-2.5 px-3 text-right font-mono font-black text-sm text-indigo-900">
+                                {formatCurrency(accountLedgerData.grandTotals?.totalClosing || 0)}
+                              </td>
+                              <td className="py-2.5 px-3"></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>

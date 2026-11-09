@@ -47,7 +47,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   const invoiceTaxAmount = Number(invoice.taxAmount || 0);
   const invoiceTotal = Number(invoice.total || (invoiceSubtotal + invoiceTaxAmount) || invoice.amount || 0);
   const invoiceDate = invoice.date || invoice.createdAt || new Date().toISOString().slice(0, 10);
-  const deliveryDate = invoice.deliveryDate || invoiceDate;
+  const deliveryDate = invoice.deliveryDate || order?.targetDeliveryDate || order?.deliveryDate || invoiceDate;
 
   // Match customer for reliable fallback
   const cId = invoice.customerId || invoice.leadId || order?.customerId;
@@ -232,6 +232,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               taxType={invoice.taxType || (invoice.taxProfileId ? 'profile' : 'none')}
               currency={invoiceCurrency}
               exchangeRate={invoiceExchangeRate}
+              priceBasis={invoice.priceBasis || (invoice.additionalInfo?.includes('CIF') ? 'CIF' : 'FOB') || 'FOB'}
             />
           </div>
         </div>

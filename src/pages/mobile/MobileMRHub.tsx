@@ -11,6 +11,7 @@ import { createMR } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
+import { MobilePagination } from '@/components/mobile/MobilePagination';
 
 export const MobileMRHub: React.FC = () => {
   const { user } = useAuth();
@@ -24,6 +25,13 @@ export const MobileMRHub: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'issued'>('all');
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset page when tab or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, search]);
 
   // Form State
   const [department, setDepartment] = useState('Production');
@@ -150,6 +158,12 @@ export const MobileMRHub: React.FC = () => {
     });
   }, [rawMrs, activeTab, search]);
 
+  // Paginated MRs
+  const paginatedMRs = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredMRs.slice(start, start + pageSize);
+  }, [filteredMRs, currentPage, pageSize]);
+
   return (
     <div className="space-y-3.5 pb-6">
       {/* Title & Refresh */}
@@ -219,7 +233,7 @@ export const MobileMRHub: React.FC = () => {
       {/* MR Cards List */}
       {filteredMRs.length > 0 ? (
         <div className="space-y-2.5">
-          {filteredMRs.map((mr: any) => {
+          {paginatedMRs.map((mr: any) => {
             const st = String(mr.status || 'PENDING').toUpperCase();
             const isApproved = st.includes('APPROV');
             const isIssued = st.includes('ISSU') || st.includes('CLOSE');
@@ -283,6 +297,17 @@ export const MobileMRHub: React.FC = () => {
               </div>
             );
           })}
+
+          {/* Mobile Pagination */}
+          <MobilePagination
+            currentPage={currentPage}
+            totalItems={filteredMRs.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="requests"
+            pageSizeOptions={[10, 20, 50]}
+          />
         </div>
       ) : (
         <div className="p-8 rounded-xl bg-surface border border-theme text-center text-xs text-muted shadow-xs">

@@ -778,7 +778,24 @@ export const fetchAccounts = async () => (await (await fetch(`${API_URL}/finance
 export const createAccount = async (data: any) => (await (await fetch(`${API_URL}/finance/accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const updateAccount = async (id: string, data: any) => (await (await fetch(`${API_URL}/finance/accounts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const deleteAccount = async (id: string) => (await (await fetch(`${API_URL}/finance/accounts/${id}`, { method: 'DELETE' })).json());
-export const fetchAccountLedger = async (id: string) => (await (await fetch(`${API_URL}/finance/accounts/${id}/ledger`)).json());
+export const fetchAccountLedger = async (id: string, params?: { startDate?: string; endDate?: string }) => {
+  const q = new URLSearchParams();
+  if (params?.startDate) q.append('startDate', params.startDate);
+  if (params?.endDate) q.append('endDate', params.endDate);
+  const qStr = q.toString() ? `?${q.toString()}` : '';
+  const res = await fetch(`${API_URL}/finance/accounts/${id}/ledger${qStr}`);
+  return res.json();
+};
+
+export const fetchAccountLedgerReport = async (params: { accountId?: string; startDate?: string; endDate?: string }) => {
+  const q = new URLSearchParams();
+  if (params.accountId) q.append('accountId', params.accountId);
+  if (params.startDate) q.append('startDate', params.startDate);
+  if (params.endDate) q.append('endDate', params.endDate);
+  const qStr = q.toString() ? `?${q.toString()}` : '';
+  const res = await fetch(`${API_URL}/finance/reports/account-ledger${qStr}`);
+  return res.json();
+};
 
 export const fetchTaxes = async () => (await (await fetch(`${API_URL}/finance/taxes`)).json());
 export const createTax = async (data: any) => (await (await fetch(`${API_URL}/finance/taxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());

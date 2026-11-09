@@ -356,7 +356,24 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                       )}
                     </div>
                   )}
-                  {item.notes && (
+                  {item.details && (
+                    <div className="mt-1 pl-1 space-y-0.5">
+                      {String(item.details)
+                        .split(/\r?\n/)
+                        .map((l: string) => l.trim())
+                        .filter(Boolean)
+                        .map((line: string, lIdx: number) => {
+                          const clean = line.replace(/^[•\-\*\u2022\s]+/, '').trim();
+                          return (
+                            <div key={lIdx} className="flex items-start text-[9.5px] text-neutral-800 leading-tight">
+                              <span className="mr-1 text-neutral-600 font-bold leading-tight select-none">•</span>
+                              <span className="flex-1 font-medium">{clean || line}</span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                  {item.notes && !item.details && (
                     <div className="text-[10px] text-neutral-600 italic mt-0.5">
                       {item.notes}
                     </div>

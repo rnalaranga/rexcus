@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, FileText, CheckCircle, Percent, DollarSign, Calendar, 
@@ -162,6 +162,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const [supplySpecificDate, setSupplySpecificDate] = useState(
     new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   );
+  const [isSupplyUserEdited, setIsSupplyUserEdited] = useState(false);
   const [advancePercent, setAdvancePercent] = useState<number>(30);
   const [advanceBaseAmount, setAdvanceBaseAmount] = useState<number>(0);
   const [proformaLines, setProformaLines] = useState<ProformaLineItem[]>([]);
@@ -171,10 +172,35 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
   const [itemDescription, setItemDescription] = useState<string>('');
   const [itemSpecification, setItemSpecification] = useState<string>('');
 
-  const [modeOfPayment, setModeOfPayment] = useState('Bank Wire / TT');
+  const [modeOfPayment, setModeOfPayment] = useState(detectedCurrency === 'USD' ? 'T/T' : 'Bank Wire / TT');
   const [selectedBankId, setSelectedBankId] = useState('');
+  const [priceBasis, setPriceBasis] = useState<'FOB' | 'CIF'>('FOB');
   const [notes, setNotes] = useState('');
+  const [isNotesUserEdited, setIsNotesUserEdited] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Helper to build compliant Proforma Notes & Special Instructions
+  const buildProformaNotes = useCallback((cur: string, pct: number, mode: string) => {
+    const isCurUSD = String(cur).toUpperCase() === 'USD' || cur === '$';
+    const advText = pct >= 100
+      ? '100% advance payment of the mentioned total amount is to be made initially before dispatch'
+      : `An advance payment of ${pct}% of the mentioned total amount is to be made initially and the balance before completion/delivery`;
+
+    if (isCurUSD) {
+      return [
+        `Terms of Payment - T/T (${advText})`,
+        `All the Bank Charges (Buyer's and Seller's) will be paid by the buyer`,
+        `Currency - USD ($)`
+      ].join('\n');
+    } else {
+      const displayMode = (mode === 'T/T' || mode === 'Bank Wire / TT') ? 'Bank Transfer' : (mode || 'Company Cheque');
+      return [
+        `** Cheques to be written in Favour of Rex Industries (PVT) LTD`,
+        `Terms of Payment - ${displayMode} (${advText})`,
+        `Currency - LKR (Rs.)`
+      ].join('\n');
+    }
+  }, []);
 
   // Compute live lines total
   const currentLinesTotal = useMemo(() => {
@@ -191,6 +217,12 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     const oldRate = exchangeRate;
     setCurrency(newCur);
     setExchangeRate(newRate);
+
+    const targetMode = newCur === 'USD' ? 'T/T' : 'Bank Wire / TT';
+    setModeOfPayment(targetMode);
+    if (!isNotesUserEdited) {
+      setNotes(buildProformaNotes(newCur, advancePercent, targetMode));
+    }
 
     // Convert existing line items
     setProformaLines(prevLines => {
@@ -358,22 +390,27 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     // Advance Proforma Invoice is non-taxable advance deposit (tax is settled on final tax invoice)
     setTaxOption('none');
 
-    // Default notes (empty by default so unwanted auto-remarks are not inserted)
-    setNotes('');
+    // Default notes based on currency, percentage and mode
+    if (!isNotesUserEdited) {
+      setNotes(buildProformaNotes(detectedCurrency || 'LKR', initialPct, detectedCurrency === 'USD' ? 'T/T' : 'Bank Wire / TT'));
+    }
 
     if (order?.poNo || order?.customerPoNo) {
       setCustomerPoNo(order.poNo || order.customerPoNo);
     }
-    if (order?.deliveryDate) {
-      if (/(week|weeks)/i.test(order.deliveryDate)) {
-        setSupplyType('weeks');
-        setSupplyWeeks(order.deliveryDate);
-      } else {
-        setSupplyType('date');
-        setSupplySpecificDate(order.deliveryDate.slice(0, 10));
+    if (!isSupplyUserEdited) {
+      const orderDeliv = order?.targetDeliveryDate || order?.deliveryDate;
+      if (orderDeliv) {
+        if (/(week|weeks)/i.test(orderDeliv)) {
+          setSupplyType('weeks');
+          setSupplyWeeks(orderDeliv);
+        } else {
+          setSupplyType('date');
+          setSupplySpecificDate(String(orderDeliv).slice(0, 10));
+        }
       }
     }
-  }, [order, effectiveOrderTotal, orderNo, linkedQuotation, detectedCurrency, detectedExchangeRate, isCustomerForeign]);
+  }, [order, effectiveOrderTotal, orderNo, linkedQuotation, detectedCurrency, detectedExchangeRate, isCustomerForeign, isSupplyUserEdited]);
 
   // Handle bank accounts filter
   // Handle bank accounts filter (Settings Company Bank Details + GL Bank Accounts)
@@ -464,6 +501,9 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     setAdvancePercent(pct);
     const val = Math.round((currentLinesTotal * (pct / 100)) * 100) / 100;
     setAdvanceBaseAmount(val);
+    if (!isNotesUserEdited) {
+      setNotes(buildProformaNotes(currency, pct, modeOfPayment));
+    }
   };
 
   const handleAmountChange = (amt: number) => {
@@ -471,6 +511,9 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     if (currentLinesTotal > 0) {
       const pct = Math.round((amt / currentLinesTotal) * 100);
       setAdvancePercent(pct);
+      if (!isNotesUserEdited) {
+        setNotes(buildProformaNotes(currency, pct, modeOfPayment));
+      }
     }
   };
 
@@ -597,6 +640,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         status: 'unpaid',
         currency: currency,
         exchangeRate: exchangeRate,
+        priceBasis: priceBasis,
         isProforma: 1,
         invoiceType: 'proforma',
         taxProfileId: currency === 'USD' ? 'tp_export_zero_rated' : null,
@@ -615,8 +659,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         items: JSON.stringify(proformaItems),
         notes: notes,
         attention: customerAttention,
-        paymentTerms: modeOfPayment ? `${modeOfPayment}` : 'Bank Wire / TT',
-        additionalInfo: ''
+        paymentTerms: modeOfPayment ? `${modeOfPayment}` : (currency === 'USD' ? 'T/T' : 'Bank Wire / TT'),
+        additionalInfo: `Price Basis: ${priceBasis}`
       };
 
       if (quotationNo) payload.quotationNo = quotationNo;
@@ -634,6 +678,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         invoiceNo: cleanDocNo,
         currency: currency,
         exchangeRate: exchangeRate,
+        priceBasis: priceBasis,
         customerName: customerName,
         customerCompany: customerCompany,
         customerAddress: customerAddress,
@@ -729,8 +774,8 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Currency Switcher */}
-            <div className="flex items-center justify-between pt-1.5 border-t border-theme-subtle/50 text-[11px]">
+            {/* Currency & Price Basis Switcher */}
+            <div className="flex items-center justify-between pt-1.5 border-t border-theme-subtle/50 text-[11px] flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-muted uppercase">Proforma Currency:</span>
                 <div className="inline-flex rounded border border-theme-subtle p-0.5 bg-surface">
@@ -747,6 +792,29 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     className={`px-2 py-0.5 text-[10px] font-bold rounded ${currency === 'USD' ? 'bg-emerald-600 text-white' : 'text-muted hover:text-primary'}`}
                   >
                     USD ($ Export)
+                  </button>
+                </div>
+              </div>
+
+              {/* Price Basis Selector (FOB / CIF) */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-muted uppercase">Price Basis:</span>
+                <div className="inline-flex rounded border border-theme-subtle p-0.5 bg-surface">
+                  <button
+                    type="button"
+                    onClick={() => setPriceBasis('FOB')}
+                    className={`px-2.5 py-0.5 text-[10px] font-bold rounded ${priceBasis === 'FOB' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                    title="Free On Board"
+                  >
+                    FOB
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriceBasis('CIF')}
+                    className={`px-2.5 py-0.5 text-[10px] font-bold rounded ${priceBasis === 'CIF' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                    title="Cost, Insurance & Freight"
+                  >
+                    CIF
                   </button>
                 </div>
               </div>
@@ -820,6 +888,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 <select
                   value={supplyType === 'weeks' ? supplyWeeks : 'date'}
                   onChange={(e) => {
+                    setIsSupplyUserEdited(true);
                     if (e.target.value === 'date') {
                       setSupplyType('date');
                     } else {
@@ -844,7 +913,10 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     type="date"
                     required
                     value={supplySpecificDate}
-                    onChange={(e) => setSupplySpecificDate(e.target.value)}
+                    onChange={(e) => {
+                      setIsSupplyUserEdited(true);
+                      setSupplySpecificDate(e.target.value);
+                    }}
                     className="flex-1 h-8 px-2 font-mono text-xs bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
                   />
                 )}
@@ -879,7 +951,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     <th className="p-2 w-10 text-center">#</th>
                     <th className="p-2">Product Description & Technical Specifications</th>
                     <th className="p-2 w-28 text-center">Qty & UoM</th>
-                    <th className="p-2 w-28 text-right">Unit Price (FOB) ({currency === 'USD' ? '$' : 'Rs.'})</th>
+                    <th className="p-2 w-28 text-right">Unit Price ({priceBasis}) ({currency === 'USD' ? '$' : 'Rs.'})</th>
                     <th className="p-2 w-28 text-right">Total ({currency === 'USD' ? '$' : 'Rs.'})</th>
                     <th className="p-2 w-10 text-center"></th>
                   </tr>
@@ -1199,28 +1271,50 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
               </label>
               <select
                 value={modeOfPayment}
-                onChange={(e) => setModeOfPayment(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setModeOfPayment(val);
+                  if (!isNotesUserEdited) {
+                    setNotes(buildProformaNotes(currency, advancePercent, val));
+                  }
+                }}
                 className="w-full h-8 px-2 bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               >
+                <option value="T/T">T/T Wire Transfer</option>
                 <option value="Bank Wire / TT">Bank Wire / TT Transfer</option>
-                <option value="Cheque">Company Cheque</option>
+                <option value="Company Cheque">Company Cheque</option>
                 <option value="Cash">Cash Deposit</option>
                 <option value="Online Payment">Online / Card Gateway</option>
               </select>
             </div>
           </div>
 
-          {/* Section 5: Remarks */}
+          {/* Section 5: Remarks / Special Instructions */}
           <div>
-            <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
-              Proforma Remarks / Instructions
-            </label>
-            <input
-              type="text"
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider">
+                Special Instructions &amp; Terms of Payment
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotesUserEdited(false);
+                  setNotes(buildProformaNotes(currency, advancePercent, modeOfPayment));
+                }}
+                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+              >
+                Reset to Standard {currency === 'USD' ? 'USD' : 'LKR'} Template
+              </button>
+            </div>
+            <textarea
+              rows={3}
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full h-8 px-2.5 font-mono bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
-              placeholder="Instructions for customer payment..."
+              onChange={(e) => {
+                setNotes(e.target.value);
+                setIsNotesUserEdited(true);
+              }}
+              className="w-full px-2.5 py-1.5 font-mono text-xs bg-surface2 border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 leading-relaxed resize-y"
+              placeholder="Terms of payment, bank charges, and instructions..."
             />
           </div>
 

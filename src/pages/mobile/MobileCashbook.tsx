@@ -10,6 +10,7 @@ import { createCashbookEntry, deleteCashbookEntry } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
+import { MobilePagination } from '@/components/mobile/MobilePagination';
 
 export const MobileCashbook: React.FC = () => {
   const { user } = useAuth();
@@ -48,6 +49,13 @@ export const MobileCashbook: React.FC = () => {
 
   // Filter for view
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset page when filter or date changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, selectedDate, selectedCashAccountId]);
 
   useEffect(() => {
     if (searchParams.get('action') === 'new') {
@@ -160,6 +168,12 @@ export const MobileCashbook: React.FC = () => {
       return typeFilter === 'IN' ? isReceipt : !isReceipt;
     });
   }, [allDayEntries, typeFilter]);
+
+  // Paginated entries
+  const paginatedEntries = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEntries.slice(start, start + pageSize);
+  }, [filteredEntries, currentPage, pageSize]);
 
   return (
     <div className="space-y-3.5 pb-6">
@@ -281,7 +295,7 @@ export const MobileCashbook: React.FC = () => {
       {/* Entries List */}
       {filteredEntries.length > 0 ? (
         <div className="space-y-2">
-          {filteredEntries.map((entry: any) => {
+          {paginatedEntries.map((entry: any) => {
             const isReceipt = entry.entryType === 'RECEIPT' || entry.type === 'IN';
 
             return (
@@ -349,6 +363,17 @@ export const MobileCashbook: React.FC = () => {
               </div>
             );
           })}
+
+          {/* Mobile Pagination */}
+          <MobilePagination
+            currentPage={currentPage}
+            totalItems={filteredEntries.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="entries"
+            pageSizeOptions={[10, 20, 50]}
+          />
         </div>
       ) : (
         <div className="p-6 rounded-xl bg-surface border border-theme text-center text-xs text-muted shadow-xs">

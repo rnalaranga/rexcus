@@ -1620,6 +1620,7 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN invoiceType VARCHAR(50) DEFAULT 'tax_invoice'",
     "ALTER TABLE invoices ADD COLUMN orderId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0",
+    "ALTER TABLE invoices ADD COLUMN priceBasis VARCHAR(20) DEFAULT 'FOB'",
     "ALTER TABLE leads ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN description TEXT DEFAULT NULL",
     "ALTER TABLE leads ADD COLUMN address TEXT DEFAULT NULL",
@@ -10114,28 +10115,82 @@ app.delete('/api/finance/accounts/:id', async (req, res) => {
 
 app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
   try {
-    const [account]: any = await db.query('SELECT * FROM chart_of_accounts WHERE id = ?', [req.params.id]);
-    const [lines]: any = await db.query(
-      `SELECT jl.*, je.date, je.reference, je.description as entryDescription
-       FROM journal_lines jl
-       JOIN journal_entries je ON jl.entryId = je.id
-       WHERE jl.accountId = ?
-       ORDER BY je.date ASC`,
-      [req.params.id]
-    );
-    // Calculate running balance
-    let runningBalance = 0;
+    const { id } = req.params;
+    const startDate = (req.query.startDate as string) || '';
+    const endDate = (req.query.endDate as string) || '';
+
+    const [account]: any = await db.query('SELECT * FROM chart_of_accounts WHERE id = ? OR code = ? LIMIT 1', [id, id]);
+    if (!account || account.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
     const acc = account[0];
     const isDebitNormal = acc && (acc.type === 'Asset' || acc.type === 'Expense');
+
+    // 1. Calculate opening balance if startDate is provided
+    let openingBalance = 0;
+    if (startDate) {
+      const [openRows]: any = await db.query(
+        `SELECT COALESCE(SUM(jl.debit), 0) AS debit, COALESCE(SUM(jl.credit), 0) AS credit
+         FROM journal_lines jl
+         JOIN journal_entries je ON jl.entryId = je.id
+         WHERE jl.accountId = ? AND DATE(je.date) < ?`,
+        [acc.id, startDate]
+      );
+      const opDr = Number(openRows[0]?.debit || 0);
+      const opCr = Number(openRows[0]?.credit || 0);
+      openingBalance = isDebitNormal ? (opDr - opCr) : (opCr - opDr);
+    }
+
+    // 2. Query transactions
+    let query = `
+      SELECT jl.*, je.date, je.reference, je.description as entryDescription,
+             COALESCE(c.company, c.name, s.name, jl.partyId) as partyName
+      FROM journal_lines jl
+      JOIN journal_entries je ON jl.entryId = je.id
+      LEFT JOIN customers c ON (jl.partyType = 'Customer' AND jl.partyId = c.id)
+      LEFT JOIN suppliers s ON (jl.partyType = 'Supplier' AND jl.partyId = s.id)
+      WHERE jl.accountId = ?
+    `;
+    const params: any[] = [acc.id];
+    if (startDate) {
+      query += ` AND DATE(je.date) >= ?`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ` AND DATE(je.date) <= ?`;
+      params.push(endDate);
+    }
+    query += ` ORDER BY je.date ASC, je.id ASC, jl.id ASC`;
+
+    const [lines]: any = await db.query(query, params);
+
+    // Calculate running balance starting from opening balance
+    let runningBalance = openingBalance;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
     const linesWithBalance = lines.map((l: any) => {
       const debit = Number(l.debit || 0);
       const credit = Number(l.credit || 0);
+      totalDebit += debit;
+      totalCredit += credit;
       if (isDebitNormal) runningBalance += debit - credit;
       else runningBalance += credit - debit;
-      return { ...l, runningBalance };
+      return { ...l, debit, credit, runningBalance };
     });
-    res.json({ account: acc, lines: linesWithBalance });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+
+    res.json({
+      account: acc,
+      startDate: startDate || null,
+      endDate: endDate || null,
+      openingBalance,
+      totalDebit,
+      totalCredit,
+      netMovement: isDebitNormal ? (totalDebit - totalCredit) : (totalCredit - totalDebit),
+      closingBalance: runningBalance,
+      lines: linesWithBalance
+    });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/finance/party/:id/ledger', async (req, res) => {
@@ -11465,6 +11520,184 @@ app.delete('/api/finance/payment-receipts/:id', async (req, res) => {
 // ==========================================
 // FINANCIAL REPORTS (GL, P&L, BS, Trial Balance)
 // ==========================================
+app.get('/api/finance/reports/account-ledger', async (req, res) => {
+  try {
+    const accountId = (req.query.accountId as string) || '';
+    const startDate = (req.query.startDate as string) || '';
+    const endDate = (req.query.endDate as string) || '';
+
+    if (!accountId || accountId === 'all') {
+      // All accounts summary mode with date range opening, period movement, and closing
+      const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');
+
+      const accountsSummary = await Promise.all(accounts.map(async (acc: any) => {
+        const isDebitNormal = (acc.type === 'Asset' || acc.type === 'Expense');
+
+        // Opening balance before startDate
+        let openingBalance = 0;
+        if (startDate) {
+          const [openRes]: any = await db.query(
+            `SELECT COALESCE(SUM(jl.debit), 0) AS debit, COALESCE(SUM(jl.credit), 0) AS credit
+             FROM journal_lines jl
+             JOIN journal_entries je ON jl.entryId = je.id
+             WHERE jl.accountId = ? AND DATE(je.date) < ?`,
+            [acc.id, startDate]
+          );
+          const opDr = Number(openRes[0]?.debit || 0);
+          const opCr = Number(openRes[0]?.credit || 0);
+          openingBalance = isDebitNormal ? (opDr - opCr) : (opCr - opDr);
+        }
+
+        // Period movements between startDate and endDate
+        let periodQuery = `SELECT COALESCE(SUM(jl.debit), 0) AS debit, COALESCE(SUM(jl.credit), 0) AS credit, COUNT(jl.id) AS txCount
+                           FROM journal_lines jl
+                           JOIN journal_entries je ON jl.entryId = je.id
+                           WHERE jl.accountId = ?`;
+        const periodParams: any[] = [acc.id];
+        if (startDate) {
+          periodQuery += ` AND DATE(je.date) >= ?`;
+          periodParams.push(startDate);
+        }
+        if (endDate) {
+          periodQuery += ` AND DATE(je.date) <= ?`;
+          periodParams.push(endDate);
+        }
+
+        const [periodRes]: any = await db.query(periodQuery, periodParams);
+        const periodDebit = Number(periodRes[0]?.debit || 0);
+        const periodCredit = Number(periodRes[0]?.credit || 0);
+        const txCount = Number(periodRes[0]?.txCount || 0);
+
+        const periodNet = isDebitNormal ? (periodDebit - periodCredit) : (periodCredit - periodDebit);
+        const closingBalance = openingBalance + periodNet;
+
+        return {
+          id: acc.id,
+          code: acc.code,
+          name: acc.name,
+          type: acc.type,
+          subtype: acc.subtype,
+          accountNumber: acc.accountNumber,
+          isDebitNormal,
+          openingBalance,
+          periodDebit,
+          periodCredit,
+          periodNet,
+          closingBalance,
+          txCount
+        };
+      }));
+
+      const grandTotals = accountsSummary.reduce((acc: any, cur: any) => ({
+        totalOpening: acc.totalOpening + cur.openingBalance,
+        totalDebit: acc.totalDebit + cur.periodDebit,
+        totalCredit: acc.totalCredit + cur.periodCredit,
+        totalClosing: acc.totalClosing + cur.closingBalance,
+        totalTx: acc.totalTx + cur.txCount
+      }), { totalOpening: 0, totalDebit: 0, totalCredit: 0, totalClosing: 0, totalTx: 0 });
+
+      return res.json({
+        mode: 'summary',
+        startDate: startDate || null,
+        endDate: endDate || null,
+        accounts: accountsSummary,
+        grandTotals
+      });
+    }
+
+    // Single account detailed ledger
+    const [accountRows]: any = await db.query(
+      'SELECT * FROM chart_of_accounts WHERE id = ? OR code = ? LIMIT 1',
+      [accountId, accountId]
+    );
+    if (!accountRows || accountRows.length === 0) {
+      return res.status(404).json({ error: 'Account not found in Chart of Accounts' });
+    }
+    const acc = accountRows[0];
+    const isDebitNormal = (acc.type === 'Asset' || acc.type === 'Expense');
+
+    // 1. Opening balance before startDate
+    let openingBalance = 0;
+    if (startDate) {
+      const [openRows]: any = await db.query(
+        `SELECT COALESCE(SUM(jl.debit), 0) AS debit, COALESCE(SUM(jl.credit), 0) AS credit
+         FROM journal_lines jl
+         JOIN journal_entries je ON jl.entryId = je.id
+         WHERE jl.accountId = ? AND DATE(je.date) < ?`,
+        [acc.id, startDate]
+      );
+      const opDr = Number(openRows[0]?.debit || 0);
+      const opCr = Number(openRows[0]?.credit || 0);
+      openingBalance = isDebitNormal ? (opDr - opCr) : (opCr - opDr);
+    }
+
+    // 2. Period lines
+    let linesQuery = `
+      SELECT jl.id, jl.entryId, jl.accountId, jl.debit, jl.credit, jl.description AS lineDescription,
+             jl.partyId, jl.partyType, jl.costCenterId,
+             je.date, je.reference, je.description AS entryDescription,
+             COALESCE(c.company, c.name, s.name, jl.partyId) AS partyName
+      FROM journal_lines jl
+      JOIN journal_entries je ON jl.entryId = je.id
+      LEFT JOIN customers c ON (jl.partyType = 'Customer' AND jl.partyId = c.id)
+      LEFT JOIN suppliers s ON (jl.partyType = 'Supplier' AND jl.partyId = s.id)
+      WHERE jl.accountId = ?
+    `;
+    const params: any[] = [acc.id];
+    if (startDate) {
+      linesQuery += ` AND DATE(je.date) >= ?`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      linesQuery += ` AND DATE(je.date) <= ?`;
+      params.push(endDate);
+    }
+    linesQuery += ` ORDER BY je.date ASC, je.id ASC, jl.id ASC`;
+
+    const [lines]: any = await db.query(linesQuery, params);
+
+    let runningBalance = openingBalance;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const linesWithBalance = lines.map((l: any) => {
+      const debit = Number(l.debit || 0);
+      const credit = Number(l.credit || 0);
+      totalDebit += debit;
+      totalCredit += credit;
+      if (isDebitNormal) {
+        runningBalance += (debit - credit);
+      } else {
+        runningBalance += (credit - debit);
+      }
+      return {
+        ...l,
+        debit,
+        credit,
+        runningBalance
+      };
+    });
+
+    const netMovement = isDebitNormal ? (totalDebit - totalCredit) : (totalCredit - totalDebit);
+    const closingBalance = runningBalance;
+
+    res.json({
+      mode: 'single',
+      account: acc,
+      startDate: startDate || null,
+      endDate: endDate || null,
+      openingBalance,
+      totalDebit,
+      totalCredit,
+      netMovement,
+      closingBalance,
+      lines: linesWithBalance
+    });
+  } catch (error: any) {
+    console.error('Account ledger report error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch account ledger report' });
+  }
+});
 app.get('/api/finance/reports/trial-balance', async (req, res) => {
   try {
     const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');

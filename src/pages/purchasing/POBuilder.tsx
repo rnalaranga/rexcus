@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, Printer, Building2, 
   Calendar, Truck, FileText, Calculator, CreditCard, ShieldCheck, 
-  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag, Briefcase, Scissors
+  GitPullRequest, CheckCircle2, Clock, ExternalLink, X, Tag, Briefcase, Scissors, List
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +29,7 @@ interface POItem {
   id: string;
   inventoryId: string;
   desc: string;
+  details?: string;
   qty: number;
   unitPrice: number;
   refCost?: number;
@@ -94,6 +95,7 @@ export const POBuilder: React.FC = () => {
       id: Date.now().toString(),
       inventoryId: newItem.id,
       desc: newItem.name,
+      details: '',
       qty: 1,
       unitPrice: Number(newItem.costPrice) || Number(newItem.unitPrice) || 0,
       taxRate: 0,
@@ -220,6 +222,7 @@ export const POBuilder: React.FC = () => {
               taxRate: 0,
               discount: 0,
               refCost: Number(i.refCost !== undefined ? i.refCost : (inv?.unitCost || 0)),
+              details: i.details || '',
               ...i
             };
           }));
@@ -351,6 +354,7 @@ export const POBuilder: React.FC = () => {
         id: (i.id || '') + '_' + Date.now().toString() + Math.random().toString().slice(2, 5),
         inventoryId: i.inventoryId || '',
         desc: i.desc || inv?.name || '',
+        details: i.details || i.specifications || i.notes || '',
         qty: itemQty,
         unitPrice,
         refCost: stdCost,
@@ -381,7 +385,7 @@ export const POBuilder: React.FC = () => {
     setItems(items.filter(i => i.mrId !== targetMrId));
   };
 
-  const addItem = () => setItems([...items, { id: Date.now().toString(), inventoryId: '', desc: '', qty: 1, unitPrice: 0, taxRate: 0, discount: 0, total: 0, unit: 'Nos', uom: 'Nos' }]);
+  const addItem = () => setItems([...items, { id: Date.now().toString(), inventoryId: '', desc: '', details: '', qty: 1, unitPrice: 0, taxRate: 0, discount: 0, total: 0, unit: 'Nos', uom: 'Nos' }]);
 
   const updateItem = (itemId: string, field: string, value: any) => {
     setItems(items.map(item => {
@@ -1023,7 +1027,7 @@ export const POBuilder: React.FC = () => {
                     {items.map((item) => (
                       <tr key={item.id} className="hover:bg-surface/30 transition-colors">
                         <td className="p-2 pl-5">
-                          <div className="flex flex-col gap-1.5 w-64">
+                          <div className="flex flex-col gap-1.5 w-72 md:w-80">
                             <ProductAutocomplete 
                               value={item.inventoryId} 
                               onChange={(val) => updateItem(item.id, 'inventoryId', val)} 
@@ -1031,7 +1035,57 @@ export const POBuilder: React.FC = () => {
                               placeholder="Search material / SKU..."
                               className="text-xs py-1"
                             />
-                            <input type="text" value={item.desc} onChange={e => updateItem(item.id, 'desc', e.target.value)} placeholder="Description..." className="w-full bg-transparent border border-transparent hover:border-theme-subtle focus:border-theme-subtle px-2 py-1 rounded text-[11px]" />
+                            <input 
+                              type="text" 
+                              value={item.desc} 
+                              onChange={e => updateItem(item.id, 'desc', e.target.value)} 
+                              placeholder="Description / Product Title..." 
+                              className="w-full bg-transparent border border-theme-subtle hover:border-primary/50 focus:border-primary px-2 py-1 rounded text-[11px]" 
+                            />
+
+                            {/* Custom Bullet Details / Specifications */}
+                            <div className="flex flex-col gap-1 mt-0.5">
+                              <div className="flex items-center justify-between text-[10px] text-muted px-0.5">
+                                <span className="flex items-center gap-1 font-medium text-secondary">
+                                  <List size={11} className="text-primary" /> Bullet Details / Specs
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const cur = (item.details || '').trim();
+                                    const next = cur ? `${cur}\n• ` : '• ';
+                                    updateItem(item.id, 'details', next);
+                                  }}
+                                  className="text-primary hover:underline flex items-center gap-0.5 font-semibold text-[10px]"
+                                >
+                                  <Plus size={10} /> Add Bullet
+                                </button>
+                              </div>
+                              <textarea
+                                rows={item.details ? Math.min(5, Math.max(2, item.details.split('\n').length)) : 1}
+                                value={item.details || ''}
+                                onChange={e => updateItem(item.id, 'details', e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const target = e.currentTarget;
+                                    const start = target.selectionStart;
+                                    const end = target.selectionEnd;
+                                    const val = item.details || '';
+                                    const before = val.substring(0, start);
+                                    const after = val.substring(end);
+                                    const prefix = (before === '' || before.endsWith('\n')) ? '• ' : '\n• ';
+                                    const newVal = before + prefix + after;
+                                    updateItem(item.id, 'details', newVal);
+                                    setTimeout(() => {
+                                      target.selectionStart = target.selectionEnd = start + prefix.length;
+                                    }, 0);
+                                  }
+                                }}
+                                placeholder="• Type custom details/specs (Enter for new bullet)..."
+                                className="w-full bg-surface2/40 border border-theme-subtle focus:border-primary px-2 py-1 rounded text-[11px] leading-relaxed resize-y placeholder:text-muted/60 focus:bg-surface font-mono"
+                              />
+                            </div>
                             {item.mrId && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 w-fit">
                                 <GitPullRequest size={9} /> MR: {item.mrId}

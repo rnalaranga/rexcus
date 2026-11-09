@@ -1255,7 +1255,7 @@ export const InvoiceBuilder: React.FC = () => {
           method: r.paymentMethod || 'Advance',
           reference: `Advance Receipt ${r.receiptNo || ''}`
         }))) : null,
-        deliveryDate: date || deliveryDate || null, 
+        deliveryDate: deliveryDate || date || null, 
         placeOfSupply: placeOfSupply || 'Negombo',
     modeOfPayment,
         additionalInfo,

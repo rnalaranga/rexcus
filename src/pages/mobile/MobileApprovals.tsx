@@ -9,6 +9,7 @@ import { useQuotations, useCustomers, useFinishedGoodsOrders, useLeads } from '@
 import { useSettings } from '@/contexts/SettingsContext';
 import { QuotationPrintView } from '@/components/QuotationPrintView';
 import { MobileA4Preview } from '@/components/mobile/MobileA4Preview';
+import { MobilePagination } from '@/components/mobile/MobilePagination';
 import { 
   approveQuotation, rejectQuotation, approveQuotationEdit, rejectQuotationEdit,
   approveOrderAdvanceWaiver, rejectOrderAdvanceWaiver, approveCreditLimit,
@@ -34,6 +35,13 @@ export const MobileApprovals: React.FC = () => {
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'quotes' | 'orders' | 'credit' | 'subs' | 'cash'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter]);
 
   // Preview modals state
   const [previewQuote, setPreviewQuote] = useState<any | null>(null);
@@ -210,6 +218,12 @@ export const MobileApprovals: React.FC = () => {
     if (activeFilter === 'cash') return pendingItems.filter(i => i.type === 'cashbook');
     return pendingItems;
   }, [pendingItems, activeFilter]);
+
+  // Paginated items
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, currentPage, pageSize]);
 
   // Action Handlers
   const handleApprove = async (item: any) => {
@@ -408,7 +422,7 @@ export const MobileApprovals: React.FC = () => {
       {/* Cards List */}
       {filteredItems.length > 0 ? (
         <div className="space-y-3">
-          {filteredItems.map(item => {
+          {paginatedItems.map(item => {
             const isProcessing = processingId === item.id;
             const isQuote = item.type === 'quote';
             const isUSD = item.currency === 'USD' || item.currency === '$';
@@ -518,6 +532,17 @@ export const MobileApprovals: React.FC = () => {
               </div>
             );
           })}
+
+          {/* Mobile Pagination */}
+          <MobilePagination
+            currentPage={currentPage}
+            totalItems={filteredItems.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="requests"
+            pageSizeOptions={[10, 20, 50]}
+          />
         </div>
       ) : (
         <div className="p-8 rounded-xl bg-surface border border-theme text-center space-y-2 shadow-xs">

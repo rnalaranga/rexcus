@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ShoppingBag, Search, Eye, Filter, ArrowLeft, RefreshCw, 
@@ -10,6 +10,7 @@ import { useFinishedGoodsOrders, useQuotations, useCustomers } from '@/hooks/use
 import { useSettings } from '@/contexts/SettingsContext';
 import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView';
 import { MobileA4Preview } from '@/components/mobile/MobileA4Preview';
+import { MobilePagination } from '@/components/mobile/MobilePagination';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export const MobileSalesOrders: React.FC = () => {
@@ -21,8 +22,15 @@ export const MobileSalesOrders: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'usd' | 'lkr'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [previewTab, setPreviewTab] = useState<'details' | 'letterhead'>('details');
+
+  // Reset page when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Enriched Sales Orders
   const orders = useMemo(() => {
@@ -99,6 +107,12 @@ export const MobileSalesOrders: React.FC = () => {
       return true;
     });
   }, [orders, searchQuery, statusFilter]);
+
+  // Paginated orders
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
 
   // Stats
   const stats = useMemo(() => {
@@ -207,7 +221,7 @@ export const MobileSalesOrders: React.FC = () => {
       {/* Sales Orders List */}
       {filteredOrders.length > 0 ? (
         <div className="space-y-2.5">
-          {filteredOrders.map((order: any) => {
+          {paginatedOrders.map((order: any) => {
             const isConfirmed = order.status === 'Confirmed' || order.status === 'Approved';
             const isPending = order.status === 'Pending Approval' || order.status === 'Pending Advance Approval' || (order.advanceWaiverRequested && !order.advanceWaiverApproved);
 
@@ -281,6 +295,17 @@ export const MobileSalesOrders: React.FC = () => {
               </div>
             );
           })}
+
+          {/* Mobile Pagination */}
+          <MobilePagination
+            currentPage={currentPage}
+            totalItems={filteredOrders.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="orders"
+            pageSizeOptions={[10, 20, 50]}
+          />
         </div>
       ) : (
         <div className="p-8 rounded-xl bg-surface border border-theme text-center space-y-2 shadow-xs">

@@ -454,11 +454,33 @@ export const ReceivablesHub: React.FC = () => {
     let pendingCount = 0;
 
     proformaInvoices.forEach((pi: any) => {
+      const matchedSO = salesOrders.find((so: any) => 
+        (pi.orderNo && (so.orderNo === pi.orderNo || String(so.id) === String(pi.orderNo))) ||
+        (pi.orderId && (String(so.id) === String(pi.orderId) || so.orderNo === pi.orderId))
+      );
+      const matchedCust = customers.find((c: any) => 
+        c.id === pi.customerId || 
+        c.id === pi.leadId ||
+        (c.name && c.name.toLowerCase() === (pi.customerName || '').toLowerCase()) ||
+        (c.company && c.company.toLowerCase() === (pi.customerCompany || pi.customerName || '').toLowerCase())
+      );
+      const matchedQuote = quotations.find((q: any) => 
+        (pi.quotationNo && (q.quotationNo === pi.quotationNo || q.docNo === pi.quotationNo || String(q.id) === String(pi.quotationNo))) ||
+        (matchedSO?.quotationNo && (q.quotationNo === matchedSO.quotationNo || q.docNo === matchedSO.quotationNo))
+      );
+
       const isUSD = Boolean(
         pi.currency === 'USD' || 
         pi.currency === '$' || 
         pi.taxProfileId === 'tp_export_zero_rated' || 
-        pi.isForeign
+        pi.isForeign ||
+        matchedSO?.currency === 'USD' ||
+        matchedSO?.currency === '$' ||
+        matchedSO?.isForeign ||
+        matchedSO?.taxProfileId === 'tp_export_zero_rated' ||
+        matchedCust?.isForeign ||
+        matchedCust?.currency === 'USD' ||
+        matchedQuote?.currency === 'USD'
       );
       const tot = Number(pi.total || pi.amount || 0);
       const paid = Number(pi.paidAmount || 0);
@@ -488,7 +510,7 @@ export const ReceivablesHub: React.FC = () => {
       totalPendingUsd,
       pendingCount 
     };
-  }, [proformaInvoices]);
+  }, [proformaInvoices, salesOrders, customers, quotations]);
 
   // Summary Metrics
   const metrics = useMemo(() => {
@@ -648,19 +670,26 @@ export const ReceivablesHub: React.FC = () => {
       c.id === proforma.leadId || 
       (c.name && c.name.toLowerCase() === (proforma.customerName || '').toLowerCase())
     );
+    const matchedSO = salesOrders.find((so: any) => 
+      (proforma.orderNo && (so.orderNo === proforma.orderNo || String(so.id) === String(proforma.orderNo))) ||
+      (proforma.orderId && (String(so.id) === String(proforma.orderId) || so.orderNo === proforma.orderId))
+    );
     const isForeign = Boolean(
       proforma.currency === 'USD' ||
       proforma.taxProfileId === 'tp_export_zero_rated' ||
       matchedCustomer?.isForeign ||
-      matchedCustomer?.currency === 'USD'
+      matchedCustomer?.currency === 'USD' ||
+      matchedSO?.currency === 'USD' ||
+      matchedSO?.isForeign
     );
-    const resolvedCur = isForeign ? 'USD' : (proforma.currency || matchedCustomer?.currency || 'LKR');
+    const resolvedCur = isForeign ? 'USD' : (proforma.currency || matchedSO?.currency || matchedCustomer?.currency || 'LKR');
     const resolvedRate = Number(proforma.exchangeRate || (resolvedCur === 'USD' ? 310 : 1));
 
     const enriched = {
       ...proforma,
       currency: resolvedCur,
       exchangeRate: resolvedRate,
+      priceBasis: proforma.priceBasis || (proforma.additionalInfo?.includes('CIF') ? 'CIF' : 'FOB') || 'FOB',
       isProforma: 1,
       invoiceType: 'proforma',
       customerName: proforma.customerName || matchedCustomer?.name || 'Customer',
@@ -671,7 +700,7 @@ export const ReceivablesHub: React.FC = () => {
       customerVat: proforma.customerVat || matchedCustomer?.taxNumber || matchedCustomer?.vatNumber || '',
       poNo: proforma.poNo || proforma.customerPoNo || '',
       customerPoNo: proforma.customerPoNo || proforma.poNo || '',
-      deliveryDate: proforma.deliveryDate || ''
+      deliveryDate: proforma.deliveryDate || matchedSO?.deliveryDate || matchedSO?.targetDeliveryDate || ''
     };
     setActivePrintProforma(enriched);
   };
@@ -1395,13 +1424,35 @@ export const ReceivablesHub: React.FC = () => {
                     const due = Math.max(0, tot - paid);
                     const isFullyPaid = pi.status === 'paid' || (tot > 0 && paid >= tot);
                     const isPartiallyPaid = !isFullyPaid && paid > 0;
+                    const matchedSO = salesOrders.find((so: any) => 
+                      (pi.orderNo && (so.orderNo === pi.orderNo || String(so.id) === String(pi.orderNo))) ||
+                      (pi.orderId && (String(so.id) === String(pi.orderId) || so.orderNo === pi.orderId))
+                    );
+                    const matchedCust = customers.find((c: any) => 
+                      c.id === pi.customerId || 
+                      c.id === pi.leadId ||
+                      (c.name && c.name.toLowerCase() === (pi.customerName || '').toLowerCase()) ||
+                      (c.company && c.company.toLowerCase() === (pi.customerCompany || pi.customerName || '').toLowerCase())
+                    );
+                    const matchedQuote = quotations.find((q: any) => 
+                      (pi.quotationNo && (q.quotationNo === pi.quotationNo || q.docNo === pi.quotationNo || String(q.id) === String(pi.quotationNo))) ||
+                      (matchedSO?.quotationNo && (q.quotationNo === matchedSO.quotationNo || q.docNo === matchedSO.quotationNo))
+                    );
+
                     const isPiUSD = Boolean(
                       pi.currency === 'USD' ||
                       pi.currency === '$' ||
                       pi.taxProfileId === 'tp_export_zero_rated' ||
-                      pi.isForeign
+                      pi.isForeign ||
+                      matchedSO?.currency === 'USD' ||
+                      matchedSO?.currency === '$' ||
+                      matchedSO?.isForeign ||
+                      matchedSO?.taxProfileId === 'tp_export_zero_rated' ||
+                      matchedCust?.isForeign ||
+                      matchedCust?.currency === 'USD' ||
+                      matchedQuote?.currency === 'USD'
                     );
-                    const piCurrency = isPiUSD ? 'USD' : (pi.currency || 'LKR');
+                    const piCurrency = isPiUSD ? 'USD' : (pi.currency || matchedSO?.currency || matchedCust?.currency || 'LKR');
 
                     return (
                       <tr key={pi.id} className="hover:bg-surface2/30 transition-colors">
@@ -1688,13 +1739,27 @@ export const ReceivablesHub: React.FC = () => {
 
       {/* RECORD INVOICE / PROFORMA PAYMENT MODAL */}
       {paymentModalInvoice && (() => {
+        const matchedSO = salesOrders.find((so: any) => 
+          (paymentModalInvoice.orderNo && (so.orderNo === paymentModalInvoice.orderNo || String(so.id) === String(paymentModalInvoice.orderNo))) ||
+          (paymentModalInvoice.orderId && (String(so.id) === String(paymentModalInvoice.orderId) || so.orderNo === paymentModalInvoice.orderId))
+        );
+        const matchedCust = customers.find((c: any) => 
+          c.id === paymentModalInvoice.customerId || 
+          c.id === paymentModalInvoice.leadId ||
+          (c.name && c.name.toLowerCase() === (paymentModalInvoice.customerName || '').toLowerCase())
+        );
         const isUSD = Boolean(
           paymentModalInvoice.currency === 'USD' ||
           paymentModalInvoice.currency === '$' ||
           paymentModalInvoice.taxProfileId === 'tp_export_zero_rated' ||
-          paymentModalInvoice.isForeign
+          paymentModalInvoice.isForeign ||
+          matchedSO?.currency === 'USD' ||
+          matchedSO?.currency === '$' ||
+          matchedSO?.isForeign ||
+          matchedCust?.isForeign ||
+          matchedCust?.currency === 'USD'
         );
-        const modalCurrency = isUSD ? 'USD' : (paymentModalInvoice.currency || 'LKR');
+        const modalCurrency = isUSD ? 'USD' : (paymentModalInvoice.currency || matchedSO?.currency || 'LKR');
         const isProformaDoc = Boolean(
           paymentModalInvoice.isProforma ||
           paymentModalInvoice.invoiceType === 'proforma' ||

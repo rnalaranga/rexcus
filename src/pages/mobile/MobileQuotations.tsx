@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Search, Eye, Filter, ArrowLeft, RefreshCw, 
@@ -10,6 +10,7 @@ import { useQuotations, useCustomers, useLeads } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
 import { QuotationPrintView } from '@/components/QuotationPrintView';
 import { MobileA4Preview } from '@/components/mobile/MobileA4Preview';
+import { MobilePagination } from '@/components/mobile/MobilePagination';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export const MobileQuotations: React.FC = () => {
@@ -21,8 +22,15 @@ export const MobileQuotations: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'usd' | 'lkr'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
   const [previewTab, setPreviewTab] = useState<'summary' | 'print'>('summary');
+
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Enriched quotations list
   const enrichedQuotes = useMemo(() => {
@@ -91,6 +99,12 @@ export const MobileQuotations: React.FC = () => {
       return true;
     });
   }, [enrichedQuotes, searchQuery, statusFilter]);
+
+  // Paginated quotations
+  const paginatedQuotes = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredQuotes.slice(start, start + pageSize);
+  }, [filteredQuotes, currentPage, pageSize]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -233,7 +247,7 @@ export const MobileQuotations: React.FC = () => {
       {/* Quotations List */}
       {filteredQuotes.length > 0 ? (
         <div className="space-y-2.5">
-          {filteredQuotes.map((q: any) => {
+          {paginatedQuotes.map((q: any) => {
             const isPending = q.status === 'Pending Approval' || q.status === 'Draft_Pending' || q.editApprovalRequested;
             const isApproved = q.status === 'Approved' || q.status === 'Confirmed' || q.status === 'Issued';
 
@@ -299,6 +313,17 @@ export const MobileQuotations: React.FC = () => {
               </div>
             );
           })}
+
+          {/* Mobile Pagination */}
+          <MobilePagination
+            currentPage={currentPage}
+            totalItems={filteredQuotes.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="quotations"
+            pageSizeOptions={[10, 20, 50]}
+          />
         </div>
       ) : (
         <div className="p-8 rounded-xl bg-surface border border-theme text-center space-y-2 shadow-xs">

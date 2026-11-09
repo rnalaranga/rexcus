@@ -278,7 +278,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       orderId: proforma.orderId || order?.id || '',
       poNo: proforma.poNo || proforma.customerPoNo || order?.poNo || order?.customerPoNo || '',
       customerPoNo: proforma.customerPoNo || proforma.poNo || order?.customerPoNo || order?.poNo || '',
-      deliveryDate: proforma.deliveryDate || order?.deliveryDate || ''
+      deliveryDate: proforma.deliveryDate || order?.deliveryDate || order?.targetDeliveryDate || '',
+      priceBasis: proforma.priceBasis || order?.priceBasis || (proforma.additionalInfo?.includes('CIF') ? 'CIF' : 'FOB') || 'FOB'
     };
     setActivePrintProforma(enriched);
   };
@@ -3437,8 +3438,30 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </thead>
               <tbody className="divide-y divide-theme-subtle/40">
                 {proformaInvoicesList.map((pi: any, idx: number) => {
-                  const linkedSO = orders.find(o => o.orderNo === pi.orderNo || o.id === pi.orderId);
-                  const isPiUSD = pi.currency === 'USD' || linkedSO?.currency === 'USD' || linkedSO?.isForeign;
+                  const linkedSO = orders.find(o => 
+                    (pi.orderNo && (o.orderNo === pi.orderNo || String(o.id) === String(pi.orderNo))) ||
+                    (pi.orderId && (String(o.id) === String(pi.orderId) || o.orderNo === pi.orderId))
+                  );
+                  const linkedQuote = (availableQuotations || []).find((q: any) => 
+                    (pi.quotationNo && (q.quotationNo === pi.quotationNo || q.docNo === pi.quotationNo || String(q.id) === String(pi.quotationNo))) ||
+                    (linkedSO?.quotationNo && (q.quotationNo === linkedSO.quotationNo || q.docNo === linkedSO.quotationNo))
+                  );
+                  const matchedCust = customers.find((c: any) => 
+                    c.id === pi.customerId || 
+                    (c.name && c.name.toLowerCase() === (pi.customerName || '').toLowerCase())
+                  );
+                  const isPiUSD = Boolean(
+                    pi.currency === 'USD' || 
+                    pi.currency === '$' ||
+                    linkedSO?.currency === 'USD' || 
+                    linkedSO?.currency === '$' ||
+                    linkedSO?.isForeign ||
+                    linkedSO?.taxProfileId === 'tp_export_zero_rated' ||
+                    linkedQuote?.currency === 'USD' ||
+                    matchedCust?.isForeign ||
+                    matchedCust?.currency === 'USD'
+                  );
+                  const resolvedCur = isPiUSD ? 'USD' : (pi.currency || linkedSO?.currency || 'LKR');
 
                   return (
                     <tr key={pi.id || idx} className="hover:bg-surface2/30 transition-colors">
@@ -3469,7 +3492,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </td>
 
                       <td className="px-3.5 py-2.5 text-right font-mono">
-                        <span className="font-bold text-primary block text-xs">{formatCurrency(pi.total || 0, false, pi.currency || linkedSO?.currency || (linkedSO?.isForeign ? 'USD' : 'LKR'))}</span>
+                        <span className="font-bold text-primary block text-xs">{formatCurrency(pi.total || 0, false, resolvedCur)}</span>
                         {pi.advancePercent && (
                           <span className="text-[10px] text-muted">({pi.advancePercent}% advance deposit)</span>
                         )}
@@ -3948,7 +3971,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 flex items-center gap-1 transition-colors mt-0.5"
                               title={`Advance Proforma: ${linkedProforma.invoiceNo || linkedProforma.id}`}
                             >
-                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || orderCurrency)}
+                              <FileText size={10} /> Proforma: {formatCurrency(Number(linkedProforma.total || 0), false, (isOrderUSD || linkedProforma.currency === 'USD' || linkedProforma.currency === '$') ? 'USD' : (linkedProforma.currency || orderCurrency))}
                             </button>
                           )}
                         </div>
@@ -3998,7 +4021,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                               type: 'proforma',
                               title: 'Advance Proforma Invoice',
                               reference: linkedProforma.invoiceNo || linkedProforma.id,
-                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0), false, linkedProforma.currency || orderCurrency)}`,
+                              subtitle: `Advance Deposit: ${formatCurrency(Number(linkedProforma.total || 0), false, (isOrderUSD || linkedProforma.currency === 'USD' || linkedProforma.currency === '$') ? 'USD' : (linkedProforma.currency || orderCurrency))}`,
                               statusBadge: { label: 'Proforma', variant: 'info' },
                               onClick: () => handleOpenPrintProforma(linkedProforma, order)
                             });
