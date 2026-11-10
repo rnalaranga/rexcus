@@ -33,6 +33,7 @@ export const Invoices: React.FC = () => {
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
   )
+  const canEditInvoice = Boolean(isAdmin || can('finance.invoices.edit'))
   const canRecordPayment = Boolean(
     user?.role === 'finance_manager' ||
     user?.role === 'admin' ||
@@ -558,10 +559,11 @@ export const Invoices: React.FC = () => {
       (cust.name && cust.name.toLowerCase().includes(q)) ||
       (cust.company && cust.company.toLowerCase().includes(q));
 
+    const isProforma = Boolean(inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-'));
+
     let statusMatch = true;
     if (statusFilter !== 'all') {
       const invStatus = (inv.status || '').toLowerCase();
-      const isProforma = Boolean(inv.isProforma || inv.invoiceType === 'proforma' || String(inv.id || inv.invoiceNo || '').startsWith('PI-'));
       if (statusFilter === 'proforma') {
         statusMatch = isProforma;
       } else if (statusFilter === 'unpaid') {
@@ -575,8 +577,11 @@ export const Invoices: React.FC = () => {
       } else if (statusFilter === 'draft') {
         statusMatch = !isProforma && invStatus === 'draft';
       } else {
-        statusMatch = invStatus === statusFilter.toLowerCase();
+        statusMatch = !isProforma && invStatus === statusFilter.toLowerCase();
       }
+    } else {
+      // By default ('all'), do NOT show Proforma Invoices in the main tax invoices list
+      statusMatch = !isProforma;
     }
 
     let customerMatch = true;
@@ -917,15 +922,28 @@ export const Invoices: React.FC = () => {
           <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs font-medium" onClick={() => setViewInvoice(item)}>
             View
           </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-7 px-2 text-xs font-medium text-muted hover:text-blue-500" 
-            onClick={() => handleOpenChangeNoModal(item)}
-            title="Change Invoice Number"
-          >
-            <Hash size={13} />
-          </Button>
+          {canEditInvoice && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-7 px-2 text-xs font-medium text-muted hover:text-blue-500" 
+              onClick={() => navigate(`/finance/invoices/new?editInvoiceId=${encodeURIComponent(item.id)}`)}
+              title="Edit Invoice"
+            >
+              <Edit3 size={13} />
+            </Button>
+          )}
+          {canEditInvoice && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-7 px-2 text-xs font-medium text-muted hover:text-blue-500" 
+              onClick={() => handleOpenChangeNoModal(item)}
+              title="Change Invoice Number"
+            >
+              <Hash size={13} />
+            </Button>
+          )}
           {isAdmin && (
             <button 
               onClick={() => setDeleteTarget(item.id)} 
@@ -1330,26 +1348,30 @@ export const Invoices: React.FC = () => {
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2 mb-2">
-                  <Button 
-                    variant="outline" 
-                    icon={Edit3}
-                    className="h-9 text-xs border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-bold"
-                    onClick={() => {
-                      navigate(`/finance/invoices/new?editInvoiceId=${encodeURIComponent(viewInvoice.id)}`);
-                    }}
-                  >
-                    Edit Invoice
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    icon={Hash}
-                    className="h-9 text-xs border border-amber-500/30 text-amber-600 hover:bg-amber-500/10 font-bold"
-                    onClick={() => {
-                      handleOpenChangeNoModal(viewInvoice);
-                    }}
-                  >
-                    Change No.
-                  </Button>
+                  {canEditInvoice && (
+                    <Button 
+                      variant="outline" 
+                      icon={Edit3}
+                      className="h-9 text-xs border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 font-bold"
+                      onClick={() => {
+                        navigate(`/finance/invoices/new?editInvoiceId=${encodeURIComponent(viewInvoice.id)}`);
+                      }}
+                    >
+                      Edit Invoice
+                    </Button>
+                  )}
+                  {canEditInvoice && (
+                    <Button 
+                      variant="outline" 
+                      icon={Hash}
+                      className="h-9 text-xs border border-amber-500/30 text-amber-600 hover:bg-amber-500/10 font-bold"
+                      onClick={() => {
+                        handleOpenChangeNoModal(viewInvoice);
+                      }}
+                    >
+                      Change No.
+                    </Button>
+                  )}
                   <Button 
                     variant="primary" 
                     icon={Mail} 

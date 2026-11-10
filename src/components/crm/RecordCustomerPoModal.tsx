@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, FileCheck, Calendar, Building2, UploadCloud, Eye, Trash2, 
-  CheckCircle2, AlertCircle, DollarSign, FileText, Clock, ShieldCheck, Loader2 
+  CheckCircle2, AlertCircle, DollarSign, FileText, Clock, ShieldCheck, Loader2,
+  Crop
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
@@ -11,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
 import { updateFinishedGoodsOrder, uploadFileToStorage, assignCustomerPoFromPool } from '@/lib/api';
 import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal';
+import { ImageCropEditorModal } from '@/components/crm/ImageCropEditorModal';
 
 export type PoEntryMode = 'received' | 'pending' | 'without_po';
 
@@ -47,6 +49,7 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
   const [withoutPoReason, setWithoutPoReason] = useState('Verbal / Phone Confirmation');
   const [customerPoAttachment, setCustomerPoAttachment] = useState('');
   const [customerPoAttachmentName, setCustomerPoAttachmentName] = useState('');
+  const [cropEditorImage, setCropEditorImage] = useState<{ src: string; name: string } | null>(null);
   const [notes, setNotes] = useState('');
   const [isPreviouslyPending, setIsPreviouslyPending] = useState(false);
   const [showPoPoolPicker, setShowPoPoolPicker] = useState(false);
@@ -171,6 +174,10 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
   const quoteTotal = Number(orderData?.totalPrice || orderData?.subtotal || quotation?.totalAmount || quotation?.customAmount || 0);
   const isProceedingToSo = Boolean(quotationData?.proceedToSalesOrder);
 
+  const isImageFile = (nameOrUrl: string) => {
+    return /\.(jpe?g|png|webp|bmp|gif)($|\?)/i.test(nameOrUrl) || nameOrUrl.startsWith('data:image/');
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -180,11 +187,21 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
       return;
     }
 
-    setIsUploading(true);
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const rawDataUri = reader.result as string;
+        
+        // If it's an image, open the interactive Crop/Rotate/Enhance studio directly
+        if (file.type.startsWith('image/')) {
+          setCropEditorImage({
+            src: rawDataUri,
+            name: file.name
+          });
+          return;
+        }
+
+        setIsUploading(true);
         setCustomerPoAttachment(rawDataUri);
         setCustomerPoAttachmentName(file.name);
 
@@ -207,6 +224,25 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleSaveCroppedImage = async (croppedDataUrl: string, newFileName: string) => {
+    setIsUploading(true);
+    setCustomerPoAttachment(croppedDataUrl);
+    setCustomerPoAttachmentName(newFileName);
+    try {
+      const uploaded = await uploadFileToStorage(croppedDataUrl, newFileName, 'customer_po');
+      if (uploaded && uploaded.url) {
+        setCustomerPoAttachment(uploaded.url);
+        toast('Optimized Customer PO image uploaded & attached!', 'success');
+      } else {
+        toast('Customer PO image cropped and attached', 'info');
+      }
+    } catch (err) {
+      console.warn('Cropped PO upload warning:', err);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -506,6 +542,23 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {isImageFile(customerPoAttachmentName || customerPoAttachment) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCropEditorImage({
+                              src: customerPoAttachment,
+                              name: customerPoAttachmentName || 'PO_Document.jpg'
+                            });
+                          }}
+                          className="text-xs p-1.5 h-auto text-emerald-600 hover:text-emerald-700 flex items-center gap-1 font-semibold"
+                          title="Crop, rotate, and enhance PO document"
+                        >
+                          <Crop size={13} /> Crop / Edit
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"
@@ -660,6 +713,16 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
             setShowPoPoolPicker(false);
             toast(`Customer PO #${pickedPo.poNumber} selected from pool!`, 'info');
           }}
+        />
+      )}
+      {/* IMAGE CROP & ENHANCE EDITOR MODAL */}
+      {cropEditorImage && (
+        <ImageCropEditorModal
+          isOpen={true}
+          onClose={() => setCropEditorImage(null)}
+          imageSrc={cropEditorImage.src}
+          fileName={cropEditorImage.name}
+          onSave={handleSaveCroppedImage}
         />
       )}
     </div>,

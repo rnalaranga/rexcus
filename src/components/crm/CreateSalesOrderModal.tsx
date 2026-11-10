@@ -5,12 +5,13 @@ import {
   X, ShoppingBag, FileText, Calendar, Building2, User, Phone, 
   MapPin, UploadCloud, Eye, Trash2, CheckCircle2, AlertCircle, 
   Package, DollarSign, AlertTriangle, ShieldCheck, Lock, Clock,
-  Plus, Edit3, Loader2, FileCheck
+  Plus, Edit3, Loader2, FileCheck, Crop
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { createFinishedGoodsOrder, fetchNextDocumentNumber, uploadFileToStorage, assignCustomerPoFromPool } from '@/lib/api';
 import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal';
+import { ImageCropEditorModal } from '@/components/crm/ImageCropEditorModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,6 +48,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const [adminOverrideWaiver, setAdminOverrideWaiver] = useState(false);
   const [advanceWaiverReason, setAdvanceWaiverReason] = useState('');
   const [showPoPoolPicker, setShowPoPoolPicker] = useState(false);
+  const [cropEditorImage, setCropEditorImage] = useState<{ src: string; name: string } | null>(null);
   const [pickedPoolId, setPickedPoolId] = useState<string | null>(null);
 
   const isAdminOrManager = Boolean(
@@ -461,6 +463,10 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
   if (!isOpen || !quotationData) return null;
 
+  const isImageFile = (nameOrUrl: string) => {
+    return /\.(jpe?g|png|webp|bmp|gif)($|\?)/i.test(nameOrUrl) || nameOrUrl.startsWith('data:image/');
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -470,11 +476,21 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       return;
     }
 
-    setIsUploading(true);
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const rawDataUri = reader.result as string;
+
+        // If it's an image, launch the interactive crop studio
+        if (file.type.startsWith('image/')) {
+          setCropEditorImage({
+            src: rawDataUri,
+            name: file.name
+          });
+          return;
+        }
+
+        setIsUploading(true);
         setFormData(prev => ({
           ...prev,
           customerPoAttachment: rawDataUri,
@@ -503,6 +519,32 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleSaveCroppedImage = async (croppedDataUrl: string, newFileName: string) => {
+    setIsUploading(true);
+    setFormData(prev => ({
+      ...prev,
+      customerPoAttachment: croppedDataUrl,
+      customerPoAttachmentName: newFileName
+    }));
+
+    try {
+      const uploaded = await uploadFileToStorage(croppedDataUrl, newFileName, 'customer_po');
+      if (uploaded && uploaded.url) {
+        setFormData(prev => ({
+          ...prev,
+          customerPoAttachment: uploaded.url
+        }));
+        toast('Optimized Customer PO image uploaded & attached!', 'success');
+      } else {
+        toast('Customer PO image cropped and attached', 'info');
+      }
+    } catch (err) {
+      console.warn('Cropped PO upload warning:', err);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const recalculateFinancials = (
@@ -1459,6 +1501,23 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {isImageFile(formData.customerPoAttachmentName || formData.customerPoAttachment) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setCropEditorImage({
+                                src: formData.customerPoAttachment,
+                                name: formData.customerPoAttachmentName || 'Customer_PO.jpg'
+                              });
+                            }}
+                            className="text-xs text-emerald-600 hover:text-emerald-700 p-1.5 h-auto flex items-center gap-1 font-semibold"
+                            title="Crop, rotate, and enhance PO document"
+                          >
+                            <Crop size={13} /> Crop / Edit
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
@@ -1659,6 +1718,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
             setShowPoPoolPicker(false);
             toast(`Customer PO #${pickedPo.poNumber} selected from pool!`, 'info');
           }}
+        />
+      )}
+
+      {/* IMAGE CROP & ENHANCE EDITOR MODAL */}
+      {cropEditorImage && (
+        <ImageCropEditorModal
+          isOpen={true}
+          onClose={() => setCropEditorImage(null)}
+          imageSrc={cropEditorImage.src}
+          fileName={cropEditorImage.name}
+          onSave={handleSaveCroppedImage}
         />
       )}
     </div>,

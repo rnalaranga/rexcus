@@ -458,12 +458,12 @@ export const ServiceInspectionHub: React.FC = () => {
       header: 'Job & Machinery',
       render: (_, job) => (
         <div>
-          <div className="flex items-center gap-2 font-semibold text-white">
-            <span className="font-mono text-cyan-400">{job.jobNo}</span>
-            {job.priority === 'High' && <span className="px-1.5 py-0.5 text-[10px] rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">High Priority</span>}
+          <div className="flex items-center gap-2 font-semibold text-primary">
+            <span className="font-mono text-rex-600 dark:text-rex-400 font-bold">{job.jobNo}</span>
+            {job.priority === 'High' && <span className="px-1.5 py-0.5 text-[10px] rounded-none bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold">High Priority</span>}
           </div>
-          <div className="text-sm font-medium text-slate-200 mt-0.5">{job.itemName}</div>
-          <div className="text-xs text-slate-400">
+          <div className="text-sm font-semibold text-secondary mt-0.5">{job.itemName}</div>
+          <div className="text-xs text-muted">
             {job.modelNo ? `Model: ${job.modelNo}` : ''} {job.serialNo ? ` | S/N: ${job.serialNo}` : ''}
           </div>
         </div>
@@ -474,9 +474,9 @@ export const ServiceInspectionHub: React.FC = () => {
       header: 'Customer Details',
       render: (_, job) => (
         <div>
-          <div className="font-medium text-slate-200">{job.customerCompany || job.customerName}</div>
-          {job.customerCompany && <div className="text-xs text-slate-400">Attn: {job.customerName}</div>}
-          {job.contactPhone && <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3 text-slate-500" />{job.contactPhone}</div>}
+          <div className="font-semibold text-primary">{job.customerCompany || job.customerName}</div>
+          {job.customerCompany && <div className="text-xs text-muted">Attn: {job.customerName}</div>}
+          {job.contactPhone && <div className="text-xs text-muted flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3 text-muted shrink-0" />{job.contactPhone}</div>}
         </div>
       )
     },
@@ -486,8 +486,8 @@ export const ServiceInspectionHub: React.FC = () => {
       render: (_, job) => (
         <div>
           {renderStatusBadge(job.status)}
-          <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-            <Calendar className="w-3 h-3 text-slate-500" />
+          <div className="text-[11px] text-muted mt-1 flex items-center gap-1">
+            <Calendar className="w-3 h-3 text-muted" />
             Intake: {new Date(job.intakeDate).toLocaleDateString()}
           </div>
         </div>
@@ -499,41 +499,41 @@ export const ServiceInspectionHub: React.FC = () => {
       render: (_, job) => (
         <div className="space-y-1 text-xs">
           {job.inwardGatePassNo && (
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <span className="text-[10px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">IN-GP</span>
-              <span className="font-mono text-amber-300">{job.inwardGatePassNo}</span>
+            <div className="flex items-center gap-1.5 text-secondary">
+              <span className="text-[10px] px-1 py-0.2 rounded-none bg-surface2 text-muted border border-theme-subtle font-mono">IN-GP</span>
+              <span className="font-mono text-amber-600 dark:text-amber-400 font-semibold">{job.inwardGatePassNo}</span>
             </div>
           )}
           {job.quotationNo && (
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <span className="text-[10px] px-1 py-0.2 rounded bg-blue-900/40 text-blue-300 border border-blue-700/50">QUO</span>
-              <span className="font-mono text-blue-300">{job.quotationNo}</span>
-              <span className="text-slate-400">({formatCurrency(job.quotationAmount || 0)})</span>
+            <div className="flex items-center gap-1.5 text-secondary">
+              <span className="text-[10px] px-1 py-0.2 rounded-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-mono">QUO</span>
+              <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">{job.quotationNo}</span>
+              <span className="text-muted">({formatCurrency(job.quotationAmount || 0)})</span>
             </div>
           )}
           {job.salesOrderNo && (
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-900/40 text-emerald-300 border border-emerald-700/50">SO</span>
-              <span className="font-mono text-emerald-300">{job.salesOrderNo}</span>
+            <div className="flex items-center gap-1.5 text-secondary">
+              <span className="text-[10px] px-1 py-0.2 rounded-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-mono">SO</span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{job.salesOrderNo}</span>
             </div>
           )}
           {job.repairWorkOrderId && (
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <span className="text-[10px] px-1 py-0.2 rounded bg-purple-900/40 text-purple-300 border border-purple-700/50">WO</span>
-              <span className="font-mono text-purple-300">{job.repairWorkOrderId}</span>
+            <div className="flex items-center gap-1.5 text-secondary">
+              <span className="text-[10px] px-1 py-0.2 rounded-none bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono">WO</span>
+              <span className="font-mono text-purple-600 dark:text-purple-400 font-semibold">{job.repairWorkOrderId}</span>
             </div>
           )}
           {job.inspectionInvoiceNo && (
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <span className="text-[10px] px-1 py-0.2 rounded bg-rose-900/40 text-rose-300 border border-rose-700/50">FEE INV</span>
-              <span className="font-mono text-rose-300">{job.inspectionInvoiceNo}</span>
-              <span className="text-slate-400">({formatCurrency(job.inspectionFee || 0)})</span>
+            <div className="flex items-center gap-1.5 text-secondary">
+              <span className="text-[10px] px-1 py-0.2 rounded-none bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-mono">FEE INV</span>
+              <span className="font-mono text-rose-600 dark:text-rose-400 font-semibold">{job.inspectionInvoiceNo}</span>
+              <span className="text-muted">({formatCurrency(job.inspectionFee || 0)})</span>
             </div>
           )}
           {job.outwardGatePassNo && (
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <span className="text-[10px] px-1 py-0.2 rounded bg-green-900/40 text-green-300 border border-green-700/50">OUT-GP</span>
-              <span className="font-mono text-green-300">{job.outwardGatePassNo}</span>
+            <div className="flex items-center gap-1.5 text-secondary">
+              <span className="text-[10px] px-1 py-0.2 rounded-none bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 font-mono">OUT-GP</span>
+              <span className="font-mono text-green-600 dark:text-green-400 font-semibold">{job.outwardGatePassNo}</span>
             </div>
           )}
         </div>
@@ -546,17 +546,17 @@ export const ServiceInspectionHub: React.FC = () => {
         <div className="text-xs">
           {Number(job.estimatedRepairCost) > 0 ? (
             <div>
-              <div className="text-slate-400">Repair Estimate:</div>
-              <div className="font-semibold text-emerald-400">{formatCurrency(job.estimatedRepairCost || 0)}</div>
+              <div className="text-muted">Repair Estimate:</div>
+              <div className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">{formatCurrency(job.estimatedRepairCost || 0)}</div>
             </div>
           ) : (
-            <div className="text-slate-500 italic">Not diagnosed yet</div>
+            <div className="text-muted italic">Not diagnosed yet</div>
           )}
-          <div className="mt-1 text-slate-400">
-            Dismantle Fee: <span className="text-slate-200 font-mono">{formatCurrency(job.inspectionFee || 0)}</span>
+          <div className="mt-1 text-muted">
+            Dismantle Fee: <span className="text-primary font-mono font-semibold">{formatCurrency(job.inspectionFee || 0)}</span>
           </div>
           {job.assignedTechnician && (
-            <div className="text-[11px] text-slate-400 mt-0.5">Tech: {job.assignedTechnician}</div>
+            <div className="text-[11px] text-muted mt-0.5">Tech: {job.assignedTechnician}</div>
           )}
         </div>
       )
@@ -571,11 +571,11 @@ export const ServiceInspectionHub: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="text-xs h-7 px-2 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+              className="text-xs h-7 px-2 rounded-none border-theme text-secondary hover:text-primary hover:bg-surface2"
               onClick={() => openDiagnosis(job)}
               title="Record Dismantling & Technical Assessment"
             >
-              <Wrench className="w-3.5 h-3.5 mr-1" />
+              <Wrench className="w-3.5 h-3.5 mr-1 text-rex-500" />
               {job.findings ? 'Edit Findings' : 'Dismantle & Diagnose'}
             </Button>
           )}
@@ -585,7 +585,7 @@ export const ServiceInspectionHub: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="text-xs h-7 px-2 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              className="text-xs h-7 px-2 rounded-none border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
               onClick={() => handleCreateQuotation(job)}
               disabled={submitting}
               title="Prepare Formal Quotation for Customer"
@@ -600,7 +600,7 @@ export const ServiceInspectionHub: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="text-xs h-7 px-2 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+              className="text-xs h-7 px-2 rounded-none border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
               onClick={() => openDecision(job)}
               title="Record Customer Decision (Approve or Decline)"
             >
@@ -614,7 +614,7 @@ export const ServiceInspectionHub: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="text-xs h-7 px-2 border-green-500/30 text-green-400 hover:bg-green-500/10"
+              className="text-xs h-7 px-2 rounded-none border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/10"
               onClick={() => openRelease(job)}
               title="Issue Outward Gate Pass and Release Equipment"
             >
@@ -627,11 +627,11 @@ export const ServiceInspectionHub: React.FC = () => {
           <Button
             size="sm"
             variant="ghost"
-            className="text-xs h-7 px-2 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="text-xs h-7 px-2 rounded-none text-muted hover:text-primary hover:bg-surface2"
             onClick={() => openTraceability(job)}
             title="Complete Traceability Journey"
           >
-            <Layers className="w-3.5 h-3.5 mr-1 text-cyan-400" />
+            <Layers className="w-3.5 h-3.5 mr-1 text-rex-500" />
             Audit Trace
           </Button>
 
@@ -639,7 +639,7 @@ export const ServiceInspectionHub: React.FC = () => {
           <Button
             size="sm"
             variant="ghost"
-            className="text-xs h-7 px-2 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="text-xs h-7 px-2 rounded-none text-muted hover:text-primary hover:bg-surface2"
             onClick={() => openPrint(job)}
             title="Print Inspection Job Card & Findings Sheet"
           >
@@ -651,34 +651,31 @@ export const ServiceInspectionHub: React.FC = () => {
   ]
 
   return (
-    <div className="w-full space-y-6 pb-20">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/60 p-5 rounded-2xl border border-slate-800 backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 text-cyan-400 rounded-xl border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
-              <Wrench className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-                Service & Pre-Quotation Inspection Hub
-                <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                  Reverse Workshop Workflow
-                </span>
-              </h1>
-              <p className="text-sm text-slate-400 mt-0.5">
-                Manage equipment teardown, technical diagnostic reports, post-inspection quotations, customer approval / decline fees, and gate pass release.
-              </p>
-            </div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-primary tracking-tight">
+              Service & Pre-Quotation Inspection Hub
+            </h1>
+            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-none bg-rex-500/10 text-rex-600 dark:text-rex-400 border border-rex-500/20 font-mono">
+              Workshop Teardown
+            </span>
           </div>
+          <p className="text-sm text-secondary mt-1">
+            Manage equipment teardown, technical diagnostic reports, post-inspection quotations, customer approval / decline fees, and gate pass release.
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
+            variant="primary"
+            size="sm"
             onClick={() => setShowIntakeModal(true)}
-            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-medium shadow-lg shadow-cyan-500/20"
+            className="rounded-none text-xs font-bold"
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus size={14} className="mr-1.5" />
             New Equipment Intake (In-GP)
           </Button>
         </div>
@@ -686,51 +683,51 @@ export const ServiceInspectionHub: React.FC = () => {
 
       {/* Workflow Process Stepper Info */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80">
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-amber-400">1. Intake & In-GP</span>
-            <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded-md">{stats.intake}</span>
+            <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">1. Intake & In-GP</span>
+            <span className="text-xs font-mono font-bold text-primary bg-surface2 px-1.5 py-0.5 border border-theme-subtle">{stats.intake}</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Receive machine & generate Inward Gate Pass</div>
-        </div>
+          <div className="text-[11px] text-muted mt-1 leading-snug">Receive machine & generate Inward Gate Pass</div>
+        </GlassCard>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80">
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-cyan-400">2. Teardown & Diagnose</span>
-            <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded-md">{jobs.filter(j => j.status === 'diagnosis_complete').length}</span>
+            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">2. Teardown & Diagnose</span>
+            <span className="text-xs font-mono font-bold text-primary bg-surface2 px-1.5 py-0.5 border border-theme-subtle">{jobs.filter(j => j.status === 'diagnosis_complete').length}</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Dismantle, inspect, estimate parts & machining</div>
-        </div>
+          <div className="text-[11px] text-muted mt-1 leading-snug">Dismantle, inspect, estimate parts & machining</div>
+        </GlassCard>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80">
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-blue-400">3. Quoted to Customer</span>
-            <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded-md">{jobs.filter(j => j.status === 'quoted').length}</span>
+            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">3. Quoted to Customer</span>
+            <span className="text-xs font-mono font-bold text-primary bg-surface2 px-1.5 py-0.5 border border-theme-subtle">{jobs.filter(j => j.status === 'quoted').length}</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Formal repair quote sent; awaiting customer decision</div>
-        </div>
+          <div className="text-[11px] text-muted mt-1 leading-snug">Formal repair quote sent; awaiting customer decision</div>
+        </GlassCard>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80">
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-emerald-400">4. Approved / In Repair</span>
-            <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded-md">{stats.underRepair}</span>
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">4. Approved / In Repair</span>
+            <span className="text-xs font-mono font-bold text-primary bg-surface2 px-1.5 py-0.5 border border-theme-subtle">{stats.underRepair}</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">SO & Work Order active on shop floor</div>
-        </div>
+          <div className="text-[11px] text-muted mt-1 leading-snug">SO & Work Order active on shop floor</div>
+        </GlassCard>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/80">
+        <GlassCard className="p-3.5 border-theme-subtle rounded-none">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-rose-400">5. Declined / Fee / Release</span>
-            <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded-md">{stats.declined + stats.released}</span>
+            <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">5. Declined / Release</span>
+            <span className="text-xs font-mono font-bold text-primary bg-surface2 px-1.5 py-0.5 border border-theme-subtle">{stats.declined + stats.released}</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Inspection fee billed / waived & Out-GP issued</div>
-        </div>
+          <div className="text-[11px] text-muted mt-1 leading-snug">Inspection fee billed / waived & Out-GP issued</div>
+        </GlassCard>
       </div>
 
       {/* Filter Tabs & Search Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Status Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-900/60 rounded-xl border border-slate-800 overflow-x-auto">
+        <div className="flex items-center gap-1 p-1 bg-surface border border-theme-subtle rounded-none overflow-x-auto">
           {[
             { id: 'all', label: 'All Jobs', count: stats.total },
             { id: 'intake', label: 'Intake / In-GP', count: stats.intake },
@@ -743,14 +740,14 @@ export const ServiceInspectionHub: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setStatusFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+              className={`px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all rounded-none ${
                 statusFilter === tab.id
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-rex-600 text-white shadow-sm'
+                  : 'text-secondary hover:text-primary hover:bg-surface2'
               }`}
             >
               {tab.label}
-              <span className="ml-1.5 px-1.5 py-0.2 text-[10px] rounded-full bg-slate-800 text-slate-300">
+              <span className={`ml-1.5 px-1 py-0.2 text-[10px] font-mono ${statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-surface2 text-muted'}`}>
                 {tab.count}
               </span>
             </button>
@@ -758,22 +755,22 @@ export const ServiceInspectionHub: React.FC = () => {
         </div>
 
         {/* Search & Priority Filter */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="relative min-w-[260px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search Job #, Customer, Machine, S/N, GP #..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-900/80 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-primary placeholder-muted focus:outline-none focus:border-rex-500"
             />
           </div>
 
           <select
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-slate-900/80 border border-slate-800 rounded-xl text-slate-300 focus:outline-none focus:border-cyan-500"
+            className="px-2.5 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-secondary focus:outline-none focus:border-rex-500"
           >
             <option value="all">All Priorities</option>
             <option value="Urgent">Urgent</option>
@@ -785,7 +782,7 @@ export const ServiceInspectionHub: React.FC = () => {
       </div>
 
       {/* Main Table */}
-      <GlassCard className="p-0 overflow-hidden border border-slate-800">
+      <GlassCard className="p-0 overflow-hidden border-theme-subtle rounded-none">
         <DataTable<ServiceInspectionJob>
           columns={columns}
           data={filteredJobs}
@@ -802,14 +799,14 @@ export const ServiceInspectionHub: React.FC = () => {
         size="3xl"
       >
         <form onSubmit={handleIntakeSubmit} className="space-y-4">
-          <div className="p-3 bg-cyan-950/20 border border-cyan-800/40 rounded-xl text-xs text-cyan-300 leading-relaxed">
-            <span className="font-semibold text-cyan-200">Workshop Intake Procedure:</span> When machinery requires dismantling before an accurate repair quotation can be provided, record it here. An <strong className="text-white">Inward Gate Pass (GP-XXXX)</strong> will be generated automatically as legal proof of equipment receipt.
+          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-none text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            <span className="font-bold text-amber-800 dark:text-amber-300">Workshop Intake Procedure:</span> When machinery requires dismantling before an accurate repair quotation can be provided, record it here. An <strong className="text-primary font-mono">Inward Gate Pass (GP-XXXX)</strong> will be generated automatically as legal proof of equipment receipt.
           </div>
 
           {/* Customer Selection */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Customer / Organization *</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Customer / Organization *</label>
               <input
                 type="text"
                 required
@@ -817,7 +814,7 @@ export const ServiceInspectionHub: React.FC = () => {
                 value={intakeForm.customerName}
                 onChange={(e) => setIntakeForm({ ...intakeForm, customerName: e.target.value })}
                 list="customer-suggestions"
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
               <datalist id="customer-suggestions">
                 {customers.map((c: any) => (
@@ -827,21 +824,21 @@ export const ServiceInspectionHub: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Person & Phone</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Contact Person & Phone</label>
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   placeholder="Attn: Eng. Kamal"
                   value={intakeForm.contactPerson}
                   onChange={(e) => setIntakeForm({ ...intakeForm, contactPerson: e.target.value })}
-                  className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
                 />
                 <input
                   type="text"
                   placeholder="077-xxxxxxx"
                   value={intakeForm.contactPhone}
                   onChange={(e) => setIntakeForm({ ...intakeForm, contactPhone: e.target.value })}
-                  className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
                 />
               </div>
             </div>
@@ -850,22 +847,22 @@ export const ServiceInspectionHub: React.FC = () => {
           {/* Equipment Identification */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Equipment Name / Description *</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Equipment Name / Description *</label>
               <input
                 type="text"
                 required
                 placeholder="e.g. 55kW Siemens Electric Induction Motor"
                 value={intakeForm.itemName}
                 onChange={(e) => setIntakeForm({ ...intakeForm, itemName: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Category</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Category</label>
               <select
                 value={intakeForm.itemCategory}
                 onChange={(e) => setIntakeForm({ ...intakeForm, itemCategory: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               >
                 <option value="Electric Motors">Electric Motors</option>
                 <option value="Hydraulic Cylinders & Pumps">Hydraulic Cylinders & Pumps</option>
@@ -879,31 +876,31 @@ export const ServiceInspectionHub: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Serial Number (S/N)</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Serial Number (S/N)</label>
               <input
                 type="text"
                 placeholder="e.g. SN-883921-A"
                 value={intakeForm.serialNo}
                 onChange={(e) => setIntakeForm({ ...intakeForm, serialNo: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500 font-mono"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 font-mono"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Model / Spec No</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Model / Spec No</label>
               <input
                 type="text"
                 placeholder="e.g. 1LE1001-1DB2"
                 value={intakeForm.modelNo}
                 onChange={(e) => setIntakeForm({ ...intakeForm, modelNo: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500 font-mono"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 font-mono"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Priority</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Priority</label>
               <select
                 value={intakeForm.priority}
                 onChange={(e) => setIntakeForm({ ...intakeForm, priority: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               >
                 <option value="Medium">Medium</option>
                 <option value="High">High</option>
@@ -916,72 +913,72 @@ export const ServiceInspectionHub: React.FC = () => {
           {/* Faults & Condition */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Customer-Reported Problem / Symptoms</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Customer-Reported Problem / Symptoms</label>
               <textarea
                 rows={2}
                 placeholder="e.g. Abnormal bearing noise, excessive vibration, tripping breaker above 1200 RPM"
                 value={intakeForm.customerProblem}
                 onChange={(e) => setIntakeForm({ ...intakeForm, customerProblem: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Initial Physical Condition at Intake</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Initial Physical Condition at Intake</label>
               <textarea
                 rows={2}
                 placeholder="e.g. Terminal box cover missing, shaft key present, casing oily, external scratches"
                 value={intakeForm.initialCondition}
                 onChange={(e) => setIntakeForm({ ...intakeForm, initialCondition: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
           </div>
 
           {/* Inward Gate Pass Delivery Details */}
-          <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 space-y-2">
-            <div className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <Truck className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="p-3 bg-surface2/60 rounded-none border border-theme-subtle space-y-2">
+            <div className="text-xs font-bold text-secondary flex items-center gap-1.5 uppercase tracking-wider">
+              <Truck className="w-3.5 h-3.5 text-rex-500" />
               Inward Gate Pass & Transporter Details
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Delivered By / Carrier</label>
+                <label className="block text-[11px] font-semibold text-muted mb-1">Delivered By / Carrier</label>
                 <input
                   type="text"
                   placeholder="e.g. Customer Lorry, Pronto, Courier"
                   value={intakeForm.carrier}
                   onChange={(e) => setIntakeForm({ ...intakeForm, carrier: e.target.value })}
-                  className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Vehicle No</label>
+                <label className="block text-[11px] font-semibold text-muted mb-1">Vehicle No</label>
                 <input
                   type="text"
                   placeholder="e.g. WP-WP-4521"
                   value={intakeForm.vehicleNo}
                   onChange={(e) => setIntakeForm({ ...intakeForm, vehicleNo: e.target.value })}
-                  className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 font-mono"
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Driver / Representative Name</label>
+                <label className="block text-[11px] font-semibold text-muted mb-1">Driver / Representative Name</label>
                 <input
                   type="text"
                   placeholder="e.g. Sunil Perera"
                   value={intakeForm.driverName}
                   onChange={(e) => setIntakeForm({ ...intakeForm, driverName: e.target.value })}
-                  className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <Button type="button" variant="ghost" onClick={() => setShowIntakeModal(false)}>
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button type="button" variant="ghost" onClick={() => setShowIntakeModal(false)} className="rounded-none text-xs">
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} className="bg-cyan-600 hover:bg-cyan-500 text-white">
+            <Button type="submit" variant="primary" disabled={submitting} className="rounded-none text-xs font-bold">
               {submitting ? 'Generating Job Card & GP...' : 'Create Service Job & Issue Inward GP'}
             </Button>
           </div>
@@ -996,19 +993,19 @@ export const ServiceInspectionHub: React.FC = () => {
         size="4xl"
       >
         <form onSubmit={handleDiagnosisSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs">
+          <div className="flex items-center justify-between p-3 bg-surface2/60 rounded-none border border-theme-subtle text-xs">
             <div>
-              <span className="text-slate-400">Equipment:</span> <strong className="text-white">{activeJob?.itemName}</strong>
-              {activeJob?.serialNo && <span className="text-slate-400 ml-2 font-mono">S/N: {activeJob.serialNo}</span>}
+              <span className="text-muted">Equipment:</span> <strong className="text-primary ml-1">{activeJob?.itemName}</strong>
+              {activeJob?.serialNo && <span className="text-muted ml-2 font-mono">S/N: {activeJob.serialNo}</span>}
             </div>
             <div>
-              <span className="text-slate-400">Customer:</span> <strong className="text-cyan-300">{activeJob?.customerName}</strong>
+              <span className="text-muted">Customer:</span> <strong className="text-primary ml-1">{activeJob?.customerName}</strong>
             </div>
           </div>
 
           {/* Diagnostic Findings */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
+            <label className="block text-xs font-bold text-secondary mb-1">
               Dismantling Findings & Failure Root Cause *
             </label>
             <textarea
@@ -1017,32 +1014,32 @@ export const ServiceInspectionHub: React.FC = () => {
               placeholder="e.g. Drive-end bearing 6312 completely seized. Rotor shaft bearing journal worn out by 0.45mm. Stator windings show insulation degradation. Oil seals cracked."
               value={diagForm.findings}
               onChange={(e) => setDiagForm({ ...diagForm, findings: e.target.value })}
-              className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 leading-relaxed font-mono"
             />
           </div>
 
           {/* Required Replacement Parts Bill */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-cyan-400" />
+              <label className="text-xs font-bold text-secondary flex items-center gap-1.5 uppercase tracking-wider">
+                <Package className="w-3.5 h-3.5 text-rex-500" />
                 Required Replacement Parts & Materials
               </label>
-              <Button type="button" size="sm" variant="ghost" onClick={addPartLine} className="text-xs h-7 text-cyan-400">
+              <Button type="button" size="sm" variant="outline" onClick={addPartLine} className="text-xs h-7 rounded-none border-theme">
                 + Add Part
               </Button>
             </div>
 
             <div className="space-y-2">
               {diagForm.requiredParts.map((p, idx) => (
-                <div key={p.id || idx} className="grid grid-cols-12 gap-2 items-center bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                <div key={p.id || idx} className="grid grid-cols-12 gap-2 items-center bg-surface p-2 rounded-none border border-theme-subtle">
                   <div className="col-span-5">
                     <input
                       type="text"
                       placeholder="Part Name (e.g. SKF 6312 Deep Groove Ball Bearing)"
                       value={p.name}
                       onChange={(e) => updatePartLine(idx, 'name', e.target.value)}
-                      className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white"
+                      className="w-full px-2.5 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:border-rex-500"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1051,7 +1048,7 @@ export const ServiceInspectionHub: React.FC = () => {
                       placeholder="Part / SKU No"
                       value={p.partNo}
                       onChange={(e) => updatePartLine(idx, 'partNo', e.target.value)}
-                      className="w-full px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white font-mono"
+                      className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary font-mono focus:border-rex-500"
                     />
                   </div>
                   <div className="col-span-1">
@@ -1061,7 +1058,7 @@ export const ServiceInspectionHub: React.FC = () => {
                       placeholder="Qty"
                       value={p.qty}
                       onChange={(e) => updatePartLine(idx, 'qty', Number(e.target.value))}
-                      className="w-full px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white text-center"
+                      className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary text-center font-bold focus:border-rex-500"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1070,17 +1067,17 @@ export const ServiceInspectionHub: React.FC = () => {
                       placeholder="Unit Price"
                       value={p.unitPrice}
                       onChange={(e) => updatePartLine(idx, 'unitPrice', Number(e.target.value))}
-                      className="w-full px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white text-right"
+                      className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary text-right font-mono font-bold focus:border-rex-500"
                     />
                   </div>
-                  <div className="col-span-1 text-right text-xs font-mono text-emerald-400">
+                  <div className="col-span-1 text-right text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
                     {formatCurrency(p.total || 0)}
                   </div>
                   <div className="col-span-1 flex justify-end">
                     <button
                       type="button"
                       onClick={() => removePartLine(idx)}
-                      className="text-slate-500 hover:text-rose-400 p-1"
+                      className="text-muted hover:text-rose-500 p-1 transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1093,25 +1090,25 @@ export const ServiceInspectionHub: React.FC = () => {
           {/* Required Machining & Workshop Operations */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Wrench className="w-3.5 h-3.5 text-cyan-400" />
+              <label className="text-xs font-bold text-secondary flex items-center gap-1.5 uppercase tracking-wider">
+                <Wrench className="w-3.5 h-3.5 text-rex-500" />
                 Required Workshop Machining & Labor Operations
               </label>
-              <Button type="button" size="sm" variant="ghost" onClick={addOperationLine} className="text-xs h-7 text-cyan-400">
+              <Button type="button" size="sm" variant="outline" onClick={addOperationLine} className="text-xs h-7 rounded-none border-theme">
                 + Add Operation
               </Button>
             </div>
 
             <div className="space-y-2">
               {diagForm.requiredOperations.map((op, idx) => (
-                <div key={op.id || idx} className="grid grid-cols-12 gap-2 items-center bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                <div key={op.id || idx} className="grid grid-cols-12 gap-2 items-center bg-surface p-2 rounded-none border border-theme-subtle">
                   <div className="col-span-5">
                     <input
                       type="text"
                       placeholder="Operation (e.g. Lathe Turning Shaft Journal / Re-sleeving)"
                       value={op.operationName}
                       onChange={(e) => updateOperationLine(idx, 'operationName', e.target.value)}
-                      className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white"
+                      className="w-full px-2.5 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:border-rex-500"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1120,7 +1117,7 @@ export const ServiceInspectionHub: React.FC = () => {
                       placeholder="Machine Tool (e.g. Lathe #1)"
                       value={op.machineName}
                       onChange={(e) => updateOperationLine(idx, 'machineName', e.target.value)}
-                      className="w-full px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white"
+                      className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:border-rex-500"
                     />
                   </div>
                   <div className="col-span-1">
@@ -1130,7 +1127,7 @@ export const ServiceInspectionHub: React.FC = () => {
                       placeholder="Hrs"
                       value={op.estimatedHours}
                       onChange={(e) => updateOperationLine(idx, 'estimatedHours', Number(e.target.value))}
-                      className="w-full px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white text-center"
+                      className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary text-center font-bold focus:border-rex-500"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1139,17 +1136,17 @@ export const ServiceInspectionHub: React.FC = () => {
                       placeholder="Rate/Hr"
                       value={op.hourlyRate}
                       onChange={(e) => updateOperationLine(idx, 'hourlyRate', Number(e.target.value))}
-                      className="w-full px-2 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-white text-right"
+                      className="w-full px-2 py-1 text-xs bg-surface border border-theme-subtle rounded-none text-primary text-right font-mono font-bold focus:border-rex-500"
                     />
                   </div>
-                  <div className="col-span-1 text-right text-xs font-mono text-emerald-400">
+                  <div className="col-span-1 text-right text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
                     {formatCurrency(op.total || 0)}
                   </div>
                   <div className="col-span-1 flex justify-end">
                     <button
                       type="button"
                       onClick={() => removeOperationLine(idx)}
-                      className="text-slate-500 hover:text-rose-400 p-1"
+                      className="text-muted hover:text-rose-500 p-1 transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1160,35 +1157,35 @@ export const ServiceInspectionHub: React.FC = () => {
           </div>
 
           {/* Standalone Dismantling / Inspection Fee & Technician */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-slate-900 rounded-xl border border-slate-800">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-surface2/60 rounded-none border border-theme-subtle">
             <div>
-              <label className="block text-xs font-semibold text-amber-300 mb-1">
+              <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 mb-1">
                 Inspection & Dismantling Fee (Applicable if customer declines repair)
               </label>
               <input
                 type="number"
                 value={diagForm.inspectionFee}
                 onChange={(e) => setDiagForm({ ...diagForm, inspectionFee: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
+                className="w-full px-3 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-primary font-mono font-bold focus:outline-none focus:border-rex-500"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-muted mt-1 leading-snug">
                 If the customer agrees to the full repair quote, this fee is usually absorbed or credited into the total repair order.
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-secondary mb-1">
                 Assigned Technical Lead / Inspector
               </label>
               <input
                 type="text"
                 value={diagForm.assignedTechnician}
                 onChange={(e) => setDiagForm({ ...diagForm, assignedTechnician: e.target.value })}
-                className="w-full px-3 py-1.5 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white"
+                className="w-full px-3 py-1.5 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
               <div className="mt-2 text-right">
-                <span className="text-xs text-slate-400">Total Estimated Bill of Repairs: </span>
-                <span className="text-sm font-bold text-emerald-400 font-mono">
+                <span className="text-xs text-muted">Total Estimated Bill of Repairs: </span>
+                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                   {formatCurrency(
                     diagForm.requiredParts.reduce((acc, p) => acc + (p.total || 0), 0) +
                     diagForm.requiredOperations.reduce((acc, op) => acc + (op.total || 0), 0)
@@ -1198,11 +1195,11 @@ export const ServiceInspectionHub: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <Button type="button" variant="ghost" onClick={() => setShowDiagnosisModal(false)}>
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button type="button" variant="ghost" onClick={() => setShowDiagnosisModal(false)} className="rounded-none text-xs">
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} className="bg-cyan-600 hover:bg-cyan-500 text-white">
+            <Button type="submit" variant="primary" disabled={submitting} className="rounded-none text-xs font-bold">
               {submitting ? 'Saving Assessment...' : 'Save Diagnosis & Bill of Repairs'}
             </Button>
           </div>
@@ -1217,54 +1214,54 @@ export const ServiceInspectionHub: React.FC = () => {
         size="lg"
       >
         <form onSubmit={handleDecisionSubmit} className="space-y-4">
-          <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs">
+          <div className="p-3 bg-surface2/60 rounded-none border border-theme-subtle text-xs">
             <div className="flex justify-between items-center mb-1">
-              <span className="text-slate-400">Customer:</span>
-              <strong className="text-white">{activeJob?.customerName}</strong>
+              <span className="text-muted">Customer:</span>
+              <strong className="text-primary">{activeJob?.customerName}</strong>
             </div>
             <div className="flex justify-between items-center mb-1">
-              <span className="text-slate-400">Quotation No:</span>
-              <span className="text-blue-400 font-mono">{activeJob?.quotationNo || 'N/A'}</span>
+              <span className="text-muted">Quotation No:</span>
+              <span className="text-blue-600 dark:text-blue-400 font-mono font-bold">{activeJob?.quotationNo || 'N/A'}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-slate-400">Quotation Total:</span>
-              <span className="text-emerald-400 font-mono font-bold">{formatCurrency(activeJob?.quotationAmount || 0)}</span>
+              <span className="text-muted">Quotation Total:</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{formatCurrency(activeJob?.quotationAmount || 0)}</span>
             </div>
           </div>
 
           {/* Decision Selector */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-2">Customer Decision *</label>
+            <label className="block text-xs font-bold text-secondary mb-2 uppercase tracking-wider">Customer Decision *</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setDecisionForm({ ...decisionForm, decision: 'Approved' })}
-                className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all ${
+                className={`p-3 rounded-none border text-left flex items-start gap-2.5 transition-all ${
                   decisionForm.decision === 'Approved'
-                    ? 'bg-emerald-950/40 border-emerald-500/60 text-white shadow-md shadow-emerald-950/50'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    ? 'bg-emerald-500/10 border-emerald-500 text-primary shadow-sm'
+                    : 'bg-surface border-theme-subtle text-muted hover:text-primary hover:bg-surface2'
                 }`}
               >
-                <CheckCircle2 className={`w-5 h-5 mt-0.5 ${decisionForm.decision === 'Approved' ? 'text-emerald-400' : 'text-slate-500'}`} />
+                <CheckCircle2 className={`w-5 h-5 mt-0.5 shrink-0 ${decisionForm.decision === 'Approved' ? 'text-emerald-500' : 'text-muted'}`} />
                 <div>
-                  <div className="text-xs font-bold text-white">Customer Agreed (Approved)</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Proceed with repair; activates Sales Order & Work Order.</div>
+                  <div className="text-xs font-bold text-primary">Customer Agreed (Approved)</div>
+                  <div className="text-[11px] text-muted mt-0.5">Proceed with repair; activates Sales Order & Work Order.</div>
                 </div>
               </button>
 
               <button
                 type="button"
                 onClick={() => setDecisionForm({ ...decisionForm, decision: 'Declined' })}
-                className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all ${
+                className={`p-3 rounded-none border text-left flex items-start gap-2.5 transition-all ${
                   decisionForm.decision === 'Declined'
-                    ? 'bg-rose-950/40 border-rose-500/60 text-white shadow-md shadow-rose-950/50'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    ? 'bg-rose-500/10 border-rose-500 text-primary shadow-sm'
+                    : 'bg-surface border-theme-subtle text-muted hover:text-primary hover:bg-surface2'
                 }`}
               >
-                <X className={`w-5 h-5 mt-0.5 ${decisionForm.decision === 'Declined' ? 'text-rose-400' : 'text-slate-500'}`} />
+                <X className={`w-5 h-5 mt-0.5 shrink-0 ${decisionForm.decision === 'Declined' ? 'text-rose-500' : 'text-muted'}`} />
                 <div>
-                  <div className="text-xs font-bold text-white">Customer Declined</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Do not repair; charge inspection fee or waive.</div>
+                  <div className="text-xs font-bold text-primary">Customer Declined</div>
+                  <div className="text-[11px] text-muted mt-0.5">Do not repair; charge inspection fee or waive.</div>
                 </div>
               </button>
             </div>
@@ -1272,12 +1269,12 @@ export const ServiceInspectionHub: React.FC = () => {
 
           {/* If Declined: Inspection Fee Handling */}
           {decisionForm.decision === 'Declined' && (
-            <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-xl space-y-3">
-              <div className="text-xs font-semibold text-amber-300">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-none space-y-3">
+              <div className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
                 Inspection & Dismantling Fee Settlement (Fee: {formatCurrency(activeJob?.inspectionFee || 0)})
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <label className="flex items-center gap-2 p-2 bg-slate-900 rounded-lg border border-slate-700 cursor-pointer">
+                <label className="flex items-center gap-2 p-2 bg-surface rounded-none border border-theme-subtle cursor-pointer font-medium text-secondary hover:text-primary">
                   <input
                     type="radio"
                     name="feeAction"
@@ -1286,7 +1283,7 @@ export const ServiceInspectionHub: React.FC = () => {
                   />
                   <span>Charge & Invoice Fee ({formatCurrency(activeJob?.inspectionFee || 0)})</span>
                 </label>
-                <label className="flex items-center gap-2 p-2 bg-slate-900 rounded-lg border border-slate-700 cursor-pointer">
+                <label className="flex items-center gap-2 p-2 bg-surface rounded-none border border-theme-subtle cursor-pointer font-medium text-secondary hover:text-primary">
                   <input
                     type="radio"
                     name="feeAction"
@@ -1300,24 +1297,24 @@ export const ServiceInspectionHub: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Decision Remarks / Customer Reason</label>
+            <label className="block text-xs font-bold text-secondary mb-1">Decision Remarks / Customer Reason</label>
             <textarea
               rows={2}
               placeholder={decisionForm.decision === 'Approved' ? 'Customer confirmed via email / PO issued' : 'Customer stated equipment replacement is preferred over repair cost'}
               value={decisionForm.notes}
               onChange={(e) => setDecisionForm({ ...decisionForm, notes: e.target.value })}
-              className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <Button type="button" variant="ghost" onClick={() => setShowDecisionModal(false)}>
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button type="button" variant="ghost" onClick={() => setShowDecisionModal(false)} className="rounded-none text-xs">
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={submitting}
-              className={decisionForm.decision === 'Approved' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-rose-600 hover:bg-rose-500 text-white'}
+              className={`rounded-none text-xs font-bold ${decisionForm.decision === 'Approved' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-rose-600 hover:bg-rose-500 text-white'}`}
             >
               {submitting ? 'Updating Decision...' : 'Confirm Decision'}
             </Button>
@@ -1333,85 +1330,85 @@ export const ServiceInspectionHub: React.FC = () => {
         size="md"
       >
         <form onSubmit={handleReleaseSubmit} className="space-y-4">
-          <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs space-y-1">
+          <div className="p-3 bg-surface2/60 rounded-none border border-theme-subtle text-xs space-y-1">
             <div className="flex justify-between">
-              <span className="text-slate-400">Equipment:</span>
-              <strong className="text-white">{activeJob?.itemName}</strong>
+              <span className="text-muted">Equipment:</span>
+              <strong className="text-primary">{activeJob?.itemName}</strong>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Status:</span>
-              <span className="font-semibold text-cyan-300">
+              <span className="text-muted">Status:</span>
+              <span className="font-bold text-rex-600 dark:text-rex-400">
                 {activeJob?.customerDecision === 'Approved' ? 'Repaired & Quality Checked' : 'Inspected / Repaired Declined'}
               </span>
             </div>
             {activeJob?.inspectionInvoiceNo && (
               <div className="flex justify-between">
-                <span className="text-slate-400">Inspection Invoice:</span>
-                <span className="font-mono text-rose-300">{activeJob.inspectionInvoiceNo}</span>
+                <span className="text-muted">Inspection Invoice:</span>
+                <span className="font-mono text-rose-600 dark:text-rose-400 font-semibold">{activeJob.inspectionInvoiceNo}</span>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Release Reason *</label>
+            <label className="block text-xs font-bold text-secondary mb-1">Release Reason *</label>
             <input
               type="text"
               required
               value={releaseForm.releaseReason}
               onChange={(e) => setReleaseForm({ ...releaseForm, releaseReason: e.target.value })}
-              className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Carrier / Transporter</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Carrier / Transporter</label>
               <input
                 type="text"
                 placeholder="e.g. Customer Self-Pickup"
                 value={releaseForm.carrier}
                 onChange={(e) => setReleaseForm({ ...releaseForm, carrier: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Vehicle No</label>
+              <label className="block text-xs font-bold text-secondary mb-1">Vehicle No</label>
               <input
                 type="text"
                 placeholder="e.g. WP-CA-8890"
                 value={releaseForm.vehicleNo}
                 onChange={(e) => setReleaseForm({ ...releaseForm, vehicleNo: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500 font-mono"
+                className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 font-mono"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Driver / Collector Name & ID</label>
+            <label className="block text-xs font-bold text-secondary mb-1">Driver / Collector Name & ID</label>
             <input
               type="text"
               placeholder="e.g. Priyantha (NIC: 841234567V)"
               value={releaseForm.driverName}
               onChange={(e) => setReleaseForm({ ...releaseForm, driverName: e.target.value })}
-              className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Authorizing Officer</label>
+            <label className="block text-xs font-bold text-secondary mb-1">Authorizing Officer</label>
             <input
               type="text"
               value={releaseForm.releasedBy}
               onChange={(e) => setReleaseForm({ ...releaseForm, releasedBy: e.target.value })}
-              className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-            <Button type="button" variant="ghost" onClick={() => setShowReleaseModal(false)}>
+          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+            <Button type="button" variant="ghost" onClick={() => setShowReleaseModal(false)} className="rounded-none text-xs">
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} className="bg-green-600 hover:bg-green-500 text-white">
+            <Button type="submit" variant="primary" disabled={submitting} className="rounded-none text-xs font-bold">
               {submitting ? 'Releasing...' : 'Generate Outward GP & Release'}
             </Button>
           </div>
@@ -1427,47 +1424,47 @@ export const ServiceInspectionHub: React.FC = () => {
       >
         <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
           {/* Linked Documents Chain */}
-          <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800">
-            <div className="text-xs font-semibold text-slate-400 mb-2">Connected ERP Traceability Chain:</div>
+          <div className="p-3 bg-surface2/60 rounded-none border border-theme-subtle">
+            <div className="text-xs font-bold text-muted mb-2 uppercase tracking-wider">Connected ERP Traceability Chain:</div>
             <div className="flex items-center gap-2 overflow-x-auto py-1 text-xs font-mono">
               {activeJob?.inwardGatePassNo && (
-                <div className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center gap-1.5 whitespace-nowrap">
-                  <span className="text-[10px] text-amber-500 font-sans">IN-GP:</span> {activeJob.inwardGatePassNo}
+                <div className="px-2.5 py-1.5 rounded-none bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="text-[10px] text-amber-500 font-sans font-bold">IN-GP:</span> {activeJob.inwardGatePassNo}
                 </div>
               )}
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-              <div className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 flex items-center gap-1.5 whitespace-nowrap">
-                <span className="text-[10px] text-cyan-500 font-sans">SRV-JOB:</span> {activeJob?.jobNo}
+              <ChevronRight className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+              <div className="px-2.5 py-1.5 rounded-none bg-rex-500/10 border border-rex-500/30 text-rex-600 dark:text-rex-400 flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-[10px] text-rex-500 font-sans font-bold">SRV-JOB:</span> {activeJob?.jobNo}
               </div>
               {activeJob?.quotationNo && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-                  <div className="px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="text-[10px] text-blue-500 font-sans">QUO:</span> {activeJob.quotationNo}
+                  <ChevronRight className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                  <div className="px-2.5 py-1.5 rounded-none bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-[10px] text-blue-500 font-sans font-bold">QUO:</span> {activeJob.quotationNo}
                   </div>
                 </>
               )}
               {activeJob?.salesOrderNo && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-                  <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="text-[10px] text-emerald-500 font-sans">SO:</span> {activeJob.salesOrderNo}
+                  <ChevronRight className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                  <div className="px-2.5 py-1.5 rounded-none bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-[10px] text-emerald-500 font-sans font-bold">SO:</span> {activeJob.salesOrderNo}
                   </div>
                 </>
               )}
               {activeJob?.inspectionInvoiceNo && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-                  <div className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="text-[10px] text-rose-500 font-sans">FEE INV:</span> {activeJob.inspectionInvoiceNo}
+                  <ChevronRight className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                  <div className="px-2.5 py-1.5 rounded-none bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-[10px] text-rose-500 font-sans font-bold">FEE INV:</span> {activeJob.inspectionInvoiceNo}
                   </div>
                 </>
               )}
               {activeJob?.outwardGatePassNo && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-                  <div className="px-2.5 py-1.5 rounded-lg bg-green-500/10 border border-green-500/30 text-green-300 flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="text-[10px] text-green-500 font-sans">OUT-GP:</span> {activeJob.outwardGatePassNo}
+                  <ChevronRight className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                  <div className="px-2.5 py-1.5 rounded-none bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400 flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-[10px] text-green-500 font-sans font-bold">OUT-GP:</span> {activeJob.outwardGatePassNo}
                   </div>
                 </>
               )}
@@ -1476,21 +1473,21 @@ export const ServiceInspectionHub: React.FC = () => {
 
           {/* Timeline */}
           <div className="space-y-4">
-            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Chronological Audit Events</h3>
-            <div className="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
+            <h3 className="text-xs font-bold text-secondary uppercase tracking-wider">Chronological Audit Events</h3>
+            <div className="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-theme-subtle">
               {((activeJob?.timeline as any[]) || []).map((ev: any, idx: number) => (
                 <div key={ev.id || idx} className="relative">
-                  <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-cyan-500 border-2 border-slate-950 shadow-sm shadow-cyan-500" />
-                  <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                  <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-rex-500 border-2 border-surface shadow-sm" />
+                  <div className="bg-surface p-3 rounded-none border border-theme-subtle">
                     <div className="flex items-center justify-between">
-                      <div className="text-xs font-bold text-white">{ev.title || ev.action}</div>
-                      <div className="text-[11px] text-slate-400">{new Date(ev.timestamp).toLocaleString()}</div>
+                      <div className="text-xs font-bold text-primary">{ev.title || ev.action}</div>
+                      <div className="text-[11px] text-muted">{new Date(ev.timestamp).toLocaleString()}</div>
                     </div>
-                    {ev.description && <p className="text-xs text-slate-300 mt-1">{ev.description}</p>}
-                    <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-                      {ev.actor && <span>By: <strong className="text-slate-300">{ev.actor}</strong></span>}
+                    {ev.description && <p className="text-xs text-secondary mt-1">{ev.description}</p>}
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-muted">
+                      {ev.actor && <span>By: <strong className="text-primary">{ev.actor}</strong></span>}
                       {ev.documentNo && (
-                        <span className="font-mono text-cyan-400 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/50">
+                        <span className="font-mono text-rex-600 dark:text-rex-400 bg-rex-500/10 px-1.5 py-0.5 rounded-none border border-rex-500/20 font-semibold">
                           {ev.documentType}: {ev.documentNo}
                         </span>
                       )}
@@ -1502,7 +1499,6 @@ export const ServiceInspectionHub: React.FC = () => {
           </div>
         </div>
       </Modal>
-
       {/* MODAL 6: PRINTABLE INSPECTION REPORT & JOB CARD */}
       <Modal
         isOpen={showPrintModal}
@@ -1511,7 +1507,7 @@ export const ServiceInspectionHub: React.FC = () => {
         size="3xl"
       >
         <div className="space-y-4">
-          <div id="service-job-print-area" className="p-6 bg-white text-slate-900 rounded-xl shadow-lg font-sans space-y-4 text-xs">
+          <div id="service-job-print-area" className="p-6 bg-white text-slate-900 rounded-none shadow-sm font-sans space-y-4 text-xs">
             {/* Header */}
             <div className="flex justify-between items-start border-b border-slate-300 pb-3">
               <div>
@@ -1529,7 +1525,7 @@ export const ServiceInspectionHub: React.FC = () => {
             </div>
 
             {/* Equipment & Customer */}
-            <div className="grid grid-cols-2 gap-4 bg-slate-100 p-3 rounded-lg border border-slate-200">
+            <div className="grid grid-cols-2 gap-4 bg-slate-100 p-3 rounded-none border border-slate-200">
               <div>
                 <div className="text-[10px] uppercase font-bold text-slate-500">Customer Details:</div>
                 <div className="font-bold text-slate-900">{activeJob?.customerCompany || activeJob?.customerName}</div>
@@ -1548,13 +1544,13 @@ export const ServiceInspectionHub: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-[10px] uppercase font-bold text-slate-500">Reported Problem:</div>
-                <div className="p-2 bg-slate-50 rounded border border-slate-200 min-h-[40px]">
+                <div className="p-2 bg-slate-50 rounded-none border border-slate-200 min-h-[40px]">
                   {activeJob?.customerProblem || 'No specific fault logged.'}
                 </div>
               </div>
               <div>
                 <div className="text-[10px] uppercase font-bold text-slate-500">Intake Physical Condition:</div>
-                <div className="p-2 bg-slate-50 rounded border border-slate-200 min-h-[40px]">
+                <div className="p-2 bg-slate-50 rounded-none border border-slate-200 min-h-[40px]">
                   {activeJob?.initialCondition || 'Standard received condition.'}
                 </div>
               </div>
@@ -1563,7 +1559,7 @@ export const ServiceInspectionHub: React.FC = () => {
             {/* Diagnostic Findings */}
             <div>
               <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Workshop Teardown & Inspection Findings:</div>
-              <div className="p-2.5 bg-slate-50 rounded border border-slate-200 min-h-[50px] leading-relaxed">
+              <div className="p-2.5 bg-slate-50 rounded-none border border-slate-200 min-h-[50px] leading-relaxed">
                 {activeJob?.findings || 'Equipment teardown and inspection in progress.'}
               </div>
             </div>
@@ -1601,12 +1597,13 @@ export const ServiceInspectionHub: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setShowPrintModal(false)}>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowPrintModal(false)} className="rounded-none text-xs">
               Close
             </Button>
             <Button
-              className="bg-cyan-600 hover:bg-cyan-500 text-white"
+              variant="primary"
+              className="rounded-none text-xs font-bold"
               onClick={() => {
                 const printContent = document.getElementById('service-job-print-area')
                 if (!printContent) return

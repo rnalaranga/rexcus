@@ -31,12 +31,13 @@ const tableInputClass = "w-full bg-transparent border-b border-transparent hover
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const InvoiceBuilder: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const isAdmin = Boolean(
     user?.role === 'admin' ||
     user?.roleName?.toLowerCase() === 'admin' ||
     user?.role === 'system_admin'
   );
+  const canEditInvoice = Boolean(isAdmin || can('finance.invoices.edit'));
   const { data: customers = [] } = useCustomers();
   const { data: leads = [] } = useLeads();
   const { data: taxRates } = useTaxes();
@@ -120,6 +121,11 @@ export const InvoiceBuilder: React.FC = () => {
     const loadSourceData = async () => {
       try {
         if (paramEditInvoiceId) {
+          if (!canEditInvoice) {
+            showError('You do not have permission to edit invoices.');
+            navigate('/finance/invoices');
+            return;
+          }
           setIsEditing(true);
           try {
             const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/${encodeURIComponent(paramEditInvoiceId)}`);
@@ -1331,6 +1337,9 @@ export const InvoiceBuilder: React.FC = () => {
   );
 
   const handleSave = async () => {
+    if (isEditing && !canEditInvoice) {
+      return showError('You do not have permission to edit this invoice.');
+    }
     if (!customerId) return showError('Please select a customer.');
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     const cleanDocNo = (docNo || '').trim().replace(/\s+/g, '');

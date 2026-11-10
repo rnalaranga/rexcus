@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { 
@@ -177,6 +177,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     fetchAllCustomerGRNs().then(setAllCustomerGrns).catch(() => {});
   }, [])
   const [actionCoords, setActionCoords] = useState<{ top: number; bottom: number; left: number; right: number; width: number; height: number } | null>(null)
+  const activeTriggerRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -184,19 +185,46 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       if (!target.closest('.order-action-trigger-btn') && !target.closest('.order-action-menu-dropdown')) {
         setOpenActionOrderId(null)
         setActionCoords(null)
+        activeTriggerRef.current = null
       }
     }
-    const handleScrollOrResize = () => {
-      setOpenActionOrderId(null)
-      setActionCoords(null)
+    const updateDropdownPosition = () => {
+      if (activeTriggerRef.current) {
+        const rect = activeTriggerRef.current.getBoundingClientRect()
+        // If element is completely scrolled out of viewport, close it
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+          setOpenActionOrderId(null)
+          setActionCoords(null)
+          activeTriggerRef.current = null
+        } else {
+          setActionCoords({
+            top: rect.top,
+            bottom: rect.bottom,
+            left: rect.left,
+            right: rect.right,
+            width: rect.width,
+            height: rect.height
+          })
+        }
+      }
+    }
+    const handleScroll = (e: Event) => {
+      // If user is scrolling inside the action menu dropdown itself, ignore
+      if (e.target && (e.target as HTMLElement).closest?.('.order-action-menu-dropdown')) {
+        return
+      }
+      updateDropdownPosition()
+    }
+    const handleResize = () => {
+      updateDropdownPosition()
     }
     document.addEventListener('click', handleClickOutside)
-    window.addEventListener('resize', handleScrollOrResize)
-    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('scroll', handleScroll, true)
     return () => {
       document.removeEventListener('click', handleClickOutside)
-      window.removeEventListener('resize', handleScrollOrResize)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('scroll', handleScroll, true)
     }
   }, [])
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -243,6 +271,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [preInvoicePromptOrder, setPreInvoicePromptOrder] = useState<any | null>(null)
   const [proformaModalOrder, setProformaModalOrder] = useState<any | null>(null)
   const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
+  const [unpaidProformaPrompt, setUnpaidProformaPrompt] = useState<{ order: any; proforma: any; specificDispatchNo?: string } | null>(null)
   const [viewingPoAttachment, setViewingPoAttachment] = useState<{ url: string; orderNo: string; poNo?: string } | null>(null)
   const [recordPoOrder, setRecordPoOrder] = useState<any | null>(null)
   const [viewPoOrder, setViewPoOrder] = useState<any | null>(null)
@@ -387,7 +416,37 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setReceiptModalOpen(true)
   }
 
-  const handleInvoiceClick = (order: any, specificDispatchNo?: string) => {
+  const handleInvoiceClick = (order: any, specificDispatchNo?: string, bypassProformaCheck: boolean = false) => {
+    // Check if there is an active linked Proforma Invoice that has NOT received payment yet
+    if (!bypassProformaCheck) {
+      const linkedProforma = (order.orderNo && proformaInvoicesMap.get(order.orderNo)) ||
+        (order.id && proformaInvoicesMap.get(order.id)) ||
+        (order.quotationNo && proformaInvoicesMap.get(order.quotationNo)) ||
+        null;
+
+      if (linkedProforma) {
+        const oNoKey = String(order.orderNo || '').trim().toLowerCase();
+        const qNoKey = String(order.quotationNo || '').trim().toLowerCase();
+        const oIdKey = String(order.id || '').trim().toLowerCase();
+        const recs = (oNoKey && receiptsByOrderNoMap.get(oNoKey)) ||
+          (qNoKey && receiptsByOrderNoMap.get(qNoKey)) ||
+          (oIdKey && receiptsByOrderNoMap.get(oIdKey)) ||
+          [];
+        const totalAdvPaid = recs.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+        const proformaPaid = Number(linkedProforma.paidAmount || 0);
+        const hasPayment = totalAdvPaid > 0 || proformaPaid > 0 || linkedProforma.status === 'paid' || linkedProforma.status === 'partially_paid';
+
+        if (!hasPayment) {
+          setUnpaidProformaPrompt({
+            order,
+            proforma: linkedProforma,
+            specificDispatchNo
+          });
+          return;
+        }
+      }
+    }
+
     let orderDispatches: any[] = []
     try {
       orderDispatches = typeof order.dispatches === 'string' ? JSON.parse(order.dispatches || '[]') : (order.dispatches || [])
@@ -2588,8 +2647,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             if (openActionOrderId === order.id) {
               setOpenActionOrderId(null)
               setActionCoords(null)
+              activeTriggerRef.current = null
             } else {
-              const rect = e.currentTarget.getBoundingClientRect()
+              const currentTarget = e.currentTarget
+              activeTriggerRef.current = currentTarget
+              const rect = currentTarget.getBoundingClientRect()
               setOpenActionOrderId(order.id)
               setActionCoords({
                 top: rect.top,
@@ -2868,7 +2930,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                   type="button"
                                   onClick={() => {
                                     setOpenActionOrderId(null);
-                                    navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}&dispatchNo=${encodeURIComponent(dpNo)}`);
+                                    handleInvoiceClick(order, dpNo);
                                   }}
                                   className="px-1.5 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[9.5px] font-bold font-mono"
                                   title={`Create tax invoice specifically for ${dpNo} (${dp.dispatchedQty} pcs)`}
@@ -6538,6 +6600,135 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         </Modal>
       )}
 
+      {/* Unpaid Proforma Warning & Resolution Modal */}
+      {unpaidProformaPrompt && (
+        <Modal
+          isOpen={true}
+          onClose={() => setUnpaidProformaPrompt(null)}
+          title="Advance Proforma Payment Notice"
+          size="md"
+        >
+          <div className="space-y-4">
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-none flex items-start gap-3">
+              <div className="p-2 bg-amber-500/20 text-amber-600 rounded-none shrink-0 mt-0.5">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="text-xs space-y-1.5">
+                <div className="font-bold text-amber-800 dark:text-amber-300">
+                  Advance Proforma Invoice has no recorded payment!
+                </div>
+                <p className="text-secondary leading-relaxed">
+                  An Advance Proforma Invoice (<strong>#{unpaidProformaPrompt.proforma.invoiceNo || unpaidProformaPrompt.proforma.id}</strong>) of{' '}
+                  <strong className="text-primary">{formatCurrency(Number(unpaidProformaPrompt.proforma.total || unpaidProformaPrompt.proforma.amount || 0))}</strong>{' '}
+                  was issued for Order <strong>#{unpaidProformaPrompt.order.orderNo || unpaidProformaPrompt.order.id}</strong>, but no payment or advance receipt has been registered against it yet.
+                </p>
+                <p className="text-muted text-[11px]">
+                  Please choose how you wish to proceed:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* Option 1: Record Advance Payment Receipt */}
+              <button
+                type="button"
+                onClick={() => {
+                  const targetOrd = unpaidProformaPrompt.order;
+                  setUnpaidProformaPrompt(null);
+                  handleOpenReceiptModal(targetOrd);
+                }}
+                className="w-full p-3 bg-surface hover:bg-emerald-500/10 border border-theme-subtle hover:border-emerald-500/40 text-left transition-colors flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shrink-0">
+                    <Receipt size={16} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-primary group-hover:text-emerald-600 transition-colors">
+                      Record Payment for Proforma (Pay Now)
+                    </div>
+                    <div className="text-[11px] text-muted">
+                      Open payment receipt modal to record customer's advance deposit before billing.
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-emerald-600 px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                  Pay Proforma
+                </span>
+              </button>
+
+              {/* Option 2: Cancel/Delete Proforma & Proceed to Final Invoice */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const { order, proforma, specificDispatchNo } = unpaidProformaPrompt;
+                  const confirmed = await showConfirm(
+                    `Are you sure you want to cancel & delete Proforma Invoice "${proforma.invoiceNo || proforma.id}" and proceed directly to creating the Final Tax Invoice?`,
+                    'Cancel Proforma & Create Invoice'
+                  );
+                  if (!confirmed) return;
+
+                  try {
+                    await deleteInvoice(proforma.id || proforma.invoiceNo);
+                    toast(`Proforma invoice ${proforma.invoiceNo || proforma.id} cancelled successfully!`, 'success');
+                    refetchInvoices();
+                    setUnpaidProformaPrompt(null);
+                    // Now proceed directly to final tax invoice
+                    handleInvoiceClick(order, specificDispatchNo, true);
+                  } catch (err: any) {
+                    console.error('Failed to cancel proforma invoice:', err);
+                    toast(err.message || 'Failed to cancel proforma invoice', 'error');
+                  }
+                }}
+                className="w-full p-3 bg-surface hover:bg-rose-500/10 border border-theme-subtle hover:border-rose-500/40 text-left transition-colors flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-rose-500/10 text-rose-600 border border-rose-500/20 shrink-0">
+                    <Trash2 size={16} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-primary group-hover:text-rose-600 transition-colors">
+                      Cancel Proforma &amp; Create Final Invoice
+                    </div>
+                    <div className="text-[11px] text-muted">
+                      Deletes the advance proforma and takes you directly to generate the final Tax Invoice.
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-rose-600 px-2 py-1 bg-rose-500/10 border border-rose-500/20 shrink-0">
+                  Cancel &amp; Invoice
+                </span>
+              </button>
+
+              {/* Option 3: Continue directly without proforma payment (bypass) */}
+              <button
+                type="button"
+                onClick={() => {
+                  const { order, specificDispatchNo } = unpaidProformaPrompt;
+                  setUnpaidProformaPrompt(null);
+                  handleInvoiceClick(order, specificDispatchNo, true);
+                }}
+                className="w-full p-2.5 bg-surface hover:bg-surface2 border border-theme-subtle text-left transition-colors flex items-center justify-between text-muted hover:text-primary cursor-pointer text-xs"
+              >
+                <span>Ignore &amp; Proceed to Final Invoice anyway</span>
+                <span className="text-[10px] font-mono opacity-70">Proceed →</span>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-theme-subtle">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setUnpaidProformaPrompt(null)}
+                className="text-xs"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
     </div>
   )
