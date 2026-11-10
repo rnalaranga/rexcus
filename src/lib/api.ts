@@ -1735,5 +1735,208 @@ export const updateChequeStatus = async (id: string, status: string, sourceTable
   return res.json();
 };
 
+// ==========================================
+// SERVICE & INSPECTION JOBS API
+// ==========================================
+
+export interface ServiceInspectionJob {
+  id: string;
+  jobNo: string;
+  intakeDate: string;
+  customerId?: string | null;
+  customerName: string;
+  customerCompany?: string | null;
+  contactPhone?: string | null;
+  contactPerson?: string | null;
+  itemName: string;
+  itemCategory?: string;
+  serialNo?: string | null;
+  modelNo?: string | null;
+  customerProblem?: string | null;
+  initialCondition?: string | null;
+  receivedBy?: string;
+  status: 'intake' | 'in_inspection' | 'diagnosis_complete' | 'quoted' | 'approved' | 'in_repair' | 'declined' | 'released' | 'closed';
+  priority?: string;
+  assignedTechnician?: string | null;
+  findings?: string | null;
+  requiredParts?: Array<{
+    id?: string;
+    name: string;
+    partNo?: string;
+    qty: number;
+    unitPrice: number;
+    total: number;
+    isAvailable?: boolean;
+  }>;
+  requiredOperations?: Array<{
+    id?: string;
+    operationName: string;
+    machineName?: string;
+    estimatedHours: number;
+    hourlyRate: number;
+    total: number;
+    description?: string;
+  }>;
+  estimatedRepairCost?: number;
+  inspectionFee?: number;
+  inspectionFeeStatus?: 'unbilled' | 'billed' | 'waived' | 'paid';
+  inspectionInvoiceId?: string | null;
+  inspectionInvoiceNo?: string | null;
+  diagnosisCompletedAt?: string | null;
+  diagnosisCompletedBy?: string | null;
+  inwardGatePassId?: string | null;
+  inwardGatePassNo?: string | null;
+  inspectionWorkOrderId?: string | null;
+  quotationId?: string | null;
+  quotationNo?: string | null;
+  quotationAmount?: number;
+  customerDecision?: 'Pending' | 'Approved' | 'Declined';
+  customerDecisionDate?: string | null;
+  customerDecisionNotes?: string | null;
+  salesOrderId?: string | null;
+  salesOrderNo?: string | null;
+  repairWorkOrderId?: string | null;
+  finalInvoiceId?: string | null;
+  finalInvoiceNo?: string | null;
+  outwardGatePassId?: string | null;
+  outwardGatePassNo?: string | null;
+  releasedDate?: string | null;
+  releasedBy?: string | null;
+  releaseReason?: string | null;
+  timeline?: Array<{
+    id?: string;
+    timestamp: string;
+    action: string;
+    actor?: string;
+    title?: string;
+    description?: string;
+    documentType?: string;
+    documentNo?: string;
+    documentId?: string;
+  }>;
+  photos?: string[];
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  linkedRecords?: {
+    quotation?: any;
+    inwardGatePass?: any;
+    outwardGatePass?: any;
+    inspectionInvoice?: any;
+    finalInvoice?: any;
+    salesOrder?: any;
+    repairWorkOrder?: any;
+  };
+}
+
+export const fetchServiceJobs = async (params: { status?: string; search?: string; customerId?: string } = {}) => {
+  const sp = new URLSearchParams();
+  if (params.status && params.status !== 'all') sp.append('status', params.status);
+  if (params.search) sp.append('search', params.search);
+  if (params.customerId) sp.append('customerId', params.customerId);
+  const q = sp.toString() ? `?${sp.toString()}` : '';
+  const res = await fetch(`${API_URL}/production/service-jobs${q}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch service jobs');
+  }
+  return res.json();
+};
+
+export const fetchServiceJobById = async (id: string): Promise<ServiceInspectionJob> => {
+  const res = await fetch(`${API_URL}/production/service-jobs/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch service job');
+  }
+  return res.json();
+};
+
+export const createServiceJob = async (data: any) => {
+  const res = await fetch(`${API_URL}/production/service-jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create service job');
+  }
+  return res.json();
+};
+
+export const updateServiceJobDiagnosis = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/service-jobs/${encodeURIComponent(id)}/diagnosis`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update diagnosis');
+  }
+  return res.json();
+};
+
+export const createServiceJobQuotation = async (id: string, data: any = {}) => {
+  const res = await fetch(`${API_URL}/production/service-jobs/${encodeURIComponent(id)}/create-quotation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create quotation');
+  }
+  return res.json();
+};
+
+export const recordServiceJobDecision = async (
+  id: string,
+  data: {
+    decision: 'Approved' | 'Declined';
+    notes?: string;
+    recordedBy?: string;
+    feeAction?: 'charge' | 'waive';
+  }
+) => {
+  const res = await fetch(`${API_URL}/production/service-jobs/${encodeURIComponent(id)}/decision`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to record customer decision');
+  }
+  return res.json();
+};
+
+export const releaseServiceJobGatePass = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/service-jobs/${encodeURIComponent(id)}/release`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to release equipment and issue gate pass');
+  }
+  return res.json();
+};
+
+export const updateServiceJob = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/production/service-jobs/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update service job');
+  }
+  return res.json();
+};
+
 
 

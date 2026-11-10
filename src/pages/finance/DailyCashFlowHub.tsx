@@ -779,16 +779,16 @@ export const DailyCashFlowHub: React.FC = () => {
                           {!isIn ? formatCurrency(tx.amount) : '-'}
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          {tx.chequeStatus ? (
+                          {((tx.paymentMethod || '').toLowerCase().includes('cheque') || tx.chequeNo) ? (
                             <Badge variant={
-                              tx.chequeStatus.toLowerCase() === 'cleared' ? 'success' :
-                              tx.chequeStatus.toLowerCase() === 'deposited' ? 'info' :
-                              tx.chequeStatus.toLowerCase() === 'returned' ? 'danger' : 'warning'
+                              (tx.chequeStatus || 'pending').toLowerCase() === 'cleared' ? 'success' :
+                              (tx.chequeStatus || '').toLowerCase() === 'deposited' ? 'info' :
+                              (tx.chequeStatus || '').toLowerCase() === 'returned' ? 'danger' : 'warning'
                             }>
-                              {tx.chequeStatus}
+                              {tx.chequeStatus || 'Pending'}
                             </Badge>
                           ) : (
-                            <span className="text-muted text-[10px]">Settled</span>
+                            <Badge variant="success">Settled</Badge>
                           )}
                         </td>
                       </tr>

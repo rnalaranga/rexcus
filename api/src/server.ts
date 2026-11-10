@@ -1971,7 +1971,66 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_receipts ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
     "ALTER TABLE payment_receipts ADD COLUMN invoiceId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE payment_receipts ADD COLUMN invoiceNo VARCHAR(100) DEFAULT NULL",
-    "ALTER TABLE supplier_bills ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00"
+    "ALTER TABLE supplier_bills ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
+    `CREATE TABLE IF NOT EXISTS service_inspection_jobs (
+      id VARCHAR(50) PRIMARY KEY,
+      jobNo VARCHAR(50) NOT NULL UNIQUE,
+      intakeDate DATETIME NOT NULL,
+      customerId VARCHAR(50) DEFAULT NULL,
+      customerName VARCHAR(255) NOT NULL,
+      customerCompany VARCHAR(255) DEFAULT NULL,
+      contactPhone VARCHAR(100) DEFAULT NULL,
+      contactPerson VARCHAR(255) DEFAULT NULL,
+      itemName VARCHAR(255) NOT NULL,
+      itemCategory VARCHAR(100) DEFAULT 'Machinery / Equipment',
+      serialNo VARCHAR(100) DEFAULT NULL,
+      modelNo VARCHAR(100) DEFAULT NULL,
+      customerProblem TEXT DEFAULT NULL,
+      initialCondition TEXT DEFAULT NULL,
+      receivedBy VARCHAR(100) DEFAULT 'Service Desk',
+      status VARCHAR(50) DEFAULT 'intake',
+      priority VARCHAR(20) DEFAULT 'Medium',
+      assignedTechnician VARCHAR(100) DEFAULT NULL,
+      findings TEXT DEFAULT NULL,
+      requiredParts LONGTEXT DEFAULT NULL,
+      requiredOperations LONGTEXT DEFAULT NULL,
+      estimatedRepairCost DECIMAL(15,2) DEFAULT 0.00,
+      inspectionFee DECIMAL(15,2) DEFAULT 0.00,
+      inspectionFeeStatus VARCHAR(20) DEFAULT 'unbilled',
+      inspectionInvoiceId VARCHAR(50) DEFAULT NULL,
+      inspectionInvoiceNo VARCHAR(100) DEFAULT NULL,
+      diagnosisCompletedAt DATETIME DEFAULT NULL,
+      diagnosisCompletedBy VARCHAR(100) DEFAULT NULL,
+      inwardGatePassId VARCHAR(50) DEFAULT NULL,
+      inwardGatePassNo VARCHAR(100) DEFAULT NULL,
+      inspectionWorkOrderId VARCHAR(50) DEFAULT NULL,
+      quotationId VARCHAR(50) DEFAULT NULL,
+      quotationNo VARCHAR(100) DEFAULT NULL,
+      quotationAmount DECIMAL(15,2) DEFAULT 0.00,
+      customerDecision VARCHAR(50) DEFAULT 'Pending',
+      customerDecisionDate DATETIME DEFAULT NULL,
+      customerDecisionNotes TEXT DEFAULT NULL,
+      salesOrderId VARCHAR(50) DEFAULT NULL,
+      salesOrderNo VARCHAR(100) DEFAULT NULL,
+      repairWorkOrderId VARCHAR(50) DEFAULT NULL,
+      finalInvoiceId VARCHAR(50) DEFAULT NULL,
+      finalInvoiceNo VARCHAR(100) DEFAULT NULL,
+      outwardGatePassId VARCHAR(50) DEFAULT NULL,
+      outwardGatePassNo VARCHAR(100) DEFAULT NULL,
+      releasedDate DATETIME DEFAULT NULL,
+      releasedBy VARCHAR(100) DEFAULT NULL,
+      releaseReason VARCHAR(255) DEFAULT NULL,
+      timeline LONGTEXT DEFAULT NULL,
+      photos LONGTEXT DEFAULT NULL,
+      notes TEXT DEFAULT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_sij_jobNo (jobNo),
+      INDEX idx_sij_status (status),
+      INDEX idx_sij_customer (customerName),
+      INDEX idx_sij_serial (serialNo)
+    )`,
+    "INSERT IGNORE INTO document_sequences (id, name, prefix, next_number, padding, updated_at) VALUES ('service_job', 'Service & Inspection Job Cards', 'SRV-', 1001, 4, NOW())"
   ];
 
   for (const patch of patches) {
@@ -11789,7 +11848,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         pr.chequeNo,
         DATE_FORMAT(pr.chequeDate, '%Y-%m-%d') as chequeDate,
         pr.bankName,
-        COALESCE(pr.chequeStatus, 'Pending') as chequeStatus,
+        CASE WHEN pr.paymentMethod = 'Cheque' OR pr.chequeNo IS NOT NULL THEN COALESCE(pr.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         pr.transactionRef,
         COALESCE(pr.accountName, 'Cash/Bank') as accountName,
         pr.receivedBy as handledBy,
@@ -11866,7 +11925,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         cb.chequeNo,
         DATE_FORMAT(cb.chequeDate, '%Y-%m-%d') as chequeDate,
         cb.bankName,
-        COALESCE(cb.chequeStatus, 'Pending') as chequeStatus,
+        CASE WHEN cb.paymentMethod = 'Cheque' OR cb.chequeNo IS NOT NULL THEN COALESCE(cb.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         cb.transactionRef,
         COALESCE(cashAcc.name, 'Petty Cash') as accountName,
         COALESCE(cb.createdByName, cb.createdBy, 'Cashier') as handledBy,
@@ -11895,7 +11954,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         pv.chequeNo,
         DATE_FORMAT(pv.chequeDate, '%Y-%m-%d') as chequeDate,
         pv.bankName,
-        COALESCE(pv.chequeStatus, 'Pending') as chequeStatus,
+        CASE WHEN pv.paymentMethod = 'Cheque' OR pv.chequeNo IS NOT NULL THEN COALESCE(pv.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         pv.transactionRef,
         COALESCE(acc.name, 'Bank/Cash') as accountName,
         COALESCE(pv.preparedBy, 'Finance') as handledBy,
@@ -11922,7 +11981,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         sl.chequeNo,
         DATE_FORMAT(sl.chequeDate, '%Y-%m-%d') as chequeDate,
         sl.bankName,
-        COALESCE(sl.chequeStatus, 'Pending') as chequeStatus,
+        CASE WHEN sl.paymentMethod = 'Cheque' OR sl.chequeNo IS NOT NULL THEN COALESCE(sl.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         sl.transactionRef,
         COALESCE(sl.creditAccountName, 'Bank/Cash') as accountName,
         'Accounts' as handledBy,
@@ -15945,6 +16004,868 @@ app.post('/api/production/work-orders/:id/complete', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error completing work order:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================================
+// SERVICE & INSPECTION JOBS (PRE-QUOTATION TEARDOWN & REPAIR WORKFLOW)
+// ==========================================
+
+// 1. Get all service inspection jobs
+app.get('/api/production/service-jobs', async (req, res) => {
+  try {
+    const { status, search, customerId } = req.query;
+    let sql = 'SELECT * FROM service_inspection_jobs WHERE 1=1';
+    const params: any[] = [];
+
+    if (status && status !== 'all') {
+      sql += ' AND status = ?';
+      params.push(status);
+    }
+    if (customerId) {
+      sql += ' AND customerId = ?';
+      params.push(customerId);
+    }
+    if (search) {
+      sql += ' AND (jobNo LIKE ? OR customerName LIKE ? OR itemName LIKE ? OR serialNo LIKE ? OR quotationNo LIKE ? OR inwardGatePassNo LIKE ? OR outwardGatePassNo LIKE ?)';
+      const s = `%${search}%`;
+      params.push(s, s, s, s, s, s, s);
+    }
+    sql += ' ORDER BY intakeDate DESC, createdAt DESC';
+
+    const [rows]: any = await db.query(sql, params);
+    const parsed = (rows || []).map((row: any) => {
+      try { row.timeline = typeof row.timeline === 'string' ? JSON.parse(row.timeline) : (row.timeline || []); } catch (e) { row.timeline = []; }
+      try { row.requiredParts = typeof row.requiredParts === 'string' ? JSON.parse(row.requiredParts) : (row.requiredParts || []); } catch (e) { row.requiredParts = []; }
+      try { row.requiredOperations = typeof row.requiredOperations === 'string' ? JSON.parse(row.requiredOperations) : (row.requiredOperations || []); } catch (e) { row.requiredOperations = []; }
+      try { row.photos = typeof row.photos === 'string' ? JSON.parse(row.photos) : (row.photos || []); } catch (e) { row.photos = []; }
+      return row;
+    });
+
+    res.json(parsed);
+  } catch (error: any) {
+    console.error('Error fetching service inspection jobs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Get single service inspection job with linked documents for complete traceability
+app.get('/api/production/service-jobs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT * FROM service_inspection_jobs WHERE id = ? OR jobNo = ? LIMIT 1', [id, id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Service job not found' });
+    }
+    const job = rows[0];
+    try { job.timeline = typeof job.timeline === 'string' ? JSON.parse(job.timeline) : (job.timeline || []); } catch (e) { job.timeline = []; }
+    try { job.requiredParts = typeof job.requiredParts === 'string' ? JSON.parse(job.requiredParts) : (job.requiredParts || []); } catch (e) { job.requiredParts = []; }
+    try { job.requiredOperations = typeof job.requiredOperations === 'string' ? JSON.parse(job.requiredOperations) : (job.requiredOperations || []); } catch (e) { job.requiredOperations = []; }
+    try { job.photos = typeof job.photos === 'string' ? JSON.parse(job.photos) : (job.photos || []); } catch (e) { job.photos = []; }
+
+    // Fetch related document snapshots
+    let quotation = null;
+    let inwardGatePass = null;
+    let outwardGatePass = null;
+    let inspectionInvoice = null;
+    let finalInvoice = null;
+    let salesOrder = null;
+    let repairWorkOrder = null;
+
+    if (job.quotationId || job.quotationNo) {
+      const [q]: any = await db.query('SELECT id, quotationNo, status, totalAmount, date FROM quotations WHERE id = ? OR quotationNo = ? LIMIT 1', [job.quotationId, job.quotationNo]);
+      if (q && q[0]) quotation = q[0];
+    }
+    if (job.inwardGatePassId || job.inwardGatePassNo) {
+      const [gp]: any = await db.query('SELECT id, issuedDate, status, carrier, vehicleNo FROM gate_passes WHERE id = ? LIMIT 1', [job.inwardGatePassId || job.inwardGatePassNo]);
+      if (gp && gp[0]) inwardGatePass = gp[0];
+    }
+    if (job.outwardGatePassId || job.outwardGatePassNo) {
+      const [ogp]: any = await db.query('SELECT id, issuedDate, status, carrier, vehicleNo FROM gate_passes WHERE id = ? LIMIT 1', [job.outwardGatePassId || job.outwardGatePassNo]);
+      if (ogp && ogp[0]) outwardGatePass = ogp[0];
+    }
+    if (job.inspectionInvoiceId || job.inspectionInvoiceNo) {
+      const [inv]: any = await db.query('SELECT id, invoiceNo, status, amount, total, paidAmount, date FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1', [job.inspectionInvoiceId, job.inspectionInvoiceNo]);
+      if (inv && inv[0]) inspectionInvoice = inv[0];
+    }
+    if (job.finalInvoiceId || job.finalInvoiceNo) {
+      const [finv]: any = await db.query('SELECT id, invoiceNo, status, amount, total, paidAmount, date FROM invoices WHERE id = ? OR invoiceNo = ? LIMIT 1', [job.finalInvoiceId, job.finalInvoiceNo]);
+      if (finv && finv[0]) finalInvoice = finv[0];
+    }
+    if (job.salesOrderId || job.salesOrderNo) {
+      const [so]: any = await db.query('SELECT id, orderNo, status, totalPrice, orderDate FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1', [job.salesOrderId, job.salesOrderNo]);
+      if (so && so[0]) salesOrder = so[0];
+    }
+    if (job.repairWorkOrderId) {
+      const [wo]: any = await db.query('SELECT id, orderNo, status, progress, deadline, plannedStartDate FROM work_orders WHERE id = ? OR orderNo = ? LIMIT 1', [job.repairWorkOrderId, job.repairWorkOrderId]);
+      if (wo && wo[0]) repairWorkOrder = wo[0];
+    }
+
+    res.json({
+      ...job,
+      linkedRecords: {
+        quotation,
+        inwardGatePass,
+        outwardGatePass,
+        inspectionInvoice,
+        finalInvoice,
+        salesOrder,
+        repairWorkOrder
+      }
+    });
+  } catch (error: any) {
+    console.error('Error fetching service job:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Create intake job card & auto-generate Inward Gate Pass
+app.post('/api/production/service-jobs', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const data = { ...req.body };
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // Generate Job No
+    let jobNo = data.jobNo;
+    if (!jobNo) {
+      const [seqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'service_job' FOR UPDATE");
+      if (seqRow && seqRow.length > 0) {
+        const num = Number(seqRow[0].next_number) || 1001;
+        const pad = Number(seqRow[0].padding) || 4;
+        const pfx = seqRow[0].prefix || 'SRV-';
+        jobNo = `${pfx}${String(num).padStart(pad, '0')}`;
+        await conn.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'service_job'");
+      } else {
+        jobNo = `SRV-${Date.now().toString().slice(-4)}`;
+      }
+    }
+    const jobId = jobNo;
+
+    // Generate Inward Gate Pass
+    const [gpSeqRow]: any = await conn.query("SELECT COUNT(*) as c FROM gate_passes");
+    const nextGpNum = (gpSeqRow[0]?.c || 0) + 1;
+    const gpId = 'GP-' + nextGpNum.toString().padStart(4, '0');
+
+    const gpItems = [
+      {
+        description: data.itemName || 'Industrial Equipment for Inspection',
+        model: data.modelNo || '',
+        serialNo: data.serialNo || '',
+        category: data.itemCategory || 'Equipment',
+        initialCondition: data.initialCondition || 'Pending Teardown',
+        qty: 1,
+        unit: 'Unit'
+      }
+    ];
+
+    await conn.query(
+      `INSERT INTO gate_passes 
+       (id, type, customerId, customerName, customerCompany, phone, carrier, vehicleNo, driverName, reason, items, issuedBy, issuedDate, status, notes, createdAt) 
+       VALUES (?, 'repair_inward', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Received', ?, ?)`,
+      [
+        gpId,
+        data.customerId || null,
+        data.customerName || 'Customer',
+        data.customerCompany || null,
+        data.contactPhone || null,
+        data.carrier || 'Customer Drop-off',
+        data.vehicleNo || null,
+        data.driverName || null,
+        `Equipment Intake for Teardown & Inspection (Job #${jobNo})`,
+        JSON.stringify(gpItems),
+        data.receivedBy || 'Service Desk',
+        data.intakeDate || now,
+        data.notes || null,
+        now
+      ]
+    );
+
+    const initialTimeline = [
+      {
+        id: 'step-1',
+        timestamp: now,
+        action: 'Equipment Intake & Gate Pass Issued',
+        actor: data.receivedBy || 'Service Desk',
+        title: 'Machine Received at Workshop',
+        description: `Received ${data.itemName} (${data.modelNo || 'N/A'}, S/N: ${data.serialNo || 'N/A'}). Problem reported: "${data.customerProblem || 'Not specified'}". Inward Gate Pass #${gpId} issued.`,
+        documentType: 'Inward Gate Pass',
+        documentNo: gpId,
+        documentId: gpId
+      }
+    ];
+
+    const newJob = {
+      id: jobId,
+      jobNo,
+      intakeDate: data.intakeDate || now,
+      customerId: data.customerId || null,
+      customerName: data.customerName,
+      customerCompany: data.customerCompany || null,
+      contactPhone: data.contactPhone || null,
+      contactPerson: data.contactPerson || null,
+      itemName: data.itemName,
+      itemCategory: data.itemCategory || 'Machinery / Equipment',
+      serialNo: data.serialNo || null,
+      modelNo: data.modelNo || null,
+      customerProblem: data.customerProblem || null,
+      initialCondition: data.initialCondition || null,
+      receivedBy: data.receivedBy || 'Service Desk',
+      status: 'intake',
+      priority: data.priority || 'Medium',
+      assignedTechnician: data.assignedTechnician || null,
+      findings: null,
+      requiredParts: JSON.stringify(data.requiredParts || []),
+      requiredOperations: JSON.stringify(data.requiredOperations || []),
+      estimatedRepairCost: Number(data.estimatedRepairCost || 0),
+      inspectionFee: Number(data.inspectionFee || 0),
+      inspectionFeeStatus: 'unbilled',
+      inwardGatePassId: gpId,
+      inwardGatePassNo: gpId,
+      timeline: JSON.stringify(initialTimeline),
+      photos: JSON.stringify(data.photos || []),
+      notes: data.notes || null,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await conn.query('INSERT INTO service_inspection_jobs SET ?', newJob);
+
+    await conn.commit();
+    res.json({ success: true, item: { ...newJob, timeline: initialTimeline, inwardGatePassNo: gpId } });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error creating service inspection job:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// 4. Update teardown findings & diagnostic estimation
+app.put('/api/production/service-jobs/:id/diagnosis', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT * FROM service_inspection_jobs WHERE id = ? OR jobNo = ? LIMIT 1', [id, id]);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Service job not found' });
+    const job = rows[0];
+
+    const {
+      findings,
+      requiredParts,
+      requiredOperations,
+      estimatedRepairCost,
+      inspectionFee,
+      assignedTechnician,
+      notes
+    } = req.body;
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    let timeline: any[] = [];
+    try { timeline = typeof job.timeline === 'string' ? JSON.parse(job.timeline) : (job.timeline || []); } catch (e) { timeline = []; }
+
+    timeline.push({
+      id: `step-${Date.now()}`,
+      timestamp: now,
+      action: 'Dismantling & Inspection Assessment Completed',
+      actor: assignedTechnician || job.assignedTechnician || 'Workshop Engineer',
+      title: 'Technical Diagnosis & Bill of Repairs Ready',
+      description: `Equipment dismantled and inspected. Technical findings logged. Estimated repair cost: Rs. ${Number(estimatedRepairCost || 0).toLocaleString()}. Standalone dismantling inspection fee: Rs. ${Number(inspectionFee || 0).toLocaleString()}.`,
+      documentType: 'Inspection Report',
+      documentNo: job.jobNo
+    });
+
+    await db.query(
+      `UPDATE service_inspection_jobs 
+       SET findings = ?, 
+           requiredParts = ?, 
+           requiredOperations = ?, 
+           estimatedRepairCost = ?, 
+           inspectionFee = ?, 
+           assignedTechnician = ?, 
+           diagnosisCompletedAt = ?, 
+           diagnosisCompletedBy = ?, 
+           status = 'diagnosis_complete', 
+           timeline = ?, 
+           notes = CONCAT(IFNULL(notes, ''), ?), 
+           updatedAt = NOW() 
+       WHERE id = ?`,
+      [
+        findings || null,
+        JSON.stringify(requiredParts || []),
+        JSON.stringify(requiredOperations || []),
+        Number(estimatedRepairCost || 0),
+        Number(inspectionFee || 0),
+        assignedTechnician || job.assignedTechnician || null,
+        now,
+        assignedTechnician || 'Workshop Engineer',
+        JSON.stringify(timeline),
+        notes ? ` | Diagnosis: ${notes}` : '',
+        job.id
+      ]
+    );
+
+    res.json({ success: true, message: 'Diagnosis & inspection findings recorded successfully.' });
+  } catch (error: any) {
+    console.error('Error updating diagnosis:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Generate official Quotation directly from diagnostic bill of materials & machining operations
+app.post('/api/production/service-jobs/:id/create-quotation', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const [rows]: any = await conn.query('SELECT * FROM service_inspection_jobs WHERE id = ? OR jobNo = ? LIMIT 1', [id, id]);
+    if (!rows || rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Service job not found' });
+    }
+    const job = rows[0];
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // Generate Quotation Number
+    const [seqRow]: any = await conn.query("SELECT next_number, padding FROM document_sequences WHERE id = 'quotation' FOR UPDATE");
+    let quoNum = 2206;
+    let pad = 4;
+    if (seqRow && seqRow.length > 0) {
+      quoNum = Number(seqRow[0].next_number) || 2206;
+      pad = Number(seqRow[0].padding) || 4;
+      await conn.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'quotation'");
+    }
+    const quoteNo = `QT-${new Date().getFullYear()}-${String(quoNum).padStart(pad, '0')}`;
+    const quoteId = quoteNo;
+
+    // Parse parts and operations
+    let parts: any[] = [];
+    let ops: any[] = [];
+    try { parts = typeof job.requiredParts === 'string' ? JSON.parse(job.requiredParts) : (job.requiredParts || []); } catch (e) {}
+    try { ops = typeof job.requiredOperations === 'string' ? JSON.parse(job.requiredOperations) : (job.requiredOperations || []); } catch (e) {}
+
+    const custItems: any[] = [];
+    let totalAmount = 0;
+
+    // Headline item
+    custItems.push({
+      id: 'item-repair-title',
+      description: `Comprehensive Overhaul & Repair of ${job.itemName} (Model: ${job.modelNo || 'N/A'}, S/N: ${job.serialNo || 'N/A'}) - Per Inspection findings`,
+      qty: 1,
+      unitPrice: 0,
+      total: 0
+    });
+
+    parts.forEach((p: any, idx: number) => {
+      const lineTotal = Number(p.total || (Number(p.qty || 1) * Number(p.unitPrice || 0)));
+      totalAmount += lineTotal;
+      custItems.push({
+        id: `part-${idx + 1}`,
+        description: `Replacement Part: ${p.name || 'Component'} ${p.partNo ? `(P/N: ${p.partNo})` : ''}`,
+        qty: Number(p.qty || 1),
+        unitPrice: Number(p.unitPrice || 0),
+        total: lineTotal
+      });
+    });
+
+    ops.forEach((op: any, idx: number) => {
+      const lineTotal = Number(op.total || (Number(op.estimatedHours || 1) * Number(op.hourlyRate || 0)));
+      totalAmount += lineTotal;
+      custItems.push({
+        id: `op-${idx + 1}`,
+        description: `Machining / Labor: ${op.operationName || 'Operation'} ${op.machineName ? `[${op.machineName}]` : ''} - ${op.estimatedHours || 1} hrs`,
+        qty: Number(op.estimatedHours || 1),
+        unitPrice: Number(op.hourlyRate || 0),
+        total: lineTotal
+      });
+    });
+
+    if (totalAmount === 0 && Number(job.estimatedRepairCost) > 0) {
+      totalAmount = Number(job.estimatedRepairCost);
+      custItems[0].unitPrice = totalAmount;
+      custItems[0].total = totalAmount;
+    }
+
+    const quoteData = {
+      quotationNo: quoteNo,
+      company: job.customerCompany || job.customerName,
+      customerName: job.customerName,
+      customerPhone: job.contactPhone,
+      custItems,
+      custTotals: {
+        subtotal: totalAmount,
+        total: totalAmount
+      },
+      notes: `Service & Inspection Job #${job.jobNo} - Technical Findings: ${job.findings || 'Full diagnostic completed'}. Standalone dismantling fee of Rs. ${Number(job.inspectionFee || 0).toLocaleString()} applies only if quotation is declined.`,
+      serviceJobId: job.id,
+      serviceJobNo: job.jobNo
+    };
+
+    await conn.query(
+      `INSERT INTO quotations 
+       (id, quotationNo, date, data, totalAmount, type, status, createdByName, createdAt) 
+       VALUES (?, ?, ?, ?, ?, 'main', 'Draft', ?, ?)`,
+      [
+        quoteId,
+        quoteNo,
+        now,
+        JSON.stringify(quoteData),
+        totalAmount,
+        req.body.createdBy || 'Workshop Estimator',
+        now
+      ]
+    );
+
+    let timeline: any[] = [];
+    try { timeline = typeof job.timeline === 'string' ? JSON.parse(job.timeline) : (job.timeline || []); } catch (e) {}
+
+    timeline.push({
+      id: `step-${Date.now()}`,
+      timestamp: now,
+      action: 'Repair Quotation Generated',
+      actor: req.body.createdBy || 'Workshop Estimator',
+      title: `Formal Quotation #${quoteNo} Issued`,
+      description: `Quotation #${quoteNo} prepared for Rs. ${Number(totalAmount).toLocaleString()} covering all replacement parts & workshop machining operations. Sent to customer for approval.`,
+      documentType: 'Quotation',
+      documentNo: quoteNo,
+      documentId: quoteId
+    });
+
+    await conn.query(
+      `UPDATE service_inspection_jobs 
+       SET quotationId = ?, 
+           quotationNo = ?, 
+           quotationAmount = ?, 
+           status = 'quoted', 
+           timeline = ?, 
+           updatedAt = NOW() 
+       WHERE id = ?`,
+      [quoteId, quoteNo, totalAmount, JSON.stringify(timeline), job.id]
+    );
+
+    await conn.commit();
+    res.json({
+      success: true,
+      quotationId: quoteId,
+      quotationNo: quoteNo,
+      totalAmount
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error creating quotation from service job:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// 6. Record customer decision (Agree -> Convert to Sales Order & Work Order / Decline -> Bill inspection fee or Waive)
+app.put('/api/production/service-jobs/:id/decision', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const [rows]: any = await conn.query('SELECT * FROM service_inspection_jobs WHERE id = ? OR jobNo = ? LIMIT 1', [id, id]);
+    if (!rows || rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Service job not found' });
+    }
+    const job = rows[0];
+
+    const { decision, notes, recordedBy, feeAction } = req.body;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    let timeline: any[] = [];
+    try { timeline = typeof job.timeline === 'string' ? JSON.parse(job.timeline) : (job.timeline || []); } catch (e) {}
+
+    let salesOrderId = job.salesOrderId;
+    let salesOrderNo = job.salesOrderNo;
+    let repairWorkOrderId = job.repairWorkOrderId;
+    let inspectionInvoiceId = job.inspectionInvoiceId;
+    let inspectionInvoiceNo = job.inspectionInvoiceNo;
+    let inspectionFeeStatus = job.inspectionFeeStatus || 'unbilled';
+    let newStatus = job.status;
+
+    if (decision === 'Approved') {
+      newStatus = 'in_repair';
+
+      // 1. Generate Sales Order if not already present
+      if (!salesOrderNo) {
+        const [soSeqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'sales_order' FOR UPDATE");
+        let soNum = 1001;
+        let soPfx = 'SO-';
+        let pad = 4;
+        if (soSeqRow && soSeqRow.length > 0) {
+          soNum = Number(soSeqRow[0].next_number) || 1001;
+          soPfx = soSeqRow[0].prefix || 'SO-';
+          pad = Number(soSeqRow[0].padding) || 4;
+          await conn.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'sales_order'");
+        }
+        salesOrderNo = `${soPfx}${String(soNum).padStart(pad, '0')}`;
+        salesOrderId = salesOrderNo;
+
+        await conn.query(
+          `INSERT INTO finished_goods_orders 
+           (id, orderNo, orderSource, customerId, customerName, customerPhone, orderDate, targetDeliveryDate, qty, unitPrice, totalPrice, subtotal, status, quoteId, quotationNo, notes, createdAt) 
+           VALUES (?, ?, 'service_repair', ?, ?, ?, ?, DATE_ADD(?, INTERVAL 7 DAY), 1, ?, ?, ?, 'Approved', ?, ?, ?, ?)`,
+          [
+            salesOrderId,
+            salesOrderNo,
+            job.customerId || null,
+            job.customerName,
+            job.contactPhone || null,
+            now.slice(0, 10),
+            now.slice(0, 10),
+            Number(job.quotationAmount || job.estimatedRepairCost || 0),
+            Number(job.quotationAmount || job.estimatedRepairCost || 0),
+            Number(job.quotationAmount || job.estimatedRepairCost || 0),
+            job.quotationId || null,
+            job.quotationNo || null,
+            `Repair job for ${job.itemName} (Job #${job.jobNo}). Customer approved quote #${job.quotationNo || 'N/A'}.`,
+            now
+          ]
+        );
+      }
+
+      // 2. Generate Repair Work Order if not already present
+      if (!repairWorkOrderId) {
+        const [woSeqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'work_order' FOR UPDATE");
+        let woNum = 1001;
+        let woPfx = 'WO-';
+        let pad = 4;
+        if (woSeqRow && woSeqRow.length > 0) {
+          woNum = Number(woSeqRow[0].next_number) || 1001;
+          woPfx = woSeqRow[0].prefix || 'WO-';
+          pad = Number(woSeqRow[0].padding) || 4;
+          await conn.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'work_order'");
+        }
+        repairWorkOrderId = `${woPfx}${String(woNum).padStart(pad, '0')}`;
+
+        let operations: any[] = [];
+        try { operations = typeof job.requiredOperations === 'string' ? JSON.parse(job.requiredOperations) : (job.requiredOperations || []); } catch (e) {}
+
+        await conn.query(
+          `INSERT INTO work_orders 
+           (id, orderNo, salesOrderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, jobQty, bom, estimatedCost, notes, createdAt, updatedAt) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'In Progress', ?, 1, ?, ?, ?, ?, ?)`,
+          [
+            repairWorkOrderId,
+            repairWorkOrderId,
+            salesOrderNo,
+            `Repair & Reassembly: ${job.itemName} (S/N: ${job.serialNo || 'N/A'})`,
+            job.customerId || null,
+            job.customerName,
+            job.quotationId || null,
+            job.priority || 'Normal',
+            now,
+            job.requiredParts || null,
+            Number(job.estimatedRepairCost || 0),
+            `Service Job #${job.jobNo} - Customer approved quotation.`,
+            now,
+            now
+          ]
+        );
+
+        if (operations.length > 0) {
+          const opValues = operations.map((op: any, i: number) => [
+            'OP-' + Date.now().toString().slice(-4) + '-' + i,
+            repairWorkOrderId,
+            i + 1,
+            op.operationName || 'Repair Operation',
+            op.machineId || null,
+            op.employeeId || null,
+            Number(op.estimatedHours || 1),
+            0,
+            'Pending',
+            Number(op.hourlyRate || 750),
+            1200,
+            op.description || null
+          ]);
+          await conn.query(
+            `INSERT INTO work_order_operations 
+             (id, workOrderId, stepNumber, operationName, machineId, employeeId, plannedHours, actualHours, status, hourlyLaborRate, hourlyMachineRate, notes) 
+             VALUES ?`,
+            [opValues]
+          );
+        }
+      }
+
+      timeline.push({
+        id: `step-${Date.now()}`,
+        timestamp: now,
+        action: 'Customer Approved Repair Work Order',
+        actor: recordedBy || 'Sales Executive',
+        title: 'Work Order & Sales Order Activated',
+        description: `Customer agreed to quotation #${job.quotationNo || 'N/A'} (Rs. ${Number(job.quotationAmount || 0).toLocaleString()}). Sales Order #${salesOrderNo} & Work Order #${repairWorkOrderId} generated. Repair underway on shop floor.`,
+        documentType: 'Work Order & Sales Order',
+        documentNo: `${salesOrderNo} / ${repairWorkOrderId}`
+      });
+
+    } else if (decision === 'Declined') {
+      newStatus = 'declined';
+
+      const fee = Number(job.inspectionFee || 0);
+      if (feeAction === 'charge' && fee > 0) {
+        // Generate Inspection Fee Invoice
+        const [invSeqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'invoice' FOR UPDATE");
+        let invNum = 1001;
+        let invPfx = 'INV-';
+        let pad = 4;
+        if (invSeqRow && invSeqRow.length > 0) {
+          invNum = Number(invSeqRow[0].next_number) || 1001;
+          invPfx = invSeqRow[0].prefix || 'INV-';
+          pad = Number(invSeqRow[0].padding) || 4;
+          await conn.query("UPDATE document_sequences SET next_number = next_number + 1, updated_at = NOW() WHERE id = 'invoice'");
+        }
+        inspectionInvoiceNo = `${invPfx}${String(invNum).padStart(pad, '0')}`;
+        inspectionInvoiceId = inspectionInvoiceNo;
+        inspectionFeeStatus = 'billed';
+
+        const invItems = [
+          {
+            description: `Dismantling & Diagnostic Inspection Fee - ${job.itemName} (Model: ${job.modelNo || 'N/A'}, S/N: ${job.serialNo || 'N/A'})`,
+            qty: 1,
+            unitPrice: fee,
+            total: fee
+          }
+        ];
+
+        await conn.query(
+          `INSERT INTO invoices 
+           (id, invoiceNo, quotationId, quotationNo, customerId, customerName, customerCompany, customerPhone, amount, subtotal, total, paidAmount, status, date, dueDate, notes, items, invoiceType, currency, createdAt) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'Unpaid', ?, DATE_ADD(?, INTERVAL 7 DAY), ?, ?, 'tax_invoice', 'LKR', ?)`,
+          [
+            inspectionInvoiceId,
+            inspectionInvoiceNo,
+            job.quotationId || null,
+            job.quotationNo || null,
+            job.customerId || null,
+            job.customerName,
+            job.customerCompany || null,
+            job.contactPhone || null,
+            fee,
+            fee,
+            fee,
+            now.slice(0, 10),
+            now.slice(0, 10),
+            `Diagnostic & Teardown Inspection Fee for declined repair on Job #${job.jobNo}`,
+            JSON.stringify(invItems),
+            now
+          ]
+        );
+
+        timeline.push({
+          id: `step-${Date.now()}`,
+          timestamp: now,
+          action: 'Customer Declined Repair - Inspection Fee Invoiced',
+          actor: recordedBy || 'Service Desk',
+          title: `Inspection Fee Invoice #${inspectionInvoiceNo} Issued`,
+          description: `Customer decided not to proceed with repair. Dismantling & inspection fee of Rs. ${fee.toLocaleString()} invoiced under Invoice #${inspectionInvoiceNo}. Equipment ready for outward gate pass upon fee settlement.`,
+          documentType: 'Invoice',
+          documentNo: inspectionInvoiceNo,
+          documentId: inspectionInvoiceId
+        });
+      } else {
+        inspectionFeeStatus = 'waived';
+        timeline.push({
+          id: `step-${Date.now()}`,
+          timestamp: now,
+          action: 'Customer Declined Repair - Inspection Fee Waived',
+          actor: recordedBy || 'Management',
+          title: 'Repair Declined (Inspection Fee Waived)',
+          description: `Customer decided not to proceed with repair. Inspection fee was waived. Machinery pending outward gate pass release.`,
+          documentType: 'Status Change',
+          documentNo: job.jobNo
+        });
+      }
+    }
+
+    await conn.query(
+      `UPDATE service_inspection_jobs 
+       SET customerDecision = ?, 
+           customerDecisionDate = ?, 
+           customerDecisionNotes = ?, 
+           salesOrderId = ?, 
+           salesOrderNo = ?, 
+           repairWorkOrderId = ?, 
+           inspectionInvoiceId = ?, 
+           inspectionInvoiceNo = ?, 
+           inspectionFeeStatus = ?, 
+           status = ?, 
+           timeline = ?, 
+           updatedAt = NOW() 
+       WHERE id = ?`,
+      [
+        decision,
+        now,
+        notes || null,
+        salesOrderId || null,
+        salesOrderNo || null,
+        repairWorkOrderId || null,
+        inspectionInvoiceId || null,
+        inspectionInvoiceNo || null,
+        inspectionFeeStatus,
+        newStatus,
+        JSON.stringify(timeline),
+        job.id
+      ]
+    );
+
+    await conn.commit();
+    res.json({
+      success: true,
+      decision,
+      status: newStatus,
+      salesOrderNo,
+      repairWorkOrderId,
+      inspectionInvoiceNo,
+      inspectionFeeStatus
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error handling customer decision:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// 7. Equipment Release & Outward Gate Pass Generation
+app.post('/api/production/service-jobs/:id/release', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const [rows]: any = await conn.query('SELECT * FROM service_inspection_jobs WHERE id = ? OR jobNo = ? LIMIT 1', [id, id]);
+    if (!rows || rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Service job not found' });
+    }
+    const job = rows[0];
+
+    const {
+      releasedBy,
+      releaseReason,
+      carrier,
+      vehicleNo,
+      driverName,
+      notes
+    } = req.body;
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // Generate Outward Gate Pass
+    const [gpSeqRow]: any = await conn.query("SELECT COUNT(*) as c FROM gate_passes");
+    const nextGpNum = (gpSeqRow[0]?.c || 0) + 1;
+    const gpId = 'GP-' + nextGpNum.toString().padStart(4, '0');
+
+    const gpItems = [
+      {
+        description: job.itemName,
+        model: job.modelNo || '',
+        serialNo: job.serialNo || '',
+        status: job.customerDecision === 'Approved' ? 'Repaired & Tested' : 'Inspected / Dismantled / Unrepaired',
+        qty: 1,
+        unit: 'Unit'
+      }
+    ];
+
+    await conn.query(
+      `INSERT INTO gate_passes 
+       (id, type, customerId, customerName, customerCompany, phone, carrier, vehicleNo, driverName, reason, items, issuedBy, issuedDate, status, notes, createdAt) 
+       VALUES (?, 'repair_return', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Dispatched', ?, ?)`,
+      [
+        gpId,
+        job.customerId || null,
+        job.customerName,
+        job.customerCompany || null,
+        job.contactPhone || null,
+        carrier || 'Customer Self-Pickup',
+        vehicleNo || null,
+        driverName || null,
+        `Equipment Release (${job.customerDecision === 'Declined' ? 'Inspection completed, repair declined' : 'Repair completed'}) - Job #${job.jobNo}`,
+        JSON.stringify(gpItems),
+        releasedBy || 'Security / Dispatch Gate',
+        now,
+        notes || null,
+        now
+      ]
+    );
+
+    let timeline: any[] = [];
+    try { timeline = typeof job.timeline === 'string' ? JSON.parse(job.timeline) : (job.timeline || []); } catch (e) {}
+
+    timeline.push({
+      id: `step-${Date.now()}`,
+      timestamp: now,
+      action: 'Equipment Released & Outward Gate Pass Issued',
+      actor: releasedBy || 'Security Gate',
+      title: `Machine Released to Customer via GP #${gpId}`,
+      description: `Equipment handed over. Release reason: "${releaseReason || (job.customerDecision === 'Approved' ? 'Repair complete' : 'Customer collected unrepaired item')}". Outward Gate Pass #${gpId} issued.`,
+      documentType: 'Outward Gate Pass',
+      documentNo: gpId,
+      documentId: gpId
+    });
+
+    await conn.query(
+      `UPDATE service_inspection_jobs 
+       SET outwardGatePassId = ?, 
+           outwardGatePassNo = ?, 
+           releasedDate = ?, 
+           releasedBy = ?, 
+           releaseReason = ?, 
+           status = 'released', 
+           timeline = ?, 
+           updatedAt = NOW() 
+       WHERE id = ?`,
+      [
+        gpId,
+        gpId,
+        now,
+        releasedBy || 'Security Gate',
+        releaseReason || (job.customerDecision === 'Approved' ? 'Repaired Equipment Handover' : 'Dismantled Equipment Return'),
+        JSON.stringify(timeline),
+        job.id
+      ]
+    );
+
+    await conn.commit();
+    res.json({
+      success: true,
+      outwardGatePassNo: gpId,
+      status: 'released'
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error releasing service job:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// 8. General update for service job notes, technician or priority
+app.put('/api/production/service-jobs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = { ...req.body };
+    delete data.id;
+    delete data.createdAt;
+    if (data.requiredParts && typeof data.requiredParts === 'object') data.requiredParts = JSON.stringify(data.requiredParts);
+    if (data.requiredOperations && typeof data.requiredOperations === 'object') data.requiredOperations = JSON.stringify(data.requiredOperations);
+    if (data.timeline && typeof data.timeline === 'object') data.timeline = JSON.stringify(data.timeline);
+    if (data.photos && typeof data.photos === 'object') data.photos = JSON.stringify(data.photos);
+
+    await db.query('UPDATE service_inspection_jobs SET ?, updatedAt = NOW() WHERE id = ?', [data, id]);
+    res.json({ success: true });
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });

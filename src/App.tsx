@@ -45,6 +45,7 @@ import { WorkshopPlanning } from '@/pages/production/WorkshopPlanning'
 
 import { WorkOrders } from '@/pages/production/WorkOrders'
 import { WorkOrderDetail } from '@/pages/production/WorkOrderDetail'
+import { ServiceInspectionHub } from '@/pages/production/ServiceInspectionHub'
 import { Employees } from '@/pages/hr/Employees'
 import { Skills } from '@/pages/hr/Skills'
 import { LaborReport } from '@/pages/hr/LaborReport'
@@ -185,6 +186,8 @@ function AppRoutes() {
           <Route path="/production/work-orders" element={<WorkOrders />} />
           <Route path="/production/work-orders/:id" element={<WorkOrderDetail />} />
           <Route path="/production/:id" element={<WorkOrderDetail />} />
+          <Route path="/production/service-jobs" element={<ServiceInspectionHub />} />
+          <Route path="/production/service-inspection" element={<ServiceInspectionHub />} />
           <Route path="/production/planning" element={<WorkshopPlanning />} />
           <Route path="/production/machinery" element={<Machinery />} />
             

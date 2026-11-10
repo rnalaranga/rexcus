@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck, Wallet, ArrowRightLeft
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck, Wallet, ArrowRightLeft, Wrench
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -57,6 +57,7 @@ const navGroups: NavGroup[] = [
     title: 'Production', icon: Factory, active: true,
     items: [
       { label: 'Work Orders',       path: '/production',           icon: Factory,  permission: 'production.work_orders.view' },
+      { label: 'Service & Inspection', path: '/production/service-jobs', icon: Wrench, permission: 'production.work_orders.view' },
       { label: 'Workshop Planning', path: '/production/planning',  icon: Calendar, badge: 'AI', permission: 'production.work_orders.view' },
       { label: 'Machinery',         path: '/production/machinery', icon: Settings, permission: 'production.machinery.manage' },
     ],
