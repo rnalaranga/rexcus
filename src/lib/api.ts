@@ -1680,4 +1680,60 @@ export const deleteCustomerPoPoolItem = async (poolId: string) => {
   return res.json();
 };
 
+export const getDailyCashFlow = async (params: { startDate?: string; endDate?: string; paymentMethod?: string; type?: string } = {}) => {
+  const sp = new URLSearchParams();
+  if (params.startDate) sp.append('startDate', params.startDate);
+  if (params.endDate) sp.append('endDate', params.endDate);
+  if (params.paymentMethod && params.paymentMethod !== 'ALL') sp.append('paymentMethod', params.paymentMethod);
+  if (params.type && params.type !== 'ALL') sp.append('type', params.type);
+  const q = sp.toString() ? `?${sp.toString()}` : '';
+  const res = await fetch(`${API_URL}/finance/daily-cash-flow${q}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch cash flow data');
+  }
+  return res.json();
+};
+
+export const getPaymentVouchers = async (params: { startDate?: string; endDate?: string; payeeType?: string } = {}) => {
+  const sp = new URLSearchParams();
+  if (params.startDate) sp.append('startDate', params.startDate);
+  if (params.endDate) sp.append('endDate', params.endDate);
+  if (params.payeeType) sp.append('payeeType', params.payeeType);
+  const q = sp.toString() ? `?${sp.toString()}` : '';
+  const res = await fetch(`${API_URL}/finance/payment-vouchers${q}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch payment vouchers');
+  }
+  return res.json();
+};
+
+export const createPaymentVoucher = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/payment-vouchers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create payment voucher');
+  }
+  return res.json();
+};
+
+export const updateChequeStatus = async (id: string, status: string, sourceTable?: string) => {
+  const res = await fetch(`${API_URL}/finance/cheques/${encodeURIComponent(id)}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, sourceTable })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update cheque status');
+  }
+  return res.json();
+};
+
+
 

@@ -65,6 +65,11 @@ export const DailyCashbook: React.FC = () => {
   const [particulars, setParticulars] = useState<string>('');
   const [partyName, setPartyName] = useState<string>('');
   const [referenceNo, setReferenceNo] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Cheque' | 'Bank Transfer'>('Cash');
+  const [chequeNo, setChequeNo] = useState<string>('');
+  const [chequeDate, setChequeDate] = useState<string>(todayStr);
+  const [bankName, setBankName] = useState<string>('');
+  const [transactionRef, setTransactionRef] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
   // Keep formCashAccountId synchronized with selected or default cash account
@@ -160,6 +165,11 @@ export const DailyCashbook: React.FC = () => {
     setParticulars('');
     setPartyName('');
     setReferenceNo('');
+    setPaymentMethod('Cash');
+    setChequeNo('');
+    setChequeDate(selectedDate);
+    setBankName('');
+    setTransactionRef('');
     setNotes('');
     setFormCashAccountId(selectedCashAccountId || (cashbookData?.cashAccount?.id || ''));
     
@@ -207,6 +217,12 @@ export const DailyCashbook: React.FC = () => {
         cashAccountId: formCashAccountId,
         referenceNo: referenceNo.trim() || undefined,
         partyName: partyName.trim() || undefined,
+        paymentMethod,
+        chequeNo: paymentMethod === 'Cheque' ? (chequeNo.trim() || referenceNo.trim() || undefined) : undefined,
+        chequeDate: paymentMethod === 'Cheque' ? (chequeDate || entryDate) : undefined,
+        bankName: paymentMethod === 'Cheque' ? (bankName.trim() || undefined) : undefined,
+        chequeStatus: paymentMethod === 'Cheque' ? 'Pending' : undefined,
+        transactionRef: paymentMethod === 'Bank Transfer' ? (transactionRef.trim() || referenceNo.trim() || undefined) : undefined,
         createdBy: user?.name || user?.username || 'Cashier',
         notes: notes.trim() || undefined
       });
@@ -1117,6 +1133,79 @@ export const DailyCashbook: React.FC = () => {
               onChange={e => setParticulars(e.target.value)}
               className="w-full bg-surface border border-theme rounded-lg px-3 py-2 text-sm text-primary outline-none focus:ring-1 focus:ring-rex-500"
             />
+          </div>
+
+          {/* Payment Method Selector & Details */}
+          <div className="p-3 bg-surface2/40 border border-theme rounded-lg space-y-2.5">
+            <div>
+              <label className="block text-xs font-semibold text-secondary mb-1">
+                Payment Method / Mode
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Cash', 'Cheque', 'Bank Transfer'] as const).map(pm => (
+                  <button
+                    key={pm}
+                    type="button"
+                    onClick={() => setPaymentMethod(pm)}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium border transition-all ${
+                      paymentMethod === pm
+                        ? 'bg-rex-600 text-white border-rex-600 shadow-xs'
+                        : 'bg-surface border-theme text-secondary hover:text-primary'
+                    }`}
+                  >
+                    {pm}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {paymentMethod === 'Cheque' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1.5 border-t border-theme-subtle">
+                <div>
+                  <label className="block text-[11px] font-medium text-secondary mb-1">Cheque No *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 100452"
+                    value={chequeNo}
+                    onChange={e => setChequeNo(e.target.value)}
+                    className="w-full bg-surface border border-theme rounded-md px-2.5 py-1.5 text-xs text-primary font-mono outline-none focus:ring-1 focus:ring-rex-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-secondary mb-1">Cheque Date</label>
+                  <input
+                    type="date"
+                    value={chequeDate}
+                    onChange={e => setChequeDate(e.target.value)}
+                    className="w-full bg-surface border border-theme rounded-md px-2.5 py-1.5 text-xs text-primary font-mono outline-none focus:ring-1 focus:ring-rex-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-secondary mb-1">Bank Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Commercial Bank"
+                    value={bankName}
+                    onChange={e => setBankName(e.target.value)}
+                    className="w-full bg-surface border border-theme rounded-md px-2.5 py-1.5 text-xs text-primary outline-none focus:ring-1 focus:ring-rex-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {paymentMethod === 'Bank Transfer' && (
+              <div className="pt-1.5 border-t border-theme-subtle">
+                <label className="block text-[11px] font-medium text-secondary mb-1">Transfer / SLIPS Ref #</label>
+                <input
+                  type="text"
+                  placeholder="e.g. CEFT-883921 / TRF-091"
+                  value={transactionRef}
+                  onChange={e => setTransactionRef(e.target.value)}
+                  className="w-full bg-surface border border-theme rounded-md px-2.5 py-1.5 text-xs text-primary font-mono outline-none focus:ring-1 focus:ring-rex-500"
+                />
+              </div>
+            )}
           </div>
 
           {/* Party Name & Reference No */}

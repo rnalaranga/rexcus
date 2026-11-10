@@ -74,6 +74,10 @@ export const SupplierDetail: React.FC = () => {
     referenceNo: '',
     description: '',
     bankAccount: '',
+    bankName: '',
+    chequeNo: '',
+    chequeDate: new Date().toISOString().slice(0, 10),
+    transactionRef: '',
     debitAccountId: '',
     creditAccountId: ''
   })
@@ -215,6 +219,10 @@ export const SupplierDetail: React.FC = () => {
       referenceNo: '',
       description: `Payment to ${supplier?.name || 'Supplier'}`,
       bankAccount: supplier?.bankName ? `${supplier.bankName} - ${supplier.bankAccountNo}` : '',
+      bankName: supplier?.bankName || '',
+      chequeNo: '',
+      chequeDate: new Date().toISOString().slice(0, 10),
+      transactionRef: '',
       debitAccountId: defaultDebit,
       creditAccountId: defaultCredit
     })
@@ -288,6 +296,11 @@ export const SupplierDetail: React.FC = () => {
       credit: amount,
       amount: amount,
       paymentMethod: paymentForm.paymentMethod,
+      chequeNo: paymentForm.paymentMethod === 'Cheque' ? (paymentForm.chequeNo || paymentForm.referenceNo || undefined) : undefined,
+      chequeDate: paymentForm.paymentMethod === 'Cheque' ? (paymentForm.chequeDate || paymentForm.date.slice(0, 10)) : undefined,
+      bankName: paymentForm.bankName || undefined,
+      chequeStatus: paymentForm.paymentMethod === 'Cheque' ? 'Pending' : undefined,
+      transactionRef: paymentForm.paymentMethod === 'Bank Transfer' ? (paymentForm.transactionRef || paymentForm.referenceNo || undefined) : undefined,
       debitAccountId: paymentForm.debitAccountId || undefined,
       creditAccountId: paymentForm.creditAccountId || undefined,
       debitAccountName: debitAcc ? `${debitAcc.code} - ${debitAcc.name}` : undefined,
@@ -1187,15 +1200,49 @@ export const SupplierDetail: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">Reference / Cheque #</label>
+              <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">
+                {paymentForm.paymentMethod === 'Cheque' ? 'Cheque No *' : paymentForm.paymentMethod === 'Bank Transfer' ? 'Transfer / SLIPS Ref #' : 'Reference / Receipt #'}
+              </label>
               <input 
                 type="text" 
                 value={paymentForm.referenceNo} 
-                onChange={e => setPaymentForm({ ...paymentForm, referenceNo: e.target.value })} 
+                onChange={e => {
+                  const val = e.target.value
+                  setPaymentForm({ 
+                    ...paymentForm, 
+                    referenceNo: val,
+                    chequeNo: paymentForm.paymentMethod === 'Cheque' ? val : paymentForm.chequeNo,
+                    transactionRef: paymentForm.paymentMethod === 'Bank Transfer' ? val : paymentForm.transactionRef
+                  })
+                }} 
                 className="w-full input-base text-xs font-mono" 
-                placeholder="e.g. CHQ 100234 / TRF 8901" 
+                placeholder={paymentForm.paymentMethod === 'Cheque' ? 'e.g. 100234' : 'e.g. TRF 8901 / CEFT'} 
               />
             </div>
+
+            {paymentForm.paymentMethod === 'Cheque' && (
+              <>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">Cheque Date *</label>
+                  <input 
+                    type="date" 
+                    value={paymentForm.chequeDate} 
+                    onChange={e => setPaymentForm({ ...paymentForm, chequeDate: e.target.value })} 
+                    className="w-full input-base text-xs font-mono" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">Bank Name</label>
+                  <input 
+                    type="text" 
+                    value={paymentForm.bankName} 
+                    onChange={e => setPaymentForm({ ...paymentForm, bankName: e.target.value })} 
+                    className="w-full input-base text-xs" 
+                    placeholder="e.g. Commercial Bank / Sampath Bank" 
+                  />
+                </div>
+              </>
+            )}
 
             {/* Debit Account: Liability (Accounts Payable) */}
             <div>

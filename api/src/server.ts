@@ -1919,7 +1919,55 @@ async function runDatabaseSync() {
     "ALTER TABLE invoices ADD COLUMN discountType VARCHAR(20) DEFAULT 'percent'",
     "ALTER TABLE invoices ADD COLUMN discountAmount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE invoices ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
-    "ALTER TABLE invoices ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000"
+    "ALTER TABLE invoices ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000",
+    `CREATE TABLE IF NOT EXISTS payment_vouchers (
+      id VARCHAR(50) PRIMARY KEY,
+      voucherNo VARCHAR(50) NOT NULL UNIQUE,
+      date DATE NOT NULL,
+      payeeType ENUM('supplier', 'customer', 'employee', 'other') DEFAULT 'supplier',
+      payeeId VARCHAR(50) DEFAULT NULL,
+      payeeName VARCHAR(255) NOT NULL,
+      category VARCHAR(100) DEFAULT 'Expense',
+      amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      paymentMethod ENUM('Cash', 'Cheque', 'Bank Transfer', 'Card', 'Other') DEFAULT 'Cash',
+      chequeNo VARCHAR(100) DEFAULT NULL,
+      chequeDate DATE DEFAULT NULL,
+      bankName VARCHAR(100) DEFAULT NULL,
+      chequeStatus VARCHAR(50) DEFAULT 'Pending',
+      transactionRef VARCHAR(100) DEFAULT NULL,
+      bankAccountId VARCHAR(50) DEFAULT NULL,
+      accountId VARCHAR(50) DEFAULT NULL,
+      relatedBillId VARCHAR(50) DEFAULT NULL,
+      relatedBillNo VARCHAR(100) DEFAULT NULL,
+      description TEXT DEFAULT NULL,
+      preparedBy VARCHAR(100) DEFAULT 'Admin',
+      approvedBy VARCHAR(100) DEFAULT NULL,
+      status VARCHAR(20) DEFAULT 'Paid',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_pv_date (date),
+      INDEX idx_pv_payee (payeeName),
+      INDEX idx_pv_method (paymentMethod),
+      INDEX idx_pv_cheque (chequeNo)
+    )`,
+    "ALTER TABLE cashbook_entries ADD COLUMN paymentMethod VARCHAR(50) DEFAULT 'Cash'",
+    "ALTER TABLE cashbook_entries ADD COLUMN chequeNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN chequeDate DATE DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN bankName VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN chequeStatus VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN transactionRef VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN voucherNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN chequeNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN chequeDate DATE DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN bankName VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN chequeStatus VARCHAR(50) DEFAULT 'Pending'",
+    "ALTER TABLE supplier_ledger ADD COLUMN transactionRef VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN voucherNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN chequeNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN chequeDate DATE DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN bankName VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN chequeStatus VARCHAR(50) DEFAULT 'Pending'",
+    "ALTER TABLE payment_receipts ADD COLUMN transactionRef VARCHAR(100) DEFAULT NULL"
   ];
 
   for (const patch of patches) {
@@ -10233,7 +10281,13 @@ app.post('/api/supplier-ledger', async (req, res) => {
       amount,
       reference: ref,
       notes: desc,
-      paymentMethod: data.paymentMethod || (credit > 0 ? 'Bank Transfer' : 'Invoice')
+      paymentMethod: data.paymentMethod || (credit > 0 ? 'Bank Transfer' : 'Invoice'),
+      chequeNo: data.chequeNo ? String(data.chequeNo).trim() : null,
+      chequeDate: data.chequeDate || null,
+      bankName: data.bankName ? String(data.bankName).trim() : null,
+      chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
+      transactionRef: data.transactionRef ? String(data.transactionRef).trim() : null,
+      voucherNo: data.voucherNo ? String(data.voucherNo).trim() : null
     };
     if (data.bankAccountId) {
       item.bankAccountId = data.bankAccountId;
@@ -11071,7 +11125,14 @@ app.post('/api/finance/cashbook', async (req, res) => {
       notes,
       source,
       status,
-      receiptPhoto
+      receiptPhoto,
+      paymentMethod,
+      chequeNo,
+      chequeDate,
+      bankName,
+      chequeStatus,
+      transactionRef,
+      voucherNo
     } = req.body;
 
     if (!date) return res.status(400).json({ error: 'Date is required.' });
@@ -11137,7 +11198,14 @@ app.post('/api/finance/cashbook', async (req, res) => {
         source: 'mobile',
         status: 'pending',
         receiptPhoto: receiptPhoto || null,
-        notes: notes ? notes.trim() : null
+        notes: notes ? notes.trim() : null,
+        paymentMethod: paymentMethod || 'Cash',
+        chequeNo: chequeNo ? String(chequeNo).trim() : null,
+        chequeDate: chequeDate || null,
+        bankName: bankName ? String(bankName).trim() : null,
+        chequeStatus: chequeStatus || (chequeNo ? 'Pending' : null),
+        transactionRef: transactionRef ? String(transactionRef).trim() : null,
+        voucherNo: voucherNo ? String(voucherNo).trim() : null
       });
 
       await conn.commit();
@@ -11248,7 +11316,14 @@ app.post('/api/finance/cashbook', async (req, res) => {
       approvedBy: submitterName,
       approvedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       receiptPhoto: receiptPhoto || null,
-      notes: notes ? notes.trim() : null
+      notes: notes ? notes.trim() : null,
+      paymentMethod: paymentMethod || 'Cash',
+      chequeNo: chequeNo ? String(chequeNo).trim() : null,
+      chequeDate: chequeDate || null,
+      bankName: bankName ? String(bankName).trim() : null,
+      chequeStatus: chequeStatus || (chequeNo ? 'Pending' : null),
+      transactionRef: transactionRef ? String(transactionRef).trim() : null,
+      voucherNo: voucherNo ? String(voucherNo).trim() : null
     });
 
     await conn.commit();
@@ -11598,6 +11673,449 @@ app.post('/api/finance/cashbook/set-float', async (req, res) => {
   }
 });
 
+// ==========================================
+// DAILY CASH FLOW & PAYMENT INSTRUMENTS HUB
+// ==========================================
+
+// 1. GET /api/finance/daily-cash-flow
+app.get('/api/finance/daily-cash-flow', async (req, res) => {
+  try {
+    const { startDate, endDate, method, type, search } = req.query;
+    
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const defaultEnd = now.toISOString().slice(0, 10);
+    
+    const start = (startDate as string) || defaultStart;
+    const end = (endDate as string) || defaultEnd;
+
+    // A. Inflows: Payment Receipts (Customer payments)
+    const [receipts]: any = await db.query(`
+      SELECT 
+        pr.id,
+        DATE_FORMAT(pr.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(pr.date, '%H:%i') as time,
+        'IN' as flowType,
+        'Customer Receipt' as category,
+        pr.receiptNo as refNo,
+        COALESCE(NULLIF(pr.customerCompany, ''), NULLIF(pr.customerName, ''), 'Customer') as partyName,
+        CONCAT('Receipt for ', COALESCE(NULLIF(pr.orderNo, ''), NULLIF(pr.quotationNo, ''), 'Invoice')) as description,
+        COALESCE(pr.paymentMethod, 'Cash') as paymentMethod,
+        CAST(pr.amount AS DECIMAL(15,2)) as amount,
+        COALESCE(pr.currency, 'LKR') as currency,
+        pr.chequeNo,
+        DATE_FORMAT(pr.chequeDate, '%Y-%m-%d') as chequeDate,
+        pr.bankName,
+        COALESCE(pr.chequeStatus, 'Pending') as chequeStatus,
+        pr.transactionRef,
+        COALESCE(pr.accountName, 'Cash/Bank') as accountName,
+        pr.receivedBy as handledBy,
+        'payment_receipts' as sourceTable
+      FROM payment_receipts pr
+      WHERE DATE(pr.date) BETWEEN ? AND ?
+    `, [start, end]);
+
+    // B. Cashbook Entries (IN and OUT)
+    const [cashbook]: any = await db.query(`
+      SELECT 
+        cb.id,
+        DATE_FORMAT(cb.date, '%Y-%m-%d') as date,
+        cb.time,
+        cb.entryType as flowType,
+        CASE WHEN cb.entryType = 'IN' THEN 'Cashbook Income' ELSE 'Cashbook Expense' END as category,
+        COALESCE(cb.referenceNo, cb.voucherNo, cb.id) as refNo,
+        COALESCE(NULLIF(cb.partyName, ''), targetAcc.name, 'Cashbook') as partyName,
+        cb.particulars as description,
+        COALESCE(cb.paymentMethod, 'Cash') as paymentMethod,
+        CAST(cb.amount AS DECIMAL(15,2)) as amount,
+        'LKR' as currency,
+        cb.chequeNo,
+        DATE_FORMAT(cb.chequeDate, '%Y-%m-%d') as chequeDate,
+        cb.bankName,
+        COALESCE(cb.chequeStatus, 'Pending') as chequeStatus,
+        cb.transactionRef,
+        COALESCE(cashAcc.name, 'Petty Cash') as accountName,
+        COALESCE(cb.createdByName, cb.createdBy, 'Cashier') as handledBy,
+        'cashbook_entries' as sourceTable
+      FROM cashbook_entries cb
+      LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
+      LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
+      WHERE cb.date BETWEEN ? AND ?
+        AND cb.status = 'approved'
+    `, [start, end]);
+
+    // C. Payment Vouchers (Disbursements / OUT)
+    const [vouchers]: any = await db.query(`
+      SELECT 
+        pv.id,
+        DATE_FORMAT(pv.date, '%Y-%m-%d') as date,
+        '12:00' as time,
+        'OUT' as flowType,
+        CONCAT('Voucher: ', pv.category) as category,
+        pv.voucherNo as refNo,
+        pv.payeeName as partyName,
+        COALESCE(pv.description, CONCAT('Payment to ', pv.payeeName)) as description,
+        COALESCE(pv.paymentMethod, 'Cash') as paymentMethod,
+        CAST(pv.amount AS DECIMAL(15,2)) as amount,
+        'LKR' as currency,
+        pv.chequeNo,
+        DATE_FORMAT(pv.chequeDate, '%Y-%m-%d') as chequeDate,
+        pv.bankName,
+        COALESCE(pv.chequeStatus, 'Pending') as chequeStatus,
+        pv.transactionRef,
+        COALESCE(acc.name, 'Bank/Cash') as accountName,
+        COALESCE(pv.preparedBy, 'Finance') as handledBy,
+        'payment_vouchers' as sourceTable
+      FROM payment_vouchers pv
+      LEFT JOIN chart_of_accounts acc ON pv.accountId = acc.id
+      WHERE pv.date BETWEEN ? AND ?
+    `, [start, end]);
+
+    // D. Supplier Ledger Payments (if not already logged through payment_vouchers)
+    const [supplierPayments]: any = await db.query(`
+      SELECT 
+        sl.id,
+        DATE_FORMAT(sl.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(sl.date, '%H:%i') as time,
+        'OUT' as flowType,
+        'Supplier Payment' as category,
+        COALESCE(sl.referenceNo, sl.voucherNo, sl.id) as refNo,
+        COALESCE(NULLIF(s.name, ''), s.company, 'Supplier') as partyName,
+        COALESCE(sl.description, 'Supplier settlement') as description,
+        COALESCE(sl.paymentMethod, 'Bank Transfer') as paymentMethod,
+        CAST(COALESCE(NULLIF(sl.credit, 0), sl.amount) AS DECIMAL(15,2)) as amount,
+        'LKR' as currency,
+        sl.chequeNo,
+        DATE_FORMAT(sl.chequeDate, '%Y-%m-%d') as chequeDate,
+        sl.bankName,
+        COALESCE(sl.chequeStatus, 'Pending') as chequeStatus,
+        sl.transactionRef,
+        COALESCE(sl.creditAccountName, 'Bank/Cash') as accountName,
+        'Accounts' as handledBy,
+        'supplier_ledger' as sourceTable
+      FROM supplier_ledger sl
+      LEFT JOIN suppliers s ON sl.supplierId = s.id
+      WHERE DATE(sl.date) BETWEEN ? AND ?
+        AND (sl.type = 'payment' OR sl.credit > 0)
+        AND sl.id NOT IN (SELECT COALESCE(relatedBillId, '') FROM payment_vouchers WHERE relatedBillId IS NOT NULL)
+        AND (sl.voucherNo IS NULL OR sl.voucherNo NOT IN (SELECT voucherNo FROM payment_vouchers))
+    `, [start, end]);
+
+    // Merge and standardize all transactions
+    let allTransactions = [
+      ...receipts,
+      ...cashbook,
+      ...vouchers,
+      ...supplierPayments
+    ];
+
+    // Search filter
+    if (search && String(search).trim()) {
+      const q = String(search).trim().toLowerCase();
+      allTransactions = allTransactions.filter(t => 
+        (t.refNo && String(t.refNo).toLowerCase().includes(q)) ||
+        (t.partyName && String(t.partyName).toLowerCase().includes(q)) ||
+        (t.description && String(t.description).toLowerCase().includes(q)) ||
+        (t.chequeNo && String(t.chequeNo).toLowerCase().includes(q)) ||
+        (t.bankName && String(t.bankName).toLowerCase().includes(q)) ||
+        (t.transactionRef && String(t.transactionRef).toLowerCase().includes(q))
+      );
+    }
+
+    // Method filter
+    if (method && method !== 'ALL') {
+      const m = String(method).toLowerCase();
+      allTransactions = allTransactions.filter(t => {
+        const pm = (t.paymentMethod || '').toLowerCase();
+        if (m === 'cheque') return pm.includes('cheque') || Boolean(t.chequeNo);
+        if (m === 'bank' || m === 'bank transfer') return pm.includes('bank') || pm.includes('transfer') || Boolean(t.transactionRef);
+        if (m === 'cash') return (pm === 'cash' || pm.includes('cash')) && !t.chequeNo && !t.transactionRef;
+        if (m === 'card') return pm.includes('card') || pm.includes('online');
+        return pm === m;
+      });
+    }
+
+    // Type filter
+    if (type && type !== 'ALL') {
+      allTransactions = allTransactions.filter(t => t.flowType === type);
+    }
+
+    // Sort by date DESC, time DESC
+    allTransactions.sort((a, b) => {
+      const dateA = `${a.date} ${a.time || '00:00'}`;
+      const dateB = `${b.date} ${b.time || '00:00'}`;
+      return dateB.localeCompare(dateA);
+    });
+
+    // Compute Summaries
+    let totalInflow = 0;
+    let totalOutflow = 0;
+    const methodBreakdown = {
+      cash: { in: 0, out: 0 },
+      cheque: { in: 0, out: 0 },
+      bankTransfer: { in: 0, out: 0 },
+      other: { in: 0, out: 0 }
+    };
+
+    const dailyBreakdownMap: Record<string, { date: string; inflow: number; outflow: number; net: number }> = {};
+
+    for (const t of allTransactions) {
+      const amt = Number(t.amount) || 0;
+      const pm = (t.paymentMethod || '').toLowerCase();
+      const isCheque = pm.includes('cheque') || Boolean(t.chequeNo);
+      const isBank = pm.includes('bank') || pm.includes('transfer') || Boolean(t.transactionRef);
+      const isCash = !isCheque && !isBank && (pm === 'cash' || pm.includes('cash'));
+
+      if (t.flowType === 'IN') {
+        totalInflow += amt;
+        if (isCash) methodBreakdown.cash.in += amt;
+        else if (isCheque) methodBreakdown.cheque.in += amt;
+        else if (isBank) methodBreakdown.bankTransfer.in += amt;
+        else methodBreakdown.other.in += amt;
+      } else {
+        totalOutflow += amt;
+        if (isCash) methodBreakdown.cash.out += amt;
+        else if (isCheque) methodBreakdown.cheque.out += amt;
+        else if (isBank) methodBreakdown.bankTransfer.out += amt;
+        else methodBreakdown.other.out += amt;
+      }
+
+      if (!dailyBreakdownMap[t.date]) {
+        dailyBreakdownMap[t.date] = { date: t.date, inflow: 0, outflow: 0, net: 0 };
+      }
+      if (t.flowType === 'IN') {
+        dailyBreakdownMap[t.date].inflow += amt;
+      } else {
+        dailyBreakdownMap[t.date].outflow += amt;
+      }
+      dailyBreakdownMap[t.date].net = dailyBreakdownMap[t.date].inflow - dailyBreakdownMap[t.date].outflow;
+    }
+
+    const netCashFlow = totalInflow - totalOutflow;
+    const dailyBreakdown = Object.values(dailyBreakdownMap).sort((a, b) => b.date.localeCompare(a.date));
+
+    // Extract all Cheques
+    const cheques = allTransactions
+      .filter(t => (t.paymentMethod || '').toLowerCase().includes('cheque') || Boolean(t.chequeNo))
+      .map(t => ({
+        ...t,
+        direction: t.flowType === 'IN' ? 'Inward (Received)' : 'Outward (Issued)',
+        status: t.chequeStatus || 'Pending'
+      }));
+
+    const inwardCheques = cheques.filter(c => c.flowType === 'IN');
+    const outwardCheques = cheques.filter(c => c.flowType === 'OUT');
+
+    const chequesSummary = {
+      inwardCount: inwardCheques.length,
+      inwardTotal: inwardCheques.reduce((s, c) => s + (Number(c.amount) || 0), 0),
+      inwardPendingTotal: inwardCheques.filter(c => c.status === 'Pending').reduce((s, c) => s + (Number(c.amount) || 0), 0),
+      inwardClearedTotal: inwardCheques.filter(c => c.status === 'Cleared' || c.status === 'Deposited').reduce((s, c) => s + (Number(c.amount) || 0), 0),
+      outwardCount: outwardCheques.length,
+      outwardTotal: outwardCheques.reduce((s, c) => s + (Number(c.amount) || 0), 0),
+      outwardPendingTotal: outwardCheques.filter(c => c.status === 'Pending').reduce((s, c) => s + (Number(c.amount) || 0), 0),
+      outwardClearedTotal: outwardCheques.filter(c => c.status === 'Cleared').reduce((s, c) => s + (Number(c.amount) || 0), 0)
+    };
+
+    // Extract Bank Transfers
+    const bankTransfers = allTransactions.filter(t => 
+      (t.paymentMethod || '').toLowerCase().includes('bank') || 
+      (t.paymentMethod || '').toLowerCase().includes('transfer') || 
+      Boolean(t.transactionRef)
+    );
+
+    res.json({
+      startDate: start,
+      endDate: end,
+      totalInflow,
+      totalOutflow,
+      netCashFlow,
+      methodBreakdown,
+      dailyBreakdown,
+      transactions: allTransactions,
+      cheques,
+      inwardCheques,
+      outwardCheques,
+      chequesSummary,
+      bankTransfers
+    });
+  } catch (error: any) {
+    console.error('Daily cash flow error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch cash flow report' });
+  }
+});
+
+// 2. GET /api/finance/payment-vouchers
+app.get('/api/finance/payment-vouchers', async (req, res) => {
+  try {
+    const [rows]: any = await db.query('SELECT * FROM payment_vouchers ORDER BY date DESC, id DESC LIMIT 200');
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. POST /api/finance/payment-vouchers
+app.post('/api/finance/payment-vouchers', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const data = { ...req.body };
+    const numAmount = Number(data.amount) || 0;
+    if (numAmount <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please enter a valid voucher amount greater than 0' });
+    }
+    if (!data.payeeName || !data.payeeName.trim()) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Payee Name is required' });
+    }
+
+    // Generate sequence number for payment voucher
+    await conn.query(`
+      INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) 
+      VALUES ('payment_voucher', 'Payment Vouchers', 'PV-', 1001, 4, 0, 0, NOW()) 
+      ON DUPLICATE KEY UPDATE updated_at = NOW()
+    `);
+    const [seqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'payment_voucher'");
+    const nextSeq = seqRow && seqRow[0] ? seqRow[0].next_number : 1001;
+    const prefix = seqRow && seqRow[0] ? seqRow[0].prefix : 'PV-';
+    const padding = seqRow && seqRow[0] ? seqRow[0].padding : 4;
+    const currentYY = String(new Date().getFullYear()).slice(-2);
+    const voucherNo = data.voucherNo || `${prefix}${currentYY}-${String(nextSeq).padStart(padding, '0')}`;
+
+    await conn.query("UPDATE document_sequences SET next_number = next_number + 1 WHERE id = 'payment_voucher'");
+
+    const docId = `VOU-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const voucherPayload = {
+      id: docId,
+      voucherNo,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      payeeType: data.payeeType || 'supplier',
+      payeeId: data.payeeId || null,
+      payeeName: data.payeeName.trim(),
+      category: data.category || 'Expense',
+      amount: numAmount,
+      paymentMethod: data.paymentMethod || 'Cash',
+      chequeNo: data.chequeNo ? String(data.chequeNo).trim() : null,
+      chequeDate: data.chequeDate || null,
+      bankName: data.bankName ? String(data.bankName).trim() : null,
+      chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
+      transactionRef: data.transactionRef ? String(data.transactionRef).trim() : null,
+      bankAccountId: data.bankAccountId || null,
+      accountId: data.accountId || null,
+      relatedBillId: data.relatedBillId || null,
+      relatedBillNo: data.relatedBillNo || null,
+      description: data.description ? String(data.description).trim() : null,
+      preparedBy: data.preparedBy || 'Accounts Officer',
+      approvedBy: data.approvedBy || null,
+      status: 'Paid'
+    };
+
+    await conn.query('INSERT INTO payment_vouchers SET ?', voucherPayload);
+
+    // If payee is a supplier, record in supplier_ledger
+    if (data.payeeId) {
+      try {
+        const ledgerId = `SL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        await conn.query('INSERT INTO supplier_ledger SET ?', {
+          id: ledgerId,
+          supplierId: data.payeeId,
+          date: (data.date || new Date().toISOString().slice(0, 10)) + ' 12:00:00',
+          type: 'payment',
+          referenceNo: voucherNo,
+          description: data.description || `Payment via Voucher ${voucherNo}`,
+          debit: 0,
+          credit: numAmount,
+          amount: numAmount,
+          paymentMethod: data.paymentMethod || 'Cash',
+          chequeNo: data.chequeNo || null,
+          chequeDate: data.chequeDate || null,
+          bankName: data.bankName || null,
+          chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
+          transactionRef: data.transactionRef || null,
+          voucherNo,
+          notes: data.description || null
+        });
+
+        // If paying a specific supplier bill, update bill
+        if (data.relatedBillId) {
+          await conn.query(`
+            UPDATE supplier_bills 
+            SET paidAmount = paidAmount + ?, 
+                status = CASE WHEN paidAmount + ? >= totalAmount THEN 'paid' ELSE 'partial' END
+            WHERE id = ? OR invoiceNo = ?
+          `, [numAmount, numAmount, data.relatedBillId, data.relatedBillId]);
+        }
+      } catch (slErr) {
+        console.warn('Failed to post to supplier ledger from voucher:', slErr);
+      }
+    }
+
+    // If paid by Cash and cash account is selected, record into cashbook_entries
+    if ((data.paymentMethod === 'Cash' || !data.paymentMethod) && data.cashAccountId) {
+      try {
+        const cbId = `CB-VOU-${Date.now().toString().slice(-6)}`;
+        await conn.query('INSERT INTO cashbook_entries SET ?', {
+          id: cbId,
+          date: data.date || new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          entryType: 'OUT',
+          amount: numAmount,
+          particulars: `Voucher ${voucherNo}: ${data.payeeName} - ${data.description || 'Disbursement'}`,
+          accountId: data.accountId || 'acc_5000',
+          cashAccountId: data.cashAccountId,
+          referenceNo: voucherNo,
+          partyName: data.payeeName,
+          createdBy: data.preparedBy || 'Accounts Officer',
+          status: 'approved',
+          source: 'desktop',
+          voucherNo
+        });
+      } catch (cbErr) {
+        console.warn('Failed to post voucher to cashbook:', cbErr);
+      }
+    }
+
+    await conn.commit();
+    res.json({ success: true, id: docId, voucherNo, voucher: voucherPayload });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error creating payment voucher:', error);
+    res.status(500).json({ error: error.message || 'Failed to create payment voucher' });
+  } finally {
+    conn.release();
+  }
+});
+
+// 4. PUT /api/finance/cheques/:id/status
+app.put('/api/finance/cheques/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, sourceTable } = req.body;
+    if (!status) return res.status(400).json({ error: 'Status is required' });
+
+    if (sourceTable === 'payment_vouchers') {
+      await db.query('UPDATE payment_vouchers SET chequeStatus = ? WHERE id = ? OR voucherNo = ?', [status, id, id]);
+    } else if (sourceTable === 'payment_receipts') {
+      await db.query('UPDATE payment_receipts SET chequeStatus = ? WHERE id = ? OR receiptNo = ?', [status, id, id]);
+    } else if (sourceTable === 'supplier_ledger') {
+      await db.query('UPDATE supplier_ledger SET chequeStatus = ? WHERE id = ? OR referenceNo = ?', [status, id, id]);
+    } else if (sourceTable === 'cashbook_entries') {
+      await db.query('UPDATE cashbook_entries SET chequeStatus = ? WHERE id = ?', [status, id]);
+    } else {
+      await db.query('UPDATE payment_vouchers SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
+      await db.query('UPDATE payment_receipts SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
+      await db.query('UPDATE supplier_ledger SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
+      await db.query('UPDATE cashbook_entries SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
+    }
+
+    res.json({ success: true, id, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 
 // ==========================================
@@ -11833,6 +12351,11 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       accountId: depositAccountId,
       accountName: depositAccountName,
       reference: data.reference || null,
+      chequeNo: data.chequeNo ? String(data.chequeNo).trim() : null,
+      chequeDate: data.chequeDate || null,
+      bankName: data.bankName ? String(data.bankName).trim() : null,
+      chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
+      transactionRef: data.transactionRef ? String(data.transactionRef).trim() : null,
       receivedBy: data.receivedBy || 'Accounts Officer',
       notes: data.notes || null,
       status: 'Received',

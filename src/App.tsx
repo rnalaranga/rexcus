@@ -39,6 +39,7 @@ import { AgedReports } from '@/pages/finance/AgedReports'
 import { ReceivablesHub } from '@/pages/finance/ReceivablesHub'
 import { PayablesHub } from '@/pages/finance/PayablesHub'
 import { DailyCashbook } from '@/pages/finance/DailyCashbook'
+import { DailyCashFlowHub } from '@/pages/finance/DailyCashFlowHub'
 import { Machinery } from '@/pages/production/Machinery'
 import { WorkshopPlanning } from '@/pages/production/WorkshopPlanning'
 
@@ -177,6 +178,7 @@ function AppRoutes() {
           {/* Finance */}
           <Route path="/finance/invoices" element={<Invoices />} />
           <Route path="/finance/cashbook" element={<DailyCashbook />} />
+          <Route path="/finance/cash-flow" element={<DailyCashFlowHub />} />
 
           {/* Production */}
           <Route path="/production" element={<WorkOrders />} />
