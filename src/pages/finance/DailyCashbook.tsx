@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { useCashbook, useAccounts } from '@/hooks/useFinance';
 import { 
   createCashbookEntry, deleteCashbookEntry, approveCashbookEntry, 
@@ -71,6 +72,34 @@ export const DailyCashbook: React.FC = () => {
   const [bankName, setBankName] = useState<string>('');
   const [transactionRef, setTransactionRef] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+
+  // Supplier Settlement state
+  const [payeeCategory, setPayeeCategory] = useState<'expense' | 'supplier'>('expense');
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const [supplierBills, setSupplierBills] = useState<any[]>([]);
+  const [loadingSupplierBills, setLoadingSupplierBills] = useState<boolean>(false);
+  const [relatedBillId, setRelatedBillId] = useState<string>('');
+  const [relatedBillNo, setRelatedBillNo] = useState<string>('');
+
+  // Fetch unpaid bills when supplier selected
+  React.useEffect(() => {
+    if (payeeCategory === 'supplier' && selectedSupplierId) {
+      setLoadingSupplierBills(true);
+      fetch(`/api/purchasing/bills?supplierId=${encodeURIComponent(selectedSupplierId)}&status=unpaid`)
+        .then(r => r.json())
+        .then(res => {
+          const list = Array.isArray(res) ? res : (res.bills || []);
+          setSupplierBills(list);
+          setLoadingSupplierBills(false);
+        })
+        .catch(() => {
+          setSupplierBills([]);
+          setLoadingSupplierBills(false);
+        });
+    } else {
+      setSupplierBills([]);
+    }
+  }, [payeeCategory, selectedSupplierId]);
 
   // Keep formCashAccountId synchronized with selected or default cash account
   React.useEffect(() => {
@@ -171,6 +200,11 @@ export const DailyCashbook: React.FC = () => {
     setBankName('');
     setTransactionRef('');
     setNotes('');
+    setPayeeCategory('expense');
+    setSelectedSupplierId('');
+    setSupplierBills([]);
+    setRelatedBillId('');
+    setRelatedBillNo('');
     setFormCashAccountId(selectedCashAccountId || (cashbookData?.cashAccount?.id || ''));
     
     // Default account depending on entry type
@@ -223,6 +257,8 @@ export const DailyCashbook: React.FC = () => {
         bankName: paymentMethod === 'Cheque' ? (bankName.trim() || undefined) : undefined,
         chequeStatus: paymentMethod === 'Cheque' ? 'Pending' : undefined,
         transactionRef: paymentMethod === 'Bank Transfer' ? (transactionRef.trim() || referenceNo.trim() || undefined) : undefined,
+        supplierId: payeeCategory === 'supplier' ? (selectedSupplierId || undefined) : undefined,
+        relatedBillId: relatedBillId || undefined,
         createdBy: user?.name || user?.username || 'Cashier',
         notes: notes.trim() || undefined
       });
@@ -1026,24 +1062,159 @@ export const DailyCashbook: React.FC = () => {
             )}
           </div>
 
-          {/* Quick Presets */}
-          <div>
-            <span className="text-[11px] font-semibold text-muted uppercase tracking-wider block mb-1.5">
-              Quick Suggestions:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {(entryType === 'OUT' ? quickExpensePresets : quickIncomePresets).map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => applyPreset(p)}
-                  className="px-2 py-1 text-xs rounded-md bg-surface border border-theme text-secondary hover:border-rex-500/40 hover:text-primary transition-colors"
-                >
-                  {p.label}
-                </button>
-              ))}
+          {/* Quick Presets (Only for general entries) */}
+          {payeeCategory === 'expense' && (
+            <div>
+              <span className="text-[11px] font-semibold text-muted uppercase tracking-wider block mb-1.5">
+                Quick Suggestions:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {(entryType === 'OUT' ? quickExpensePresets : quickIncomePresets).map((p, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    className="px-2 py-1 text-xs rounded-md bg-surface border border-theme text-secondary hover:border-rex-500/40 hover:text-primary transition-colors"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* If OUT: Allow selecting Supplier Payment */}
+          {entryType === 'OUT' && (
+            <div className="p-3 bg-surface2/60 border border-theme rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-primary">Disbursement Type</span>
+                <div className="flex items-center gap-1 bg-surface p-1 rounded-md border border-theme text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayeeCategory('expense');
+                      setSelectedSupplierId('');
+                      setSupplierBills([]);
+                      setRelatedBillId('');
+                      setRelatedBillNo('');
+                    }}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      payeeCategory === 'expense' ? 'bg-rex-600 text-white shadow-xs' : 'text-secondary hover:text-primary'
+                    }`}
+                  >
+                    Office / General Expense
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayeeCategory('supplier');
+                      const payableAcc = (allAccounts || []).find(a => a.code === '2000' || a.name?.toLowerCase().includes('payable'));
+                      if (payableAcc) setTargetAccountId(payableAcc.id);
+                    }}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      payeeCategory === 'supplier' ? 'bg-amber-600 text-white shadow-xs' : 'text-secondary hover:text-primary'
+                    }`}
+                  >
+                    Supplier Bill Payment (සැපයුම්කරු)
+                  </button>
+                </div>
+              </div>
+
+              {payeeCategory === 'supplier' && (
+                <div className="space-y-2.5 pt-2 border-t border-theme-subtle">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-secondary uppercase tracking-wider mb-1">
+                      Select Supplier *
+                    </label>
+                    <SupplierAutocomplete
+                      value={selectedSupplierId}
+                      onChange={(sId, supplier) => {
+                        setSelectedSupplierId(sId);
+                        setPartyName(supplier?.name || supplier?.company || sId);
+                        if (paymentMethod === 'Cheque' && supplier?.bankName) {
+                          setBankName(supplier.bankName);
+                        }
+                      }}
+                      placeholder="Type supplier name or company..."
+                      required
+                    />
+                  </div>
+
+                  {/* Supplier Pending Bills List */}
+                  {selectedSupplierId && (
+                    <div className="p-2.5 bg-surface rounded-lg border border-theme space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <AlertCircle size={13} />
+                          <span>Supplier Unpaid Bills ({supplierBills.length})</span>
+                        </span>
+                        {loadingSupplierBills && (
+                          <span className="text-[10px] text-muted animate-pulse">Loading bills...</span>
+                        )}
+                      </div>
+
+                      {loadingSupplierBills ? (
+                        <div className="py-2 text-center text-xs text-muted">
+                          Fetching unpaid bills from purchase ledger...
+                        </div>
+                      ) : supplierBills.length === 0 ? (
+                        <div className="text-xs text-muted italic p-1.5">
+                          No outstanding bills found for this supplier. (Recording as advance disbursement).
+                        </div>
+                      ) : (
+                        <div className="max-h-40 overflow-y-auto divide-y divide-theme border border-theme rounded-md">
+                          {supplierBills.map((b: any) => {
+                            const total = Number(b.totalAmount || b.amount || 0);
+                            const paid = Number(b.paidAmount || 0);
+                            const due = Math.max(0, total - paid);
+                            const isSelected = relatedBillId === b.id;
+
+                            return (
+                              <div
+                                key={b.id}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setRelatedBillId('');
+                                    setRelatedBillNo('');
+                                  } else {
+                                    setRelatedBillId(b.id);
+                                    setRelatedBillNo(b.invoiceNo || b.id);
+                                    setAmount(due > 0 ? due.toString() : total.toString());
+                                    setParticulars(`Cash settlement for Supplier Bill #${b.invoiceNo || b.id}`);
+                                    setReferenceNo(b.invoiceNo || b.id);
+                                  }
+                                }}
+                                className={`p-2 flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                                  isSelected ? 'bg-amber-500/15 border-l-4 border-l-amber-500' : 'hover:bg-surface2/60'
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-bold text-primary">Bill #{b.invoiceNo || b.id}</span>
+                                    <Badge variant={isSelected ? 'warning' : 'default'}>{b.status || 'unpaid'}</Badge>
+                                  </div>
+                                  <span className="text-[10px] text-muted block font-mono">
+                                    Date: {b.date ? b.date.slice(0, 10) : (b.billDate ? b.billDate.slice(0, 10) : '-')} | Total: {formatCurrency(total)}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[10px] text-muted block">Due</span>
+                                  <span className="text-xs font-mono font-bold text-amber-400">{formatCurrency(due)}</span>
+                                  <span className="text-[9px] text-rex-400 block underline">
+                                    {isSelected ? 'Selected (Deselect)' : 'Click to Settle'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Date, Time & Amount */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

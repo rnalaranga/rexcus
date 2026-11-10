@@ -1967,7 +1967,11 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_receipts ADD COLUMN chequeDate DATE DEFAULT NULL",
     "ALTER TABLE payment_receipts ADD COLUMN bankName VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE payment_receipts ADD COLUMN chequeStatus VARCHAR(50) DEFAULT 'Pending'",
-    "ALTER TABLE payment_receipts ADD COLUMN transactionRef VARCHAR(100) DEFAULT NULL"
+    "ALTER TABLE payment_receipts ADD COLUMN transactionRef VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE payment_receipts ADD COLUMN invoiceId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN invoiceNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00"
   ];
 
   for (const patch of patches) {
@@ -8693,7 +8697,35 @@ app.delete('/api/purchasing/grns/:id', async (req, res) => {
 
 app.get('/api/purchasing/bills', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM supplier_bills ORDER BY date DESC, createdAt DESC');
+    const { supplierId, status } = req.query;
+    let query = `
+      SELECT b.*, 
+             COALESCE(b.amount, 0) as totalAmount,
+             COALESCE(b.paidAmount, 0) as paidAmount,
+             s.name as supplierName, 
+             s.company as supplierCompany 
+      FROM supplier_bills b 
+      LEFT JOIN suppliers s ON b.supplierId = s.id
+    `;
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (supplierId) {
+      conditions.push('(b.supplierId = ? OR s.name = ? OR s.company = ?)');
+      params.push(supplierId, supplierId, supplierId);
+    }
+    if (status) {
+      if (status === 'unpaid') {
+        conditions.push('(b.status = "unpaid" OR b.status = "partial" OR b.status IS NULL)');
+      } else {
+        conditions.push('b.status = ?');
+        params.push(status);
+      }
+    }
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    query += ' ORDER BY b.date DESC, b.createdAt DESC';
+    const [rows] = await db.query(query, params);
     res.json(rows);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
@@ -11326,6 +11358,44 @@ app.post('/api/finance/cashbook', async (req, res) => {
       voucherNo: voucherNo ? String(voucherNo).trim() : null
     });
 
+    // 5. If paying a specific supplier bill via cashbook, update the bill & supplier ledger
+    if (req.body.relatedBillId) {
+      try {
+        await conn.query(`
+          UPDATE supplier_bills 
+          SET paidAmount = COALESCE(paidAmount, 0) + ?,
+              status = CASE WHEN COALESCE(paidAmount, 0) + ? >= COALESCE(amount, 0) THEN 'paid' ELSE 'partial' END
+          WHERE id = ? OR invoiceNo = ?
+        `, [numAmount, numAmount, req.body.relatedBillId, req.body.relatedBillId]);
+      } catch (bErr) {
+        console.warn('Failed to update supplier bill from cashbook:', bErr);
+      }
+    }
+    if (req.body.supplierId) {
+      try {
+        await conn.query('INSERT INTO supplier_ledger SET ?', {
+          id: `SL-CB-${Date.now().toString().slice(-6)}`,
+          supplierId: req.body.supplierId,
+          date: `${formattedDate} ${entryTime}:00`,
+          type: 'payment',
+          referenceNo: referenceNo || cashbookId,
+          debit: 0,
+          credit: numAmount,
+          amount: numAmount,
+          paymentMethod: paymentMethod || 'Cash',
+          chequeNo: chequeNo ? String(chequeNo).trim() : null,
+          chequeDate: chequeDate || null,
+          bankName: bankName ? String(bankName).trim() : null,
+          chequeStatus: chequeStatus || (chequeNo ? 'Pending' : null),
+          transactionRef: transactionRef ? String(transactionRef).trim() : null,
+          voucherNo: voucherNo ? String(voucherNo).trim() : null,
+          notes: particulars ? particulars.trim() : null
+        });
+      } catch (slErr) {
+        console.warn('Failed to post to supplier ledger from cashbook:', slErr);
+      }
+    }
+
     await conn.commit();
     res.json({ success: true, id: cashbookId, journalEntryId: journalId, status: 'approved' });
   } catch (error: any) {
@@ -11689,20 +11759,33 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
     const start = (startDate as string) || defaultStart;
     const end = (endDate as string) || defaultEnd;
 
-    // A. Inflows: Payment Receipts (Customer payments)
+    // A. Inflows: Payment Receipts (Customer & Invoice payments)
     const [receipts]: any = await db.query(`
       SELECT 
         pr.id,
         DATE_FORMAT(pr.date, '%Y-%m-%d') as date,
         DATE_FORMAT(pr.date, '%H:%i') as time,
         'IN' as flowType,
-        'Customer Receipt' as category,
+        CASE 
+          WHEN pr.invoiceNo IS NOT NULL AND pr.invoiceNo != '' THEN 'Invoice Payment'
+          WHEN pr.orderNo IS NOT NULL AND pr.orderNo != '' THEN 'Order Payment'
+          WHEN pr.quotationNo IS NOT NULL AND pr.quotationNo != '' THEN 'Quote Advance'
+          ELSE 'Customer Receipt'
+        END as category,
         pr.receiptNo as refNo,
         COALESCE(NULLIF(pr.customerCompany, ''), NULLIF(pr.customerName, ''), 'Customer') as partyName,
-        CONCAT('Receipt for ', COALESCE(NULLIF(pr.orderNo, ''), NULLIF(pr.quotationNo, ''), 'Invoice')) as description,
+        COALESCE(
+          NULLIF(pr.notes, ''),
+          NULLIF(pr.reference, ''),
+          CASE 
+            WHEN pr.invoiceNo IS NOT NULL AND pr.invoiceNo != '' THEN CONCAT('Payment for Invoice #', pr.invoiceNo)
+            WHEN pr.orderNo IS NOT NULL AND pr.orderNo != '' THEN CONCAT('Receipt for Order #', pr.orderNo)
+            ELSE 'Customer Payment Receipt'
+          END
+        ) as description,
         COALESCE(pr.paymentMethod, 'Cash') as paymentMethod,
         CAST(pr.amount AS DECIMAL(15,2)) as amount,
-        COALESCE(pr.currency, 'LKR') as currency,
+        'LKR' as currency,
         pr.chequeNo,
         DATE_FORMAT(pr.chequeDate, '%Y-%m-%d') as chequeDate,
         pr.bankName,
@@ -11714,6 +11797,57 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
       FROM payment_receipts pr
       WHERE DATE(pr.date) BETWEEN ? AND ?
     `, [start, end]);
+
+    // A2. Direct payments logged on invoices table (resilient fallback for legacy / direct invoice payments)
+    const directInvoicePayments: any[] = [];
+    try {
+      const [invoiceRows]: any = await db.query(`
+        SELECT id, invoiceNo, customerName, customerCompany, currency, payments
+        FROM invoices 
+        WHERE payments IS NOT NULL AND payments != '' AND payments != '[]'
+      `);
+      
+      const existingReceiptRefs = new Set(receipts.map((r: any) => String(r.refNo).trim()));
+      
+      for (const inv of (invoiceRows || [])) {
+        try {
+          const pmts = typeof inv.payments === 'string' ? JSON.parse(inv.payments) : inv.payments;
+          if (Array.isArray(pmts)) {
+            for (const p of pmts) {
+              const pDate = p.date ? String(p.date).slice(0, 10) : '';
+              if (pDate >= start && pDate <= end) {
+                const ref = p.receiptNo || p.id || `INV-PMT-${inv.invoiceNo || inv.id}`;
+                if (!existingReceiptRefs.has(String(ref).trim())) {
+                  directInvoicePayments.push({
+                    id: p.id || `IP-${inv.id}-${pDate}`,
+                    date: pDate,
+                    time: p.date && String(p.date).length > 11 ? String(p.date).slice(11, 16) : '12:00',
+                    flowType: 'IN',
+                    category: 'Invoice Payment',
+                    refNo: ref,
+                    partyName: inv.customerCompany || inv.customerName || 'Customer',
+                    description: p.reference || p.notes || `Payment for Invoice #${inv.invoiceNo || inv.id}`,
+                    paymentMethod: p.method || 'Bank Transfer',
+                    amount: Number(p.amount || 0),
+                    currency: p.currency || inv.currency || 'LKR',
+                    chequeNo: p.chequeNo || null,
+                    chequeDate: p.chequeDate ? String(p.chequeDate).slice(0, 10) : null,
+                    bankName: p.bankName || null,
+                    chequeStatus: p.chequeStatus || (p.chequeNo ? 'Pending' : null),
+                    transactionRef: p.transactionRef || p.reference || null,
+                    accountName: p.accountName || 'Cash/Bank',
+                    handledBy: p.receivedBy || 'Accounts',
+                    sourceTable: 'invoices'
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    } catch (invErr) {
+      console.warn('Error reading invoice payments:', invErr);
+    }
 
     // B. Cashbook Entries (IN and OUT)
     const [cashbook]: any = await db.query(`
@@ -11804,6 +11938,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
     // Merge and standardize all transactions
     let allTransactions = [
       ...receipts,
+      ...directInvoicePayments,
       ...cashbook,
       ...vouchers,
       ...supplierPayments
@@ -12042,8 +12177,8 @@ app.post('/api/finance/payment-vouchers', async (req, res) => {
         if (data.relatedBillId) {
           await conn.query(`
             UPDATE supplier_bills 
-            SET paidAmount = paidAmount + ?, 
-                status = CASE WHEN paidAmount + ? >= totalAmount THEN 'paid' ELSE 'partial' END
+            SET paidAmount = COALESCE(paidAmount, 0) + ?, 
+                status = CASE WHEN COALESCE(paidAmount, 0) + ? >= COALESCE(amount, 0) THEN 'paid' ELSE 'partial' END
             WHERE id = ? OR invoiceNo = ?
           `, [numAmount, numAmount, data.relatedBillId, data.relatedBillId]);
         }

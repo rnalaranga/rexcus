@@ -264,8 +264,11 @@ export const DailyCashFlowHub: React.FC = () => {
     const q = search.toLowerCase();
     return list.filter((t: any) => 
       (t.reference && t.reference.toLowerCase().includes(q)) ||
+      (t.refNo && t.refNo.toLowerCase().includes(q)) ||
       (t.partyName && t.partyName.toLowerCase().includes(q)) ||
       (t.particulars && t.particulars.toLowerCase().includes(q)) ||
+      (t.description && t.description.toLowerCase().includes(q)) ||
+      (t.category && t.category.toLowerCase().includes(q)) ||
       (t.paymentMethod && t.paymentMethod.toLowerCase().includes(q)) ||
       (t.chequeNo && t.chequeNo.toLowerCase().includes(q)) ||
       (t.bankName && t.bankName.toLowerCase().includes(q)) ||
@@ -362,7 +365,7 @@ export const DailyCashFlowHub: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="space-y-5 p-4 sm:p-6 w-full">
       {/* Top Header & Breadcrumb */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-white/[0.08]">
         <div>
@@ -725,7 +728,10 @@ export const DailyCashFlowHub: React.FC = () => {
                   </tr>
                 ) : (
                   filteredTransactions.map((tx: any, idx: number) => {
-                    const isIn = tx.type === 'IN';
+                    const isIn = (tx.flowType === 'IN' || tx.type === 'IN');
+                    const ref = tx.refNo || tx.reference || '-';
+                    const desc = tx.description || tx.particulars || '-';
+
                     return (
                       <tr key={tx.id || idx} className="hover:bg-surface2/40 transition-colors">
                         <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-secondary">
@@ -733,8 +739,8 @@ export const DailyCashFlowHub: React.FC = () => {
                           {tx.time && <span className="text-[10px] text-muted">{tx.time}</span>}
                         </td>
                         <td className="py-2.5 px-3 font-mono text-[11px] text-primary whitespace-nowrap">
-                          <div className="font-semibold">{tx.reference || '-'}</div>
-                          {tx.voucherNo && tx.voucherNo !== tx.reference && (
+                          <div className="font-semibold">{ref}</div>
+                          {tx.voucherNo && tx.voucherNo !== ref && (
                             <span className="text-[10px] text-rex-400 block font-normal">PV: {tx.voucherNo}</span>
                           )}
                         </td>
@@ -756,10 +762,15 @@ export const DailyCashFlowHub: React.FC = () => {
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-medium text-primary">
-                          {tx.partyName || '-'}
+                          <div>{tx.partyName || '-'}</div>
+                          {tx.category && (
+                            <span className="text-[10px] text-muted block font-normal capitalize">
+                              {tx.category}
+                            </span>
+                          )}
                         </td>
-                        <td className="py-2.5 px-3 text-secondary max-w-xs truncate" title={tx.particulars}>
-                          {tx.particulars || '-'}
+                        <td className="py-2.5 px-3 text-secondary max-w-xs truncate" title={desc}>
+                          {desc}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-400 whitespace-nowrap">
                           {isIn ? formatCurrency(tx.amount) : '-'}
@@ -793,12 +804,12 @@ export const DailyCashFlowHub: React.FC = () => {
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">
                       {formatCurrency(
-                        filteredTransactions.filter((t: any) => t.type === 'IN').reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
+                        filteredTransactions.filter((t: any) => (t.flowType === 'IN' || t.type === 'IN')).reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
                       )}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-rose-400">
                       {formatCurrency(
-                        filteredTransactions.filter((t: any) => t.type === 'OUT').reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
+                        filteredTransactions.filter((t: any) => (t.flowType === 'OUT' || t.type === 'OUT')).reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
                       )}
                     </td>
                     <td />
@@ -1226,47 +1237,106 @@ export const DailyCashFlowHub: React.FC = () => {
             )}
           </div>
 
-          {/* If Supplier Selected: Check if they have unpaid bills */}
-          {voucherForm.payeeType === 'supplier' && supplierBills.length > 0 && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-2">
-              <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                <AlertCircle size={13} />
-                Link to Unpaid Supplier Bill (Optional):
-              </span>
-              <select
-                value={voucherForm.relatedBillId}
-                onChange={e => {
-                  const billId = e.target.value;
-                  const bill = supplierBills.find(b => b.id === billId || b.invoiceNo === billId);
-                  if (bill) {
-                    const due = Number(bill.totalAmount || 0) - Number(bill.paidAmount || 0);
-                    setVoucherForm({
-                      ...voucherForm,
-                      relatedBillId: bill.id,
-                      relatedBillNo: bill.invoiceNo || bill.id,
-                      amount: due > 0 ? due.toString() : voucherForm.amount,
-                      description: `Settlement for GRN Bill #${bill.invoiceNo || bill.id}`
-                    });
-                  } else {
-                    setVoucherForm({
-                      ...voucherForm,
-                      relatedBillId: '',
-                      relatedBillNo: ''
-                    });
-                  }
-                }}
-                className="w-full bg-surface border border-theme rounded-lg px-3 py-2 text-xs text-primary outline-none focus:ring-1 focus:ring-amber-500"
-              >
-                <option value="">-- General / Advance Payment (Do not link to specific bill) --</option>
-                {supplierBills.map((b: any) => {
-                  const due = Number(b.totalAmount || 0) - Number(b.paidAmount || 0);
-                  return (
-                    <option key={b.id} value={b.id}>
-                      Bill #{b.invoiceNo || b.id} - Date: {b.billDate || b.date} - Total: {formatCurrency(b.totalAmount)} (Due: {formatCurrency(due)})
-                    </option>
-                  );
-                })}
-              </select>
+          {/* If Supplier Selected: Load & Display Outstanding Bills */}
+          {voucherForm.payeeType === 'supplier' && voucherForm.payeeId && (
+            <div className="p-3 bg-surface2/70 border border-amber-500/30 rounded-lg space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <AlertCircle size={14} />
+                  <span>Pending Supplier Bills ({supplierBills.length})</span>
+                </span>
+                {loadingSupplierBills && (
+                  <span className="text-[10px] text-muted flex items-center gap-1 animate-pulse">
+                    <RefreshCw size={11} className="animate-spin" /> Fetching bills...
+                  </span>
+                )}
+              </div>
+
+              {loadingSupplierBills ? (
+                <div className="py-4 text-center text-xs text-muted">
+                  Loading supplier's pending bills...
+                </div>
+              ) : supplierBills.length === 0 ? (
+                <div className="text-xs text-muted italic bg-surface/50 p-2 rounded border border-theme">
+                  No unpaid or pending bills found for this supplier. (This voucher will be recorded as a general vendor disbursement / advance).
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="max-h-48 overflow-y-auto border border-theme rounded-lg divide-y divide-theme bg-surface">
+                    {supplierBills.map((b: any) => {
+                      const total = Number(b.totalAmount || b.amount || 0);
+                      const paid = Number(b.paidAmount || 0);
+                      const due = Math.max(0, total - paid);
+                      const isSelected = voucherForm.relatedBillId === b.id;
+
+                      return (
+                        <div
+                          key={b.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setVoucherForm({
+                                ...voucherForm,
+                                relatedBillId: '',
+                                relatedBillNo: ''
+                              });
+                            } else {
+                              setVoucherForm({
+                                ...voucherForm,
+                                relatedBillId: b.id,
+                                relatedBillNo: b.invoiceNo || b.id,
+                                amount: due > 0 ? due.toString() : total.toString(),
+                                description: `Settlement for Supplier Bill #${b.invoiceNo || b.id}`
+                              });
+                            }
+                          }}
+                          className={`p-2.5 flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                            isSelected 
+                              ? 'bg-amber-500/15 border-l-4 border-l-amber-500' 
+                              : 'hover:bg-surface2/60'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-primary">
+                                Bill #{b.invoiceNo || b.id}
+                              </span>
+                              <Badge variant={isSelected ? 'warning' : 'default'}>
+                                {b.status || 'unpaid'}
+                              </Badge>
+                            </div>
+                            <span className="text-[10px] text-muted block mt-0.5 font-mono">
+                              Date: {b.date ? b.date.slice(0, 10) : (b.billDate ? b.billDate.slice(0, 10) : '-')} | Total: {formatCurrency(total)}
+                            </span>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] text-muted block uppercase">Due Balance</span>
+                            <span className="text-xs font-mono font-bold text-amber-400">
+                              {formatCurrency(due)}
+                            </span>
+                            <span className="text-[9px] text-rex-400 block mt-0.5 underline">
+                              {isSelected ? 'Selected (Click to deselect)' : 'Click to Settle'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {voucherForm.relatedBillId && (
+                    <div className="flex items-center justify-between text-xs pt-1 px-1 text-emerald-400">
+                      <span>✓ Linked to Bill #{voucherForm.relatedBillNo}</span>
+                      <button
+                        type="button"
+                        onClick={() => setVoucherForm({ ...voucherForm, relatedBillId: '', relatedBillNo: '' })}
+                        className="text-[10px] text-rose-400 hover:underline"
+                      >
+                        Clear Bill Link
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
